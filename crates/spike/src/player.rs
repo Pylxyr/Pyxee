@@ -29,8 +29,8 @@ struct Monitor {
 
 impl Monitor {
     fn feed(&mut self, samples: &[f32]) {
-        for f in samples.chunks_exact(2) {
-            let quiet = f[0].abs() < 1e-3 && f[1].abs() < 1e-3;
+        for &[l, r] in samples.as_chunks::<2>().0 {
+            let quiet = l.abs() < 1e-3 && r.abs() < 1e-3;
             match (quiet, self.run_start) {
                 (true, None) => self.run_start = Some(self.frames),
                 (false, Some(s)) => {
