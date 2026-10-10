@@ -57,9 +57,9 @@ impl StreamResampler {
             out.extend_from_slice(input);
             return Ok(());
         };
-        for frame in input.chunks_exact(CHANNELS) {
-            a.pending[0].push(frame[0]);
-            a.pending[1].push(frame[1]);
+        for &[l, r] in input.as_chunks::<CHANNELS>().0 {
+            a.pending[0].push(l);
+            a.pending[1].push(r);
         }
         a.in_frames += (input.len() / CHANNELS) as u64;
         loop {
