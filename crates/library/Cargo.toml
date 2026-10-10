@@ -1,0 +1,13 @@
+[package]
+name = "pyxee-library"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+pyxee-core = { path = "../core" }
+rusqlite = { version = "0.37", features = ["bundled"] }
+thiserror = "2"
+
+[lints]
+workspace = true

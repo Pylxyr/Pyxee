@@ -1,0 +1,21 @@
+[package]
+name = "pyxee-spike"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "spike"
+path = "src/main.rs"
+
+[dependencies]
+pyxee-audio = { path = "../audio" }
+pyxee-sources = { path = "../sources" }
+anyhow = "1"
+
+# cpal uses WASAPI on Windows. These are unconditional only so the spike also compiles in CI/sandbox.
+cpal = "0.15"
+ringbuf = "0.4"
+
+[lints]
+workspace = true

@@ -1,0 +1,105 @@
+// Hide the console window in release builds on Windows.
+#![cfg_attr(all(not(debug_assertions), windows), windows_subsystem = "windows")]
+
+mod commands;
+mod dto;
+mod engine;
+#[cfg(test)]
+mod engine_tests;
+mod library_service;
+mod recorder;
+mod runner;
+mod session;
+mod sim;
+mod state;
+mod tools;
+mod window;
+
+use pyxee_core::Player;
+use pyxee_sources::local::LocalSource;
+use pyxee_sources::ytdlp::YtDlpSource;
+use pyxee_sources::{CompositeSource, MusicSource};
+use state::AppState;
+use std::sync::mpsc;
+use std::sync::{Arc, Mutex};
+use tauri::Manager;
+
+fn seed() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(1, |d| d.as_nanos() as u64)
+}
+
+fn main() {
+    tauri::Builder::default()
+        .setup(|app| {
+            let session_path = app
+                .path()
+                .app_data_dir()
+                .ok()
+                .map(|d| d.join("session.json"));
+            let player = session_path
+                .as_deref()
+                .and_then(session::load)
+                .map_or_else(|| Player::new(seed()), Player::restore);
+
+            let backdrop = app
+                .get_webview_window("main")
+                .map_or(dto::BackdropDto::None, |w| window::apply_backdrop(&w));
+
+            let (tx, rx) = mpsc::channel();
+            let source: Arc<dyn MusicSource> = Arc::new(CompositeSource {
+                remote: YtDlpSource::new(tools::locate("yt-dlp", "PYXEE_YTDLP")),
+                local: LocalSource,
+            });
+            let library = library_service::LibraryService::open_or_memory(
+                app.path()
+                    .app_data_dir()
+                    .ok()
+                    .map(|d| d.join("library.db"))
+                    .as_deref(),
+            );
+            app.manage(AppState {
+                library: Mutex::new(library),
+                source,
+                player: Mutex::new(player),
+                engine: Mutex::new(tx),
+                backdrop,
+                session_path,
+            });
+            runner::spawn(app.handle().clone(), rx);
+            Ok(())
+        })
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::CloseRequested { .. } = event {
+                window.app_handle().state::<AppState>().save_session();
+            }
+        })
+        .invoke_handler(tauri::generate_handler![
+            commands::dispatch,
+            commands::get_state,
+            commands::window_info,
+            commands::dev_catalog,
+            commands::search,
+            commands::suggest,
+            commands::search_filters,
+            commands::get_library,
+            commands::library_set_liked,
+            commands::liked_get,
+            commands::playlist_create,
+            commands::playlist_rename,
+            commands::playlist_delete,
+            commands::playlist_restore,
+            commands::playlist_add,
+            commands::playlist_get,
+            commands::playlist_remove_entry,
+            commands::playlist_restore_entry,
+            commands::playlist_move_entry,
+            commands::history_get,
+            commands::history_clear,
+            commands::history_restore,
+            commands::home_get
+        ])
+        .run(tauri::generate_context!())
+        .expect("error while running Pyxee");
+}
