@@ -1,0 +1,56 @@
+# Pyxee
+
+A standalone music player for Windows 10 (22H2) and Windows 11, modeled on YouTube Music for Android.
+Rust (audio, queue, library) + Tauri 2 (WebView2) + Svelte/TypeScript/Tailwind UI. Personal use.
+
+Status: milestones 1-5 done (gapless audio, core state machine, UI shell, real engine + search + queue, library with likes,
+playlists, history and Home). The audio, yt-dlp and library parts are covered by automated tests with local files, but have
+not yet been run against YouTube, a real sound card or a real Windows profile: see `docs/engine.md` and `docs/library.md` for
+what to verify on Windows. Set `PYXEE_SIM=1` to run the UI against the built-in simulator instead.
+
+## Prerequisites (Windows)
+Rust (stable, MSVC), Visual Studio Build Tools (C++ workload), Node 22+, WebView2 runtime (preinstalled on Windows 11) and the
+Tauri CLI: `cargo install tauri-cli --version "^2" --locked`.
+
+## Get yt-dlp and ffmpeg
+Pyxee needs both. You do not install them by hand:
+```
+get-tools.cmd            (same as: cargo xtask tools)
+get-tools.cmd --update   refresh to the latest versions
+```
+This downloads yt-dlp and an LGPL build of ffmpeg from their official GitHub releases, verifies each against the published
+SHA-256 checksum (nothing is installed if it does not match) and puts them in `crates/app/binaries`. Development builds find
+them there automatically. To use your own copies instead, set `PYXEE_YTDLP` / `PYXEE_FFMPEG` to their paths, or put
+`yt-dlp.exe` / `ffmpeg.exe` next to the app. Download size is about 190 MB.
+
+## Run
+```
+npm install --prefix ui
+npm run dev --prefix ui          # terminal 1: UI dev server on :5173
+cd crates/app && cargo tauri dev # terminal 2: the desktop app
+```
+Without Tauri, `npm run dev --prefix ui` also works in a browser against a built-in mock backend.
+
+## Build the installer
+```
+build-installer.cmd      (same as: cargo xtask installer)
+```
+Downloads the tools if missing, builds the UI, then runs `cargo tauri build` with `crates/app/tauri.bundle.conf.json`, which
+bundles yt-dlp and ffmpeg as sidecars (installed next to `pyxee-app.exe`) and the licence notices, and makes the installer
+download the WebView2 runtime when a machine lacks it. Installers (NSIS `.exe` and `.msi`) end up in `target/release/bundle/`.
+They are unsigned, so Windows SmartScreen warns on first run: choose "More info", then "Run anyway". The installer is large
+(roughly 60-80 MB) because ffmpeg is about 130 MB uncompressed. Signing and the portable build come in milestone 7.
+
+## Test
+```
+npm run check --prefix ui && npm test --prefix ui     # types + UI tests
+npm run build --prefix ui                             # Tauri embeds ui/dist
+cargo fmt --all -- --check && cargo clippy --workspace --all-targets -- -D warnings && cargo test --workspace
+```
+`cargo test -p pyxee-app` regenerates the TypeScript types in `ui/src/lib/bindings` from the Rust types.
+
+## Layout
+`crates/core` queue + state machine (no I/O) · `crates/audio` decode, resample, gapless, output · `crates/sources` yt-dlp, local ·
+`crates/library` SQLite library ·
+`crates/app` Tauri glue · `crates/spike` milestone 1 harness · `ui/` Svelte frontend · `xtask/` tool downloader and installer build.
+The in-app yt-dlp updater with rollback, the portable build and code signing come in milestone 7.

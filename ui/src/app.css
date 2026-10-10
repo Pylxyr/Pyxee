@@ -1,0 +1,122 @@
+@import 'tailwindcss';
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-line: var(--line);
+  --color-fg: var(--fg);
+  --color-muted: var(--muted);
+  --color-accent: var(--accent);
+  --color-on-accent: var(--on-accent);
+  --font-sans: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif;
+}
+
+:root {
+  color-scheme: dark;
+  --bg: #0f0f0f;
+  --surface: #181818;
+  --surface-2: #272727;
+  --line: #2a2a2a;
+  --fg: #ffffff;
+  --muted: #a8a8a8;
+  --accent: #ff3b4a;
+  --on-accent: #ffffff;
+}
+
+:root[data-theme='light'] {
+  color-scheme: light;
+  --bg: #ffffff;
+  --surface: #f4f4f4;
+  --surface-2: #e8e8e8;
+  --line: #e0e0e0;
+  --fg: #0f0f0f;
+  --muted: #5c5c5c;
+}
+
+/* Windows 11 Mica: the page lets the system backdrop show through; panels get a light veil. */
+:root[data-backdrop='mica'] {
+  --bg: transparent;
+  --surface: color-mix(in srgb, #ffffff 5%, transparent);
+  --surface-2: color-mix(in srgb, #ffffff 10%, transparent);
+  --line: color-mix(in srgb, #ffffff 12%, transparent);
+}
+:root[data-backdrop='mica'][data-theme='light'] {
+  --surface: color-mix(in srgb, #000000 4%, transparent);
+  --surface-2: color-mix(in srgb, #000000 8%, transparent);
+  --line: color-mix(in srgb, #000000 10%, transparent);
+}
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-sans);
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+button {
+  cursor: pointer;
+}
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Seek / volume sliders: a real <input type=range> (keyboard + screen reader friendly), styled thin. */
+input[type='range'].slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 16px;
+  background: transparent;
+  cursor: pointer;
+  --pct: 0%;
+}
+input[type='range'].slider::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: 2px;
+  background: linear-gradient(to right, var(--fg) var(--pct), var(--surface-2) var(--pct));
+}
+input[type='range'].slider.accent::-webkit-slider-runnable-track {
+  background: linear-gradient(to right, var(--accent) var(--pct), var(--surface-2) var(--pct));
+}
+input[type='range'].slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 12px;
+  height: 12px;
+  margin-top: -4px;
+  border-radius: 50%;
+  background: var(--fg);
+  opacity: 0;
+  transition: opacity 120ms;
+}
+input[type='range'].slider:hover::-webkit-slider-thumb,
+input[type='range'].slider:focus-visible::-webkit-slider-thumb {
+  opacity: 1;
+}
+
+@keyframes shimmer {
+  0% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0.55;
+  }
+}
+.skeleton {
+  background: var(--surface-2);
+  border-radius: 6px;
+  animation: shimmer 1.4s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .skeleton {
+    animation: none;
+  }
+}
