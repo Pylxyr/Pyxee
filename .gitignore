@@ -7,5 +7,5 @@ ui/dist-single
 crates/app/gen
 # downloaded by `cargo xtask tools`
 crates/app/binaries/*
-!crates/app/binaries/.gitkeep
+!crates/app/binaries/README.md
 /dist
