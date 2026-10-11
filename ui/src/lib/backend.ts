@@ -42,6 +42,8 @@ export interface Backend extends LibraryBackend {
   /** Subscribes to state pushes; resolves to an unsubscribe function. */
   onState(cb: (state: PlayerStateDto) => void): Promise<() => void>;
   windowInfo(): Promise<WindowInfoDto>;
+  /** Output volume, 0-100. */
+  setVolume(percent: number): Promise<void>;
   /** Rejects with a `SearchErrorDto` (offline, rate limited, tool missing, ...). */
   search(query: string, filter: SearchFilterDto): Promise<SearchResponseDto>;
   /** Live suggestions; never rejects (no suggestions beats an error while typing). */
@@ -74,6 +76,7 @@ export async function tauriBackend(): Promise<Backend> {
     dispatch: (command) => invoke<void>('dispatch', { command }),
     onState: async (cb) => listen<PlayerStateDto>(STATE_EVENT, (e) => cb(e.payload)),
     windowInfo: () => invoke<WindowInfoDto>('window_info'),
+    setVolume: (percent) => invoke<void>('set_volume', { percent: Math.round(percent) }),
     search: (query, filter) => invoke<SearchResponseDto>('search', { query, filter }),
     suggest: (prefix) => invoke<string[]>('suggest', { prefix }).catch(() => []),
     searchFilters: () => invoke<FilterInfoDto[]>('search_filters'),

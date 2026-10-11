@@ -5,6 +5,7 @@
   import { player } from '$lib/player.svelte';
   import { search } from '$lib/search.svelte';
   import { library } from '$lib/library.svelte';
+  import { prefs } from '$lib/prefs.svelte';
   import { nav } from '$lib/nav.svelte';
   import { theme, type ThemeMode } from '$lib/theme.svelte';
   import { snackbar } from '$lib/snackbar.svelte';
@@ -37,6 +38,11 @@
       await player.init(backend);
       theme.backdrop = (await backend.windowInfo()).backdrop;
     })();
+  });
+
+  // The volume lives in the UI preferences; the audio engine gets it at start-up and on every change.
+  $effect(() => {
+    if (player.ready) void player.setVolume(prefs.volume);
   });
 
   // Keep <html> in sync with theme, backdrop and accent.
@@ -85,22 +91,25 @@
 <div class="flex h-dvh flex-col bg-bg text-fg">
   <div class="flex min-h-0 flex-1">
     {#if wide.current}<SideRail />{/if}
-    <main class="min-w-0 flex-1 overflow-y-auto">
-      <div class="sticky top-0 z-10 flex items-center">
+    <main class="flex min-w-0 flex-1 flex-col overflow-hidden">
+      <div class="relative z-20 flex shrink-0 items-center">
         <div class="flex-1"><TopBar /></div>
         <button class="mr-4 rounded-full p-2 text-muted hover:text-fg sm:mr-8" aria-label="Appearance" onclick={() => (nav.themeSheetOpen = true)}>
           <Icon name="explore" size={20} />
         </button>
       </div>
       {#if library.snapshot.error}
-        <p class="mx-4 mb-2 rounded-xl bg-surface-2 px-4 py-3 text-sm sm:mx-8" role="status">Your library couldn't be opened ({library.snapshot.error}). Likes, playlists and history won't be saved this session.</p>
+        <p class="mx-4 mb-2 shrink-0 rounded-xl bg-surface-2 px-4 py-3 text-sm sm:mx-8" role="status">Your library couldn't be opened ({library.snapshot.error}). Likes, playlists and history won't be saved this session.</p>
       {/if}
-      {#if nav.route === 'home'}<Home />
-      {:else if nav.route === 'explore'}<Explore />
-      {:else if nav.route === 'library'}<Library />
-      {:else if nav.route === 'queue'}<Queue />
-      {:else if nav.route === 'playlist'}<Playlist />
-      {:else}<Search />{/if}
+      <div class="min-h-0 flex-1">
+        {#if nav.route === 'home'}<Home />
+        {:else if nav.route === 'explore'}<Explore />
+        {:else if nav.route === 'library'}<Library />
+        {:else if nav.route === 'queue'}<Queue />
+        {:else if nav.route === 'playlist'}<Playlist />
+        {:else}<Search />{/if}
+
+      </div>
     </main>
   </div>
   <PlayerBar wide={wide.current} />
@@ -129,7 +138,7 @@
   <div class="flex gap-2 px-2 pb-3" role="group" aria-label="Theme">
     {#each modes as m (m.id)}
       <button
-        class="flex-1 rounded-full px-4 py-2 text-sm font-medium {theme.settings.mode === m.id ? 'bg-fg text-bg' : 'bg-surface text-fg'}"
+        class="flex-1 rounded-full px-4 py-2 text-sm font-medium {theme.settings.mode === m.id ? 'bg-fg text-on-fg' : 'bg-surface text-fg'}"
         aria-pressed={theme.settings.mode === m.id}
         onclick={() => theme.update({ mode: m.id })}>{m.label}</button>
     {/each}

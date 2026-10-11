@@ -8,7 +8,7 @@
 use pyxee_audio::decode::{FfmpegPipeSource, SampleSource, SymphoniaSource};
 use pyxee_audio::gapless::{FailKind, PreparedTrack};
 use pyxee_audio::http::HttpRangeSource;
-use pyxee_audio::pipeline::{Consumer, PipeEvent, Pipeline};
+use pyxee_audio::pipeline::{Consumer, PipeEvent, Pipeline, Volume};
 use pyxee_audio::AudioError;
 use pyxee_core::{Command, Effect, EngineEvent, EntryId, Failure, Heard, Track};
 use pyxee_sources::{MusicSource, SourceError, StreamInfo, TrackInfo};
@@ -81,6 +81,10 @@ pub struct Engine {
     /// Bumped when the wanted prefetch changes or is cancelled.
     prefetch_token: u64,
     start_id: Option<EntryId>,
+    /// The track asked for by the latest StartTrack/Seek is in the pipeline (nothing may be queued before it).
+    start_queued: bool,
+    /// A prefetched track that finished before the start track did; queued right after it.
+    held_prefetch: Option<Box<PreparedTrack>>,
     start_key: Option<String>,
     prefetch_req: Option<(EntryId, String)>,
     offsets: HashMap<EntryId, u64>,
@@ -101,6 +105,7 @@ impl Engine {
         source: Arc<dyn MusicSource>,
         ffmpeg: PathBuf,
         rate: u32,
+        volume: Volume,
     ) -> Self {
         let (pipe_tx, pipe_rx) = channel();
         let (work_tx, work_rx) = channel();
@@ -109,7 +114,7 @@ impl Engine {
             source,
             ffmpeg,
             rate,
-            pipeline: Pipeline::new(rate, pipe_tx),
+            pipeline: Pipeline::new(rate, pipe_tx, volume),
             pipe_rx,
             work_tx,
             work_rx,
@@ -117,6 +122,8 @@ impl Engine {
             generation: 0,
             prefetch_token: 0,
             start_id: None,
+            start_queued: false,
+            held_prefetch: None,
             start_key: None,
             prefetch_req: None,
             offsets: HashMap::new(),
@@ -150,6 +157,7 @@ impl Engine {
             Effect::CancelPrefetch => {
                 self.prefetch_req = None;
                 self.prefetch_token += 1;
+                self.held_prefetch = None;
                 self.pipeline.clear_queued();
             }
             Effect::Pause => {
@@ -164,6 +172,7 @@ impl Engine {
                 self.generation += 1;
                 self.prefetch_req = None;
                 self.start_id = None;
+                self.held_prefetch = None;
                 self.pipeline.flush();
                 self.pipeline.set_paused(false);
                 self.paused = false;
@@ -200,6 +209,8 @@ impl Engine {
         self.failed_later.clear();
         self.stalled_since = None;
         self.start_id = Some(id);
+        self.start_queued = false;
+        self.held_prefetch = None;
         self.start_key = Some(track.key.clone());
         if !is_seek {
             self.prefetch_req = None;
@@ -260,14 +271,28 @@ impl Engine {
                     return; // the user moved on
                 }
                 match (purpose, result) {
-                    (Purpose::Start, Ok(t)) => self.pipeline.push(*t),
-                    (Purpose::Prefetch, Ok(t)) => {
+                    (Purpose::Start, Ok(t)) => {
                         self.pipeline.push(*t);
+                        self.start_queued = true;
+                        // The next track may have been ready first (a seek re-opens the current track,
+                        // which can be slow); it follows, never leads.
+                        if let Some(next) = self.held_prefetch.take() {
+                            self.pipeline.push(*next);
+                        }
+                    }
+                    (Purpose::Prefetch, Ok(t)) => {
+                        if self.start_queued || self.start_id.is_none() {
+                            self.pipeline.push(*t);
+                        } else {
+                            self.held_prefetch = Some(t);
+                        }
                         self.host.engine_event(EngineEvent::Prefetched { id });
                     }
-                    (Purpose::Start, Err(failure)) => self
-                        .host
-                        .engine_event(EngineEvent::LoadFailed { id, failure }),
+                    (Purpose::Start, Err(failure)) => {
+                        self.held_prefetch = None;
+                        self.host
+                            .engine_event(EngineEvent::LoadFailed { id, failure });
+                    }
                     (Purpose::Prefetch, Err(failure)) => {
                         self.host
                             .engine_event(EngineEvent::PrefetchFailed { id, failure });

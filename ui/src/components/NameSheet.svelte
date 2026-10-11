@@ -43,7 +43,7 @@
     {#if error}<p class="text-sm text-accent" role="alert">{error}</p>{/if}
     <div class="flex justify-end gap-2">
       <button type="button" class="rounded-full px-4 py-2 text-sm font-medium" onclick={() => (nav.namePrompt = null)}>Cancel</button>
-      <button class="rounded-full bg-fg px-5 py-2 text-sm font-semibold text-bg disabled:opacity-50" disabled={busy || !name.trim()}>{prompt?.confirm ?? 'OK'}</button>
+      <button class="rounded-full bg-fg px-5 py-2 text-sm font-semibold text-on-fg disabled:opacity-50" disabled={busy || !name.trim()}>{prompt?.confirm ?? 'OK'}</button>
     </div>
   </form>
 </Sheet>

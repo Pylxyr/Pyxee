@@ -187,7 +187,9 @@ fn tools(args: &[String]) -> Res<()> {
         println!("ffmpeg: installed {} ({})", ffmpeg.display(), mb(&exe));
     }
 
-    println!("\nDone. `cargo tauri dev` finds these automatically; the installer bundles them.");
+    println!(
+        "\nDone. The app finds these automatically in development; the installer bundles them."
+    );
     println!("Licenses: yt-dlp is Unlicense; this ffmpeg is an LGPL build (see crates/app/licenses/THIRD_PARTY.txt).");
     Ok(())
 }
@@ -210,6 +212,12 @@ fn npm() -> Command {
     Command::new(if cfg!(windows) { "npm.cmd" } else { "npm" })
 }
 
+/// Where npm puts the Tauri CLI launcher for this repo.
+pub fn tauri_cli(root: &Path) -> PathBuf {
+    root.join("ui/node_modules/.bin")
+        .join(if cfg!(windows) { "tauri.cmd" } else { "tauri" })
+}
+
 fn installer() -> Res<()> {
     if !cfg!(windows) {
         return Err("the installer can only be built on Windows".into());
@@ -226,17 +234,21 @@ fn installer() -> Res<()> {
             .current_dir(&root),
         "npm run build (UI)",
     )?;
-    let probe = Command::new("cargo").args(["tauri", "--version"]).output();
-    if !probe.is_ok_and(|o| o.status.success()) {
-        return Err("the Tauri CLI is missing. Install it with: cargo install tauri-cli --version \"^2\" --locked".into());
+    // The Tauri CLI comes from the UI's npm dependencies (installed by `npm ci` above): no `cargo install`.
+    let cli = tauri_cli(&root);
+    if !cli.is_file() {
+        return Err(format!(
+            "the Tauri CLI was not found at {} (did `npm ci --prefix ui` succeed?)",
+            cli.display()
+        ));
     }
     let conf = root.join("crates/app/tauri.bundle.conf.json");
     run(
-        Command::new("cargo")
-            .args(["tauri", "build", "--config"])
+        Command::new(&cli)
+            .args(["build", "--config"])
             .arg(&conf)
             .current_dir(root.join("crates/app")),
-        "cargo tauri build (installer with yt-dlp and ffmpeg bundled)",
+        "tauri build (installer with yt-dlp and ffmpeg bundled)",
     )?;
     let bundle = root.join("target/release/bundle");
     println!("\nInstallers are in {}:", bundle.display());
@@ -309,6 +321,21 @@ mod tests {
                 && err.contains("nothing was installed"),
             "{err}"
         );
+    }
+
+    #[test]
+    fn the_tauri_cli_is_taken_from_the_ui_dependencies() {
+        let p = tauri_cli(Path::new("repo"));
+        assert!(
+            p.starts_with("repo/ui/node_modules/.bin")
+                || p.starts_with("repo\\ui\\node_modules\\.bin"),
+            "{p:?}"
+        );
+        assert!(p
+            .file_name()
+            .unwrap()
+            .to_string_lossy()
+            .starts_with("tauri"));
     }
 
     #[test]

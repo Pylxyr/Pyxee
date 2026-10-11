@@ -39,7 +39,7 @@
       aria-modal="true"
       aria-label={title}
       transition:fly={{ y: 40, duration: 160 }}
-      class="relative w-full max-w-md rounded-t-2xl bg-surface-2 p-4 pb-6 shadow-xl backdrop-blur sm:rounded-2xl"
+      class="relative w-full max-w-md rounded-t-2xl bg-solid-2 p-4 pb-6 shadow-xl backdrop-blur sm:rounded-2xl"
     >
       <h2 class="px-2 pb-2 text-sm font-semibold text-muted">{title}</h2>
       {@render children()}

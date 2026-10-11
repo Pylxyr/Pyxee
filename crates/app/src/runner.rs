@@ -88,6 +88,7 @@ fn spawn_real(app: AppHandle, rx: Receiver<Effect>) {
                 source,
                 tools::locate("ffmpeg", "PYXEE_FFMPEG"),
                 device.rate(),
+                app.state::<AppState>().volume.clone(),
             );
             let output = device.start(engine.consumer())?;
             Ok((engine, output))

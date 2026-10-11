@@ -66,6 +66,9 @@ export class MockBackend extends MockLibrary implements Backend {
 
   async getState() { return clone(this.#s); }
   async windowInfo(): Promise<WindowInfoDto> { return { backdrop: 'none' }; }
+  /** The last volume the UI asked for (0-100), so tests can check it arrived. */
+  volume = 100;
+  async setVolume(percent: number) { this.volume = percent; }
   async devCatalog() { return DEMO_TRACKS; }
   async searchFilters(): Promise<FilterInfoDto[]> {
     return (['all', 'songs', 'videos', 'albums', 'artists', 'playlists'] as SearchFilterDto[]).map((filter) => ({

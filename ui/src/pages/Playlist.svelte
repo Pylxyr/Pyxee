@@ -7,6 +7,7 @@
   import { formatTime } from '$lib/format';
   import type { PlaylistDto } from '$lib/bindings/PlaylistDto';
   import EmptyState from '../components/EmptyState.svelte';
+  import ScrollPage from '../components/ScrollPage.svelte';
   import Icon from '../components/Icon.svelte';
   import Thumb from '../components/Thumb.svelte';
 
@@ -75,59 +76,61 @@
   }
 </script>
 
-<section class="px-4 pb-8 sm:px-8">
+<ScrollPage>
+  {#snippet header()}
+    {#if pl && !missing}
+      <div class="flex flex-wrap items-center gap-4">
+        <Thumb src={pl.entries[0]?.track.thumbnail ?? null} seed={`pl:${pl.id}`} size={96} rounded="rounded-xl" />
+        <div class="min-w-0 flex-1">
+          <h1 class="truncate text-2xl font-bold">{pl.name}</h1>
+          <p class="text-sm text-muted">{pl.entries.length} {pl.entries.length === 1 ? 'song' : 'songs'}</p>
+        </div>
+      </div>
+      <div class="mt-4 flex flex-wrap gap-2">
+        <button class="rounded-full bg-fg px-5 py-2 text-sm font-semibold text-on-fg disabled:opacity-40" disabled={tracks.length === 0} onclick={() => play(false)}>Play</button>
+        <button class="rounded-full bg-surface-2 px-5 py-2 text-sm font-semibold disabled:opacity-40" disabled={tracks.length === 0} onclick={() => play(true)}>Shuffle</button>
+        <button class="rounded-full bg-surface-2 px-5 py-2 text-sm font-medium" onclick={rename}>Rename</button>
+        <button class="rounded-full bg-surface-2 px-5 py-2 text-sm font-medium" onclick={remove}>Delete</button>
+      </div>
+    {/if}
+  {/snippet}
+
   {#if missing || !pl}
     <EmptyState icon="library" title="This playlist no longer exists" text="It may have been deleted. Your other playlists are in the Library." />
+  {:else if pl.entries.length === 0}
+    <EmptyState icon="music" title="This playlist is empty" text="Choose Add to playlist on any song to put it here." />
   {:else}
-    <div class="flex flex-wrap items-center gap-4">
-      <Thumb src={pl.entries[0]?.track.thumbnail ?? null} seed={`pl:${pl.id}`} size={96} rounded="rounded-xl" />
-      <div class="min-w-0 flex-1">
-        <h1 class="truncate text-2xl font-bold">{pl.name}</h1>
-        <p class="text-sm text-muted">{pl.entries.length} {pl.entries.length === 1 ? 'song' : 'songs'}</p>
-      </div>
-    </div>
-    <div class="mt-4 flex flex-wrap gap-2">
-      <button class="rounded-full bg-fg px-5 py-2 text-sm font-semibold text-bg disabled:opacity-40" disabled={tracks.length === 0} onclick={() => play(false)}>Play</button>
-      <button class="rounded-full bg-surface-2 px-5 py-2 text-sm font-semibold disabled:opacity-40" disabled={tracks.length === 0} onclick={() => play(true)}>Shuffle</button>
-      <button class="rounded-full bg-surface-2 px-5 py-2 text-sm font-medium" onclick={rename}>Rename</button>
-      <button class="rounded-full bg-surface-2 px-5 py-2 text-sm font-medium" onclick={remove}>Delete</button>
-    </div>
-
-    {#if pl.entries.length === 0}
-      <EmptyState icon="music" title="This playlist is empty" text="Choose Add to playlist on any song to put it here." />
-    {:else}
-      <ul class="mt-4" aria-label="Songs in {pl.name}">
-        {#each pl.entries as e, i (e.entryId)}
-          <li
-            draggable="true"
-            class="group flex items-center gap-1 rounded-lg border-t-2 hover:bg-surface-2 {overIndex === i && dragId !== e.entryId ? 'border-accent' : 'border-transparent'} {dragId === e.entryId ? 'opacity-40' : ''}"
-            ondragstart={(ev) => {
-              dragId = e.entryId;
-              ev.dataTransfer?.setData('text/plain', String(e.entryId));
-              if (ev.dataTransfer) ev.dataTransfer.effectAllowed = 'move';
-            }}
-            ondragover={(ev) => {
-              ev.preventDefault();
-              overIndex = i;
-            }}
-            ondrop={(ev) => drop(ev, i)}
-            ondragend={() => (dragId = overIndex = null)}
-          >
-            <span class="cursor-grab p-2 text-muted" aria-hidden="true"><Icon name="drag" size={18} /></span>
-            <button class="flex min-w-0 flex-1 items-center gap-3 py-2 text-left" onclick={() => play(false, i)}>
-              <Thumb src={e.track.thumbnail} seed={e.track.key} size={48} />
-              <span class="min-w-0 flex-1">
-                <span class="block truncate text-[15px] font-semibold">{e.track.title}</span>
-                <span class="block truncate text-[13px] text-muted">{e.track.artist}</span>
-              </span>
-              <span class="text-[13px] tabular-nums text-muted">{formatTime(e.track.durationMs)}</span>
-            </button>
-            <button class="p-1.5 text-muted hover:text-fg disabled:opacity-30" aria-label="Move {e.track.title} up" disabled={i === 0} onclick={() => move(e.entryId, i - 1)}><Icon name="up" size={18} /></button>
-            <button class="p-1.5 text-muted hover:text-fg disabled:opacity-30" aria-label="Move {e.track.title} down" disabled={i === pl.entries.length - 1} onclick={() => move(e.entryId, i + 1)}><Icon name="down" size={18} /></button>
-            <button class="p-1.5 text-muted hover:text-fg" aria-label="Remove {e.track.title} from playlist" onclick={() => removeEntry(e.entryId, e.track.title)}><Icon name="close" size={18} /></button>
-          </li>
-        {/each}
-      </ul>
-    {/if}
+    <ul aria-label="Songs in {pl.name}">
+      {#each pl.entries as e, i (e.entryId)}
+        <li
+          draggable="true"
+          class="group flex items-center gap-1 rounded-lg border-t-2 hover:bg-surface-2 {overIndex === i && dragId !== e.entryId ? 'border-accent' : 'border-transparent'} {dragId === e.entryId ? 'opacity-40' : ''}"
+          ondragstart={(ev) => {
+            dragId = e.entryId;
+            ev.dataTransfer?.setData('text/plain', String(e.entryId));
+            if (ev.dataTransfer) ev.dataTransfer.effectAllowed = 'move';
+          }}
+          ondragover={(ev) => {
+            ev.preventDefault();
+            overIndex = i;
+          }}
+          ondrop={(ev) => drop(ev, i)}
+          ondragend={() => (dragId = overIndex = null)}
+        >
+          <span class="cursor-grab p-2 text-muted" aria-hidden="true"><Icon name="drag" size={18} /></span>
+          <button class="flex min-w-0 flex-1 items-center gap-3 py-2 text-left" onclick={() => play(false, i)}>
+            <Thumb src={e.track.thumbnail} seed={e.track.key} size={48} />
+            <span class="min-w-0 flex-1">
+              <span class="block truncate text-[15px] font-semibold">{e.track.title}</span>
+              <span class="block truncate text-[13px] text-muted">{e.track.artist}</span>
+            </span>
+            <span class="text-[13px] tabular-nums text-muted">{formatTime(e.track.durationMs)}</span>
+          </button>
+          <button class="p-1.5 text-muted hover:text-fg disabled:opacity-30" aria-label="Move {e.track.title} up" disabled={i === 0} onclick={() => move(e.entryId, i - 1)}><Icon name="up" size={18} /></button>
+          <button class="p-1.5 text-muted hover:text-fg disabled:opacity-30" aria-label="Move {e.track.title} down" disabled={i === pl.entries.length - 1} onclick={() => move(e.entryId, i + 1)}><Icon name="down" size={18} /></button>
+          <button class="p-1.5 text-muted hover:text-fg" aria-label="Remove {e.track.title} from playlist" onclick={() => removeEntry(e.entryId, e.track.title)}><Icon name="close" size={18} /></button>
+        </li>
+      {/each}
+    </ul>
   {/if}
-</section>
+</ScrollPage>

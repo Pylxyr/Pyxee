@@ -9,8 +9,8 @@ not yet been run against YouTube, a real sound card or a real Windows profile: s
 what to verify on Windows. Set `PYXEE_SIM=1` to run the UI against the built-in simulator instead.
 
 ## Prerequisites (Windows)
-Rust (stable, MSVC), Visual Studio Build Tools (C++ workload), Node 22+, WebView2 runtime (preinstalled on Windows 11) and the
-Tauri CLI: `cargo install tauri-cli --version "^2" --locked`.
+Rust (stable, MSVC), Visual Studio Build Tools (C++ workload), Node 22+ and the WebView2 runtime (preinstalled on Windows 11).
+The Tauri CLI comes with the UI's npm packages, so there is nothing else to install (no `cargo install`, no long compile).
 
 ## Get yt-dlp and ffmpeg
 Pyxee needs both. You do not install them by hand:
@@ -24,10 +24,18 @@ them there automatically. To use your own copies instead, set `PYXEE_YTDLP` / `P
 `yt-dlp.exe` / `ffmpeg.exe` next to the app. Download size is about 190 MB.
 
 ## Run
+Double-click `dev.cmd` (or run it from a terminal). It installs the UI packages and downloads the tools if they are missing,
+starts the UI dev server in its own window, waits for it, and launches the desktop app.
+
+By hand, in PowerShell (use separate lines; PowerShell 5 has no `&&`):
 ```
 npm install --prefix ui
-npm run dev --prefix ui          # terminal 1: UI dev server on :5173
-cd crates/app && cargo tauri dev # terminal 2: the desktop app
+npm run dev --prefix ui            # leave this running in one terminal
+```
+and in a second terminal:
+```
+cd crates\app
+..\..\ui\node_modules\.bin\tauri dev
 ```
 Without Tauri, `npm run dev --prefix ui` also works in a browser against a built-in mock backend.
 
@@ -35,17 +43,21 @@ Without Tauri, `npm run dev --prefix ui` also works in a browser against a built
 ```
 build-installer.cmd      (same as: cargo xtask installer)
 ```
-Downloads the tools if missing, builds the UI, then runs `cargo tauri build` with `crates/app/tauri.bundle.conf.json`, which
+Downloads the tools if missing, builds the UI, then runs `tauri build` with `crates/app/tauri.bundle.conf.json`, which
 bundles yt-dlp and ffmpeg as sidecars (installed next to `pyxee-app.exe`) and the licence notices, and makes the installer
 download the WebView2 runtime when a machine lacks it. Installers (NSIS `.exe` and `.msi`) end up in `target/release/bundle/`.
 They are unsigned, so Windows SmartScreen warns on first run: choose "More info", then "Run anyway". The installer is large
 (roughly 60-80 MB) because ffmpeg is about 130 MB uncompressed. Signing and the portable build come in milestone 7.
 
 ## Test
+Run each line on its own (PowerShell 5 does not accept `&&`):
 ```
-npm run check --prefix ui && npm test --prefix ui     # types + UI tests
-npm run build --prefix ui                             # Tauri embeds ui/dist
-cargo fmt --all -- --check && cargo clippy --workspace --all-targets -- -D warnings && cargo test --workspace
+npm run check --prefix ui
+npm test --prefix ui
+npm run build --prefix ui          # Tauri embeds ui/dist
+cargo fmt --all -- --check
+cargo clippy --workspace --all-targets -- -D warnings
+cargo test --workspace
 ```
 `cargo test -p pyxee-app` regenerates the TypeScript types in `ui/src/lib/bindings` from the Rust types.
 

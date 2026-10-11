@@ -8,6 +8,7 @@
   import type { HistoryItemDto } from '$lib/bindings/HistoryItemDto';
   import type { TrackDto } from '$lib/bindings/TrackDto';
   import EmptyState from '../components/EmptyState.svelte';
+  import ScrollPage from '../components/ScrollPage.svelte';
   import Icon from '../components/Icon.svelte';
   import Thumb from '../components/Thumb.svelte';
   import TrackRow from '../components/TrackRow.svelte';
@@ -62,17 +63,19 @@
   }
 </script>
 
-<section class="px-4 pb-8 sm:px-8">
+<ScrollPage>
+  {#snippet header()}
   <h1 class="text-2xl font-bold">Library</h1>
   <div class="mt-4 flex flex-wrap gap-2" role="tablist" aria-label="Library sections">
     {#each tabs as t (t.id)}
       <button
         role="tab"
         aria-selected={nav.libraryTab === t.id}
-        class="rounded-full px-4 py-1.5 text-sm font-medium {nav.libraryTab === t.id ? 'bg-fg text-bg' : 'bg-surface-2 text-fg'}"
+        class="rounded-full px-4 py-1.5 text-sm font-medium {nav.libraryTab === t.id ? 'bg-fg text-on-fg' : 'bg-surface-2 text-fg'}"
         onclick={() => (nav.libraryTab = t.id)}>{t.label}</button>
     {/each}
   </div>
+  {/snippet}
 
   {#if loadError}<p class="mt-4 text-sm text-accent" role="alert">{loadError}</p>{/if}
 
@@ -81,7 +84,7 @@
       <EmptyState icon="heart" title="No liked songs yet" text="Tap the heart on a song and it will show up here." />
     {:else}
       <div class="mt-4 flex gap-2">
-        <button class="rounded-full bg-fg px-5 py-2 text-sm font-semibold text-bg" onclick={() => playAll(false)}>Play all</button>
+        <button class="rounded-full bg-fg px-5 py-2 text-sm font-semibold text-on-fg" onclick={() => playAll(false)}>Play all</button>
         <button class="rounded-full bg-surface-2 px-5 py-2 text-sm font-semibold" onclick={() => playAll(true)}>Shuffle</button>
         <span class="ml-auto self-center text-sm text-muted">{liked.length} {liked.length === 1 ? 'song' : 'songs'}</span>
       </div>
@@ -93,7 +96,7 @@
     {/if}
   {:else if nav.libraryTab === 'playlists'}
     <div class="mt-4">
-      <button class="flex items-center gap-2 rounded-full bg-fg px-5 py-2 text-sm font-semibold text-bg" onclick={newPlaylist}><Icon name="plus" size={18} />New playlist</button>
+      <button class="flex items-center gap-2 rounded-full bg-fg px-5 py-2 text-sm font-semibold text-on-fg" onclick={newPlaylist}><Icon name="plus" size={18} />New playlist</button>
     </div>
     {#if library.playlists.length === 0}
       <EmptyState icon="library" title="No playlists yet" text="Create one here, or choose Add to playlist on any song. You can also save your queue." />
@@ -132,4 +135,4 @@
   {:else}
     <EmptyState icon="library" title="Downloads" text="Songs saved for offline listening live here. Downloads arrive in milestone 7." />
   {/if}
-</section>
+</ScrollPage>

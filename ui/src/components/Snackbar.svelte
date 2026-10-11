@@ -7,7 +7,7 @@
   {#each snackbar.items as s (s.id)}
     <div
       transition:fly={{ y: 16, duration: 160 }}
-      class="pointer-events-auto flex w-full max-w-md items-center gap-4 rounded-lg bg-fg px-4 py-3 text-sm text-bg shadow-lg"
+      class="pointer-events-auto flex w-full max-w-md items-center gap-4 rounded-lg bg-fg px-4 py-3 text-sm text-on-fg shadow-lg"
       role="status"
     >
       <span class="flex-1">{s.message}</span>

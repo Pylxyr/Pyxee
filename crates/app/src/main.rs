@@ -60,6 +60,7 @@ fn main() {
                     .as_deref(),
             );
             app.manage(AppState {
+                volume: pyxee_audio::pipeline::Volume::default(),
                 library: Mutex::new(library),
                 source,
                 player: Mutex::new(player),
@@ -98,7 +99,8 @@ fn main() {
             commands::history_get,
             commands::history_clear,
             commands::history_restore,
-            commands::home_get
+            commands::home_get,
+            commands::set_volume
         ])
         .run(tauri::generate_context!())
         .expect("error while running Pyxee");

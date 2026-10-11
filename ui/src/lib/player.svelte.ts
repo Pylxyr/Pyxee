@@ -57,6 +57,7 @@ export class PlayerStore {
     return this.#backend?.dispatch(command) ?? Promise.resolve();
   }
 
+  setVolume = (percent: number): Promise<void> => this.#backend?.setVolume(percent) ?? Promise.resolve();
   toggle = () => this.dispatch({ type: 'toggle' });
   next = () => this.dispatch({ type: 'next' });
   previous = () => this.dispatch({ type: 'previous' });

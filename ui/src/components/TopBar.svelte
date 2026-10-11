@@ -59,7 +59,7 @@
       />
     </div>
     {#if open}
-      <ul id="search-suggestions" role="listbox" aria-label="Suggestions" class="absolute inset-x-0 top-12 z-20 overflow-hidden rounded-2xl bg-surface-2 py-1 shadow-xl backdrop-blur">
+      <ul id="search-suggestions" role="listbox" aria-label="Suggestions" class="absolute inset-x-0 top-12 z-20 overflow-hidden rounded-2xl bg-solid-2 py-1 shadow-xl backdrop-blur">
         {#each search.suggestions as s, i (s)}
           <li
             id="suggest-{i}"

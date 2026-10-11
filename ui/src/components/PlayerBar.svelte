@@ -33,16 +33,16 @@
       </button>
 
       {#if player.failure}
-        <button class="rounded-full bg-fg px-4 py-1.5 text-sm font-semibold text-bg" onclick={player.retry}>Retry</button>
+        <button class="rounded-full bg-fg px-4 py-1.5 text-sm font-semibold text-on-fg" onclick={player.retry}>Retry</button>
       {/if}
 
       <div class="flex items-center gap-3 sm:gap-5">
         {#if wide}
           <button class="p-1" aria-label="Previous" onclick={player.previous}><Icon name="prev" /></button>
         {/if}
-        <button class="flex h-11 w-11 items-center justify-center rounded-full bg-fg text-bg" aria-label={playLabel} onclick={player.toggle}>
+        <button class="flex h-11 w-11 items-center justify-center rounded-full bg-fg text-on-fg" aria-label={playLabel} onclick={player.toggle}>
           {#if player.state.transport.state === 'loading'}
-            <span class="h-5 w-5 animate-spin rounded-full border-2 border-bg/30 border-t-bg" aria-hidden="true"></span>
+            <span class="h-5 w-5 animate-spin rounded-full border-2 border-on-fg/30 border-t-on-fg" aria-hidden="true"></span>
           {:else}
             <Icon name={player.isPlaying ? 'pause' : 'play'} fill={!player.isPlaying} />
           {/if}

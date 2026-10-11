@@ -16,6 +16,7 @@ function stub(initial: PlayerStateDto = EMPTY_STATE) {
     dispatch: async (c) => void sent.push(c),
     onState: async (cb) => ((push = cb), () => {}),
     windowInfo: async () => ({ backdrop: 'none' }),
+    setVolume: async () => {},
     devCatalog: async () => DEMO_TRACKS,
     search: async () => ({ items: [] }),
     suggest: async () => [],

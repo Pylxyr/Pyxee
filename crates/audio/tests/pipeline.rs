@@ -4,7 +4,7 @@
 use pyxee_audio::decode::{SampleSource, SymphoniaSource};
 use pyxee_audio::gap::find_gaps;
 use pyxee_audio::gapless::{FailKind, PreparedTrack};
-use pyxee_audio::pipeline::{Consumer, PipeEvent, Pipeline};
+use pyxee_audio::pipeline::{gain_for_percent, Consumer, PipeEvent, Pipeline, Volume};
 use pyxee_audio::AudioError;
 use pyxee_core::{EntryId, Heard};
 use std::path::{Path, PathBuf};
@@ -28,7 +28,7 @@ fn track(id: u64, file: &str) -> PreparedTrack {
 
 fn setup() -> (Pipeline, Consumer, Receiver<PipeEvent>) {
     let (tx, rx) = channel();
-    let p = Pipeline::new(RATE, tx);
+    let p = Pipeline::new(RATE, tx, Volume::default());
     let c = p.consumer();
     (p, c, rx)
 }
@@ -259,4 +259,160 @@ fn a_failing_track_is_reported_with_its_kind_and_the_next_track_still_plays() {
         "{log:?}"
     );
     drop(p);
+}
+
+// ---------------------------------------------------------------- volume
+
+/// A constant-level signal, so any change in what the device receives is the volume's doing.
+struct Level {
+    left: usize,
+    level: f32,
+}
+
+impl SampleSource for Level {
+    fn sample_rate(&self) -> u32 {
+        RATE
+    }
+    fn channels(&self) -> usize {
+        2
+    }
+    fn read(&mut self, out: &mut Vec<f32>) -> Result<bool, AudioError> {
+        if self.left == 0 {
+            return Ok(false);
+        }
+        let n = self.left.min(512);
+        self.left -= n;
+        out.extend(std::iter::repeat_n(self.level, n * 2));
+        Ok(true)
+    }
+}
+
+fn level_track(id: u64, secs: usize, level: f32) -> PreparedTrack {
+    PreparedTrack::new(
+        id,
+        Box::new(Level {
+            left: RATE as usize * secs,
+            level,
+        }),
+        RATE,
+    )
+    .unwrap()
+}
+
+#[test]
+fn the_volume_curve_is_perceptual_monotonic_and_clamped() {
+    assert_eq!(gain_for_percent(0), 0.0);
+    assert_eq!(gain_for_percent(100), 1.0);
+    assert_eq!(gain_for_percent(50), 0.25, "half on the slider is -12 dB");
+    assert_eq!(gain_for_percent(250), 1.0, "values above 100 are clamped");
+    let gains: Vec<f32> = (0..=100).map(gain_for_percent).collect();
+    assert!(
+        gains
+            .windows(2)
+            .all(|w| w[0] < w[1] || w[0] == 0.0 && w[1] > 0.0),
+        "strictly increasing"
+    );
+}
+
+#[test]
+fn volume_scales_exactly_what_the_device_receives() {
+    let (tx, _rx) = channel();
+    let vol = Volume::new(50);
+    let p = Pipeline::new(RATE, tx, vol.clone());
+    let c = p.consumer();
+    p.push(level_track(1, 3, 0.4));
+    sleep(Duration::from_millis(150));
+    let mut buf = vec![0f32; CHUNK * 2];
+    assert_eq!(c.pull(&mut buf, 0), buf.len());
+    assert!(
+        buf.iter().all(|s| (s - 0.1).abs() < 1e-5),
+        "0.4 x 0.25 = 0.1, got {:?}",
+        &buf[..4]
+    );
+
+    vol.set_percent(100);
+    c.pull(&mut buf, 0); // the change ramps in during this buffer
+    c.pull(&mut buf, 0);
+    assert!(
+        buf.iter().all(|s| (s - 0.4).abs() < 1e-5),
+        "full volume is the untouched signal"
+    );
+}
+
+#[test]
+fn a_volume_change_ramps_within_one_buffer_instead_of_clicking() {
+    let (tx, _rx) = channel();
+    let vol = Volume::new(100);
+    let p = Pipeline::new(RATE, tx, vol.clone());
+    let c = p.consumer();
+    p.push(level_track(1, 3, 0.2));
+    sleep(Duration::from_millis(150));
+    let mut buf = vec![0f32; CHUNK * 2];
+    c.pull(&mut buf, 0);
+    assert!(buf.iter().all(|s| (s - 0.2).abs() < 1e-6));
+
+    vol.set_percent(0);
+    c.pull(&mut buf, 0);
+    let left: Vec<f32> = buf.chunks(2).map(|f| f[0]).collect();
+    assert!(
+        left[0] > 0.19,
+        "starts where the last buffer ended: {}",
+        left[0]
+    );
+    assert!(left.last().unwrap().abs() < 1e-6, "ends silent");
+    assert!(
+        left.windows(2).all(|w| w[1] <= w[0]),
+        "falls steadily, never jumps back up"
+    );
+    let biggest_step = left.windows(2).map(|w| w[0] - w[1]).fold(0.0f32, f32::max);
+    assert!(
+        biggest_step < 0.2 / CHUNK as f32 * 1.5,
+        "no click: biggest step {biggest_step}"
+    );
+    c.pull(&mut buf, 0);
+    assert!(buf.iter().all(|s| *s == 0.0), "and it stays silent");
+}
+
+#[test]
+fn muting_silences_the_sound_but_tracks_still_advance_and_are_announced() {
+    let (tx, rx) = channel();
+    let p = Pipeline::new(RATE, tx, Volume::new(0));
+    let c = p.consumer();
+    p.push(level_track(1, 1, 0.5));
+    p.push(level_track(2, 1, 0.5));
+    sleep(Duration::from_millis(150));
+    let mut log = Vec::new();
+    let samples = drive(&c, &rx, &mut log, |l| l.contains(&Heard::Ended(B)));
+    assert_eq!(samples.len(), 2 * 2 * RATE as usize);
+    assert!(samples.iter().all(|s| *s == 0.0));
+    assert_eq!(
+        log,
+        vec![
+            Heard::Audible(A),
+            Heard::Ended(A),
+            Heard::Audible(B),
+            Heard::Ended(B)
+        ]
+    );
+}
+
+#[test]
+fn a_volume_chosen_while_silent_applies_from_the_first_sample_of_the_next_track() {
+    let (tx, _rx) = channel();
+    let vol = Volume::new(100);
+    let p = Pipeline::new(RATE, tx, vol.clone());
+    let c = p.consumer();
+    let mut buf = vec![0f32; CHUNK * 2];
+    c.pull(&mut buf, 0); // nothing playing yet
+    vol.set_percent(10); // the user turns it down before playing anything
+    c.pull(&mut buf, 0);
+    p.push(level_track(1, 2, 0.4));
+    sleep(Duration::from_millis(150));
+    c.pull(&mut buf, 0);
+    let expected = 0.4 * gain_for_percent(10);
+    assert!(
+        buf.iter().all(|s| (s - expected).abs() < 1e-6),
+        "no blip at the start: first samples {:?}, expected {expected}",
+        &buf[..4]
+    );
 }

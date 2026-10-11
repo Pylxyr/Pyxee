@@ -20,7 +20,7 @@
   const demo = $derived(!hasLibrary && player.catalog && player.catalog.length > 0 ? player.catalog : null);
 </script>
 
-<section class="px-4 pb-8 sm:px-8">
+<section class="h-full overflow-y-auto px-4 pb-8 sm:px-8">
   {#if home === null}
     <h1 class="mb-4 text-2xl font-bold">Quick picks</h1>
     <Skeleton rows={8} />

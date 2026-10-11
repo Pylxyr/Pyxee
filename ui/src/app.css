@@ -9,6 +9,9 @@
   --color-muted: var(--muted);
   --color-accent: var(--accent);
   --color-on-accent: var(--on-accent);
+  --color-solid: var(--solid);
+  --color-solid-2: var(--solid-2);
+  --color-on-fg: var(--on-fg);
   --font-sans: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif;
 }
 
@@ -22,6 +25,10 @@
   --muted: #a8a8a8;
   --accent: #ff3b4a;
   --on-accent: #ffffff;
+  /* Opaque colours that Mica never makes transparent: overlays, menus, and text on solid-fg buttons. */
+  --solid: #0f0f0f;
+  --solid-2: #272727;
+  --on-fg: #0f0f0f;
 }
 
 :root[data-theme='light'] {
@@ -32,6 +39,9 @@
   --line: #e0e0e0;
   --fg: #0f0f0f;
   --muted: #5c5c5c;
+  --solid: #ffffff;
+  --solid-2: #e8e8e8;
+  --on-fg: #ffffff;
 }
 
 /* Windows 11 Mica: the page lets the system backdrop show through; panels get a light veil. */

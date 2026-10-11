@@ -9,6 +9,7 @@
   import Thumb from '../components/Thumb.svelte';
   import Skeleton from '../components/Skeleton.svelte';
   import EmptyState from '../components/EmptyState.svelte';
+  import ScrollPage from '../components/ScrollPage.svelte';
 
   const labels: Record<SearchFilterDto, string> = {
     all: 'All', songs: 'Songs', videos: 'Videos', albums: 'Albums', artists: 'Artists', playlists: 'Playlists',
@@ -24,23 +25,27 @@
   );
 </script>
 
-<section class="px-4 pb-8 sm:px-8">
+<ScrollPage>
+  {#snippet header()}
+    {#if search.query || search.status !== 'idle'}
+      <h1 class="text-2xl font-bold">Results for “{search.query}”</h1>
+      <div class="mt-3 flex flex-wrap gap-2" role="group" aria-label="Filter results">
+        {#each search.filters as f (f.filter)}
+          <button
+            class="rounded-full px-4 py-1.5 text-sm font-medium disabled:opacity-40 {search.filter === f.filter ? 'bg-fg text-on-fg' : 'bg-surface-2 text-fg'}"
+            aria-pressed={search.filter === f.filter}
+            disabled={!f.supported}
+            title={f.supported ? undefined : 'Not available with the current music source yet'}
+            onclick={() => search.setFilter(f.filter)}>{labels[f.filter]}</button>
+        {/each}
+      </div>
+    {/if}
+  {/snippet}
+
   {#if !search.query && search.status === 'idle'}
     <EmptyState icon="search" title="Search" text="Find songs, videos, artists and playlists. Type above and press Enter." />
   {:else}
-    <h1 class="text-2xl font-bold">Results for “{search.query}”</h1>
-    <div class="mt-3 flex flex-wrap gap-2" role="group" aria-label="Filter results">
-      {#each search.filters as f (f.filter)}
-        <button
-          class="rounded-full px-4 py-1.5 text-sm font-medium disabled:opacity-40 {search.filter === f.filter ? 'bg-fg text-bg' : 'bg-surface-2 text-fg'}"
-          aria-pressed={search.filter === f.filter}
-          disabled={!f.supported}
-          title={f.supported ? undefined : 'Not available with the current music source yet'}
-          onclick={() => search.setFilter(f.filter)}>{labels[f.filter]}</button>
-      {/each}
-    </div>
-
-    <div class="mt-4" aria-live="polite">
+    <div aria-live="polite">
       {#if search.status === 'loading'}
         <Skeleton rows={8} />
       {:else if search.status === 'error' && search.error}
@@ -48,7 +53,7 @@
           <p class="font-semibold">{search.error.message}</p>
           {#if hint}<p class="mt-1 text-sm text-muted">{hint}</p>{/if}
           {#if search.error.kind !== 'unsupported'}
-            <button class="mt-3 rounded-full bg-fg px-4 py-1.5 text-sm font-semibold text-bg" onclick={() => search.retry()}>Try again</button>
+            <button class="mt-3 rounded-full bg-fg px-4 py-1.5 text-sm font-semibold text-on-fg" onclick={() => search.retry()}>Try again</button>
           {/if}
         </div>
       {:else if search.status === 'ready' && search.items.length === 0}
@@ -81,7 +86,7 @@
               </li>
             {:else}
               <li class="rounded-lg hover:bg-surface">
-                <button class="flex w-full items-center gap-3 p-2 text-left" onclick={() => snackbar.push('Opening playlists arrives with the library (milestone 5).')}>
+                <button class="flex w-full items-center gap-3 p-2 text-left" onclick={() => snackbar.push('Opening playlists from search is not available yet.')}>
                   <Thumb src={item.thumbnail} seed={item.key} size={56} />
                   <span class="min-w-0 flex-1">
                     <span class="block truncate text-[15px] font-semibold">{item.title}</span>
@@ -95,4 +100,4 @@
       {/if}
     </div>
   {/if}
-</section>
+</ScrollPage>

@@ -17,6 +17,7 @@ function controllable() {
     dispatch: async () => {},
     onState: async () => () => {},
     windowInfo: async () => ({ backdrop: 'none' }),
+    setVolume: async () => {},
     devCatalog: async () => [],
     search: (query, filter) => new Promise((resolve, reject) => void pending.push({ query, filter, resolve, reject })),
     suggest: async (p) => (suggestCalls.push(p), [`${p} one`, `${p} two`]),

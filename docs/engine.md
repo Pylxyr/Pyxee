@@ -38,3 +38,15 @@ Nothing in the sandbox can reach YouTube or a sound card, so these shapes come f
 - Albums search is not supported yet (needs the YouTube Music API); the filter is shown disabled.
 - Instant skip to a prefetched track is not implemented in the real engine (the sim has it); a skip re-opens the track, using
   the cached URL, so it is fast but not instant.
+
+## Volume
+The slider (0-100) is sent to the engine at start-up and on every change (`set_volume`). The audio callback applies it as a
+gain of percent squared (50% is -12 dB, which sounds like "half as loud") and ramps from the previous gain across each buffer,
+so changing it never clicks. While nothing is playing the gain simply follows the setting, so a quiet setting never blips loudly
+at the start of the next track (this bug was caught by a test). Muting keeps tracks advancing and announced; only the sound stops.
+
+## Seeking
+A seek re-opens the current track at the offset. Over a network that is slow, while the already-known next track is prepared
+quickly; the first version let the next track win that race, so a forward seek played the next song instead. A prefetched
+track now waits until the track being re-opened is queued, then follows it. `seeking_never_lets_the_next_track_play_first`
+reproduces this with a slow local HTTP server (0.02 s of the seeked song before the next one cut in, before the fix).

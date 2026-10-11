@@ -8,11 +8,43 @@ use crate::gapless::{Event, FailKind, GaplessSource, PreparedTrack};
 use crate::CHANNELS;
 use pyxee_core::{EntryId, Heard, HeardTracker};
 use std::collections::VecDeque;
-use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, AtomicUsize, Ordering};
 use std::sync::mpsc::Sender;
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::thread::{self, JoinHandle};
 use std::time::Duration;
+
+/// Output volume, 0-100, shared between the UI side (which sets it) and the audio callback.
+/// The slider is perceptual, so the gain follows a curve (percent squared): 50% is a quarter of the
+/// amplitude (-12 dB), which sounds like "half as loud" far better than a straight line would.
+#[derive(Clone)]
+pub struct Volume(Arc<AtomicU32>);
+
+pub fn gain_for_percent(percent: u8) -> f32 {
+    let x = f32::from(percent.min(100)) / 100.0;
+    x * x
+}
+
+impl Volume {
+    pub fn new(percent: u8) -> Self {
+        Self(Arc::new(AtomicU32::new(u32::from(percent.min(100)))))
+    }
+    pub fn set_percent(&self, percent: u8) {
+        self.0.store(u32::from(percent.min(100)), Ordering::Relaxed);
+    }
+    pub fn percent(&self) -> u8 {
+        self.0.load(Ordering::Relaxed) as u8
+    }
+    pub fn gain(&self) -> f32 {
+        gain_for_percent(self.percent())
+    }
+}
+
+impl Default for Volume {
+    fn default() -> Self {
+        Self::new(100)
+    }
+}
 
 /// Seconds of audio kept decoded ahead of the device.
 const BUFFER_SECS: usize = 2;
@@ -37,6 +69,8 @@ struct Inner {
     tracker: HeardTracker,
     consumed: u64,
     tx: Sender<PipeEvent>,
+    /// The gain applied to the previous buffer; the next one ramps from here to the current target.
+    gain: f32,
 }
 
 struct Shared {
@@ -46,6 +80,7 @@ struct Shared {
     stop: AtomicBool,
     queued_tracks: AtomicUsize,
     underruns: AtomicU64,
+    volume: Volume,
     rate: u32,
 }
 
@@ -65,7 +100,7 @@ pub struct Consumer {
 }
 
 impl Pipeline {
-    pub fn new(rate: u32, tx: Sender<PipeEvent>) -> Self {
+    pub fn new(rate: u32, tx: Sender<PipeEvent>, volume: Volume) -> Self {
         let shared = Arc::new(Shared {
             source: Mutex::new(GaplessSource::new()),
             inner: Mutex::new(Inner {
@@ -73,11 +108,13 @@ impl Pipeline {
                 tracker: HeardTracker::new(0),
                 consumed: 0,
                 tx,
+                gain: volume.gain(),
             }),
             paused: AtomicBool::new(false),
             stop: AtomicBool::new(false),
             queued_tracks: AtomicUsize::new(0),
             underruns: AtomicU64::new(0),
+            volume,
             rate,
         });
         let s = Arc::clone(&shared);
@@ -211,6 +248,26 @@ impl Consumer {
             *o = v;
         }
         out[n..].fill(0.0);
+        // Volume: ramp across this buffer so a change never clicks.
+        let target = s.volume.gain();
+        let from = inner.gain;
+        if n > 0 && (from != target || target != 1.0) {
+            let frames = (n / CHANNELS) as f32;
+            for (i, frame) in out[..n]
+                .as_chunks_mut::<CHANNELS>()
+                .0
+                .iter_mut()
+                .enumerate()
+            {
+                let g = from + (target - from) * ((i + 1) as f32 / frames);
+                for sample in frame {
+                    *sample *= g;
+                }
+            }
+        }
+        // While silent, follow the setting; the ramp is only for changes during continuous sound.
+        // (Otherwise the first buffer of the next track would ramp down from full volume: a loud blip.)
+        inner.gain = target;
         if n < out.len() && s.queued_tracks.load(Ordering::Relaxed) > 0 {
             s.underruns.fetch_add(1, Ordering::Relaxed);
         }

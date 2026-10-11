@@ -4,7 +4,7 @@
 
 use crate::engine::{Engine, Host};
 use pyxee_audio::gap::find_gaps;
-use pyxee_audio::pipeline::Consumer;
+use pyxee_audio::pipeline::{Consumer, Volume};
 use pyxee_core::{Command, Effect, EngineEvent, Origin, Player, Repeat, Track, Transport};
 use pyxee_sources::local::LocalSource;
 use pyxee_sources::{MusicSource, SearchFilter, SearchItem, SourceError, StreamInfo, TrackInfo};
@@ -91,6 +91,7 @@ impl MusicSource for TestSource {
 const DEVICE_SPEED: f64 = 6.0;
 
 struct Rig {
+    volume: Volume,
     budget_frames: f64,
     last_step: Instant,
     shared: Arc<Shared>,
@@ -98,11 +99,14 @@ struct Rig {
     consumer: Consumer,
     samples: Vec<f32>,
     audible_log: Vec<Option<u64>>,
+    /// How many samples the device had taken when each `audible_log` entry appeared.
+    audible_at_samples: Vec<usize>,
     effects: Vec<Effect>,
 }
 
 impl Rig {
     fn new(source: TestSource) -> Self {
+        let volume = Volume::default();
         let shared = Arc::new(Shared {
             player: Mutex::new(Player::new(3)),
             queue: Mutex::new(VecDeque::new()),
@@ -112,9 +116,11 @@ impl Rig {
             Arc::new(source),
             PathBuf::from("ffmpeg"),
             48_000,
+            volume.clone(),
         );
         let consumer = engine.consumer();
         Self {
+            volume,
             budget_frames: 0.0,
             last_step: Instant::now(),
             shared,
@@ -122,6 +128,7 @@ impl Rig {
             consumer,
             samples: Vec::new(),
             audible_log: Vec::new(),
+            audible_at_samples: Vec::new(),
             effects: Vec::new(),
         }
     }
@@ -176,6 +183,7 @@ impl Rig {
         let a = self.snapshot().audible.map(|i| i.0);
         if self.audible_log.last() != Some(&a) {
             self.audible_log.push(a);
+            self.audible_at_samples.push(self.samples.len());
         }
     }
 
@@ -448,9 +456,9 @@ fn make_wav(secs: usize) -> Vec<u8> {
     b
 }
 
-/// Serves `body` with range requests. Until `healthy` is set, only the first `allow` requests succeed;
+/// Serves `body` with range requests, each answer taking `delay`. Until `healthy` is set, only the first `allow` requests succeed;
 /// the rest get 403, like a stream URL that expired part-way through a song.
-fn serve(body: Vec<u8>, allow: usize, healthy: Arc<AtomicBool>) -> String {
+fn serve(body: Vec<u8>, allow: usize, healthy: Arc<AtomicBool>, delay: Duration) -> String {
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     let addr = listener.local_addr().unwrap();
     let count = Arc::new(AtomicUsize::new(0));
@@ -465,6 +473,7 @@ fn serve(body: Vec<u8>, allow: usize, healthy: Arc<AtomicBool>) -> String {
                 }
                 req.push(b[0]);
             }
+            sleep(delay); // a slow network
             let n = count.fetch_add(1, Ordering::SeqCst) + 1;
             if !healthy.load(Ordering::SeqCst) && n > allow {
                 let _ = s.write_all(
@@ -500,7 +509,7 @@ fn serve(body: Vec<u8>, allow: usize, healthy: Arc<AtomicBool>) -> String {
 #[test]
 fn an_expired_stream_url_mid_song_is_re_resolved_and_playback_continues_where_it_stopped() {
     let healthy = Arc::new(AtomicBool::new(false));
-    let url = serve(make_wav(10), 3, healthy.clone());
+    let url = serve(make_wav(10), 3, healthy.clone(), Duration::ZERO);
     let resolves = Arc::new(AtomicUsize::new(0));
     let (r2, h2) = (resolves.clone(), healthy.clone());
     let src = TestSource {
@@ -560,4 +569,87 @@ fn an_expired_stream_url_mid_song_is_re_resolved_and_playback_continues_where_it
         "the whole song was heard once, {secs:.2} s"
     );
     assert!(find_gaps(&r.samples, 2, 1e-3, 8).is_empty());
+}
+
+#[test]
+fn seeking_never_lets_the_next_track_play_first() {
+    // Re-opening the current track at the seek offset is slow over a network, while the next track
+    // (already known) is prepared quickly. The next track must still wait its turn.
+    let url = serve(
+        make_wav(10),
+        usize::MAX,
+        Arc::new(AtomicBool::new(true)),
+        Duration::from_millis(250),
+    );
+    let src = TestSource {
+        related: Vec::new(),
+        resolve: Box::new(move |key| {
+            if key == "yt:slow" {
+                Ok(StreamInfo {
+                    url: url.clone(),
+                    ext: "wav".into(),
+                    acodec: None,
+                    abr_kbps: None,
+                })
+            } else {
+                LocalSource.resolve_stream(key)
+            }
+        }),
+    };
+    let mut r = Rig::new(src);
+    r.cmd(Command::SetAutoplay(false));
+    let mut slow = Track::new("yt:slow", "Slow song", "x");
+    slow.duration_ms = Some(10_000);
+    r.cmd(Command::PlayTracks {
+        tracks: vec![slow, file_track("b_48k.wav")],
+        start: 0,
+    });
+    let ids = r.entry_ids();
+    assert!(r.run_until(30, |r| r.snapshot().audible.map(|i| i.0) == Some(ids[0])));
+    r.run_for(1500); // the next track is prefetched and queued behind it
+
+    let at_seek = r.samples.len();
+    r.cmd(Command::Seek(6000));
+    r.run_for(4000); // plenty: the 4 s left of the song play at 6x speed, then the next song follows
+
+    // The next song may only start after the rest of this one (4 s of audio) has been heard.
+    let i = r
+        .audible_log
+        .iter()
+        .position(|a| *a == Some(ids[1]))
+        .expect("the next song follows gaplessly");
+    let heard_before_next = (r.audible_at_samples[i] - at_seek) as f64 / 2.0 / 48_000.0;
+    assert!(
+        heard_before_next >= 3.5,
+        "the next song cut in after only {heard_before_next:.2} s of the seeked song: {:?}",
+        r.audible_log
+    );
+}
+
+#[test]
+fn the_volume_setting_changes_how_loud_the_music_is() {
+    let peak = |volume: u8| {
+        let mut r = Rig::new(TestSource::local());
+        r.volume.set_percent(volume);
+        r.cmd(Command::SetAutoplay(false));
+        r.cmd(Command::PlayTracks {
+            tracks: vec![file_track("a_44k.wav")],
+            start: 0,
+        });
+        assert!(
+            r.run_until(15, |r| r.snapshot().transport == Transport::Idle
+                && r.audible_log.len() >= 3)
+        );
+        r.samples.iter().fold(0.0f32, |m, s| m.max(s.abs()))
+    };
+    let (full, low, off) = (peak(100), peak(20), peak(0));
+    assert!(
+        full > 0.03,
+        "the fixture tone is quiet but audible, got {full}"
+    );
+    assert!(
+        (low - full * 0.04).abs() < full * 0.01,
+        "20% on the slider is a gain of 0.04: {low} vs {full}"
+    );
+    assert_eq!(off, 0.0);
 }

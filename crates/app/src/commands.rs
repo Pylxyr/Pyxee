@@ -186,3 +186,9 @@ pub fn history_restore(app: AppHandle, items: Vec<HistoryItemDto>) -> Result<(),
 pub fn home_get(state: State<AppState>) -> Result<HomeDto, String> {
     read_library(&state, |l| l.home(now_ms()))
 }
+
+/// Output volume, 0-100. Takes effect within the next audio buffer, ramped so it never clicks.
+#[tauri::command]
+pub fn set_volume(state: State<AppState>, percent: u8) {
+    state.volume.set_percent(percent);
+}

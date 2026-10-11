@@ -14,6 +14,7 @@ pub const STATE_EVENT: &str = "player-state";
 pub const LIBRARY_EVENT: &str = "library-changed";
 
 pub struct AppState {
+    pub volume: pyxee_audio::pipeline::Volume,
     pub library: Mutex<LibraryService>,
     pub source: Arc<dyn MusicSource>,
     pub player: Mutex<Player>,
