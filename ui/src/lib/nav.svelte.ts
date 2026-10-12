@@ -21,6 +21,8 @@ class NavStore {
   /** Track whose row menu is open (in-page sheet, never a native menu). */
   menuTrack = $state<TrackDto | null>(null);
   themeSheetOpen = $state(false);
+  /** The theme editor (opened from the Appearance sheet). */
+  themeEditorOpen = $state(false);
   /** Song being added to a playlist (opens the playlist picker). */
   pickTrack = $state<TrackDto | null>(null);
   namePrompt = $state<NamePrompt | null>(null);
@@ -37,6 +39,12 @@ class NavStore {
   openPlaylist(id: number) {
     this.playlistId = id;
     this.route = 'playlist';
+  }
+  openThemeEditor() {
+    this.themeEditorOpen = true;
+  }
+  closeThemeEditor() {
+    this.themeEditorOpen = false;
   }
   openNowPlaying() {
     this.nowPlayingOpen = true;

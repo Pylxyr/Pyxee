@@ -207,3 +207,34 @@ pub fn get_log_info(state: State<AppState>) -> LogInfoDto {
 pub fn open_log_folder(state: State<AppState>) -> Result<(), String> {
     crate::logging::open_folder(&state.log.dir)
 }
+
+/// Makes the native window (title bar, Mica backdrop) follow the theme the user picked, not only the
+/// Windows setting. `None` follows the system again.
+#[tauri::command]
+pub fn set_window_theme(window: tauri::WebviewWindow, theme: Option<String>) -> Result<(), String> {
+    window
+        .set_theme(parse_window_theme(theme.as_deref())?)
+        .map_err(|e| e.to_string())
+}
+
+fn parse_window_theme(theme: Option<&str>) -> Result<Option<tauri::Theme>, String> {
+    match theme {
+        None => Ok(None),
+        Some("dark") => Ok(Some(tauri::Theme::Dark)),
+        Some("light") => Ok(Some(tauri::Theme::Light)),
+        Some(other) => Err(format!("unknown window theme: {other}")),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_window_theme_is_dark_light_or_the_system() {
+        assert_eq!(parse_window_theme(None), Ok(None));
+        assert_eq!(parse_window_theme(Some("dark")), Ok(Some(tauri::Theme::Dark)));
+        assert_eq!(parse_window_theme(Some("light")), Ok(Some(tauri::Theme::Light)));
+        assert!(parse_window_theme(Some("neon")).is_err());
+    }
+}

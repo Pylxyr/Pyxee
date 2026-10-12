@@ -9,7 +9,7 @@
   $effect(() => {
     if (open) {
       restore = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-      queueMicrotask(() => panel?.querySelector<HTMLElement>('button, [href], input')?.focus());
+      queueMicrotask(() => panel?.querySelector<HTMLElement>('button, [href], input, select, textarea, summary')?.focus());
     } else {
       restore?.focus();
       restore = null;
@@ -22,7 +22,7 @@
       onclose();
     } else if (e.key === 'Tab' && panel) {
       // Keep focus inside the sheet while it is open.
-      const f = [...panel.querySelectorAll<HTMLElement>('button, [href], input')].filter((x) => !x.hasAttribute('disabled'));
+      const f = [...panel.querySelectorAll<HTMLElement>('button, [href], input, select, textarea, summary')].filter((x) => !x.hasAttribute('disabled'));
       const first = f[0], last = f[f.length - 1];
       if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last?.focus(); }
       else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first?.focus(); }
@@ -39,7 +39,7 @@
       aria-modal="true"
       aria-label={title}
       transition:fly={{ y: 40, duration: 160 }}
-      class="relative w-full max-w-md rounded-t-2xl bg-solid-2 p-4 pb-6 shadow-xl backdrop-blur sm:rounded-2xl"
+      class="relative max-h-[92dvh] w-full max-w-md overflow-y-auto rounded-t-2xl bg-solid-2 p-4 pb-6 shadow-xl backdrop-blur sm:rounded-2xl"
     >
       <h2 class="px-2 pb-2 text-sm font-semibold text-muted">{title}</h2>
       {@render children()}

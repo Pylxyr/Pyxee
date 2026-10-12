@@ -47,6 +47,14 @@ skipped, seeks, stalls, and any crash. Find it in the app: **Appearance** (the c
 `dev.cmd` also prints the same lines in its console. For more detail set `PYXEE_LOG=debug` before starting.
 If a song misbehaves, send me the lines around its title (search the file for the song's name).
 
+## Themes
+Appearance (the compass icon, top right) has a theme picker: Dark, Light, YT Music, OLED black, and six more (Deep blue,
+Sky, Graphite and gold, Turquoise, Ember, Paper). The last few are original palettes in the spirit of MusicBee's community
+skins, not copies of any skin. **Match system** uses one theme when Windows is light and another when it is dark.
+**Customize...** edits the seven colours of a theme with a live preview and a readability check, and saves it as your own;
+**Export** copies a theme as text and **Import a theme** reads it back, so themes can be shared like skins.
+The native window (title bar, Mica) follows the chosen theme, not only the Windows setting.
+
 ## Build the installer
 ```
 build-installer.cmd      (same as: cargo xtask installer)

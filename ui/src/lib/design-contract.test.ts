@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { BUILTIN_THEMES, themeVars } from './themes';
 
 // vitest runs from the ui folder
 const css = readFileSync(resolve(process.cwd(), 'src/app.css'), 'utf8');
@@ -22,8 +23,15 @@ function rule(selector: string): string {
 // These guard against the "black buttons / see-through overlay" bugs seen on Windows 11, where Mica makes the
 // page background transparent. Anything that must stay readable or opaque may not depend on it.
 describe('Mica-safe colours', () => {
-  it('Mica makes the page background transparent, which is why other tokens must not depend on it', () => {
-    expect(rule(":root[data-backdrop='mica']")).toMatch(/--bg:\s*transparent/);
+  it('Mica makes a grey theme background transparent (a coloured one tints it), which is why other tokens must not depend on it', () => {
+    expect(rule(":root[data-backdrop='mica']")).toMatch(/--bg:\s*color-mix\(in srgb, var\(--t-bg[^)]*\) var\(--t-mica-tint, 0%\), transparent\)/);
+    const tint = (id: string) => themeVars(BUILTIN_THEMES.find((t) => t.id === id)!.colors)['--t-mica-tint'];
+    for (const grey of ['dark', 'light', 'ytmusic', 'oled']) expect(tint(grey), grey).toBe('0%');
+    for (const coloured of ['deepblue', 'sky', 'ember', 'paper']) expect(tint(coloured), coloured).toBe('70%');
+  });
+
+  it('every variable a theme writes is read by the stylesheet', () => {
+    for (const name of Object.keys(themeVars(BUILTIN_THEMES[0]!.colors))) expect(css, name).toContain(`var(${name}`);
   });
 
   it('opaque tokens exist for both themes and Mica never overrides them', () => {
@@ -36,8 +44,8 @@ describe('Mica-safe colours', () => {
   });
 
   it('text on a solid foreground button is dark on dark theme and light on light theme', () => {
-    expect(rule(':root')).toMatch(/--on-fg:\s*#0f0f0f/);
-    expect(rule(":root[data-theme='light']")).toMatch(/--on-fg:\s*#ffffff/);
+    expect(rule(':root')).toMatch(/--on-fg:\s*var\(--t-on-fg, #0f0f0f\)/);
+    expect(rule(":root[data-theme='light']")).toMatch(/--on-fg:\s*var\(--t-on-fg, #ffffff\)/);
   });
 
   it('no component paints text or borders with the page background (the black-button bug)', () => {

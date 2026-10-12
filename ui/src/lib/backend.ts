@@ -46,6 +46,8 @@ export interface Backend extends LibraryBackend {
   windowInfo(): Promise<WindowInfoDto>;
   /** Output volume, 0-100. */
   setVolume(percent: number): Promise<void>;
+  /** Makes the native window frame and backdrop follow the chosen theme; `null` follows the system again. */
+  setWindowTheme(theme: 'dark' | 'light' | null): Promise<void>;
   /** Where the log file is, for the Diagnostics section. */
   logInfo(): Promise<LogInfoDto>;
   openLogFolder(): Promise<void>;
@@ -85,6 +87,7 @@ export async function tauriBackend(): Promise<Backend> {
     onState: async (cb) => listen<PlayerStateDto>(STATE_EVENT, (e) => cb(e.payload)),
     windowInfo: () => invoke<WindowInfoDto>('window_info'),
     setVolume: (percent) => invoke<void>('set_volume', { percent: Math.round(percent) }),
+    setWindowTheme: (theme) => invoke<void>('set_window_theme', { theme }).catch(() => {}),
     logInfo: () => invoke<LogInfoDto>('get_log_info'),
     openLogFolder: () => invoke<void>('open_log_folder'),
     onNotice: async (cb) => listen<NoticeDto>(NOTICE_EVENT, (e) => cb(e.payload.message)),

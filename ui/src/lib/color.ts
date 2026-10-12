@@ -43,15 +43,33 @@ export function contrast(a: string, b: string): number {
   return (hi + 0.05) / (lo + 0.05);
 }
 
-/** Nudges `hex` toward white (dark theme) or black (light theme) until it reads against the background. */
-export function ensureContrast(hex: string, theme: 'dark' | 'light', min = 3): string {
-  const bg = theme === 'dark' ? '#0f0f0f' : '#ffffff';
-  const target = theme === 'dark' ? 255 : 0;
+/** Nudges `hex` toward white (dark scheme) or black (light scheme) until it reads against `bg`. */
+export function ensureContrastOn(hex: string, bg: string, scheme: 'dark' | 'light', min = 3): string {
+  const target = scheme === 'dark' ? 255 : 0;
   let [r, g, b] = parseHex(hex);
   for (let i = 0; i < 20 && contrast(toHex(r, g, b), bg) < min; i++) {
     r += (target - r) * 0.12; g += (target - g) * 0.12; b += (target - b) * 0.12;
   }
   return toHex(r, g, b);
+}
+
+/** Same, against the default dark (#0f0f0f) or light (#ffffff) background. */
+export function ensureContrast(hex: string, theme: 'dark' | 'light', min = 3): string {
+  return ensureContrastOn(hex, theme === 'dark' ? '#0f0f0f' : '#ffffff', theme, min);
+}
+
+/** The text colour (near-black or white) that reads better on `bg`. */
+export function readableOn(bg: string): string {
+  return contrast('#ffffff', bg) >= contrast('#0f0f0f', bg) ? '#ffffff' : '#0f0f0f';
+}
+
+export const HEX = /^#[0-9a-f]{6}$/i;
+
+/** `#abc` and `ABCDEF` become `#aabbcc` / `#abcdef`; anything else is null. */
+export function normalizeHex(v: string): string | null {
+  let h = v.trim().replace(/^#/, '').toLowerCase();
+  if (/^[0-9a-f]{3}$/.test(h)) h = [...h].map((c) => c + c).join('');
+  return /^[0-9a-f]{6}$/.test(h) ? `#${h}` : null;
 }
 
 /** Loads an image and returns its dominant colour, or null if it cannot be read (CORS, 404). */

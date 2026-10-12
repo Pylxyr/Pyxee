@@ -6,6 +6,8 @@ import { player, EMPTY_STATE } from '$lib/player.svelte';
 import { snackbar } from '$lib/snackbar.svelte';
 import { search } from '$lib/search.svelte';
 import { library } from '$lib/library.svelte';
+import { theme } from '$lib/theme.svelte';
+import { BUILTIN_THEMES } from '$lib/themes';
 
 let mock: MockBackend;
 vi.mock('$lib/backend', async (orig) => ({
@@ -39,7 +41,11 @@ beforeEach(() => {
   nav.nowPlayingOpen = false;
   nav.menuTrack = null;
   nav.themeSheetOpen = false;
+  nav.themeEditorOpen = false;
   nav.tab = 'upnext';
+  theme.preview = null;
+  theme.settings = { followSystem: true, themeId: 'dark', lightId: 'light', darkId: 'dark', dynamicColor: false, custom: [] };
+  theme.systemDark = true;
   for (const s of [...snackbar.items]) snackbar.dismiss(s.id);
   setWide(false);
 });
@@ -205,6 +211,12 @@ describe('Now Playing', () => {
 });
 
 describe('appearance', () => {
+  async function openAppearance() {
+    await openApp();
+    await fireEvent.click(screen.getByRole('button', { name: 'Appearance' }));
+    return screen.findByRole('group', { name: 'Theme' });
+  }
+
   it('switching to Light sets the theme on the document', async () => {
     await openApp();
     await fireEvent.click(screen.getByRole('button', { name: 'Appearance' }));
@@ -212,6 +224,90 @@ describe('appearance', () => {
     await waitFor(() => expect(document.documentElement.dataset.theme).toBe('light'));
     await fireEvent.click(screen.getByRole('button', { name: 'Dark' }));
     await waitFor(() => expect(document.documentElement.dataset.theme).toBe('dark'));
+  });
+
+  it('offers Dark, Light, YT Music and the other themes, and applies the one picked', async () => {
+    const group = await openAppearance();
+    for (const name of ['Dark', 'Light', 'YT Music', 'Deep blue', 'Graphite and gold']) expect(within(group).getByRole('button', { name })).toBeTruthy();
+    await fireEvent.click(within(group).getByRole('button', { name: 'YT Music' }));
+    await waitFor(() => expect(document.documentElement.dataset.themeId).toBe('ytmusic'));
+    expect(document.documentElement.style.getPropertyValue('--t-accent')).toBe('#ff0000');
+    expect(within(group).getByRole('button', { name: 'YT Music' }).getAttribute('aria-pressed')).toBe('true');
+  });
+
+  it('tells the native window which theme to follow (a fixed one, or the system again)', async () => {
+    const group = await openAppearance();
+    await fireEvent.click(within(group).getByRole('button', { name: 'Deep blue' }));
+    await waitFor(() => expect(mock.windowTheme).toBe('dark'));
+    await fireEvent.click(within(group).getByRole('button', { name: 'Sky' }));
+    await waitFor(() => expect(mock.windowTheme).toBe('light'));
+    await fireEvent.click(screen.getByRole('checkbox', { name: /Match system/ }));
+    await waitFor(() => expect(mock.windowTheme).toBeNull());
+  });
+
+  it('while matching the system, one theme is used for light and another for dark', async () => {
+    await openAppearance();
+    await fireEvent.change(screen.getByRole('combobox', { name: 'Dark theme' }), { target: { value: 'ember' } });
+    await waitFor(() => expect(theme.settings.darkId).toBe('ember'));
+  });
+
+  it('customizing: edits show live, Cancel throws them away, Save keeps them as a new theme', async () => {
+    await openAppearance();
+    await fireEvent.click(screen.getByRole('button', { name: 'Customize…' }));
+    const editor = await screen.findByRole('dialog', { name: 'Customize theme' });
+    const accent = within(editor).getByRole('textbox', { name: 'Accent hex' });
+    await fireEvent.input(accent, { target: { value: '#00ff88' } });
+    await waitFor(() => expect(document.documentElement.style.getPropertyValue('--t-accent')).toBe('#00ff88'));
+    await fireEvent.click(within(editor).getByRole('button', { name: 'Cancel' }));
+    await waitFor(() => expect(document.documentElement.style.getPropertyValue('--t-accent')).not.toBe('#00ff88'));
+    expect(theme.settings.custom).toHaveLength(0);
+
+    await fireEvent.click(screen.getByRole('button', { name: 'Customize…' }));
+    const again = await screen.findByRole('dialog', { name: 'Customize theme' });
+    await fireEvent.input(within(again).getByRole('textbox', { name: 'Theme name' }), { target: { value: 'Neon' } });
+    await fireEvent.input(within(again).getByRole('textbox', { name: 'Accent hex' }), { target: { value: '#00ff88' } });
+    await fireEvent.click(within(again).getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(theme.settings.custom.map((t) => t.name)).toEqual(['Neon']));
+    expect(theme.active.name).toBe('Neon');
+    expect(document.documentElement.style.getPropertyValue('--t-accent')).toBe('#00ff88');
+    expect(within(screen.getByRole('group', { name: 'Theme' })).getByRole('button', { name: 'Neon' })).toBeTruthy();
+  });
+
+  it('warns when the colours chosen are hard to read', async () => {
+    await openAppearance();
+    await fireEvent.click(screen.getByRole('button', { name: 'Customize…' }));
+    const editor = await screen.findByRole('dialog', { name: 'Customize theme' });
+    await fireEvent.input(within(editor).getByRole('textbox', { name: 'Text hex' }), { target: { value: '#101010' } });
+    expect((await within(editor).findByRole('status', { name: 'Readability' })).textContent).toContain('Text on background');
+  });
+
+  it('a theme can be exported and imported again', async () => {
+    const copied: string[] = [];
+    Object.assign(navigator, { clipboard: { writeText: async (t: string) => void copied.push(t) } });
+    await openAppearance();
+    await fireEvent.click(screen.getByRole('button', { name: 'Customize…' }));
+    const editor = await screen.findByRole('dialog', { name: 'Customize theme' });
+    await fireEvent.input(within(editor).getByRole('textbox', { name: 'Theme name' }), { target: { value: 'Shared' } });
+    await fireEvent.click(within(editor).getByRole('button', { name: 'Export' }));
+    await waitFor(() => expect(copied).toHaveLength(1));
+    await fireEvent.input(within(editor).getByRole('textbox', { name: 'Theme name' }), { target: { value: 'Changed' } });
+    await fireEvent.input(within(editor).getByRole('textbox', { name: 'Theme text' }), { target: { value: copied[0]! } });
+    await fireEvent.click(within(editor).getByRole('button', { name: 'Import' }));
+    await waitFor(() => expect((within(editor).getByRole('textbox', { name: 'Theme name' }) as HTMLInputElement).value).toBe('Shared'));
+    await fireEvent.input(within(editor).getByRole('textbox', { name: 'Theme text' }), { target: { value: 'garbage' } });
+    await fireEvent.click(within(editor).getByRole('button', { name: 'Import' }));
+    expect((await within(editor).findByRole('alert')).textContent).toContain("isn't theme text");
+  });
+
+  it('a saved theme can be deleted', async () => {
+    theme.saveCustom({ id: '', name: 'Temp', scheme: 'dark', colors: { ...BUILTIN_THEMES[0]!.colors } });
+    theme.select(theme.settings.custom[0]!.id);
+    await openAppearance();
+    await fireEvent.click(screen.getByRole('button', { name: 'Customize…' }));
+    const editor = await screen.findByRole('dialog', { name: 'Customize theme' });
+    await fireEvent.click(within(editor).getByRole('button', { name: 'Delete' }));
+    await waitFor(() => expect(theme.settings.custom).toHaveLength(0));
+    expect(theme.active.id).toBe('dark');
   });
 });
 

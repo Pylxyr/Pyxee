@@ -49,6 +49,15 @@ seeking (arrow keys work, `aria-valuetext` reads "1:23 of 3:42"), visible focus 
 Space play/pause, Left/Right seek 5 s, N next, P previous, Esc close Now Playing. Ignored while typing in a text field;
 Space and arrows are left to focused buttons and sliders. Global media keys come with SMTC in milestone 6.
 
+## Themes
+A theme is seven colours (`bg`, `surface`, `surface2`, `line`, `fg`, `muted`, `accent`) plus a dark/light base
+(`ui/src/lib/themes.ts`). `theme.apply()` writes them onto `<html>` as `--t-*` variables; `app.css` maps them to the
+tokens components use and keeps the built-in Dark and Light values as fallbacks. Text on filled buttons and on the accent is
+derived (`readableOn`), so a light dynamic accent never gets white text. Under Mica a grey theme background stays transparent
+and a coloured one tints the backdrop (`--t-mica-tint`); panels are a veil of the text colour, so they suit any theme.
+Custom themes (up to 30) live in `localStorage` with the other theme settings; every built-in is tested for contrast.
+The `set_window_theme` command makes the native frame follow a fixed theme (`null` follows Windows again).
+
 ## Not verified here
 Everything runs in tests (jsdom) and compiles against Tauri on Linux, but the sandbox has no Windows WebView2, so the
 real window, Mica and DPI behaviour need a first run on your PC.

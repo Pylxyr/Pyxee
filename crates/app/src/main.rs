@@ -114,7 +114,8 @@ fn main() {
             commands::home_get,
             commands::set_volume,
             commands::get_log_info,
-            commands::open_log_folder
+            commands::open_log_folder,
+            commands::set_window_theme
         ])
         .run(tauri::generate_context!())
         .expect("error while running Pyxee");

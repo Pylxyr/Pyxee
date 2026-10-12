@@ -8,7 +8,7 @@
   import { library } from '$lib/library.svelte';
   import { prefs } from '$lib/prefs.svelte';
   import { nav } from '$lib/nav.svelte';
-  import { theme, type ThemeMode } from '$lib/theme.svelte';
+  import { theme } from '$lib/theme.svelte';
   import { snackbar } from '$lib/snackbar.svelte';
   import { accentFromImage } from '$lib/color';
   import { actionForKey } from '$lib/shortcuts';
@@ -27,6 +27,8 @@
   import Queue from './pages/Queue.svelte';
   import Playlist from './pages/Playlist.svelte';
   import NameSheet from './components/NameSheet.svelte';
+  import ThemePicker from './components/ThemePicker.svelte';
+  import ThemeEditor from './components/ThemeEditor.svelte';
   import PlaylistPicker from './components/PlaylistPicker.svelte';
 
   const wide = new MediaQuery('min-width: 900px');
@@ -65,6 +67,12 @@
     if (player.ready) void player.setVolume(prefs.volume);
   });
 
+  // The native window (title bar, Mica) follows the chosen theme, not only the Windows setting.
+  $effect(() => {
+    const wanted = theme.windowTheme;
+    if (player.ready) void backendRef?.setWindowTheme(wanted);
+  });
+
   // Keep <html> in sync with theme, backdrop and accent.
   $effect(() => theme.apply(document.documentElement));
 
@@ -98,12 +106,6 @@
     nav.menuTrack = null;
     snackbar.push(label);
   }
-
-  const modes: { id: ThemeMode; label: string }[] = [
-    { id: 'system', label: 'System' },
-    { id: 'dark', label: 'Dark' },
-    { id: 'light', label: 'Light' },
-  ];
 </script>
 
 <svelte:window {onkeydown} />
@@ -153,16 +155,10 @@
 
 <PlaylistPicker />
 <NameSheet />
+<ThemeEditor />
 
 <Sheet open={nav.themeSheetOpen} title="Appearance" onclose={() => (nav.themeSheetOpen = false)}>
-  <div class="flex gap-2 px-2 pb-3" role="group" aria-label="Theme">
-    {#each modes as m (m.id)}
-      <button
-        class="flex-1 rounded-full px-4 py-2 text-sm font-medium {theme.settings.mode === m.id ? 'bg-fg text-on-fg' : 'bg-surface text-fg'}"
-        aria-pressed={theme.settings.mode === m.id}
-        onclick={() => theme.update({ mode: m.id })}>{m.label}</button>
-    {/each}
-  </div>
+  <ThemePicker />
   <label class="flex items-center justify-between rounded-lg px-3 py-3 hover:bg-surface">
     <span>Color from album art</span>
     <input type="checkbox" checked={theme.settings.dynamicColor} onchange={(e) => theme.update({ dynamicColor: e.currentTarget.checked })} />

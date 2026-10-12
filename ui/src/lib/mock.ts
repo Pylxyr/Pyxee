@@ -66,6 +66,9 @@ export class MockBackend extends MockLibrary implements Backend {
 
   async getState() { return clone(this.#s); }
   async windowInfo(): Promise<WindowInfoDto> { return { backdrop: 'none' }; }
+  /** The last window theme the UI asked for (`null` = follow the system), so tests can check it arrived. */
+  windowTheme: 'dark' | 'light' | null | undefined = undefined;
+  async setWindowTheme(theme: 'dark' | 'light' | null) { this.windowTheme = theme; }
   /** The last volume the UI asked for (0-100), so tests can check it arrived. */
   volume = 100;
   async setVolume(percent: number) { this.volume = percent; }

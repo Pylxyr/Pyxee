@@ -15,46 +15,71 @@
   --font-sans: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif;
 }
 
+/*
+ * Colours come from the active theme. `theme.apply()` writes the theme's colours onto <html> as `--t-*` variables;
+ * the fallbacks here are the built-in Dark and Light themes, so the page is right before any script has run.
+ */
 :root {
   color-scheme: dark;
-  --bg: #0f0f0f;
-  --surface: #181818;
-  --surface-2: #272727;
-  --line: #2a2a2a;
-  --fg: #ffffff;
-  --muted: #a8a8a8;
-  --accent: #ff3b4a;
-  --on-accent: #ffffff;
+  --bg: var(--t-bg, #0f0f0f);
+  --surface: var(--t-surface, #181818);
+  --surface-2: var(--t-surface-2, #272727);
+  --line: var(--t-line, #2a2a2a);
+  --fg: var(--t-fg, #ffffff);
+  --muted: var(--t-muted, #a8a8a8);
+  --accent: var(--t-accent, #ff3b4a);
+  --on-accent: var(--t-on-accent, #ffffff);
   /* Opaque colours that Mica never makes transparent: overlays, menus, and text on solid-fg buttons. */
-  --solid: #0f0f0f;
-  --solid-2: #272727;
-  --on-fg: #0f0f0f;
+  --solid: var(--t-solid, #0f0f0f);
+  --solid-2: var(--t-solid-2, #272727);
+  --on-fg: var(--t-on-fg, #0f0f0f);
 }
 
 :root[data-theme='light'] {
   color-scheme: light;
-  --bg: #ffffff;
-  --surface: #f4f4f4;
-  --surface-2: #e8e8e8;
-  --line: #e0e0e0;
-  --fg: #0f0f0f;
-  --muted: #5c5c5c;
-  --solid: #ffffff;
-  --solid-2: #e8e8e8;
-  --on-fg: #ffffff;
+  --bg: var(--t-bg, #ffffff);
+  --surface: var(--t-surface, #f4f4f4);
+  --surface-2: var(--t-surface-2, #e8e8e8);
+  --line: var(--t-line, #e0e0e0);
+  --fg: var(--t-fg, #0f0f0f);
+  --muted: var(--t-muted, #5c5c5c);
+  --accent: var(--t-accent, #d92d3a);
+  --solid: var(--t-solid, #ffffff);
+  --solid-2: var(--t-solid-2, #e8e8e8);
+  --on-fg: var(--t-on-fg, #ffffff);
 }
 
-/* Windows 11 Mica: the page lets the system backdrop show through; panels get a light veil. */
+/* Before the theme is applied (no data-theme yet) a light system gets the light fallbacks, so there is no dark flash. */
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme]) {
+    color-scheme: light;
+    --bg: var(--t-bg, #ffffff);
+    --surface: var(--t-surface, #f4f4f4);
+    --surface-2: var(--t-surface-2, #e8e8e8);
+    --line: var(--t-line, #e0e0e0);
+    --fg: var(--t-fg, #0f0f0f);
+    --muted: var(--t-muted, #5c5c5c);
+    --accent: var(--t-accent, #d92d3a);
+    --solid: var(--t-solid, #ffffff);
+    --solid-2: var(--t-solid-2, #e8e8e8);
+    --on-fg: var(--t-on-fg, #ffffff);
+  }
+}
+
+/*
+ * Windows 11 Mica: the page lets the system backdrop show through; panels get a light veil of the text colour.
+ * A theme with a coloured background tints the backdrop with it (`--t-mica-tint`), so a blue theme is not grey.
+ */
 :root[data-backdrop='mica'] {
-  --bg: transparent;
-  --surface: color-mix(in srgb, #ffffff 5%, transparent);
-  --surface-2: color-mix(in srgb, #ffffff 10%, transparent);
-  --line: color-mix(in srgb, #ffffff 12%, transparent);
+  --bg: color-mix(in srgb, var(--t-bg, #0f0f0f) var(--t-mica-tint, 0%), transparent);
+  --surface: color-mix(in srgb, var(--t-fg, #ffffff) 5%, transparent);
+  --surface-2: color-mix(in srgb, var(--t-fg, #ffffff) 10%, transparent);
+  --line: color-mix(in srgb, var(--t-fg, #ffffff) 12%, transparent);
 }
 :root[data-backdrop='mica'][data-theme='light'] {
-  --surface: color-mix(in srgb, #000000 4%, transparent);
-  --surface-2: color-mix(in srgb, #000000 8%, transparent);
-  --line: color-mix(in srgb, #000000 10%, transparent);
+  --surface: color-mix(in srgb, var(--t-fg, #000000) 4%, transparent);
+  --surface-2: color-mix(in srgb, var(--t-fg, #000000) 8%, transparent);
+  --line: color-mix(in srgb, var(--t-fg, #000000) 10%, transparent);
 }
 
 html,
