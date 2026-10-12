@@ -233,8 +233,14 @@ mod tests {
     #[test]
     fn the_window_theme_is_dark_light_or_the_system() {
         assert_eq!(parse_window_theme(None), Ok(None));
-        assert_eq!(parse_window_theme(Some("dark")), Ok(Some(tauri::Theme::Dark)));
-        assert_eq!(parse_window_theme(Some("light")), Ok(Some(tauri::Theme::Light)));
+        assert_eq!(
+            parse_window_theme(Some("dark")),
+            Ok(Some(tauri::Theme::Dark))
+        );
+        assert_eq!(
+            parse_window_theme(Some("light")),
+            Ok(Some(tauri::Theme::Light))
+        );
         assert!(parse_window_theme(Some("neon")).is_err());
     }
 }

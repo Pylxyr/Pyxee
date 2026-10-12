@@ -3,7 +3,7 @@
   import { snackbar } from '$lib/snackbar.svelte';
 </script>
 
-<div class="pointer-events-none fixed inset-x-0 bottom-28 z-50 flex flex-col items-center gap-2 px-4 lg:bottom-24" aria-live="polite">
+<div class="pointer-events-none fixed inset-x-0 bottom-28 z-[1000] flex flex-col items-center gap-2 px-4 lg:bottom-24" aria-live="polite">
   {#each snackbar.items as s (s.id)}
     <div
       transition:fly={{ y: 16, duration: 160 }}

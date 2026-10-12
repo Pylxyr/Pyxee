@@ -10,8 +10,8 @@ use pyxee_audio::gapless::{FailKind, PreparedTrack};
 use pyxee_audio::http::HttpRangeSource;
 use pyxee_audio::pipeline::{Consumer, PipeEvent, Pipeline, Volume};
 use pyxee_audio::AudioError;
-use pyxee_core::{Command, Effect, EngineEvent, EntryId, Failure, Heard, Track};
-use pyxee_sources::{MusicSource, SourceError, StreamInfo, TrackInfo};
+use pyxee_core::{Command, Effect, EngineEvent, EntryId, Failure, Heard, Track, TrackDetails};
+use pyxee_sources::{MusicSource, SourceError, StreamInfo, StreamMeta, TrackInfo};
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::mpsc::{channel, Receiver, Sender};
@@ -43,7 +43,10 @@ pub fn skip_reason(f: &Failure) -> String {
             "it isn't available (it may be private, removed or blocked in your region)".into()
         }
         Failure::Decode => "its audio could not be read".into(),
-        Failure::Expired => "its stream expired and could not be refreshed".into(),
+        Failure::Expired(Some(code)) => format!("YouTube refused to send it (HTTP {code})"),
+        Failure::Expired(None) => {
+            "YouTube refused to send it (its stream address was rejected)".into()
+        }
         Failure::Offline => "you appear to be offline".into(),
         Failure::RateLimited => "the music service is limiting requests".into(),
         Failure::Other(m) => m.clone(),
@@ -90,6 +93,11 @@ enum Work {
         purpose: Purpose,
         result: Result<Box<PreparedTrack>, Failure>,
     },
+    /// The stream's own metadata, sent as soon as a stream opened (even if the user has moved on).
+    Details {
+        id: EntryId,
+        meta: StreamMeta,
+    },
     Radio(Result<Vec<TrackInfo>, SourceError>),
 }
 
@@ -106,7 +114,7 @@ pub fn failure_from_source(e: &SourceError) -> Failure {
 
 pub fn failure_from_audio(e: &AudioError) -> Failure {
     match e {
-        AudioError::UrlExpired(_) => Failure::Expired,
+        AudioError::UrlExpired(c) => Failure::Expired(Some(*c)),
         AudioError::Network(_) => Failure::Offline,
         AudioError::Ffmpeg(m) => Failure::Other(m.clone()),
         _ => Failure::Decode,
@@ -307,7 +315,14 @@ impl Engine {
         );
         let (generation, token) = (self.generation, self.prefetch_token);
         thread::spawn(move || {
-            let result = prepare(&*source, &cache, &ffmpeg, rate, id, &key, start_ms).map(Box::new);
+            let details_tx = tx.clone();
+            let on_meta = move |meta: StreamMeta| {
+                let _ = details_tx.send(Work::Details { id, meta });
+            };
+            let result = prepare(
+                &*source, &cache, &ffmpeg, rate, id, &key, start_ms, &on_meta,
+            )
+            .map(Box::new);
             let _ = tx.send(Work::Prepared {
                 generation,
                 token,
@@ -331,6 +346,26 @@ impl Engine {
 
     fn on_work(&mut self, w: Work) {
         match w {
+            Work::Details { id, meta } => {
+                let details = TrackDetails {
+                    artist: meta.artist,
+                    duration_ms: meta.duration_secs.map(|s| (s * 1000.0).round() as u64),
+                    thumbnail: meta.thumbnail,
+                };
+                if let Some(t) = self.known.get_mut(&id) {
+                    if !t.fill(&details) {
+                        return; // nothing new
+                    }
+                    log::info!(
+                        "details for {}: artist={:?} duration_ms={:?}",
+                        t.key,
+                        t.artist,
+                        t.duration_ms
+                    );
+                }
+                self.host
+                    .engine_event(EngineEvent::TrackDetails { id, details });
+            }
             Work::Prepared {
                 generation,
                 token,
@@ -437,7 +472,15 @@ impl Engine {
                 }
             }
             PipeEvent::Heard(Heard::Ended(id)) => match self.failed_later.remove(&id) {
-                Some((FailKind::Expired(_), frames)) => {
+                Some((FailKind::Expired(code), frames)) => {
+                    // The URL died mid-song: never reuse it from the cache.
+                    if let Some(t) = self.known.get(&id) {
+                        log::warn!(
+                            "{}: the server stopped the stream (HTTP {code}); re-resolving",
+                            t.key
+                        );
+                        forget(&self.cache, &t.key);
+                    }
                     // Resume exactly where it stopped, whatever the position clock last reported.
                     let ms = self.offsets.get(&id).copied().unwrap_or(0)
                         + frames * 1000 / u64::from(self.rate);
@@ -531,7 +574,7 @@ impl Engine {
 
 fn failure_for(kind: FailKind) -> Failure {
     match kind {
-        FailKind::Expired(_) => Failure::Expired,
+        FailKind::Expired(c) => Failure::Expired(Some(c)),
         FailKind::Network => Failure::Offline,
         FailKind::Decode | FailKind::Empty => Failure::Decode,
     }
@@ -567,10 +610,21 @@ fn resolve_cached(
         s.abr_kbps,
         host_of(&s.url)
     );
+    Ok(s)
+}
+
+/// Remembers a stream URL, but only after it has really opened: a URL the server refused must
+/// never be served from the cache again.
+fn remember(cache: &UrlCache, key: &str, s: &StreamInfo) {
     if let Ok(mut c) = cache.lock() {
         c.insert(key.to_string(), (s.clone(), Instant::now()));
     }
-    Ok(s)
+}
+
+fn forget(cache: &UrlCache, key: &str) {
+    if let Ok(mut c) = cache.lock() {
+        c.remove(key);
+    }
 }
 
 /// Opus goes through ffmpeg (symphonia has no Opus decoder); everything else through symphonia,
@@ -585,7 +639,7 @@ fn open_stream(
         || matches!(s.ext.as_str(), "webm" | "opus");
     if !opus {
         let opened = if remote {
-            HttpRangeSource::open(&s.url)
+            HttpRangeSource::open_with(&s.url, &s.headers)
                 .and_then(|h| SymphoniaSource::open(Box::new(h), Some(&s.ext)))
         } else {
             SymphoniaSource::open_path(std::path::Path::new(&s.url))
@@ -612,11 +666,12 @@ fn open_stream(
     } else {
         log::info!("opus audio: decoding with ffmpeg");
     }
-    Ok(Box::new(FfmpegPipeSource::spawn_at(
-        ffmpeg, &s.url, start_ms,
+    Ok(Box::new(FfmpegPipeSource::spawn_with(
+        ffmpeg, &s.url, start_ms, &s.headers,
     )?))
 }
 
+#[allow(clippy::too_many_arguments)]
 fn prepare(
     source: &dyn MusicSource,
     cache: &UrlCache,
@@ -625,18 +680,34 @@ fn prepare(
     id: EntryId,
     key: &str,
     start_ms: u64,
+    on_meta: &dyn Fn(StreamMeta),
 ) -> Result<PreparedTrack, Failure> {
     let build = |stream: &StreamInfo| -> Result<PreparedTrack, AudioError> {
         PreparedTrack::new(id.0, open_stream(stream, start_ms, ffmpeg)?, rate)
     };
     let stream = resolve_cached(source, cache, key, false).map_err(|e| failure_from_source(&e))?;
     match build(&stream) {
-        Err(AudioError::UrlExpired(_)) => {
-            // The cached URL went stale: resolve again once.
+        Ok(track) => {
+            remember(cache, key, &stream);
+            on_meta(stream.meta.clone());
+            Ok(track)
+        }
+        Err(AudioError::UrlExpired(code)) => {
+            // The server refused this URL (stale, or refused for these headers): drop it and
+            // resolve again, once.
+            log::warn!("{key}: the server refused the stream URL (HTTP {code}); resolving again");
+            forget(cache, key);
             let fresh =
                 resolve_cached(source, cache, key, true).map_err(|e| failure_from_source(&e))?;
-            build(&fresh).map_err(|e| failure_from_audio(&e))
+            match build(&fresh) {
+                Ok(track) => {
+                    remember(cache, key, &fresh);
+                    on_meta(fresh.meta.clone());
+                    Ok(track)
+                }
+                Err(e) => Err(failure_from_audio(&e)),
+            }
         }
-        other => other.map_err(|e| failure_from_audio(&e)),
+        Err(e) => Err(failure_from_audio(&e)),
     }
 }

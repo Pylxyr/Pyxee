@@ -25,9 +25,14 @@ pub struct FileLogger {
     to_stderr: bool,
 }
 
-/// `1700000000123` -> `2023-11-14 22:13:20.123Z` (UTC; no time zone database needed).
-pub fn format_utc(ms: i64) -> String {
-    let (secs, millis) = (ms.div_euclid(1000), ms.rem_euclid(1000));
+/// Log times are Taipei time: UTC+8 all year (Taiwan has no daylight saving), so a fixed offset is
+/// exact and no time zone database is needed.
+pub const TAIPEI_OFFSET_MS: i64 = 8 * 3_600_000;
+
+/// `1700000000123` -> `2023-11-15 06:13:20.123+08:00`.
+pub fn format_taipei(ms: i64) -> String {
+    let local = ms + TAIPEI_OFFSET_MS;
+    let (secs, millis) = (local.div_euclid(1000), local.rem_euclid(1000));
     let (days, tod) = (secs.div_euclid(86_400), secs.rem_euclid(86_400));
     // Civil-from-days (Howard Hinnant's algorithm).
     let z = days + 719_468;
@@ -40,7 +45,7 @@ pub fn format_utc(ms: i64) -> String {
     let month = if mp < 10 { mp + 3 } else { mp - 9 };
     let year = yoe + era * 400 + i64::from(month <= 2);
     format!(
-        "{year:04}-{month:02}-{day:02} {:02}:{:02}:{:02}.{millis:03}Z",
+        "{year:04}-{month:02}-{day:02} {:02}:{:02}:{:02}.{millis:03}+08:00",
         tod / 3600,
         tod % 3600 / 60,
         tod % 60
@@ -51,7 +56,7 @@ pub fn format_line(now_ms: i64, level: Level, target: &str, message: &str) -> St
     // Keep one record on one line, so the file can be searched and pasted.
     format!(
         "{} {:<5} {} {}\n",
-        format_utc(now_ms),
+        format_taipei(now_ms),
         level,
         target,
         message.replace('\n', "\n    ")
@@ -219,16 +224,31 @@ mod tests {
     }
 
     #[test]
-    fn timestamps_are_correct_utc() {
-        assert_eq!(format_utc(0), "1970-01-01 00:00:00.000Z");
-        assert_eq!(format_utc(1_700_000_000_123), "2023-11-14 22:13:20.123Z");
+    fn timestamps_are_taipei_time_with_a_fixed_plus_eight_label() {
+        // Epoch is 08:00 in Taipei.
+        assert_eq!(format_taipei(0), "1970-01-01 08:00:00.000+08:00");
         assert_eq!(
-            format_utc(951_782_400_000),
-            "2000-02-29 00:00:00.000Z",
-            "leap day"
+            format_taipei(1_700_000_000_123),
+            "2023-11-15 06:13:20.123+08:00"
         );
-        assert_eq!(format_utc(1_782_864_000_999), "2026-07-01 00:00:00.999Z");
-        assert_eq!(format_utc(-1), "1969-12-31 23:59:59.999Z");
+        // Leap day: 2000-02-29 00:00 UTC is 08:00 in Taipei the same day.
+        assert_eq!(
+            format_taipei(951_782_400_000),
+            "2000-02-29 08:00:00.000+08:00"
+        );
+        // Crossing midnight: 16:00 UTC is already the next day in Taipei.
+        assert_eq!(
+            format_taipei(1_782_864_000_000 - 8 * 3_600_000),
+            "2026-07-01 00:00:00.000+08:00"
+        );
+        assert_eq!(
+            format_taipei(1_782_864_000_000 - 8 * 3_600_000 - 1),
+            "2026-06-30 23:59:59.999+08:00"
+        );
+        // No daylight saving: July and January use the same offset.
+        assert!(format_taipei(1_752_000_000_000).ends_with("+08:00"));
+        assert!(format_taipei(1_736_000_000_000).ends_with("+08:00"));
+        assert_eq!(format_taipei(-1), "1970-01-01 07:59:59.999+08:00");
     }
 
     #[test]
@@ -241,7 +261,7 @@ mod tests {
         );
         assert_eq!(
             l,
-            "1970-01-01 00:00:00.000Z WARN  pyxee_app::engine could not start \"Song\"\n"
+            "1970-01-01 08:00:00.000+08:00 WARN  pyxee_app::engine could not start \"Song\"\n"
         );
         let multi = format_line(0, Level::Error, "t", "panic\nline two");
         assert!(multi.ends_with("panic\n    line two\n"), "{multi:?}");

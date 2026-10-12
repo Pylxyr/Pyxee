@@ -256,6 +256,14 @@ export class MockBackend extends MockLibrary implements Backend {
         if (entry) s.queue.splice(Math.min(c.to, s.queue.length), 0, entry);
         break;
       }
+      case 'moveUpcoming': {
+        const base = this.#index(s.current) + 1;
+        const i = this.#index(c.id);
+        if (i < base || c.id === s.current) break;
+        const [entry] = s.queue.splice(i, 1);
+        if (entry) s.queue.splice(Math.min(base + c.to, s.queue.length), 0, entry);
+        break;
+      }
       case 'clear':
         if (s.queue.length) this.#undo.push({ cleared: s.queue, current: s.current });
         s.queue = []; s.current = null; this.#stop();

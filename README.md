@@ -41,14 +41,14 @@ Without Tauri, `npm run dev --prefix ui` also works in a browser against a built
 
 ## Logs
 Pyxee writes a log of what it does: every song it starts, how the stream was resolved and opened, why a song failed or was
-skipped, seeks, stalls, and any crash. Find it in the app: **Appearance** (the compass icon, top right) -> **Diagnostics**
+skipped, seeks, stalls, and any crash. Find it in the app: **Settings** (the gear icon, top right) -> **Diagnostics**
 -> **Open log folder** (or copy the path). On Windows the file is
-`%APPDATA%\dev.pyxee.app\logs\pyxee.log`; when it passes 2 MB the old one becomes `pyxee.log.1`. Times are UTC.
+`%APPDATA%\dev.pyxee.app\logs\pyxee.log`; when it passes 2 MB the old one becomes `pyxee.log.1`. Times are Taipei time (UTC+8, written like `2026-10-12 21:30:00.123+08:00`).
 `dev.cmd` also prints the same lines in its console. For more detail set `PYXEE_LOG=debug` before starting.
 If a song misbehaves, send me the lines around its title (search the file for the song's name).
 
 ## Themes
-Appearance (the compass icon, top right) has a theme picker: Dark, Light, YT Music, OLED black, and six more (Deep blue,
+Settings (the gear icon, top right) has an Appearance section with a theme picker: Dark, Light, YT Music, OLED black, and six more (Deep blue,
 Sky, Graphite and gold, Turquoise, Ember, Paper). The last few are original palettes in the spirit of MusicBee's community
 skins, not copies of any skin. **Match system** uses one theme when Windows is light and another when it is dark.
 **Customize...** edits the seven colours of a theme with a live preview and a readability check, and saves it as your own;

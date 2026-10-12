@@ -3,7 +3,7 @@
   import { prefs } from '$lib/prefs.svelte';
   import { nav } from '$lib/nav.svelte';
   import { library } from '$lib/library.svelte';
-  import { formatTime } from '$lib/format';
+  import { formatProgress } from '$lib/format';
   import Icon from './Icon.svelte';
   import Thumb from './Thumb.svelte';
   import Seek from './Seek.svelte';
@@ -50,7 +50,7 @@
         <button class="p-1" aria-label="Next" onclick={player.next}><Icon name="next" /></button>
         {#if wide}
           <span class="w-24 text-center text-[13px] tabular-nums text-muted">
-            {formatTime(player.state.positionMs)} / {formatTime(player.durationMs)}
+            {formatProgress(player.state.positionMs, player.durationMs)}
           </span>
         {/if}
       </div>

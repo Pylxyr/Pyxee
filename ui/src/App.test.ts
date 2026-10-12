@@ -189,6 +189,22 @@ describe('Now Playing', () => {
     await waitFor(() => expect(player.state.queue).toHaveLength(before));
   });
 
+  it('Up next can be reordered with its buttons: Play next puts a song right after the current one', async () => {
+    await playing();
+    await fireEvent.click(screen.getByRole('button', { name: 'Open Now Playing' }));
+    const names = () => player.upNext.map((e) => e.track.title);
+    const before = names();
+    expect(before.length).toBeGreaterThan(2);
+    const last = before[before.length - 1];
+    await fireEvent.click(await screen.findByRole('button', { name: `Play ${last} next` }));
+    await waitFor(() => expect(names()[0]).toBe(last));
+    expect(names().slice(1)).toEqual(before.slice(0, -1));
+    // The first row has nothing above it to move to.
+    expect(screen.getByRole('button', { name: `Move ${last} up` }).hasAttribute('disabled')).toBe(true);
+    await fireEvent.click(screen.getByRole('button', { name: `Move ${last} down` }));
+    await waitFor(() => expect(names()[1]).toBe(last));
+  });
+
   it('tabs switch panels, and unbuilt ones say which milestone brings them', async () => {
     await playing();
     await fireEvent.click(screen.getByRole('button', { name: 'Open Now Playing' }));
@@ -213,13 +229,13 @@ describe('Now Playing', () => {
 describe('appearance', () => {
   async function openAppearance() {
     await openApp();
-    await fireEvent.click(screen.getByRole('button', { name: 'Appearance' }));
+    await fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
     return screen.findByRole('group', { name: 'Theme' });
   }
 
   it('switching to Light sets the theme on the document', async () => {
     await openApp();
-    await fireEvent.click(screen.getByRole('button', { name: 'Appearance' }));
+    await fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
     await fireEvent.click(await screen.findByRole('button', { name: 'Light' }));
     await waitFor(() => expect(document.documentElement.dataset.theme).toBe('light'));
     await fireEvent.click(screen.getByRole('button', { name: 'Dark' }));
@@ -430,12 +446,21 @@ describe('queue screen', () => {
     await waitFor(() => expect(titles().slice(0, 2)).toEqual(['Paper Planes', 'Neon Harbor']));
   });
 
-  it('dragging a row onto another reorders the queue', async () => {
+  it('dragging a row by its handle past other rows reorders the queue (pointer events, not HTML5 drag)', async () => {
     await withQueue();
-    const items = within(screen.getByRole('list', { name: 'Queue' })).getAllByRole('listitem');
-    await fireEvent.dragStart(items[0]!);
-    await fireEvent.dragOver(items[2]!);
-    await fireEvent.drop(items[2]!);
+    const items = within(screen.getByRole('list', { name: 'Queue' })).getAllByRole('listitem').filter((li) => li.hasAttribute('data-row'));
+    // jsdom has no layout: give the rows 40px-high boxes, one under the other.
+    items.forEach((li, i) => {
+      li.getBoundingClientRect = () => ({ top: i * 40, height: 40, bottom: i * 40 + 40 }) as DOMRect;
+    });
+    const handle = within(items[0]!).getByTestId('drag-handle');
+    handle.setPointerCapture = () => {};
+    handle.releasePointerCapture = () => {};
+    const fire = (type: string, y: number) =>
+      handle.dispatchEvent(new PointerEvent(type, { pointerId: 7, clientY: y, button: 0, pointerType: 'mouse', bubbles: true, cancelable: true }));
+    fire('pointerdown', 20);
+    fire('pointermove', 105); // below the middle of the third row
+    fire('pointerup', 105);
     await waitFor(() => expect(titles()[2]).toBe('Neon Harbor'));
   });
 

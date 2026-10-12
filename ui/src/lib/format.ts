@@ -9,6 +9,11 @@ export function formatTime(ms: number | null | undefined): string {
   return h > 0 ? `${h}:${String(m).padStart(2, '0')}:${ss}` : `${m}:${ss}`;
 }
 
+/** "0:42 / 3:45"; when the length is unknown only the elapsed time, never a dead "–:––". */
+export function formatProgress(positionMs: number, durationMs: number | null | undefined): string {
+  return durationMs ? `${formatTime(positionMs)} / ${formatTime(durationMs)}` : formatTime(positionMs);
+}
+
 /** Stable hue (0-359) from a string, used for placeholder art. */
 export function hueFor(key: string): number {
   let h = 0;

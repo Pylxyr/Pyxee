@@ -4,6 +4,7 @@ use crate::AudioError;
 use std::io::{BufRead, BufReader, Read};
 use std::path::Path;
 use std::process::{Child, ChildStdout, Command, Stdio};
+use std::sync::atomic::{AtomicU16, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 use symphonia::core::audio::SampleBuffer;
@@ -268,8 +269,46 @@ pub struct FfmpegPipeSource {
     stdout: ChildStdout,
     leftover: Vec<u8>,
     last_error: Arc<Mutex<String>>,
+    /// HTTP status (401/403/410) ffmpeg reported when the server refused the URL; 0 = none.
+    refused: Arc<AtomicU16>,
     stderr_thread: Option<JoinHandle<()>>,
     checked_exit: bool,
+}
+
+/// The HTTP status behind an ffmpeg error line such as `Server returned 403 Forbidden (access denied)`,
+/// when it means the stream URL is no longer accepted (expired, or refused for these headers).
+pub fn refused_status(line: &str) -> Option<u16> {
+    let rest = ["Server returned ", "HTTP error "]
+        .iter()
+        .find_map(|p| line.find(p).map(|i| &line[i + p.len()..]))?;
+    let code: u16 = rest.get(..3)?.parse().ok()?;
+    crate::http::is_expired(code).then_some(code)
+}
+
+/// ffmpeg input options that make it send the same headers yt-dlp used: the User-Agent through
+/// `-user_agent`, everything else as one CRLF-separated `-headers` value. Line breaks inside a
+/// value are dropped so a header can never smuggle in another one.
+pub fn ffmpeg_header_args(headers: &[(String, String)]) -> Vec<String> {
+    let clean = |s: &str| s.replace(['\r', '\n'], " ").trim().to_string();
+    let mut args = Vec::new();
+    let mut block = String::new();
+    for (k, v) in headers {
+        let (k, v) = (clean(k), clean(v));
+        if k.is_empty() || k.eq_ignore_ascii_case("host") || k.eq_ignore_ascii_case("range") {
+            continue;
+        }
+        if k.eq_ignore_ascii_case("user-agent") {
+            args.push("-user_agent".to_string());
+            args.push(v);
+        } else {
+            block.push_str(&format!("{k}: {v}\r\n"));
+        }
+    }
+    if !block.is_empty() {
+        args.push("-headers".to_string());
+        args.push(block);
+    }
+    args
 }
 
 pub const FFMPEG_RATE: u32 = 48_000;
@@ -281,6 +320,16 @@ impl FfmpegPipeSource {
 
     /// Starts decoding at `start_ms` (ffmpeg seeks before decoding).
     pub fn spawn_at(ffmpeg: &Path, input: &str, start_ms: u64) -> Result<Self, AudioError> {
+        Self::spawn_with(ffmpeg, input, start_ms, &[])
+    }
+
+    /// Like `spawn_at`, sending `headers` to the server (see [`ffmpeg_header_args`]).
+    pub fn spawn_with(
+        ffmpeg: &Path,
+        input: &str,
+        start_ms: u64,
+        headers: &[(String, String)],
+    ) -> Result<Self, AudioError> {
         let mut cmd = Command::new(ffmpeg);
         cmd.args(["-nostdin", "-v", "error"]);
         // Only the protocols we need; reconnect on dropped HTTP streams.
@@ -294,6 +343,7 @@ impl FfmpegPipeSource {
                 "-reconnect_delay_max",
                 "5",
             ]);
+            cmd.args(ffmpeg_header_args(headers));
         }
         if start_ms > 0 {
             cmd.args([
@@ -323,10 +373,15 @@ impl FfmpegPipeSource {
             .take()
             .ok_or_else(|| AudioError::Ffmpeg("no stdout".into()))?;
         let last_error = Arc::new(Mutex::new(String::new()));
+        let refused = Arc::new(AtomicU16::new(0));
         let stderr_thread = child.stderr.take().map(|stderr| {
             let sink = Arc::clone(&last_error);
+            let refused = Arc::clone(&refused);
             std::thread::spawn(move || {
                 for line in BufReader::new(stderr).lines().map_while(Result::ok) {
+                    if let Some(code) = refused_status(&line) {
+                        refused.store(code, Ordering::Relaxed);
+                    }
                     if let Ok(mut g) = sink.lock() {
                         *g = line;
                     }
@@ -338,6 +393,7 @@ impl FfmpegPipeSource {
             stdout,
             leftover: Vec::new(),
             last_error,
+            refused,
             stderr_thread,
             checked_exit: false,
         })
@@ -363,6 +419,10 @@ impl FfmpegPipeSource {
         }
         if status.success() {
             Ok(())
+        } else if let code @ 1.. = self.refused.load(Ordering::Relaxed) {
+            // The server said no (403 and friends): same meaning as a refused HTTP range request,
+            // so the engine drops the cached URL and re-resolves instead of reporting a decoder error.
+            Err(AudioError::UrlExpired(code))
         } else {
             let msg = self
                 .last_error

@@ -3,7 +3,8 @@
 
 use crate::suggest::{self, encode};
 use crate::{
-    classify_stderr, MusicSource, SearchFilter, SearchItem, SourceError, StreamInfo, TrackInfo,
+    classify_stderr, MusicSource, SearchFilter, SearchItem, SourceError, StreamInfo, StreamMeta,
+    TrackInfo, UNKNOWN_ARTIST,
 };
 use serde::Deserialize;
 use serde_json::Value;
@@ -153,27 +154,66 @@ fn text(v: &Value, key: &str) -> Option<String> {
         .map(str::to_string)
 }
 
+/// The largest thumbnail yt-dlp lists (by area, then by its own preference), else the top-level
+/// `thumbnail`, else YouTube's standard still for `id`. Plain `http` is upgraded to `https`.
 fn thumbnail(v: &Value, id: Option<&str>) -> Option<String> {
     let list = v.get("thumbnails").and_then(Value::as_array);
     let best = list.and_then(|l| {
         l.iter()
             .filter_map(|t| {
-                Some((
-                    t.get("url")?.as_str()?,
-                    t.get("width").and_then(Value::as_u64).unwrap_or(0),
-                ))
+                let url = t.get("url")?.as_str().filter(|u| !u.is_empty())?;
+                let w = t.get("width").and_then(Value::as_u64).unwrap_or(0);
+                let h = t.get("height").and_then(Value::as_u64).unwrap_or(w);
+                let pref = t.get("preference").and_then(Value::as_i64).unwrap_or(0);
+                Some((url, (w * h, pref)))
             })
-            .max_by_key(|(_, w)| (*w).min(640))
+            .max_by_key(|(_, rank)| *rank)
             .map(|(u, _)| u.to_string())
     });
-    best.or_else(|| id.map(|i| format!("https://i.ytimg.com/vi/{i}/hqdefault.jpg")))
+    best.or_else(|| text(v, "thumbnail"))
+        .or_else(|| id.map(|i| format!("https://i.ytimg.com/vi/{i}/hqdefault.jpg")))
+        .map(|u| u.replacen("http://", "https://", 1))
+}
+
+/// The performer: music metadata when yt-dlp has it (`artists`, `artist`), else the uploader or
+/// channel, with YouTube's auto-generated " - Topic" suffix removed.
+fn artist_of(v: &Value) -> Option<String> {
+    let listed = v.get("artists").and_then(Value::as_array).map(|a| {
+        a.iter()
+            .filter_map(Value::as_str)
+            .filter(|s| !s.is_empty())
+            .collect::<Vec<_>>()
+            .join(", ")
+    });
+    let raw = listed
+        .filter(|s| !s.is_empty())
+        .or_else(|| text(v, "artist"))
+        .or_else(|| text(v, "creator"))
+        .or_else(|| text(v, "uploader"))
+        .or_else(|| text(v, "channel"))?;
+    let name = raw.strip_suffix(" - Topic").unwrap_or(&raw).trim();
+    (!name.is_empty()).then(|| name.to_string())
 }
 
 fn artist_name(v: &Value) -> String {
-    let raw = text(v, "uploader")
-        .or_else(|| text(v, "channel"))
-        .unwrap_or_else(|| "Unknown artist".into());
-    raw.strip_suffix(" - Topic").unwrap_or(&raw).to_string()
+    artist_of(v).unwrap_or_else(|| UNKNOWN_ARTIST.into())
+}
+
+/// Seconds from `duration`, or from a `duration_string` such as `3:45` / `1:02:03`.
+fn duration_secs(v: &Value) -> Option<f64> {
+    if let Some(d) = v
+        .get("duration")
+        .and_then(Value::as_f64)
+        .filter(|d| *d > 0.0)
+    {
+        return Some(d);
+    }
+    let s = text(v, "duration_string")?;
+    let mut total = 0.0;
+    for part in s.split(':') {
+        total = total * 60.0 + part.trim().parse::<f64>().ok()?;
+    }
+    (total > 0.0).then_some(total)
 }
 
 /// One line of `--flat-playlist -j` output -> a search item.
@@ -207,10 +247,7 @@ pub fn item_from_entry(v: &Value) -> Option<SearchItem> {
         key: format!("yt:{id}"),
         title,
         artist: artist_name(v),
-        duration_ms: v
-            .get("duration")
-            .and_then(Value::as_f64)
-            .map(|s| (s * 1000.0) as u64),
+        duration_ms: duration_secs(v).map(|s| (s * 1000.0) as u64),
         thumbnail: thumbnail(v, Some(&id)),
     }))
 }
@@ -244,23 +281,28 @@ struct Dump {
     ext: Option<String>,
     acodec: Option<String>,
     abr: Option<f64>,
+    http_headers: Option<std::collections::BTreeMap<String, String>>,
 }
 
 /// Parses `yt-dlp -j -f ...` output for a single video.
 pub fn parse_dump(json: &str) -> Result<Resolved, SourceError> {
     let d: Dump = serde_json::from_str(json).map_err(|e| SourceError::Parse(e.to_string()))?;
+    let v: Value = serde_json::from_str(json).map_err(|e| SourceError::Parse(e.to_string()))?;
     let url = d
         .url
         .ok_or_else(|| SourceError::Parse("no stream url in output".into()))?;
     Ok(Resolved {
-        id: d.id,
+        id: d.id.clone(),
         title: d.title.unwrap_or_else(|| "Unknown title".into()),
         uploader: d.uploader.or(d.channel),
-        duration_secs: d.duration,
+        artist: artist_of(&v),
+        duration_secs: duration_secs(&v).or(d.duration),
+        thumbnail: thumbnail(&v, Some(&d.id)),
         stream_url: url,
         ext: d.ext.unwrap_or_default(),
         acodec: d.acodec,
         abr_kbps: d.abr,
+        headers: d.http_headers.unwrap_or_default().into_iter().collect(),
     })
 }
 
@@ -269,11 +311,17 @@ pub struct Resolved {
     pub id: String,
     pub title: String,
     pub uploader: Option<String>,
+    /// Best guess at the performer (music metadata, else uploader/channel without " - Topic").
+    pub artist: Option<String>,
     pub duration_secs: Option<f64>,
+    /// Largest thumbnail on offer.
+    pub thumbnail: Option<String>,
     pub stream_url: String,
     pub ext: String,
     pub acodec: Option<String>,
     pub abr_kbps: Option<f64>,
+    /// Headers yt-dlp used for this URL (sorted by name).
+    pub headers: Vec<(String, String)>,
 }
 
 /// Searches for `query` and resolves the top hit (used by the spike harness).
@@ -336,6 +384,13 @@ impl MusicSource for YtDlpSource {
             ext: r.ext,
             acodec: r.acodec,
             abr_kbps: r.abr_kbps,
+            headers: r.headers,
+            meta: StreamMeta {
+                title: None,
+                artist: r.artist,
+                duration_secs: r.duration_secs,
+                thumbnail: r.thumbnail,
+            },
         })
     }
 
@@ -372,6 +427,66 @@ mod tests {
     use super::*;
 
     const TRACK: &str = r#"{"_type":"url","ie_key":"Youtube","id":"abc12345678","url":"https://www.youtube.com/watch?v=abc12345678","title":"Neon Harbor","duration":213.5,"channel":"Lowtide - Topic","uploader":"Lowtide - Topic","thumbnails":[{"url":"https://i.ytimg.com/vi/abc12345678/small.jpg","width":120},{"url":"https://i.ytimg.com/vi/abc12345678/big.jpg","width":720}]}"#;
+    fn track_of(json: &str) -> TrackInfo {
+        match item_from_entry(&serde_json::from_str(json).unwrap()) {
+            Some(SearchItem::Track(t)) => t,
+            other => panic!("not a track: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn a_song_entry_with_music_metadata_gets_its_artists_joined_and_no_topic_suffix() {
+        let t = track_of(
+            r#"{"id":"s1","url":"https://music.youtube.com/watch?v=s1","title":"Duet","artists":["Ana","Ben"],"uploader":"Label - Topic","duration":181}"#,
+        );
+        assert_eq!(t.artist, "Ana, Ben");
+        assert_eq!(t.duration_ms, Some(181_000));
+    }
+
+    #[test]
+    fn a_song_entry_with_only_a_duration_string_still_has_a_length() {
+        let t = track_of(r#"{"id":"s2","title":"T","artist":"Solo","duration_string":"3:45"}"#);
+        assert_eq!((t.artist.as_str(), t.duration_ms), ("Solo", Some(225_000)));
+        let long = track_of(r#"{"id":"s3","title":"T","duration_string":"1:02:03"}"#);
+        assert_eq!(long.duration_ms, Some(3_723_000));
+    }
+
+    #[test]
+    fn a_song_entry_with_no_artist_information_is_marked_unknown_so_it_can_be_filled_in_later() {
+        let t = track_of(r#"{"id":"s4","title":"T"}"#);
+        assert_eq!(t.artist, UNKNOWN_ARTIST);
+        assert_eq!(t.duration_ms, None);
+    }
+
+    #[test]
+    fn the_largest_thumbnail_wins_over_the_smallest_and_over_a_made_up_url() {
+        let t = track_of(
+            r#"{"id":"s5","title":"T","thumbnails":[{"url":"http://a/small.jpg","width":120,"height":90},{"url":"https://a/max.jpg","width":1280,"height":720},{"url":"https://a/mid.jpg","width":480,"height":360}]}"#,
+        );
+        assert_eq!(t.thumbnail.as_deref(), Some("https://a/max.jpg"));
+        // Without any list the plain `thumbnail` is used, and http becomes https.
+        let t = track_of(r#"{"id":"s6","title":"T","thumbnail":"http://a/one.jpg"}"#);
+        assert_eq!(t.thumbnail.as_deref(), Some("https://a/one.jpg"));
+    }
+
+    #[test]
+    fn resolving_reports_artist_length_and_cover_so_the_ui_can_fill_what_search_left_out() {
+        let r = parse_dump(
+            r#"{"id":"abc","title":"S","channel":"Lowtide - Topic","duration":200.0,"url":"https://x/y","ext":"webm","acodec":"opus","abr":139.0,"http_headers":{"User-Agent":"UA/1","Accept-Language":"en-us"},"thumbnails":[{"url":"https://a/s.jpg","width":120},{"url":"https://a/max.jpg","width":1280,"height":720}]}"#,
+        )
+        .unwrap();
+        assert_eq!(r.artist.as_deref(), Some("Lowtide"));
+        assert_eq!(r.duration_secs, Some(200.0));
+        assert_eq!(r.thumbnail.as_deref(), Some("https://a/max.jpg"));
+        assert_eq!(
+            r.headers,
+            vec![
+                ("Accept-Language".to_string(), "en-us".to_string()),
+                ("User-Agent".to_string(), "UA/1".to_string())
+            ]
+        );
+    }
+
     const PLAYLIST: &str = r#"{"_type":"url","ie_key":"YoutubeTab","id":"PL123","url":"https://www.youtube.com/playlist?list=PL123","title":"Late Night Mix","channel":"Some User"}"#;
     const CHANNEL: &str = r#"{"_type":"url","ie_key":"YoutubeTab","id":"UC999","url":"https://www.youtube.com/channel/UC999","title":"Lowtide","thumbnails":[{"url":"https://yt3.example/a.jpg","width":88}]}"#;
 

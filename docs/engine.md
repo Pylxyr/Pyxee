@@ -52,7 +52,7 @@ track now waits until the track being re-opened is queued, then follows it. `see
 reproduces this with a slow local HTTP server (0.02 s of the seeked song before the next one cut in, before the fix).
 
 ## Logs and messages (added after the first Windows run)
-`crates/app/src/logging.rs` writes `pyxee.log` (rotated at 2 MB, UTC timestamps, panics included); the engine, sources and
+`crates/app/src/logging.rs` writes `pyxee.log` (rotated at 2 MB, Taipei-time timestamps (fixed UTC+8, `+08:00`), panics included); the engine, sources and
 audio crates log through the standard `log` facade. A song's life is traceable: `start`, `resolved` (format, codec, bitrate and
 the host the stream comes from, never the full URL), `ready`, `audible`, `ended ... after N ms (expected M ms)`, and for failures
 `could not start ...: <reason>` plus yt-dlp's and ffmpeg's own error output.
@@ -66,3 +66,19 @@ offline or rate limited is not announced (the player bar already shows it with a
   re-opens the song that is audible (`seeking_after_a_gapless_advance_stays_on_the_song_that_is_playing`).
 - If a stream cannot seek to a position, or a server ignores range requests, the engine now uses ffmpeg instead of treating the
   song as unplayable (which skipped it silently).
+
+## WP1 fixes (third Windows run)
+
+- **403 / stale URLs.** yt-dlp's `http_headers` travel with the stream (`StreamInfo.headers`) to ffmpeg (`-user_agent`,
+  CRLF `-headers`) and to `HttpRangeSource`. ffmpeg's "Server returned 401/403/410" becomes `AudioError::UrlExpired`
+  (at start and mid-play), so the usual re-resolve and resume-at-position path applies. A URL is cached only after it
+  opened; a refused URL is evicted, re-resolved once, and never served from the cache again (Retry resolves fresh).
+  The message is "YouTube refused to send it (HTTP 403)" (`Failure::Expired(Option<u16>)`).
+- **Track details.** Resolving also reports artist, length and the largest cover. `EngineEvent::TrackDetails` fills an
+  unknown artist, a missing length and the cover in the queue entry (a known artist/length is never overwritten) and
+  `Library::refresh_track` updates a saved copy. An "Unknown artist" never erases a stored artist.
+- **Logs** use Taipei time (fixed UTC+8, written `2026-10-12 21:30:00.123+08:00`).
+- **Queue.** `Command::MoveUpcoming` reorders Up next in play order (under shuffle the list the user arranged is left alone).
+
+Needs your PC: that yt-dlp's headers really cure the 403 for `yt:Ni5jPjvGxtw`; that songs-only search results show
+the artist after the song starts.

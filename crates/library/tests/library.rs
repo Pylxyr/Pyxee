@@ -404,3 +404,36 @@ fn a_file_that_is_not_a_database_is_a_clear_error_not_a_panic() {
         "{err}"
     );
 }
+
+#[test]
+fn a_liked_song_saved_as_unknown_artist_learns_its_artist_length_and_cover() {
+    let mut l = lib();
+    let mut song = Track::new("yt:u", "Neon Harbor", pyxee_core::UNKNOWN_ARTIST);
+    song.duration_ms = None;
+    l.like(&song, 1).unwrap();
+    let mut known = song.clone();
+    known.artist = "Lowtide".into();
+    known.duration_ms = Some(213_500);
+    known.thumbnail = Some("https://big/cover.jpg".into());
+    assert!(l.refresh_track(&known).unwrap());
+    assert!(
+        !l.refresh_track(&known).unwrap(),
+        "second time nothing changes"
+    );
+    let back = &l.liked().unwrap()[0];
+    assert_eq!(back, &known);
+}
+
+#[test]
+fn refreshing_never_adds_a_song_and_a_later_unknown_artist_never_erases_a_known_one() {
+    let mut l = lib();
+    let ghost = t("ghost");
+    assert!(!l.refresh_track(&ghost).unwrap());
+    assert!(l.liked().unwrap().is_empty());
+
+    l.like(&t("a"), 1).unwrap();
+    let mut again = t("a");
+    again.artist = pyxee_core::UNKNOWN_ARTIST.into(); // e.g. liked again from a search row
+    l.record_play(&again, 2).unwrap();
+    assert_eq!(l.liked().unwrap()[0].artist, "Artist a");
+}

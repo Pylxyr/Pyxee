@@ -133,10 +133,19 @@ const TRACK_COLS: &str = "t.key, t.title, t.artist, t.duration_ms, t.thumbnail";
 fn upsert_track(tx: &Transaction<'_>, t: &Track) -> rusqlite::Result<()> {
     tx.execute(
         "INSERT INTO tracks (key, title, artist, duration_ms, thumbnail) VALUES (?1, ?2, ?3, ?4, ?5)
-         ON CONFLICT(key) DO UPDATE SET title = excluded.title, artist = excluded.artist,
+         ON CONFLICT(key) DO UPDATE SET title = excluded.title,
+            artist = CASE WHEN trim(excluded.artist) = '' OR lower(excluded.artist) = lower(?6)
+                          THEN tracks.artist ELSE excluded.artist END,
             duration_ms = COALESCE(excluded.duration_ms, tracks.duration_ms),
             thumbnail = COALESCE(excluded.thumbnail, tracks.thumbnail)",
-        params![t.key, t.title, t.artist, t.duration_ms.map(|v| v as i64), t.thumbnail],
+        params![
+            t.key,
+            t.title,
+            t.artist,
+            t.duration_ms.map(|v| v as i64),
+            t.thumbnail,
+            pyxee_core::UNKNOWN_ARTIST
+        ],
     )?;
     Ok(())
 }
@@ -193,6 +202,22 @@ impl Library {
             ))?;
         }
         Ok(Self { conn })
+    }
+
+    /// A song already in the library learned its real artist, length or cover (from its stream's
+    /// metadata): store that. Never adds a song; returns whether a row changed.
+    pub fn refresh_track(&mut self, t: &Track) -> Result<bool> {
+        let n = self.conn.execute(
+            "UPDATE tracks SET artist = ?2, duration_ms = ?3, thumbnail = ?4
+             WHERE key = ?1 AND (artist IS NOT ?2 OR duration_ms IS NOT ?3 OR thumbnail IS NOT ?4)",
+            params![
+                t.key,
+                t.artist,
+                t.duration_ms.map(|v| v as i64),
+                t.thumbnail
+            ],
+        )?;
+        Ok(n > 0)
     }
 
     // ---------------------------------------------------------------- likes

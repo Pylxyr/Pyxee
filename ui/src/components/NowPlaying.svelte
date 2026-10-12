@@ -5,6 +5,7 @@
   import { library } from '$lib/library.svelte';
   import { removeFromQueue } from '$lib/actions';
   import { formatTime } from '$lib/format';
+  import { reorder } from '$lib/reorder';
   import Icon from './Icon.svelte';
   import Thumb from './Thumb.svelte';
   import Seek from './Seek.svelte';
@@ -16,6 +17,9 @@
     { id: 'lyrics', label: 'Lyrics' },
     { id: 'related', label: 'Related' },
   ];
+  let drag = $state<{ id: number; from: number; to: number } | null>(null);
+  let upNextEl = $state<HTMLElement>();
+  const upNextRows = () => [...(upNextEl?.querySelectorAll<HTMLElement>('[data-row]') ?? [])];
   const firstRadioId = $derived(player.upNext.find((e) => e.origin === 'radio')?.id ?? null);
 </script>
 
@@ -36,7 +40,7 @@
     <div class="mx-auto grid min-h-0 w-full max-w-6xl flex-1 grid-rows-[auto_minmax(0,1fr)] gap-4 px-6 pb-4 lg:grid-cols-[1fr_28rem] lg:grid-rows-1 lg:gap-8 lg:pb-8">
       <section class="flex min-h-0 flex-col items-center justify-center gap-3 lg:gap-5 lg:overflow-y-auto" data-testid="np-controls">
         <div class="aspect-square w-[min(56vw,26vh)] shrink-0 overflow-hidden rounded-xl lg:w-[min(22rem,48vh)]" data-testid="np-art">
-          <Thumb src={entry.track.thumbnail} seed={entry.track.key} size={176} fill rounded="rounded-xl" />
+          <Thumb src={entry.track.thumbnail} seed={entry.track.key} size={352} fill rounded="rounded-xl" />
         </div>
         <div class="flex w-[min(80vw,22rem)] items-center justify-between gap-3">
           <div class="min-w-0">
@@ -48,7 +52,7 @@
         <div class="w-[min(80vw,22rem)]">
           <Seek positionMs={player.state.positionMs} durationMs={player.durationMs} onseek={player.seek} accent label="Seek" />
           <div class="mt-1 flex justify-between text-[13px] tabular-nums text-muted">
-            <span>{formatTime(player.state.positionMs)}</span><span>{formatTime(player.durationMs)}</span>
+            <span>{formatTime(player.state.positionMs)}</span><span>{player.durationMs ? formatTime(player.durationMs) : 'length unknown'}</span>
           </div>
         </div>
         {#if player.failure}
@@ -88,7 +92,7 @@
         </div>
         <div class="mt-3 min-h-0 flex-1 overflow-y-auto" role="tabpanel" data-testid="np-scroll">
           {#if nav.tab === 'upnext'}
-            <ul class="space-y-0.5">
+            <ul class="space-y-0.5" bind:this={upNextEl}>
               <li class="flex items-center gap-3 rounded-lg bg-surface-2 px-3 py-2">
                 <Thumb src={entry.track.thumbnail} seed={entry.track.key} size={44} />
                 <div class="min-w-0 flex-1">
@@ -97,12 +101,26 @@
                 </div>
                 <span class="text-[13px] tabular-nums text-muted">{formatTime(entry.track.durationMs)}</span>
               </li>
-              {#each player.upNext as e (e.id)}
+              {#each player.upNext as e, i (e.id)}
                 {#if e.id === firstRadioId}
                   <li class="px-3 pb-1 pt-4 text-xs font-semibold uppercase tracking-wider text-muted">Autoplay · similar songs</li>
                 {/if}
-                <li class="group flex items-center gap-1 rounded-lg hover:bg-surface-2">
-                  <button class="flex min-w-0 flex-1 items-center gap-3 px-3 py-2 text-left" onclick={() => player.playEntry(e.id)}>
+                <li
+                  data-row
+                  class="group flex items-center gap-1 rounded-lg border-y-2 border-transparent hover:bg-surface-2 {drag && drag.to === i && drag.id !== e.id ? (drag.to < drag.from ? 'border-t-accent' : 'border-b-accent') : ''} {drag?.id === e.id ? 'opacity-40' : ''}"
+                >
+                  <span
+                    class="cursor-grab touch-none select-none py-2 pl-2 text-muted"
+                    role="presentation"
+                    title="Drag to reorder"
+                    data-testid="upnext-handle"
+                    use:reorder={{
+                      index: i,
+                      rows: upNextRows,
+                      onover: (to) => (drag = to === null ? null : { id: e.id, from: i, to }),
+                      ondrop: (to) => player.moveUpcoming(e.id, to),
+                    }}><Icon name="drag" size={18} /></span>
+                  <button class="flex min-w-0 flex-1 items-center gap-3 px-2 py-2 text-left" onclick={() => player.playEntry(e.id)}>
                     <Thumb src={e.track.thumbnail} seed={e.track.key} size={44} />
                     <span class="min-w-0 flex-1">
                       <span class="block truncate text-[15px] font-semibold">{e.track.title}</span>
@@ -110,7 +128,10 @@
                     </span>
                     <span class="text-[13px] tabular-nums text-muted">{formatTime(e.track.durationMs)}</span>
                   </button>
-                  <button class="p-2 text-muted hover:text-fg" aria-label="Remove {e.track.title} from queue" onclick={() => removeFromQueue(e)}><Icon name="close" size={18} /></button>
+                  <button class="p-1.5 text-muted hover:text-fg disabled:opacity-30" aria-label="Play {e.track.title} next" title="Play next" disabled={i === 0} onclick={() => player.moveUpcoming(e.id, 0)}><Icon name="top" size={18} /></button>
+                  <button class="p-1.5 text-muted hover:text-fg disabled:opacity-30" aria-label="Move {e.track.title} up" disabled={i === 0} onclick={() => player.moveUpcoming(e.id, i - 1)}><Icon name="up" size={18} /></button>
+                  <button class="p-1.5 text-muted hover:text-fg disabled:opacity-30" aria-label="Move {e.track.title} down" disabled={i === player.upNext.length - 1} onclick={() => player.moveUpcoming(e.id, i + 1)}><Icon name="down" size={18} /></button>
+                  <button class="p-1.5 text-muted hover:text-fg" aria-label="Remove {e.track.title} from queue" onclick={() => removeFromQueue(e)}><Icon name="close" size={18} /></button>
                 </li>
               {:else}
                 <li class="px-3 py-6 text-sm text-muted">Nothing queued after this track.</li>

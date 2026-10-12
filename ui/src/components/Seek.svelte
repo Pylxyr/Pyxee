@@ -17,6 +17,16 @@
   const pct = $derived(max > 0 ? Math.min(100, (value / max) * 100) : 0);
 </script>
 
+{#if !durationMs}
+  <!-- Length unknown: no fake scrubber, just an honest "playing, length not known" bar. -->
+  <div
+    class="seek-unknown {accent ? 'accent' : ''}"
+    role="progressbar"
+    aria-label={label}
+    aria-valuetext="{formatTime(positionMs)} elapsed, length unknown"
+    title="Length unknown"
+  ></div>
+{:else}
 <input
   type="range"
   class="slider {accent ? 'accent' : ''}"
@@ -34,3 +44,4 @@
     dragging = null;
   }}
 />
+{/if}

@@ -61,3 +61,14 @@ The `set_window_theme` command makes the native frame follow a fixed theme (`nul
 ## Not verified here
 Everything runs in tests (jsdom) and compiles against Tauri on Linux, but the sandbox has no Windows WebView2, so the
 real window, Mica and DPI behaviour need a first run on your PC.
+
+## WP1 notes
+
+- **Settings** (gear, top right) holds Appearance and Diagnostics. Sheets stack in the order they were opened
+  (z-index 100 and up, above Now Playing at 40); the snackbar sits above them (1000).
+- **Covers** go through `lib/thumb.ts`: YouTube's 4:3 stills have black bars baked in, so small covers use `mqdefault`
+  (16:9, no bars), big ones `maxresdefault` then `hq720` then `mqdefault`; Google cover URLs are resized to the displayed
+  size. `Thumb` centre-crops (`object-cover`) and moves to the next URL on a 404.
+- **Unknown length**: the seek bar becomes a non-interactive "length unknown" bar and only the elapsed time is shown.
+- **Reordering** uses pointer events on the drag handle (`lib/reorder.ts`), not HTML5 drag and drop, which a Tauri
+  window on Windows can swallow. Arrow buttons stay. Up next (Now Playing) can also be dragged and has Play next.

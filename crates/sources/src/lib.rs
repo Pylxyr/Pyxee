@@ -63,14 +63,31 @@ pub enum SearchItem {
     },
 }
 
+/// What search shows when it does not know the artist (same text as `pyxee_core::UNKNOWN_ARTIST`).
+pub const UNKNOWN_ARTIST: &str = "Unknown artist";
+
 /// A directly playable stream.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct StreamInfo {
     /// `http(s)://...` for remote streams, a file path for local files.
     pub url: String,
     pub ext: String,
     pub acodec: Option<String>,
     pub abr_kbps: Option<f64>,
+    /// HTTP headers the stream URL must be fetched with (yt-dlp's `http_headers`: User-Agent etc.).
+    /// Empty for local files.
+    pub headers: Vec<(String, String)>,
+    /// What the resolver learned about the song, so the UI can fill in what search left out.
+    pub meta: StreamMeta,
+}
+
+/// Song details reported while resolving a stream; every field may be unknown.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct StreamMeta {
+    pub title: Option<String>,
+    pub artist: Option<String>,
+    pub duration_secs: Option<f64>,
+    pub thumbnail: Option<String>,
 }
 
 pub trait MusicSource: Send + Sync {

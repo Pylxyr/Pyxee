@@ -55,6 +55,22 @@ impl AppHost {
                     }
                 }
             }
+            EngineEvent::TrackDetails { id, .. } => {
+                // The player has already filled the queue entry; keep a saved copy in step.
+                drop(rec);
+                let track = self
+                    .app
+                    .state::<AppState>()
+                    .player
+                    .lock()
+                    .ok()
+                    .and_then(|p| p.queue().get(*id).map(|entry| entry.track.clone()));
+                if let Some(track) = track {
+                    if let Err(err) = with_library(&self.app, |l| l.refresh_track(&track)) {
+                        log::warn!("could not update a saved song: {err}");
+                    }
+                }
+            }
             _ => {}
         }
     }

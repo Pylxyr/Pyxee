@@ -68,7 +68,7 @@ pub enum FailureDto {
     RateLimited,
     Unavailable,
     Decode,
-    Expired,
+    Expired { status: Option<u16> },
     Other { message: String },
 }
 
@@ -179,6 +179,13 @@ pub enum CommandDto {
         id: u64,
     },
     Move {
+        #[ts(type = "number")]
+        id: u64,
+        #[ts(type = "number")]
+        to: usize,
+    },
+    /// Reorders Up next: `to` counts among the upcoming songs, 0 = plays next.
+    MoveUpcoming {
         #[ts(type = "number")]
         id: u64,
         #[ts(type = "number")]
@@ -525,6 +532,10 @@ impl From<CommandDto> for Command {
                 id: EntryId(id),
                 to,
             },
+            CommandDto::MoveUpcoming { id, to } => Command::MoveUpcoming {
+                id: EntryId(id),
+                to,
+            },
             CommandDto::Clear => Command::Clear,
             CommandDto::Undo => Command::Undo,
         }
@@ -537,7 +548,7 @@ fn failure_dto(f: &Failure) -> FailureDto {
         Failure::RateLimited => FailureDto::RateLimited,
         Failure::Unavailable => FailureDto::Unavailable,
         Failure::Decode => FailureDto::Decode,
-        Failure::Expired => FailureDto::Expired,
+        Failure::Expired(status) => FailureDto::Expired { status: *status },
         Failure::Other(m) => FailureDto::Other { message: m.clone() },
     }
 }

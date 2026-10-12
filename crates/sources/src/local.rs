@@ -44,8 +44,7 @@ impl MusicSource for LocalSource {
         Ok(StreamInfo {
             url: path.to_string(),
             ext,
-            acodec: None,
-            abr_kbps: None,
+            ..Default::default()
         })
     }
 

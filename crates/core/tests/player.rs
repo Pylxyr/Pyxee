@@ -2,7 +2,7 @@
 
 use pyxee_core::{
     Command, Effect, EngineEvent as E, EntryId, Failure, Persisted, Player, Repeat, Track,
-    Transport,
+    TrackDetails, Transport, UNKNOWN_ARTIST,
 };
 
 fn tr(n: &str) -> Track {
@@ -194,7 +194,7 @@ fn expired_url_re_resolves_at_the_same_position_up_to_twice() {
         p.snapshot().transport,
         Transport::Failed {
             id: ids[0],
-            failure: Failure::Expired
+            failure: Failure::Expired(None)
         }
     );
 }
@@ -501,4 +501,129 @@ fn every_queue_edit_asks_to_persist() {
     ] {
         assert!(has(&p.command(c), |e| *e == Effect::Persist));
     }
+}
+
+fn details(artist: Option<&str>, ms: Option<u64>, thumb: Option<&str>) -> TrackDetails {
+    TrackDetails {
+        artist: artist.map(str::to_string),
+        duration_ms: ms,
+        thumbnail: thumb.map(str::to_string),
+    }
+}
+
+#[test]
+fn resolver_details_fill_an_unknown_artist_and_a_missing_length_in_the_queue_entry() {
+    let mut p = Player::new(7);
+    let mut t = Track::new("yt:x", "Neon Harbor", UNKNOWN_ARTIST);
+    t.thumbnail = Some("https://i.ytimg.com/vi/x/hqdefault.jpg".into());
+    p.command(Command::PlayTracks {
+        tracks: vec![t],
+        start: 0,
+    });
+    let id = p.queue().entries()[0].id;
+    p.engine(E::TrackDetails {
+        id,
+        details: details(
+            Some("Lowtide"),
+            Some(213_500),
+            Some("https://big/cover.jpg"),
+        ),
+    });
+    let t = &p.queue().get(id).unwrap().track;
+    assert_eq!(t.artist, "Lowtide");
+    assert_eq!(t.duration_ms, Some(213_500));
+    assert_eq!(t.thumbnail.as_deref(), Some("https://big/cover.jpg"));
+    assert_eq!(t.title, "Neon Harbor", "the title is never touched");
+}
+
+#[test]
+fn resolver_details_never_overwrite_a_known_artist_or_length() {
+    let mut t = Track::new("yt:x", "S", "Curated Artist");
+    t.duration_ms = Some(200_000);
+    let mut p = Player::new(7);
+    p.command(Command::PlayTracks {
+        tracks: vec![t],
+        start: 0,
+    });
+    let id = p.queue().entries()[0].id;
+    p.engine(E::TrackDetails {
+        id,
+        details: details(Some("Channel Name"), Some(199_000), None),
+    });
+    let t = &p.queue().get(id).unwrap().track;
+    assert_eq!(
+        (t.artist.as_str(), t.duration_ms),
+        ("Curated Artist", Some(200_000))
+    );
+}
+
+#[test]
+fn details_for_an_entry_that_left_the_queue_are_ignored_and_empty_details_change_nothing() {
+    let (mut p, ids, _) = started(1);
+    p.engine(E::TrackDetails {
+        id: EntryId(9_999),
+        details: details(Some("A"), Some(1), None),
+    });
+    p.engine(E::TrackDetails {
+        id: ids[0],
+        details: details(Some("  "), Some(0), Some("")),
+    });
+    let t = &p.queue().get(ids[0]).unwrap().track;
+    assert_eq!(
+        (t.artist.as_str(), t.duration_ms, t.thumbnail.as_deref()),
+        ("artist", None, None)
+    );
+}
+
+fn upcoming(p: &Player) -> Vec<EntryId> {
+    p.queue().upcoming()
+}
+
+#[test]
+fn an_upcoming_song_can_be_moved_to_play_next_and_the_visible_list_follows() {
+    let (mut p, ids, _) = started(4); // a (current), b, c, d
+    p.command(Command::MoveUpcoming { id: ids[3], to: 0 });
+    assert_eq!(upcoming(&p), vec![ids[3], ids[1], ids[2]]);
+    let shown: Vec<EntryId> = p.queue().entries().iter().map(|e| e.id).collect();
+    assert_eq!(shown, vec![ids[0], ids[3], ids[1], ids[2]]);
+    // And down again, to the end (an index past the end clamps).
+    p.command(Command::MoveUpcoming { id: ids[3], to: 99 });
+    assert_eq!(upcoming(&p), vec![ids[1], ids[2], ids[3]]);
+}
+
+#[test]
+fn the_current_song_and_played_songs_cannot_be_moved_in_up_next() {
+    let (mut p, ids, _) = started(3);
+    p.command(Command::PlayEntry(ids[1])); // b is current; a is behind us
+    let before = upcoming(&p);
+    p.command(Command::MoveUpcoming { id: ids[1], to: 0 });
+    p.command(Command::MoveUpcoming { id: ids[0], to: 0 });
+    p.command(Command::MoveUpcoming {
+        id: EntryId(999),
+        to: 0,
+    });
+    assert_eq!(upcoming(&p), before);
+}
+
+#[test]
+fn under_shuffle_up_next_reorders_play_order_but_not_the_list_the_user_arranged() {
+    let (mut p, ids, _) = started(6);
+    p.command(Command::SetShuffle(true));
+    let shown_before: Vec<EntryId> = p.queue().entries().iter().map(|e| e.id).collect();
+    let last = *upcoming(&p).last().unwrap();
+    p.command(Command::MoveUpcoming { id: last, to: 0 });
+    assert_eq!(upcoming(&p)[0], last, "it plays next now");
+    let shown_after: Vec<EntryId> = p.queue().entries().iter().map(|e| e.id).collect();
+    assert_eq!(shown_before, shown_after);
+    assert_eq!(ids.len(), 6);
+}
+
+#[test]
+fn moving_a_song_to_play_next_changes_what_is_prefetched() {
+    let (mut p, ids, _) = started(4);
+    p.engine(E::Audible { id: ids[0] });
+    p.engine(E::Prefetched { id: ids[1] });
+    let fx = p.command(Command::MoveUpcoming { id: ids[3], to: 0 });
+    assert!(has(&fx, |e| matches!(e, Effect::CancelPrefetch)), "{fx:?}");
+    assert_eq!(prefetch_id(&fx), Some(ids[3]), "{fx:?}");
 }

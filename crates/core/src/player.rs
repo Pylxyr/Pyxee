@@ -5,7 +5,7 @@
 //! (see `HeardTracker`), never merely because it was requested or decoded.
 
 use crate::queue::{EntryId, Origin, Queue, Repeat, UndoKind};
-use crate::track::Track;
+use crate::track::{Track, TrackDetails};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 
@@ -23,8 +23,9 @@ pub enum Failure {
     /// Removed, region-locked, private.
     Unavailable,
     Decode,
-    /// Stream URL expired and re-resolving did not help.
-    Expired,
+    /// The server refused the stream URL (401/403/410) and re-resolving did not help. Carries the
+    /// HTTP status when it is known.
+    Expired(Option<u16>),
     Other(String),
 }
 
@@ -84,6 +85,11 @@ pub enum Command {
         id: EntryId,
         to: usize,
     },
+    /// Reorders the "Up next" list: `to` is the index among the upcoming songs (0 = play next).
+    MoveUpcoming {
+        id: EntryId,
+        to: usize,
+    },
     Clear,
     Undo,
     /// Result of a `NeedRadio` effect.
@@ -125,6 +131,11 @@ pub enum EngineEvent {
     },
     Recovered {
         id: EntryId,
+    },
+    /// The stream's own metadata: fills in an unknown artist, a missing length or a better cover.
+    TrackDetails {
+        id: EntryId,
+        details: TrackDetails,
     },
 }
 
@@ -532,6 +543,11 @@ impl Player {
                     self.dirty = true;
                 }
             }
+            Command::MoveUpcoming { id, to } => {
+                if self.queue.move_upcoming(id, to) {
+                    self.dirty = true;
+                }
+            }
             Command::Clear => {
                 if !self.queue.is_empty() {
                     self.queue.clear();
@@ -594,6 +610,13 @@ impl Player {
     // ---------- engine events ----------
     fn on_engine(&mut self, e: EngineEvent) {
         match e {
+            EngineEvent::TrackDetails { id, details } => {
+                let mut changed = false;
+                self.queue.update_track(id, |t| changed = t.fill(&details));
+                if changed {
+                    self.dirty = true; // the saved session should carry the better data
+                }
+            }
             EngineEvent::Audible { id } => {
                 if !self.queue.contains(id) {
                     return;
@@ -651,7 +674,7 @@ impl Player {
                 } else {
                     self.transport = Transport::Failed {
                         id,
-                        failure: Failure::Expired,
+                        failure: Failure::Expired(None),
                     };
                 }
             }

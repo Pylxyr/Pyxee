@@ -111,6 +111,16 @@ impl Queue {
     pub fn get(&self, id: EntryId) -> Option<&Entry> {
         self.entries.iter().find(|e| e.id == id)
     }
+    /// Changes a track in place (its id and position stay). Returns whether the entry exists.
+    pub fn update_track(&mut self, id: EntryId, f: impl FnOnce(&mut Track)) -> bool {
+        match self.entries.iter_mut().find(|e| e.id == id) {
+            Some(e) => {
+                f(&mut e.track);
+                true
+            }
+            None => false,
+        }
+    }
     pub fn contains(&self, id: EntryId) -> bool {
         self.get(id).is_some()
     }
@@ -296,6 +306,35 @@ impl Queue {
             self.slot = self.slot.map(|s| s.min(self.order.len()));
         }
         true
+    }
+
+    /// Moves an upcoming entry within the play order: `to` is its index in `upcoming()` (0 = plays
+    /// right after the current song). Under shuffle only the play order changes; the list the user
+    /// arranged (`entries`) stays as it is. The current and already-played entries cannot be moved
+    /// this way. Returns whether anything moved.
+    pub fn move_upcoming(&mut self, id: EntryId, to: usize) -> bool {
+        let base = match (self.current_pos(), self.slot) {
+            (Some(p), _) => p + 1,
+            (None, Some(s)) => s,
+            (None, None) => 0,
+        };
+        let Some(from) = self.order.iter().position(|&i| i == id) else {
+            return false;
+        };
+        if from < base || Some(id) == self.current {
+            return false;
+        }
+        self.order.remove(from);
+        let at = (base + to).min(self.order.len());
+        self.order.insert(at, id);
+        if !self.shuffle {
+            // Not shuffled: the visible list is the play order.
+            if let Some(ef) = self.entries.iter().position(|e| e.id == id) {
+                let e = self.entries.remove(ef);
+                self.entries.insert(at.min(self.entries.len()), e);
+            }
+        }
+        from != at
     }
 
     // ---- modes ----

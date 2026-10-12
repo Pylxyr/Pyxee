@@ -528,6 +528,7 @@ fn an_expired_stream_url_mid_song_is_re_resolved_and_playback_continues_where_it
                 ext: "wav".into(),
                 acodec: None,
                 abr_kbps: None,
+                ..Default::default()
             })
         }),
     };
@@ -576,6 +577,177 @@ fn an_expired_stream_url_mid_song_is_re_resolved_and_playback_continues_where_it
     assert!(find_gaps(&r.samples, 2, 1e-3, 8).is_empty());
 }
 
+/// A source whose n-th resolve returns `urls[min(n, last)]`; counts the resolves.
+fn resolving_in_turn(urls: Vec<String>, resolves: Arc<AtomicUsize>) -> TestSource {
+    TestSource {
+        related: Vec::new(),
+        resolve: Box::new(move |_| {
+            let n = resolves.fetch_add(1, Ordering::SeqCst);
+            Ok(StreamInfo {
+                url: urls[n.min(urls.len() - 1)].clone(),
+                ext: "wav".into(),
+                ..Default::default()
+            })
+        }),
+    }
+}
+
+fn refusing_server() -> String {
+    serve(
+        make_wav(2),
+        0,
+        Arc::new(AtomicBool::new(false)),
+        Duration::ZERO,
+    )
+}
+
+fn working_server() -> String {
+    serve(
+        make_wav(2),
+        usize::MAX,
+        Arc::new(AtomicBool::new(true)),
+        Duration::ZERO,
+    )
+}
+
+fn play_one(r: &mut Rig, key: &str) {
+    let mut t = Track::new(key, "Song", "x");
+    t.duration_ms = Some(2_000);
+    r.cmd(Command::PlayTracks {
+        tracks: vec![t],
+        start: 0,
+    });
+}
+
+#[test]
+fn a_url_refused_at_once_is_re_resolved_and_only_the_working_url_is_remembered() {
+    let resolves = Arc::new(AtomicUsize::new(0));
+    let src = resolving_in_turn(vec![refusing_server(), working_server()], resolves.clone());
+    let mut r = Rig::new(src);
+    r.cmd(Command::SetAutoplay(false));
+    play_one(&mut r, "yt:picky");
+    assert!(
+        r.run_until(20, |r| r.snapshot().transport == Transport::Idle
+            && r.samples.len() >= 180_000),
+        "{:?}",
+        r.snapshot()
+    );
+    assert_eq!(
+        resolves.load(Ordering::SeqCst),
+        2,
+        "the refused URL was replaced by one fresh resolve"
+    );
+
+    // Playing it again must use the remembered (working) URL: no third resolve.
+    let heard = r.samples.len();
+    play_one(&mut r, "yt:picky");
+    assert!(
+        r.run_until(20, |r| r.snapshot().transport == Transport::Idle
+            && r.samples.len() >= heard + 180_000),
+        "{:?}",
+        r.snapshot()
+    );
+    assert_eq!(resolves.load(Ordering::SeqCst), 2, "served from the cache");
+}
+
+#[test]
+fn when_every_url_is_refused_the_song_fails_with_the_status_and_a_retry_resolves_afresh() {
+    let resolves = Arc::new(AtomicUsize::new(0));
+    // Resolves 1 and 2 are refused (the first attempt and its single re-resolve); the third works.
+    let src = resolving_in_turn(
+        vec![refusing_server(), refusing_server(), working_server()],
+        resolves.clone(),
+    );
+    let mut r = Rig::new(src);
+    r.cmd(Command::SetAutoplay(false));
+    play_one(&mut r, "yt:picky");
+    assert!(
+        r.run_until(20, |r| matches!(
+            r.snapshot().transport,
+            Transport::Failed { .. }
+        )),
+        "{:?}",
+        r.snapshot()
+    );
+    assert_eq!(
+        resolves.load(Ordering::SeqCst),
+        2,
+        "one re-resolve, no loop"
+    );
+    assert!(
+        matches!(
+            r.snapshot().transport,
+            Transport::Failed {
+                failure: pyxee_core::Failure::Expired(Some(403)),
+                ..
+            }
+        ),
+        "{:?}",
+        r.snapshot().transport
+    );
+    assert!(
+        r.notices()
+            .iter()
+            .any(|n| n.contains("YouTube refused to send it (HTTP 403)")),
+        "{:?}",
+        r.notices()
+    );
+
+    // Retry must not be handed the refused URL from the cache.
+    r.cmd(Command::Retry);
+    assert!(
+        r.run_until(20, |r| r.snapshot().transport == Transport::Idle
+            && r.samples.len() >= 180_000),
+        "{:?}",
+        r.snapshot()
+    );
+    assert_eq!(resolves.load(Ordering::SeqCst), 3);
+}
+
+#[test]
+fn the_streams_own_metadata_fills_in_artist_length_and_cover_in_the_queue() {
+    let url = working_server();
+    let src = TestSource {
+        related: Vec::new(),
+        resolve: Box::new(move |_| {
+            Ok(StreamInfo {
+                url: url.clone(),
+                ext: "wav".into(),
+                meta: pyxee_sources::StreamMeta {
+                    title: None,
+                    artist: Some("Lowtide".into()),
+                    duration_secs: Some(2.0),
+                    thumbnail: Some("https://big/cover.jpg".into()),
+                },
+                ..Default::default()
+            })
+        }),
+    };
+    let mut r = Rig::new(src);
+    r.cmd(Command::SetAutoplay(false));
+    // What a songs-only search gives: no artist, no length, a small cover.
+    let mut t = Track::new("yt:bare", "Neon Harbor", pyxee_core::UNKNOWN_ARTIST);
+    t.thumbnail = Some("https://i.ytimg.com/vi/bare/hqdefault.jpg".into());
+    r.cmd(Command::PlayTracks {
+        tracks: vec![t],
+        start: 0,
+    });
+    assert!(
+        r.run_until(20, |r| r.snapshot().transport == Transport::Idle
+            && r.samples.len() >= 180_000)
+    );
+    let player = r.shared.player.lock().unwrap();
+    let entry = &player.queue().entries()[0].track;
+    assert_eq!(entry.artist, "Lowtide");
+    assert_eq!(entry.duration_ms, Some(2_000));
+    assert_eq!(entry.thumbnail.as_deref(), Some("https://big/cover.jpg"));
+}
+
+#[test]
+fn the_unknown_artist_text_is_the_same_in_core_and_sources() {
+    assert_eq!(pyxee_core::UNKNOWN_ARTIST, pyxee_sources::UNKNOWN_ARTIST);
+}
+
 #[test]
 fn seeking_never_lets_the_next_track_play_first() {
     // Re-opening the current track at the seek offset is slow over a network, while the next track
@@ -595,6 +767,7 @@ fn seeking_never_lets_the_next_track_play_first() {
                     ext: "wav".into(),
                     acodec: None,
                     abr_kbps: None,
+                    ..Default::default()
                 })
             } else {
                 LocalSource.resolve_stream(key)
@@ -800,6 +973,7 @@ fn a_stream_cut_off_long_before_its_known_length_is_reported() {
                 ext: "wav".into(),
                 acodec: None,
                 abr_kbps: None,
+                ..Default::default()
             })
         }),
     };
@@ -960,6 +1134,7 @@ fn a_server_that_ignores_range_requests_falls_back_to_ffmpeg_instead_of_failing_
                 ext: "wav".into(),
                 acodec: None,
                 abr_kbps: None,
+                ..Default::default()
             })
         }),
     };

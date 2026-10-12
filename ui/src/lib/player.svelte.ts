@@ -17,7 +17,7 @@ export function describeFailure(f: FailureDto): string {
     case 'rateLimited': return 'Too many requests. Wait a moment and try again.';
     case 'unavailable': return "This track isn't available.";
     case 'decode': return "This track couldn't be played.";
-    case 'expired': return 'The stream expired and could not be refreshed.';
+    case 'expired': return f.status ? `YouTube refused to send it (HTTP ${f.status}).` : 'YouTube refused to send it.';
     case 'other': return f.message;
   }
 }
@@ -70,6 +70,8 @@ export class PlayerStore {
   playNext = (track: TrackDto) => this.dispatch({ type: 'playNext', track });
   addToQueue = (track: TrackDto) => this.dispatch({ type: 'addToQueue', track });
   remove = (id: number) => this.dispatch({ type: 'remove', id });
+  /** Reorders Up next; `to` counts among the upcoming songs (0 = plays next). */
+  moveUpcoming = (id: number, to: number) => this.dispatch({ type: 'moveUpcoming', id, to });
   undo = () => this.dispatch({ type: 'undo' });
 }
 

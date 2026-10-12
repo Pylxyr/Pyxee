@@ -197,6 +197,15 @@ impl LibraryService {
         self.changed(r)
     }
 
+    /// A saved song learned its real artist, length or cover.
+    pub fn refresh_track(&mut self, t: &Track) -> Res<bool> {
+        let r = self.lib.refresh_track(t).map_err(err);
+        if matches!(r, Ok(true)) {
+            self.revision += 1;
+        }
+        r
+    }
+
     pub fn record_play(&mut self, t: &Track, now: i64) -> Res<()> {
         let r = self.lib.record_play(t, now).map_err(err);
         self.changed(r)

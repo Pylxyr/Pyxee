@@ -29,6 +29,39 @@ async function openApp() {
   await waitFor(() => expect(player.ready && library.ready).toBe(true));
 }
 
+const sheetOf = (name: string) => screen.getByRole('dialog', { name }).closest('[data-sheet]') as HTMLElement;
+const zOf = (el: HTMLElement) => Number(el.style.zIndex);
+
+describe('sheets are above everything, and stack in the order they were opened', () => {
+  it('the Settings button is a gear and opens a sheet called Settings with Appearance and Diagnostics', async () => {
+    await openApp();
+    await fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
+    expect(await screen.findByRole('dialog', { name: 'Settings' })).toBeTruthy();
+    expect(screen.getByRole('region', { name: 'Appearance' })).toBeTruthy();
+    expect(screen.getByRole('region', { name: 'Diagnostics' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Appearance' })).toBeNull();
+  });
+
+  it('a sheet opened from Settings (the theme editor) lands on top of it, not underneath', async () => {
+    await openApp();
+    await fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
+    await screen.findByRole('dialog', { name: 'Settings' });
+    await fireEvent.click(screen.getByRole('button', { name: /Customize/ }));
+    await screen.findByRole('dialog', { name: 'Customize theme' });
+    // In the page the editor comes before the Settings sheet; only the opening order may decide.
+    expect(zOf(sheetOf('Customize theme'))).toBeGreaterThan(zOf(sheetOf('Settings')));
+  });
+
+  it('every sheet is above Now Playing (z-40), and the snackbar above the sheets', async () => {
+    await openApp();
+    await fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
+    await screen.findByRole('dialog', { name: 'Settings' });
+    expect(zOf(sheetOf('Settings'))).toBeGreaterThan(40);
+    const snackbarLayer = document.querySelector('[aria-live="polite"]') as HTMLElement;
+    expect(snackbarLayer.className).toContain('z-[1000]');
+  });
+});
+
 describe('messages from the engine', () => {
   it('a skipped-song notice appears as a message the listener can read', async () => {
     await openApp();
@@ -48,7 +81,7 @@ describe('messages from the engine', () => {
 describe('Diagnostics (where the log is)', () => {
   async function openAppearance() {
     await openApp();
-    await fireEvent.click(screen.getByRole('button', { name: 'Appearance' }));
+    await fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
     return screen.findByRole('region', { name: 'Diagnostics' });
   }
 

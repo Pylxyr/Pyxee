@@ -14,6 +14,7 @@ pub struct HttpRangeSource {
     pos: u64,
     buf: Vec<u8>,
     buf_start: u64,
+    headers: Vec<(String, String)>,
 }
 
 fn net(e: impl std::fmt::Display) -> AudioError {
@@ -36,13 +37,30 @@ pub(crate) fn is_expired(code: u16) -> bool {
     matches!(code, 401 | 403 | 410)
 }
 
+/// Applies the headers a stream URL needs (User-Agent etc.). Range is set by the caller and never overridden.
+fn with_headers(mut req: ureq::Request, headers: &[(String, String)]) -> ureq::Request {
+    for (k, v) in headers {
+        if k.eq_ignore_ascii_case("range") || k.eq_ignore_ascii_case("host") {
+            continue;
+        }
+        req = req.set(k, v);
+    }
+    req
+}
+
 impl HttpRangeSource {
     pub fn open(url: &str) -> Result<Self, AudioError> {
+        Self::open_with(url, &[])
+    }
+
+    /// Opens `url` sending `headers` on every request.
+    pub fn open_with(url: &str, headers: &[(String, String)]) -> Result<Self, AudioError> {
         let agent = ureq::AgentBuilder::new()
             .timeout_connect(Duration::from_secs(10))
             .timeout_read(Duration::from_secs(20))
             .build();
-        let resp = match agent.get(url).set("Range", "bytes=0-0").call() {
+        let first = with_headers(agent.get(url), headers).set("Range", "bytes=0-0");
+        let resp = match first.call() {
             Ok(r) => r,
             Err(ureq::Error::Status(c, _)) if is_expired(c) => {
                 return Err(AudioError::UrlExpired(c))
@@ -64,6 +82,7 @@ impl HttpRangeSource {
             pos: 0,
             buf: Vec::new(),
             buf_start: 0,
+            headers: headers.to_vec(),
         })
     }
 
@@ -75,9 +94,7 @@ impl HttpRangeSource {
             if attempt > 0 {
                 std::thread::sleep(Duration::from_millis(300 * attempt));
             }
-            let resp = self
-                .agent
-                .get(&self.url)
+            let resp = with_headers(self.agent.get(&self.url), &self.headers)
                 .set("Range", &format!("bytes={from}-{to}"))
                 .call();
             match resp {

@@ -113,10 +113,13 @@ describe('describeFailure', () => {
   it('has a message for every failure kind', () => {
     for (const f of [
       { kind: 'offline' }, { kind: 'rateLimited' }, { kind: 'unavailable' },
-      { kind: 'decode' }, { kind: 'expired' }, { kind: 'other', message: 'boom' },
+      { kind: 'decode' }, { kind: 'expired', status: 403 }, { kind: 'expired', status: null },
+      { kind: 'other', message: 'boom' },
     ] as const) {
       expect(describeFailure(f).length).toBeGreaterThan(3);
     }
     expect(describeFailure({ kind: 'other', message: 'boom' })).toBe('boom');
+    expect(describeFailure({ kind: 'expired', status: 403 })).toBe('YouTube refused to send it (HTTP 403).');
+    expect(describeFailure({ kind: 'expired', status: null })).toBe('YouTube refused to send it.');
   });
 });

@@ -48,7 +48,7 @@
     })();
   });
 
-  // The log location is looked up when the Appearance sheet (which has the Diagnostics section) opens.
+  // The log location is looked up when the Settings sheet (which has the Diagnostics section) opens.
   $effect(() => {
     if (nav.themeSheetOpen && backendRef) void backendRef.logInfo().then((i) => (logInfo = i));
   });
@@ -116,8 +116,8 @@
     <main class="flex min-w-0 flex-1 flex-col overflow-hidden">
       <div class="relative z-20 flex shrink-0 items-center">
         <div class="flex-1"><TopBar /></div>
-        <button class="mr-4 rounded-full p-2 text-muted hover:text-fg sm:mr-8" aria-label="Appearance" onclick={() => (nav.themeSheetOpen = true)}>
-          <Icon name="explore" size={20} />
+        <button class="mr-4 rounded-full p-2 text-muted hover:text-fg sm:mr-8" aria-label="Settings" onclick={() => (nav.themeSheetOpen = true)}>
+          <Icon name="settings" size={20} />
         </button>
       </div>
       {#if library.snapshot.error}
@@ -157,12 +157,15 @@
 <NameSheet />
 <ThemeEditor />
 
-<Sheet open={nav.themeSheetOpen} title="Appearance" onclose={() => (nav.themeSheetOpen = false)}>
-  <ThemePicker />
-  <label class="flex items-center justify-between rounded-lg px-3 py-3 hover:bg-surface">
-    <span>Color from album art</span>
-    <input type="checkbox" checked={theme.settings.dynamicColor} onchange={(e) => theme.update({ dynamicColor: e.currentTarget.checked })} />
-  </label>
+<Sheet open={nav.themeSheetOpen} title="Settings" onclose={() => (nav.themeSheetOpen = false)}>
+  <section aria-label="Appearance">
+    <h3 class="px-3 pb-1 text-sm font-semibold">Appearance</h3>
+    <ThemePicker />
+    <label class="flex items-center justify-between rounded-lg px-3 py-3 hover:bg-surface">
+      <span>Color from album art</span>
+      <input type="checkbox" checked={theme.settings.dynamicColor} onchange={(e) => theme.update({ dynamicColor: e.currentTarget.checked })} />
+    </label>
+  </section>
   <section class="mt-3 border-t border-line px-3 pt-3" aria-label="Diagnostics">
     <h3 class="text-sm font-semibold">Diagnostics</h3>
     <p class="mt-1 text-[13px] text-muted">Pyxee keeps a log of what it does. If a song won't play or keeps skipping, the log says why.</p>

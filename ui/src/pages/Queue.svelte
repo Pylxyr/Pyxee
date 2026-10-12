@@ -6,6 +6,7 @@
   import { messageOf } from '$lib/backend';
   import { snackbar } from '$lib/snackbar.svelte';
   import { formatTime } from '$lib/format';
+  import { reorder } from '$lib/reorder';
   import Icon from '../components/Icon.svelte';
   import Thumb from '../components/Thumb.svelte';
   import EmptyState from '../components/EmptyState.svelte';
@@ -13,8 +14,10 @@
 
   const queue = $derived(player.state.queue);
   const firstRadio = $derived(queue.find((e) => e.origin === 'radio')?.id ?? null);
-  let dragId = $state<number | null>(null);
-  let overIndex = $state<number | null>(null);
+  /** The row being dragged and where it would land (null when nothing is being dragged). */
+  let drag = $state<{ id: number; from: number; to: number } | null>(null);
+  let listEl = $state<HTMLElement>();
+  const rows = () => [...(listEl?.querySelectorAll<HTMLElement>('[data-row]') ?? [])];
 
   function saveAsPlaylist() {
     const tracks = queue.map((e) => e.track);
@@ -32,11 +35,6 @@
   function move(id: number, to: number) {
     if (to < 0 || to >= queue.length) return;
     player.dispatch({ type: 'move', id, to });
-  }
-  function drop(e: DragEvent, to: number) {
-    e.preventDefault();
-    if (dragId != null) move(dragId, to);
-    dragId = overIndex = null;
   }
   function status(id: number) {
     if (id === player.state.audible) return 'Now playing';
@@ -57,27 +55,26 @@
   {#if queue.length === 0}
     <EmptyState icon="queue" title="Your queue is empty" text="Search for a song and choose Play next or Add to queue." />
   {:else}
-    <ul class="mt-4" aria-label="Queue">
+    <ul class="mt-4" aria-label="Queue" bind:this={listEl}>
       {#each queue as e, i (e.id)}
         {#if e.id === firstRadio}
           <li class="px-3 pb-1 pt-5 text-xs font-semibold uppercase tracking-wider text-muted" aria-hidden="true">Autoplay · similar songs</li>
         {/if}
         <li
-          draggable="true"
-          class="group flex items-center gap-1 rounded-lg border-t-2 hover:bg-surface-2 {overIndex === i && dragId !== e.id ? 'border-accent' : 'border-transparent'} {dragId === e.id ? 'opacity-40' : ''} {status(e.id) ? 'bg-surface-2' : ''}"
-          ondragstart={(ev) => {
-            dragId = e.id;
-            ev.dataTransfer?.setData('text/plain', String(e.id));
-            if (ev.dataTransfer) ev.dataTransfer.effectAllowed = 'move';
-          }}
-          ondragover={(ev) => {
-            ev.preventDefault();
-            overIndex = i;
-          }}
-          ondrop={(ev) => drop(ev, i)}
-          ondragend={() => (dragId = overIndex = null)}
+          data-row
+          class="group flex items-center gap-1 rounded-lg border-y-2 border-transparent hover:bg-surface-2 {drag && drag.to === i && drag.id !== e.id ? (drag.to < drag.from ? 'border-t-accent' : 'border-b-accent') : ''} {drag?.id === e.id ? 'opacity-40' : ''} {status(e.id) ? 'bg-surface-2' : ''}"
         >
-          <span class="cursor-grab p-2 text-muted" aria-hidden="true"><Icon name="drag" size={18} /></span>
+          <span
+            class="cursor-grab touch-none select-none p-2 text-muted"
+            role="presentation"
+            title="Drag to reorder"
+            data-testid="drag-handle"
+            use:reorder={{
+              index: i,
+              rows,
+              onover: (to) => (drag = to === null ? null : { id: e.id, from: i, to }),
+              ondrop: (to) => move(e.id, to),
+            }}><Icon name="drag" size={18} /></span>
           <button class="flex min-w-0 flex-1 items-center gap-3 py-2 text-left" onclick={() => player.playEntry(e.id)}>
             <Thumb src={e.track.thumbnail} seed={e.track.key} size={48} />
             <span class="min-w-0 flex-1">
