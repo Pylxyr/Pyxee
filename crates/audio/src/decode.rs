@@ -353,6 +353,14 @@ impl FfmpegPipeSource {
         if let Some(t) = self.stderr_thread.take() {
             let _ = t.join();
         }
+        if !status.success() {
+            let last = self
+                .last_error
+                .lock()
+                .map(|g| g.clone())
+                .unwrap_or_default();
+            log::warn!("ffmpeg exited with {status}: {last}");
+        }
         if status.success() {
             Ok(())
         } else {

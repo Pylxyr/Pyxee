@@ -69,6 +69,26 @@ export class MockBackend extends MockLibrary implements Backend {
   /** The last volume the UI asked for (0-100), so tests can check it arrived. */
   volume = 100;
   async setVolume(percent: number) { this.volume = percent; }
+  /** Demo log location, and a count of how many times the folder was opened. */
+  logFolderOpens = 0;
+  logError: string | null = null;
+  async logInfo() {
+    return {
+      dir: 'C:\\Users\\you\\AppData\\Roaming\\dev.pyxee.app\\logs',
+      file: 'C:\\Users\\you\\AppData\\Roaming\\dev.pyxee.app\\logs\\pyxee.log',
+      error: this.logError,
+    };
+  }
+  async openLogFolder() { this.logFolderOpens++; }
+  #noticeListeners = new Set<(m: string) => void>();
+  async onNotice(cb: (m: string) => void) {
+    this.#noticeListeners.add(cb);
+    return () => void this.#noticeListeners.delete(cb);
+  }
+  /** Simulates the backend telling the listener something (e.g. a song was skipped). */
+  emitNotice(message: string) {
+    for (const cb of this.#noticeListeners) cb(message);
+  }
   async devCatalog() { return DEMO_TRACKS; }
   async searchFilters(): Promise<FilterInfoDto[]> {
     return (['all', 'songs', 'videos', 'albums', 'artists', 'playlists'] as SearchFilterDto[]).map((filter) => ({

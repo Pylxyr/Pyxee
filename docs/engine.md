@@ -50,3 +50,19 @@ A seek re-opens the current track at the offset. Over a network that is slow, wh
 quickly; the first version let the next track win that race, so a forward seek played the next song instead. A prefetched
 track now waits until the track being re-opened is queued, then follows it. `seeking_never_lets_the_next_track_play_first`
 reproduces this with a slow local HTTP server (0.02 s of the seeked song before the next one cut in, before the fix).
+
+## Logs and messages (added after the first Windows run)
+`crates/app/src/logging.rs` writes `pyxee.log` (rotated at 2 MB, UTC timestamps, panics included); the engine, sources and
+audio crates log through the standard `log` facade. A song's life is traceable: `start`, `resolved` (format, codec, bitrate and
+the host the stream comes from, never the full URL), `ready`, `audible`, `ended ... after N ms (expected M ms)`, and for failures
+`could not start ...: <reason>` plus yt-dlp's and ffmpeg's own error output.
+
+Skips are no longer silent. When a song is skipped because it cannot be played, or its stream ends long before its known length,
+the UI shows a message naming the song and the reason ("... can't be played, so it was skipped: it isn't available ..."). Being
+offline or rate limited is not announced (the player bar already shows it with a Retry).
+
+## Fixes from the second Windows run
+- Seeking after a gapless handover re-opened the song the session *started* with, so seeking in song 2 played song 1. A seek now
+  re-opens the song that is audible (`seeking_after_a_gapless_advance_stays_on_the_song_that_is_playing`).
+- If a stream cannot seek to a position, or a server ignores range requests, the engine now uses ffmpeg instead of treating the
+  song as unplayable (which skipped it silently).

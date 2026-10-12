@@ -27,6 +27,53 @@ const RECOVER_AFTER: Duration = Duration::from_millis(600);
 pub trait Host: Send + Sync + 'static {
     fn engine_event(&self, e: EngineEvent);
     fn command(&self, c: Command);
+    /// Something the listener should be told that is not part of the player state (a song was skipped,
+    /// a stream was cut off). Shown as a message in the UI.
+    fn notice(&self, _message: String) {}
+}
+
+fn clock(ms: u64) -> String {
+    format!("{}:{:02}", ms / 60_000, ms / 1000 % 60)
+}
+
+/// Why a song cannot be played, in words for the listener.
+pub fn skip_reason(f: &Failure) -> String {
+    match f {
+        Failure::Unavailable => {
+            "it isn't available (it may be private, removed or blocked in your region)".into()
+        }
+        Failure::Decode => "its audio could not be read".into(),
+        Failure::Expired => "its stream expired and could not be refreshed".into(),
+        Failure::Offline => "you appear to be offline".into(),
+        Failure::RateLimited => "the music service is limiting requests".into(),
+        Failure::Other(m) => m.clone(),
+    }
+}
+
+/// `upcoming`: the song has not been reached yet (a prefetch failed), so it *will* be skipped.
+pub fn skipped_notice(title: &str, f: &Failure, upcoming: bool) -> String {
+    let when = if upcoming {
+        "it will be skipped"
+    } else {
+        "it was skipped"
+    };
+    format!(
+        "\u{201c}{title}\u{201d} can't be played, so {when}: {}. The log has details.",
+        skip_reason(f)
+    )
+}
+
+pub fn early_end_notice(title: &str, heard_ms: u64, expected_ms: u64) -> String {
+    format!(
+        "\u{201c}{title}\u{201d} stopped early, at {} of {}. The stream was cut off. The log has details.",
+        clock(heard_ms),
+        clock(expected_ms)
+    )
+}
+
+/// A song that ends well before its known length (and not because of a seek) was cut off.
+pub fn ended_early(heard_ms: u64, expected_ms: Option<u64>) -> bool {
+    expected_ms.is_some_and(|e| e > 15_000 && heard_ms * 10 < e * 6 && e - heard_ms > 10_000)
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -85,7 +132,13 @@ pub struct Engine {
     start_queued: bool,
     /// A prefetched track that finished before the start track did; queued right after it.
     held_prefetch: Option<Box<PreparedTrack>>,
-    start_key: Option<String>,
+    /// The song the listener is (logically) on: updated when a track becomes audible, so a seek always
+    /// re-opens *this* song, not the one the session originally started with.
+    current: Option<(EntryId, Track)>,
+    /// Every track the engine was told about in this session (for titles and lengths in logs and notices).
+    known: HashMap<EntryId, Track>,
+    /// Last heard position of each track, in ms from its start (including a seek offset).
+    last_heard_ms: HashMap<EntryId, u64>,
     prefetch_req: Option<(EntryId, String)>,
     offsets: HashMap<EntryId, u64>,
     audible: HashSet<EntryId>,
@@ -124,7 +177,9 @@ impl Engine {
             start_id: None,
             start_queued: false,
             held_prefetch: None,
-            start_key: None,
+            current: None,
+            known: HashMap::new(),
+            last_heard_ms: HashMap::new(),
             prefetch_req: None,
             offsets: HashMap::new(),
             audible: HashSet::new(),
@@ -149,9 +204,21 @@ impl Engine {
                 id,
                 track,
                 start_ms,
-            } => self.start(id, &track, start_ms, false),
+            } => {
+                log::info!(
+                    "start: \"{}\" ({}) at {} ms",
+                    track.title,
+                    track.key,
+                    start_ms
+                );
+                self.known.clear();
+                self.last_heard_ms.clear();
+                self.start(id, &track, start_ms, false);
+            }
             Effect::Prefetch { id, track } => {
+                log::info!("prefetch: \"{}\" ({})", track.title, track.key);
                 self.prefetch_req = Some((id, track.key.clone()));
+                self.known.insert(id, track.clone());
                 self.spawn_prefetch(id, track.key);
             }
             Effect::CancelPrefetch => {
@@ -169,7 +236,10 @@ impl Engine {
                 self.pipeline.set_paused(false);
             }
             Effect::Stop => {
+                log::info!("stop");
                 self.generation += 1;
+                self.current = None;
+                self.known.clear();
                 self.prefetch_req = None;
                 self.start_id = None;
                 self.held_prefetch = None;
@@ -178,13 +248,15 @@ impl Engine {
                 self.paused = false;
             }
             Effect::Seek { ms } => {
-                // Re-open the current track at the offset. Its "audible again" is not a new track.
-                if let (Some(id), Some(key)) = (self.start_id, self.start_key.clone()) {
-                    let track = Track::new(&key, "", "");
+                // Re-open the song that is playing now at the offset. Its "audible again" is not a new track.
+                if let Some((id, track)) = self.current.clone() {
+                    log::info!("seek: \"{}\" ({}) to {} ms", track.title, track.key, ms);
                     self.start(id, &track, ms, true);
                     if let Some((pid, pkey)) = self.prefetch_req.clone() {
                         self.spawn_prefetch(pid, pkey);
                     }
+                } else {
+                    log::warn!("seek to {ms} ms ignored: no song is playing");
                 }
             }
             Effect::NeedRadio { seed, count } => {
@@ -211,7 +283,8 @@ impl Engine {
         self.start_id = Some(id);
         self.start_queued = false;
         self.held_prefetch = None;
-        self.start_key = Some(track.key.clone());
+        self.known.insert(id, track.clone());
+        self.current = Some((id, track.clone()));
         if !is_seek {
             self.prefetch_req = None;
         }
@@ -272,6 +345,7 @@ impl Engine {
                 }
                 match (purpose, result) {
                     (Purpose::Start, Ok(t)) => {
+                        log::info!("ready: {}", self.describe(id));
                         self.pipeline.push(*t);
                         self.start_queued = true;
                         // The next track may have been ready first (a seek re-opens the current track,
@@ -289,11 +363,15 @@ impl Engine {
                         self.host.engine_event(EngineEvent::Prefetched { id });
                     }
                     (Purpose::Start, Err(failure)) => {
+                        log::warn!("could not start {}: {failure:?}", self.describe(id));
                         self.held_prefetch = None;
+                        self.notify_skip(id, &failure, false);
                         self.host
                             .engine_event(EngineEvent::LoadFailed { id, failure });
                     }
                     (Purpose::Prefetch, Err(failure)) => {
+                        log::warn!("could not prefetch {}: {failure:?}", self.describe(id));
+                        self.notify_skip(id, &failure, true);
                         self.host
                             .engine_event(EngineEvent::PrefetchFailed { id, failure });
                     }
@@ -324,26 +402,34 @@ impl Engine {
                 message,
                 frames_emitted,
             } => {
-                eprintln!("track {id:?} stopped: {kind:?}: {message}");
+                log::warn!(
+                    "{} stopped producing audio after {} ms: {kind:?}: {message}",
+                    self.describe(id),
+                    frames_emitted * 1000 / u64::from(self.rate)
+                );
                 if self.audible.contains(&id) {
                     // Still playing what was buffered before the failure; report it when it is heard.
                     self.failed_later.insert(id, (kind, frames_emitted));
                 } else if self.start_id == Some(id) {
-                    self.host.engine_event(EngineEvent::LoadFailed {
-                        id,
-                        failure: failure_for(kind),
-                    });
+                    let failure = failure_for(kind);
+                    self.notify_skip(id, &failure, false);
+                    self.host
+                        .engine_event(EngineEvent::LoadFailed { id, failure });
                 } else {
-                    self.host.engine_event(EngineEvent::PrefetchFailed {
-                        id,
-                        failure: failure_for(kind),
-                    });
+                    let failure = failure_for(kind);
+                    self.notify_skip(id, &failure, true);
+                    self.host
+                        .engine_event(EngineEvent::PrefetchFailed { id, failure });
                 }
             }
             PipeEvent::Heard(_) if self.suppress_heard => {}
             PipeEvent::Heard(Heard::Audible(id)) => {
                 self.audible.insert(id);
                 self.stalled_since = None;
+                log::info!("audible: {}", self.describe(id));
+                if let Some(t) = self.known.get(&id) {
+                    self.current = Some((id, t.clone()));
+                }
                 if self.skip_audible_for == Some(id) {
                     self.skip_audible_for = None; // same track, resumed after a seek
                 } else {
@@ -360,15 +446,61 @@ impl Engine {
                     self.suppress_heard = true;
                     self.host.engine_event(EngineEvent::UrlExpired { id });
                 }
-                _ => self.host.engine_event(EngineEvent::Ended { id }),
+                failed => {
+                    let heard = self.last_heard_ms.get(&id).copied().unwrap_or(0);
+                    let expected = self.known.get(&id).and_then(|t| t.duration_ms);
+                    log::info!(
+                        "ended: {} after {} ms (expected {:?} ms)",
+                        self.describe(id),
+                        heard,
+                        expected
+                    );
+                    if let (Some((kind, _)), Some(t)) = (failed, self.known.get(&id)) {
+                        self.host.notice(format!(
+                            "\u{201c}{}\u{201d} stopped early because of a playback error ({kind:?}). The log has details.",
+                            t.title
+                        ));
+                    } else if ended_early(heard, expected) {
+                        let title = self.known.get(&id).map_or("A song", |t| t.title.as_str());
+                        log::warn!(
+                            "{} was cut off: heard {heard} ms of {expected:?} ms",
+                            self.describe(id)
+                        );
+                        self.host
+                            .notice(early_end_notice(title, heard, expected.unwrap_or(0)));
+                    }
+                    self.host.engine_event(EngineEvent::Ended { id });
+                }
             },
         }
+    }
+
+    /// `"Title" (key)` for log lines.
+    fn describe(&self, id: EntryId) -> String {
+        match self.known.get(&id) {
+            Some(t) => format!("\"{}\" ({})", t.title, t.key),
+            None => format!("track {}", id.0),
+        }
+    }
+
+    /// Tell the listener when a song is skipped for a reason that will not go away by itself.
+    fn notify_skip(&self, id: EntryId, failure: &Failure, upcoming: bool) {
+        if failure.is_transient() {
+            return; // the player bar already shows "offline" / "rate limited" with a Retry
+        }
+        let title = self
+            .known
+            .get(&id)
+            .map_or_else(|| "A song".to_string(), |t| t.title.clone());
+        self.host.notice(skipped_notice(&title, failure, upcoming));
     }
 
     fn tick(&mut self) {
         let now = Instant::now();
         let underruns = self.pipeline.underruns();
         if let Some((id, ms)) = self.pipeline.heard_position() {
+            self.last_heard_ms
+                .insert(id, self.offsets.get(&id).copied().unwrap_or(0) + ms);
             if !self.paused && underruns > self.seen_underruns && self.stalled_since.is_none() {
                 self.stalled_since = Some((id, now));
                 self.host.engine_event(EngineEvent::Stalled { id });
@@ -405,6 +537,15 @@ fn failure_for(kind: FailKind) -> Failure {
     }
 }
 
+/// Where a stream lives, for logs (the full URL carries a token and is long).
+fn host_of(url: &str) -> &str {
+    if url.starts_with("http") {
+        url.split('/').nth(2).unwrap_or("?")
+    } else {
+        "a local file"
+    }
+}
+
 fn resolve_cached(
     source: &dyn MusicSource,
     cache: &UrlCache,
@@ -419,6 +560,13 @@ fn resolve_cached(
         }
     }
     let s = source.resolve_stream(key)?;
+    log::info!(
+        "resolved {key}: ext={} acodec={:?} abr={:?} from {}",
+        s.ext,
+        s.acodec,
+        s.abr_kbps,
+        host_of(&s.url)
+    );
     if let Ok(mut c) = cache.lock() {
         c.insert(key.to_string(), (s.clone(), Instant::now()));
     }
@@ -444,14 +592,25 @@ fn open_stream(
         };
         match opened {
             Ok(mut src) => {
-                if start_ms > 0 {
-                    src.seek_ms(start_ms)?;
+                if start_ms == 0 {
+                    return Ok(Box::new(src));
                 }
-                return Ok(Box::new(src));
+                match src.seek_ms(start_ms) {
+                    Ok(()) => return Ok(Box::new(src)),
+                    Err(e @ (AudioError::UrlExpired(_) | AudioError::Network(_))) => return Err(e),
+                    // The format cannot seek (no index): let ffmpeg do it rather than give up on the song.
+                    Err(e) => {
+                        log::warn!("seeking to {start_ms} ms failed ({e}); using ffmpeg instead")
+                    }
+                }
             }
             Err(e @ (AudioError::UrlExpired(_) | AudioError::Network(_))) => return Err(e),
-            Err(_) => {} // unreadable for symphonia: try ffmpeg
+            Err(e) => log::warn!(
+                "the built-in decoder cannot read this stream ({e}); using ffmpeg instead"
+            ),
         }
+    } else {
+        log::info!("opus audio: decoding with ffmpeg");
     }
     Ok(Box::new(FfmpegPipeSource::spawn_at(
         ffmpeg, &s.url, start_ms,

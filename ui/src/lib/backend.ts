@@ -2,6 +2,8 @@ import type { CommandDto } from './bindings/CommandDto';
 import type { AddResultDto } from './bindings/AddResultDto';
 import type { FilterInfoDto } from './bindings/FilterInfoDto';
 import type { HistoryItemDto } from './bindings/HistoryItemDto';
+import type { LogInfoDto } from './bindings/LogInfoDto';
+import type { NoticeDto } from './bindings/NoticeDto';
 import type { HomeDto } from './bindings/HomeDto';
 import type { LibrarySnapshotDto } from './bindings/LibrarySnapshotDto';
 import type { PlaylistDto } from './bindings/PlaylistDto';
@@ -44,6 +46,11 @@ export interface Backend extends LibraryBackend {
   windowInfo(): Promise<WindowInfoDto>;
   /** Output volume, 0-100. */
   setVolume(percent: number): Promise<void>;
+  /** Where the log file is, for the Diagnostics section. */
+  logInfo(): Promise<LogInfoDto>;
+  openLogFolder(): Promise<void>;
+  /** Messages for the listener that are not player state (a song was skipped, a stream was cut off). */
+  onNotice(cb: (message: string) => void): Promise<() => void>;
   /** Rejects with a `SearchErrorDto` (offline, rate limited, tool missing, ...). */
   search(query: string, filter: SearchFilterDto): Promise<SearchResponseDto>;
   /** Live suggestions; never rejects (no suggestions beats an error while typing). */
@@ -60,6 +67,7 @@ export function toSearchError(e: unknown): SearchErrorDto {
 
 export const STATE_EVENT = 'player-state';
 export const LIBRARY_EVENT = 'library-changed';
+export const NOTICE_EVENT = 'notice';
 
 /** Error text from a rejected call: Rust sends plain strings; anything else gets a generic sentence. */
 export function messageOf(e: unknown): string {
@@ -77,6 +85,9 @@ export async function tauriBackend(): Promise<Backend> {
     onState: async (cb) => listen<PlayerStateDto>(STATE_EVENT, (e) => cb(e.payload)),
     windowInfo: () => invoke<WindowInfoDto>('window_info'),
     setVolume: (percent) => invoke<void>('set_volume', { percent: Math.round(percent) }),
+    logInfo: () => invoke<LogInfoDto>('get_log_info'),
+    openLogFolder: () => invoke<void>('open_log_folder'),
+    onNotice: async (cb) => listen<NoticeDto>(NOTICE_EVENT, (e) => cb(e.payload.message)),
     search: (query, filter) => invoke<SearchResponseDto>('search', { query, filter }),
     suggest: (prefix) => invoke<string[]>('suggest', { prefix }).catch(() => []),
     searchFilters: () => invoke<FilterInfoDto[]>('search_filters'),

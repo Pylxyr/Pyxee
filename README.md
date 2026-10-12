@@ -39,6 +39,14 @@ cd crates\app
 ```
 Without Tauri, `npm run dev --prefix ui` also works in a browser against a built-in mock backend.
 
+## Logs
+Pyxee writes a log of what it does: every song it starts, how the stream was resolved and opened, why a song failed or was
+skipped, seeks, stalls, and any crash. Find it in the app: **Appearance** (the compass icon, top right) -> **Diagnostics**
+-> **Open log folder** (or copy the path). On Windows the file is
+`%APPDATA%\dev.pyxee.app\logs\pyxee.log`; when it passes 2 MB the old one becomes `pyxee.log.1`. Times are UTC.
+`dev.cmd` also prints the same lines in its console. For more detail set `PYXEE_LOG=debug` before starting.
+If a song misbehaves, send me the lines around its title (search the file for the song's name).
+
 ## Build the installer
 ```
 build-installer.cmd      (same as: cargo xtask installer)

@@ -2743,6 +2743,7 @@ dependencies = [
 name = "pyxee-app"
 version = "0.0.1"
 dependencies = [
+ "log",
  "pyxee-audio",
  "pyxee-core",
  "pyxee-library",
@@ -2760,6 +2761,7 @@ name = "pyxee-audio"
 version = "0.0.1"
 dependencies = [
  "cpal",
+ "log",
  "pyxee-core",
  "rubato",
  "symphonia",
@@ -2788,6 +2790,7 @@ dependencies = [
 name = "pyxee-sources"
 version = "0.0.1"
 dependencies = [
+ "log",
  "serde",
  "serde_json",
  "thiserror 2.0.21",

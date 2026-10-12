@@ -12,7 +12,7 @@ use std::sync::mpsc::{Receiver, RecvTimeoutError};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Emitter, Manager};
 
 const SAVE_EVERY: Duration = Duration::from_secs(5);
 
@@ -51,7 +51,7 @@ impl AppHost {
                 if let Some(track) = rec.position(*id, *ms) {
                     drop(rec);
                     if let Err(err) = with_library(&self.app, |l| l.record_play(&track, now_ms())) {
-                        eprintln!("could not record play: {err}");
+                        log::warn!("could not record play: {err}");
                     }
                 }
             }
@@ -65,6 +65,16 @@ impl Host for AppHost {
         publish(&self.app, |p| p.engine(e.clone()));
         self.record(&e);
     }
+    fn notice(&self, message: String) {
+        log::info!("notice shown to the listener: {message}");
+        if let Err(e) = self.app.emit(
+            crate::state::NOTICE_EVENT,
+            crate::dto::NoticeDto { message },
+        ) {
+            log::warn!("could not send a notice to the window: {e}");
+        }
+    }
+
     fn command(&self, c: Command) {
         publish(&self.app, |p| p.command(c));
     }

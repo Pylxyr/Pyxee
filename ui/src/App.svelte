@@ -1,7 +1,8 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { MediaQuery } from 'svelte/reactivity';
-  import { createBackend } from '$lib/backend';
+  import { createBackend, messageOf, type Backend } from '$lib/backend';
+  import type { LogInfoDto } from '$lib/bindings/LogInfoDto';
   import { player } from '$lib/player.svelte';
   import { search } from '$lib/search.svelte';
   import { library } from '$lib/library.svelte';
@@ -30,15 +31,34 @@
 
   const wide = new MediaQuery('min-width: 900px');
 
+  let backendRef: Backend | null = null;
+  let logInfo = $state<LogInfoDto | null>(null);
+
   onMount(() => {
     (async () => {
       const backend = await createBackend();
+      backendRef = backend;
+      await backend.onNotice((message) => snackbar.push(message, { timeoutMs: 10_000 }));
       search.init(backend);
       library.init(backend);
       await player.init(backend);
       theme.backdrop = (await backend.windowInfo()).backdrop;
     })();
   });
+
+  // The log location is looked up when the Appearance sheet (which has the Diagnostics section) opens.
+  $effect(() => {
+    if (nav.themeSheetOpen && backendRef) void backendRef.logInfo().then((i) => (logInfo = i));
+  });
+
+  async function copyLogPath() {
+    try {
+      await navigator.clipboard.writeText(logInfo?.file ?? '');
+      snackbar.push('Log file path copied');
+    } catch {
+      snackbar.push('Could not copy. Select the path and copy it by hand.');
+    }
+  }
 
   // The volume lives in the UI preferences; the audio engine gets it at start-up and on every change.
   $effect(() => {
@@ -147,4 +167,16 @@
     <span>Color from album art</span>
     <input type="checkbox" checked={theme.settings.dynamicColor} onchange={(e) => theme.update({ dynamicColor: e.currentTarget.checked })} />
   </label>
+  <section class="mt-3 border-t border-line px-3 pt-3" aria-label="Diagnostics">
+    <h3 class="text-sm font-semibold">Diagnostics</h3>
+    <p class="mt-1 text-[13px] text-muted">Pyxee keeps a log of what it does. If a song won't play or keeps skipping, the log says why.</p>
+    {#if logInfo}
+      <p class="mt-2 select-all break-all rounded-lg bg-surface px-3 py-2 text-[12px]" data-testid="log-path">{logInfo.file}</p>
+      {#if logInfo.error}<p class="mt-1 text-[13px] text-accent" role="alert">{logInfo.error}</p>{/if}
+      <div class="mt-2 flex gap-2">
+        <button class="rounded-full bg-fg px-4 py-1.5 text-sm font-semibold text-on-fg" onclick={() => backendRef?.openLogFolder().catch((e) => snackbar.push(messageOf(e)))}>Open log folder</button>
+        <button class="rounded-full bg-surface px-4 py-1.5 text-sm font-medium" onclick={copyLogPath}>Copy path</button>
+      </div>
+    {/if}
+  </section>
 </Sheet>

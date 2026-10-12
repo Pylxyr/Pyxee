@@ -57,6 +57,7 @@ pub(crate) fn run_tool(
         cmd.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
     }
     let mut child = cmd.spawn().map_err(|e| {
+        log::error!("could not start {name}: {e}");
         if e.kind() == std::io::ErrorKind::NotFound {
             SourceError::ToolMissing(name.clone())
         } else {
@@ -80,6 +81,7 @@ pub(crate) fn run_tool(
             Ok(None) if start.elapsed() > timeout => {
                 let _ = child.kill();
                 let _ = child.wait();
+                log::warn!("{name} was stopped after {timeout:?}: {args:?}");
                 return Err(SourceError::Failed(format!(
                     "{name} took too long and was stopped"
                 )));
@@ -91,6 +93,21 @@ pub(crate) fn run_tool(
     let stdout = out.join().unwrap_or_default();
     let stderr = err.join().unwrap_or_default();
     // A playlist with a few unavailable entries still exits non-zero but prints the rest.
+    if !status.success() {
+        let tail: String = stderr
+            .chars()
+            .rev()
+            .take(1500)
+            .collect::<Vec<_>>()
+            .into_iter()
+            .rev()
+            .collect();
+        log::warn!(
+            "{name} exited with {status} (stdout {} bytes). stderr: {}",
+            stdout.len(),
+            tail.trim()
+        );
+    }
     if !status.success() && stdout.trim().is_empty() {
         return Err(classify_stderr(&name, &stderr));
     }

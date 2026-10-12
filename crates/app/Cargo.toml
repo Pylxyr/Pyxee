@@ -6,6 +6,7 @@ license.workspace = true
 build = "build.rs"
 
 [dependencies]
+log = { version = "0.4", features = ["std"] }
 pyxee-core = { path = "../core" }
 pyxee-audio = { path = "../audio" }
 pyxee-library = { path = "../library" }

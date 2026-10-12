@@ -54,7 +54,9 @@ impl HttpRangeSource {
             .header("Content-Range")
             .and_then(|v| v.rsplit('/').next())
             .and_then(|v| v.trim().parse::<u64>().ok())
-            .ok_or_else(|| net("server does not support range requests"))?;
+            .ok_or_else(|| {
+                AudioError::Unsupported("the server does not support range requests".into())
+            })?;
         Ok(Self {
             agent,
             url: url.to_string(),

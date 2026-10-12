@@ -35,7 +35,7 @@ impl DeviceInfo {
         let err = |e: cpal::BuildStreamError| {
             AudioError::Unsupported(format!("cannot open the output device: {e}"))
         };
-        let fail = |e| eprintln!("audio stream error: {e}");
+        let fail = |e| log::error!("audio stream error: {e}");
         let stream = match self.config.sample_format() {
             SampleFormat::F32 => {
                 let mut scratch: Vec<f32> = Vec::with_capacity(16 * 1024);

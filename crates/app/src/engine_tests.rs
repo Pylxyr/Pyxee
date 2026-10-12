@@ -34,6 +34,7 @@ fn file_track(name: &str) -> Track {
 }
 
 struct Shared {
+    notices: Mutex<Vec<String>>,
     player: Mutex<Player>,
     queue: Mutex<VecDeque<Effect>>,
 }
@@ -48,6 +49,9 @@ impl Host for TestHost {
     fn command(&self, c: Command) {
         let fx = self.0.player.lock().unwrap().command(c);
         self.0.queue.lock().unwrap().extend(fx);
+    }
+    fn notice(&self, message: String) {
+        self.0.notices.lock().unwrap().push(message);
     }
 }
 
@@ -108,6 +112,7 @@ impl Rig {
     fn new(source: TestSource) -> Self {
         let volume = Volume::default();
         let shared = Arc::new(Shared {
+            notices: Mutex::new(Vec::new()),
             player: Mutex::new(Player::new(3)),
             queue: Mutex::new(VecDeque::new()),
         });
@@ -652,4 +657,333 @@ fn the_volume_setting_changes_how_loud_the_music_is() {
         "20% on the slider is a gain of 0.04: {low} vs {full}"
     );
     assert_eq!(off, 0.0);
+}
+
+/// Rising zero crossings per second of the left channel: 440 Hz and 660 Hz tones are easy to tell apart.
+fn dominant_hz(stereo: &[f32]) -> f64 {
+    let left: Vec<f32> = stereo.chunks(2).map(|f| f[0]).collect();
+    let rising = left
+        .windows(2)
+        .filter(|w| w[0] <= 0.0 && w[1] > 0.0)
+        .count();
+    rising as f64 / (left.len() as f64 / 48_000.0)
+}
+
+#[test]
+fn seeking_after_a_gapless_advance_stays_on_the_song_that_is_playing() {
+    // a_44k.wav is a 440 Hz tone, b_48k.wav a 660 Hz tone. After A hands over to B, "seek to the start"
+    // must restart B, not re-open A (the track the session originally started with).
+    let mut r = Rig::new(TestSource::local());
+    r.cmd(Command::SetAutoplay(false));
+    r.cmd(Command::PlayTracks {
+        tracks: vec![file_track("a_44k.wav"), file_track("b_48k.wav")],
+        start: 0,
+    });
+    let ids = r.entry_ids();
+    assert!(r.run_until(20, |r| r.snapshot().audible.map(|i| i.0) == Some(ids[1])));
+    r.run_for(300);
+    assert!(
+        (dominant_hz(&r.samples[r.samples.len() - 9600..]) - 660.0).abs() < 50.0,
+        "B is playing before the seek"
+    );
+
+    let at = r.samples.len();
+    r.cmd(Command::Seek(0));
+    r.run_for(800);
+    let hz = dominant_hz(&r.samples[at + 2 * 960..at + 2 * 960 + 9600]);
+    assert!(
+        (hz - 660.0).abs() < 50.0,
+        "after seeking, the tone should still be B's 660 Hz, but it is {hz:.0} Hz"
+    );
+    assert_eq!(r.snapshot().audible.map(|i| i.0), Some(ids[1]));
+}
+
+// ---- what the listener is told, and what the log records ---------------------------------------
+
+impl Rig {
+    fn notices(&self) -> Vec<String> {
+        self.shared.notices.lock().unwrap().clone()
+    }
+}
+
+#[test]
+fn a_skipped_song_is_announced_with_its_title_and_the_reason() {
+    let mut r = Rig::new(TestSource::local());
+    r.cmd(Command::SetAutoplay(false));
+    let missing = Track::new("file:/definitely/missing.mp3", "Gone Song", "x");
+    r.cmd(Command::PlayTracks {
+        tracks: vec![missing, file_track("b_48k.wav")],
+        start: 0,
+    });
+    assert!(r.run_until(10, |r| r.snapshot().audible.is_some()));
+    let notices = r.notices();
+    assert_eq!(notices.len(), 1, "{notices:?}");
+    assert!(
+        notices[0].contains("\u{201c}Gone Song\u{201d}"),
+        "{notices:?}"
+    );
+    assert!(
+        notices[0].contains("it was skipped") && notices[0].contains("isn't available"),
+        "{notices:?}"
+    );
+    assert!(notices[0].contains("The log has details"), "{notices:?}");
+}
+
+#[test]
+fn an_upcoming_song_that_cannot_play_is_announced_before_it_is_reached() {
+    let mut r = Rig::new(TestSource::local());
+    r.cmd(Command::SetAutoplay(false));
+    let missing = Track::new("file:/definitely/missing.mp3", "Later Song", "x");
+    r.cmd(Command::PlayTracks {
+        tracks: vec![file_track("a_44k.wav"), missing],
+        start: 0,
+    });
+    assert!(r.run_until(10, |r| !r.notices().is_empty()));
+    assert!(
+        r.notices()[0].contains("it will be skipped"),
+        "{:?}",
+        r.notices()
+    );
+}
+
+#[test]
+fn being_offline_is_not_announced_as_a_skip() {
+    let src = TestSource {
+        related: Vec::new(),
+        resolve: Box::new(|_| Err(SourceError::Offline)),
+    };
+    let mut r = Rig::new(src);
+    r.cmd(Command::PlayTracks {
+        tracks: vec![file_track("a_44k.wav")],
+        start: 0,
+    });
+    assert!(r.run_until(5, |r| matches!(
+        r.snapshot().transport,
+        Transport::Failed { .. }
+    )));
+    assert!(
+        r.notices().is_empty(),
+        "the player bar already shows this; no skip message: {:?}",
+        r.notices()
+    );
+}
+
+#[test]
+fn normal_playback_says_nothing() {
+    let mut r = Rig::new(TestSource::local());
+    r.cmd(Command::SetAutoplay(false));
+    r.cmd(Command::PlayTracks {
+        tracks: vec![file_track("a_44k.wav"), file_track("b_48k.wav")],
+        start: 0,
+    });
+    assert!(
+        r.run_until(15, |r| r.snapshot().transport == Transport::Idle
+            && r.audible_log.len() >= 3)
+    );
+    assert!(r.notices().is_empty(), "{:?}", r.notices());
+}
+
+#[test]
+fn a_stream_cut_off_long_before_its_known_length_is_reported() {
+    // The server only has 4 s of audio, but the song is known to be 60 s long.
+    let url = serve(
+        make_wav(4),
+        usize::MAX,
+        Arc::new(AtomicBool::new(true)),
+        Duration::ZERO,
+    );
+    let src = TestSource {
+        related: Vec::new(),
+        resolve: Box::new(move |_| {
+            Ok(StreamInfo {
+                url: url.clone(),
+                ext: "wav".into(),
+                acodec: None,
+                abr_kbps: None,
+            })
+        }),
+    };
+    let mut r = Rig::new(src);
+    r.cmd(Command::SetAutoplay(false));
+    let mut t = Track::new("yt:cutoff", "Cut Off Song", "x");
+    t.duration_ms = Some(60_000);
+    r.cmd(Command::PlayTracks {
+        tracks: vec![t],
+        start: 0,
+    });
+    assert!(
+        r.run_until(30, |r| r.snapshot().transport == Transport::Idle
+            && r.audible_log.len() >= 3)
+    );
+    let notices = r.notices();
+    assert_eq!(notices.len(), 1, "{notices:?}");
+    assert!(notices[0].contains("Cut Off Song"), "{notices:?}");
+    assert!(
+        notices[0].contains("0:03 of 1:00") || notices[0].contains("0:04 of 1:00"),
+        "says how far it got and how long it should have been: {notices:?}"
+    );
+}
+
+#[test]
+fn the_early_end_rule_ignores_normal_endings_and_unknown_lengths() {
+    use crate::engine::ended_early;
+    assert!(!ended_early(199_000, Some(200_000)), "ends about on time");
+    assert!(
+        !ended_early(130_000, Some(200_000)),
+        "65%: not worth a warning"
+    );
+    assert!(ended_early(41_000, Some(200_000)));
+    assert!(!ended_early(1_000, None), "unknown length");
+    assert!(
+        !ended_early(2_000, Some(10_000)),
+        "short songs are never flagged"
+    );
+}
+
+#[test]
+fn the_wording_names_the_song_and_the_reason() {
+    use crate::engine::{early_end_notice, skipped_notice};
+    use pyxee_core::Failure;
+    let n = skipped_notice("My Song", &Failure::Decode, false);
+    assert_eq!(n, "\u{201c}My Song\u{201d} can't be played, so it was skipped: its audio could not be read. The log has details.");
+    assert!(skipped_notice(
+        "S",
+        &Failure::Other("ffmpeg could not be started".into()),
+        true
+    )
+    .contains("ffmpeg could not be started"));
+    assert!(early_end_notice("S", 41_000, 200_000).contains("0:41 of 3:20"));
+}
+
+/// Captures log records so a test can check what was written.
+struct Capture(Mutex<Vec<String>>);
+impl log::Log for Capture {
+    fn enabled(&self, _: &log::Metadata) -> bool {
+        true
+    }
+    fn log(&self, r: &log::Record) {
+        self.0
+            .lock()
+            .unwrap()
+            .push(format!("{} {}", r.level(), r.args()));
+    }
+    fn flush(&self) {}
+}
+static CAPTURE: Capture = Capture(Mutex::new(Vec::new()));
+
+#[test]
+fn the_log_tells_the_story_of_a_song_including_why_it_failed() {
+    let _ = log::set_logger(&CAPTURE);
+    log::set_max_level(log::LevelFilter::Info);
+    let mut r = Rig::new(TestSource::local());
+    r.cmd(Command::SetAutoplay(false));
+    let ok = {
+        let mut t = file_track("a_44k.wav");
+        t.title = "LogProbe Good".into();
+        t
+    };
+    let bad = Track::new("file:/definitely/missing.mp3", "LogProbe Bad", "x");
+    r.cmd(Command::PlayTracks {
+        tracks: vec![bad, ok],
+        start: 0,
+    });
+    assert!(
+        r.run_until(15, |r| r.snapshot().transport == Transport::Idle
+            && r.audible_log.len() >= 3)
+    );
+    let lines: Vec<String> = CAPTURE
+        .0
+        .lock()
+        .unwrap()
+        .iter()
+        .filter(|l| l.contains("LogProbe"))
+        .cloned()
+        .collect();
+    let has = |needle: &str| lines.iter().any(|l| l.contains(needle));
+    assert!(
+        has("INFO start: \"LogProbe Bad\" (file:/definitely/missing.mp3)"),
+        "{lines:#?}"
+    );
+    assert!(
+        has("WARN could not start \"LogProbe Bad\""),
+        "failures are warnings with the reason: {lines:#?}"
+    );
+    assert!(has("INFO ready: \"LogProbe Good\""), "{lines:#?}");
+    assert!(has("INFO audible: \"LogProbe Good\""), "{lines:#?}");
+    assert!(has("INFO ended: \"LogProbe Good\""), "{lines:#?}");
+}
+
+// ---- a server without range support: the built-in reader cannot be used, ffmpeg can ----------
+
+fn serve_without_range_support(body: Vec<u8>) -> String {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let addr = listener.local_addr().unwrap();
+    std::thread::spawn(move || {
+        for stream in listener.incoming() {
+            let Ok(mut s) = stream else { continue };
+            let mut req = Vec::new();
+            let mut b = [0u8; 1];
+            while !req.ends_with(b"\r\n\r\n") {
+                if s.read(&mut b).unwrap_or(0) == 0 {
+                    break;
+                }
+                req.push(b[0]);
+            }
+            // Ignores Range entirely, like a simple file server.
+            let head = format!(
+                "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                body.len()
+            );
+            let _ = s.write_all(head.as_bytes());
+            let _ = s.write_all(&body);
+        }
+    });
+    format!("http://{addr}/track.wav")
+}
+
+#[test]
+fn a_server_that_ignores_range_requests_falls_back_to_ffmpeg_instead_of_failing_the_song() {
+    if std::process::Command::new("ffmpeg")
+        .arg("-version")
+        .output()
+        .is_err()
+    {
+        eprintln!("ffmpeg is not installed here; skipping");
+        return;
+    }
+    let url = serve_without_range_support(make_wav(3));
+    let src = TestSource {
+        related: Vec::new(),
+        resolve: Box::new(move |_| {
+            Ok(StreamInfo {
+                url: url.clone(),
+                ext: "wav".into(),
+                acodec: None,
+                abr_kbps: None,
+            })
+        }),
+    };
+    let mut r = Rig::new(src);
+    r.cmd(Command::SetAutoplay(false));
+    let mut t = Track::new("yt:norange", "No Range Song", "x");
+    t.duration_ms = Some(3_000);
+    r.cmd(Command::PlayTracks {
+        tracks: vec![t],
+        start: 0,
+    });
+    assert!(
+        r.run_until(30, |r| r.snapshot().transport == Transport::Idle
+            && r.audible_log.len() >= 3),
+        "{:?}",
+        r.snapshot()
+    );
+    assert!(
+        r.notices().is_empty(),
+        "it played normally: {:?}",
+        r.notices()
+    );
+    assert!(
+        (2.8..3.3).contains(&(r.samples.len() as f64 / 2.0 / 48_000.0)),
+        "all 3 s were heard"
+    );
 }

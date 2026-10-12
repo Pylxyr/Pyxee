@@ -20,3 +20,10 @@ export const noLibrary: LibraryBackend = {
   historyRestore: async () => {},
   homeGet: async () => ({ quickPicks: [], recent: [], likedCount: 0 }),
 };
+
+/** Diagnostics methods for test backends that do not care about them. */
+export const noDiagnostics = {
+  logInfo: async () => ({ dir: '', file: '', error: null }),
+  openLogFolder: async () => {},
+  onNotice: async () => () => {},
+};

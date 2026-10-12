@@ -244,3 +244,31 @@ fn rejected_url_is_reported_as_expired_so_it_can_be_re_resolved() {
     let err = HttpRangeSource::open(&url).err().expect("403 must fail");
     assert!(matches!(err, AudioError::UrlExpired(403)), "{err:?}");
 }
+
+#[test]
+fn a_server_without_range_support_is_reported_as_unusable_for_this_reader_not_as_being_offline() {
+    // A plain file server answers 200 with the whole body and no Content-Range. The song is fine; this
+    // reader just cannot use it, so the caller must be able to tell and try another way (ffmpeg).
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let addr = listener.local_addr().unwrap();
+    std::thread::spawn(move || {
+        for stream in listener.incoming() {
+            let Ok(mut s) = stream else { continue };
+            let mut b = [0u8; 1];
+            let mut req = Vec::new();
+            while !req.ends_with(b"\r\n\r\n") {
+                if s.read(&mut b).unwrap_or(0) == 0 {
+                    break;
+                }
+                req.push(b[0]);
+            }
+            let _ = s.write_all(
+                b"HTTP/1.1 200 OK\r\nContent-Length: 4\r\nConnection: close\r\n\r\nabcd",
+            );
+        }
+    });
+    let err = HttpRangeSource::open(&format!("http://{addr}/x"))
+        .err()
+        .expect("must not open");
+    assert!(matches!(err, AudioError::Unsupported(_)), "{err:?}");
+}

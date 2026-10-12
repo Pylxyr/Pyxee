@@ -30,7 +30,7 @@ pub enum Failure {
 
 impl Failure {
     /// Retrying later may work, so skipping through the queue would only burn tracks.
-    fn is_transient(&self) -> bool {
+    pub fn is_transient(&self) -> bool {
         matches!(self, Failure::Offline | Failure::RateLimited)
     }
 }

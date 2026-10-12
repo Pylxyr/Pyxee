@@ -4,7 +4,7 @@ import type { CommandDto } from './bindings/CommandDto';
 import type { PlayerStateDto } from './bindings/PlayerStateDto';
 import { DEMO_TRACKS, MockBackend } from './mock';
 import { EMPTY_STATE, PlayerStore, describeFailure } from './player.svelte';
-import { noLibrary } from './test-utils';
+import { noDiagnostics, noLibrary } from './test-utils';
 
 /** A backend that records commands and lets the test push state, like Rust does. */
 function stub(initial: PlayerStateDto = EMPTY_STATE) {
@@ -12,6 +12,7 @@ function stub(initial: PlayerStateDto = EMPTY_STATE) {
   let push: (s: PlayerStateDto) => void = () => {};
   const backend: Backend = {
     ...noLibrary,
+    ...noDiagnostics,
     getState: async () => initial,
     dispatch: async (c) => void sent.push(c),
     onState: async (cb) => ((push = cb), () => {}),

@@ -444,6 +444,25 @@ pub struct HomeDto {
     pub liked_count: usize,
 }
 
+/// Where the log lives, so the UI can show it and open the folder.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct LogInfoDto {
+    pub dir: String,
+    pub file: String,
+    /// Set if the log file could not be created (logging then goes to the console only).
+    pub error: Option<String>,
+}
+
+/// A message for the listener that is not player state (a song was skipped, a stream was cut off).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct NoticeDto {
+    pub message: String,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export)]

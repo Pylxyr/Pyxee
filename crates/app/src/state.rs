@@ -12,8 +12,11 @@ use tauri::{AppHandle, Emitter, Manager};
 
 pub const STATE_EVENT: &str = "player-state";
 pub const LIBRARY_EVENT: &str = "library-changed";
+pub const NOTICE_EVENT: &str = "notice";
 
 pub struct AppState {
+    pub log: crate::logging::LogInfo,
+    pub log_error: Option<String>,
     pub volume: pyxee_audio::pipeline::Volume,
     pub library: Mutex<LibraryService>,
     pub source: Arc<dyn MusicSource>,
@@ -33,7 +36,7 @@ impl AppState {
             Err(_) => return,
         };
         if let Err(e) = session::save(path, &persisted) {
-            eprintln!("could not save session: {e}");
+            log::warn!("could not save session: {e}");
         }
     }
 }
@@ -63,7 +66,7 @@ pub fn publish(app: &AppHandle, f: impl FnOnce(&mut Player) -> Vec<Effect>) {
         state.save_session();
     }
     if let Err(e) = app.emit(STATE_EVENT, dto) {
-        eprintln!("could not emit state: {e}");
+        log::warn!("could not emit state: {e}");
     }
 }
 
@@ -101,9 +104,9 @@ pub fn emit_library(app: &AppHandle) {
     match snapshot {
         Ok(s) => {
             if let Err(e) = app.emit(LIBRARY_EVENT, s) {
-                eprintln!("could not emit library state: {e}");
+                log::warn!("could not emit library state: {e}");
             }
         }
-        Err(e) => eprintln!("could not read the library: {e}"),
+        Err(e) => log::warn!("could not read the library: {e}"),
     }
 }

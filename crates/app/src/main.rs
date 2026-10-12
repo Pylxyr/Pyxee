@@ -7,6 +7,7 @@ mod engine;
 #[cfg(test)]
 mod engine_tests;
 mod library_service;
+mod logging;
 mod recorder;
 mod runner;
 mod session;
@@ -33,6 +34,15 @@ fn seed() -> u64 {
 fn main() {
     tauri::Builder::default()
         .setup(|app| {
+            // Logging first, so everything that follows (and every panic) is recorded.
+            let log_dir = app
+                .path()
+                .app_data_dir()
+                .map_or_else(|_| std::env::temp_dir().join("pyxee"), |d| d.join("logs"));
+            let (log, log_error) = logging::init(&log_dir);
+            if let Some(e) = &log_error {
+                eprintln!("{e}");
+            }
             let session_path = app
                 .path()
                 .app_data_dir()
@@ -60,6 +70,8 @@ fn main() {
                     .as_deref(),
             );
             app.manage(AppState {
+                log,
+                log_error,
                 volume: pyxee_audio::pipeline::Volume::default(),
                 library: Mutex::new(library),
                 source,
@@ -100,7 +112,9 @@ fn main() {
             commands::history_clear,
             commands::history_restore,
             commands::home_get,
-            commands::set_volume
+            commands::set_volume,
+            commands::get_log_info,
+            commands::open_log_folder
         ])
         .run(tauri::generate_context!())
         .expect("error while running Pyxee");

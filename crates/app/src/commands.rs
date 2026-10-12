@@ -1,7 +1,8 @@
 use crate::dto::{
     state_dto, AddResultDto, CommandDto, FilterInfoDto, HistoryItemDto, HomeDto,
-    LibrarySnapshotDto, PlayerStateDto, PlaylistDto, PlaylistSnapshotDto, RemovedEntryDto,
-    SearchErrorDto, SearchFilterDto, SearchItemDto, SearchResponseDto, TrackDto, WindowInfoDto,
+    LibrarySnapshotDto, LogInfoDto, PlayerStateDto, PlaylistDto, PlaylistSnapshotDto,
+    RemovedEntryDto, SearchErrorDto, SearchFilterDto, SearchItemDto, SearchResponseDto, TrackDto,
+    WindowInfoDto,
 };
 use crate::sim::catalog;
 use crate::state::{now_ms, publish, with_library, AppState};
@@ -191,4 +192,18 @@ pub fn home_get(state: State<AppState>) -> Result<HomeDto, String> {
 #[tauri::command]
 pub fn set_volume(state: State<AppState>, percent: u8) {
     state.volume.set_percent(percent);
+}
+
+#[tauri::command]
+pub fn get_log_info(state: State<AppState>) -> LogInfoDto {
+    LogInfoDto {
+        dir: state.log.dir.display().to_string(),
+        file: state.log.file.display().to_string(),
+        error: state.log_error.clone(),
+    }
+}
+
+#[tauri::command]
+pub fn open_log_folder(state: State<AppState>) -> Result<(), String> {
+    crate::logging::open_folder(&state.log.dir)
 }
