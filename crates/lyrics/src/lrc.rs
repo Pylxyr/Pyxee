@@ -99,7 +99,9 @@ fn strip_word_marks(s: &str) -> String {
 
 /// Index of the line being sung at `pos_ms`: the last line whose time has passed; `None` before the first line.
 pub fn current_index(lines: &[Line], pos_ms: u64) -> Option<usize> {
-    lines.partition_point(|l| l.time_ms <= pos_ms).checked_sub(1)
+    lines
+        .partition_point(|l| l.time_ms <= pos_ms)
+        .checked_sub(1)
 }
 
 /// A title as lyric services want it: no "(Official Video)", "[Lyrics]", "(feat. X)" or trailing " - Topic".
@@ -107,12 +109,27 @@ pub fn clean_title(title: &str) -> String {
     let mut s = title.trim().to_string();
     // Drop bracketed noise, but keep brackets that carry the name ("(Interlude)" stays).
     const NOISE: [&str; 12] = [
-        "official", "lyric", "lyrics", "video", "audio", "visualizer", "hd", "4k", "remaster", "feat", "ft.", "with ",
+        "official",
+        "lyric",
+        "lyrics",
+        "video",
+        "audio",
+        "visualizer",
+        "hd",
+        "4k",
+        "remaster",
+        "feat",
+        "ft.",
+        "with ",
     ];
     loop {
-        let Some(open) = s.rfind(['(', '[']) else { break };
+        let Some(open) = s.rfind(['(', '[']) else {
+            break;
+        };
         let close = if s[open..].starts_with('(') { ')' } else { ']' };
-        let Some(end_rel) = s[open..].find(close) else { break };
+        let Some(end_rel) = s[open..].find(close) else {
+            break;
+        };
         let inner = s[open + 1..open + end_rel].to_lowercase();
         if end_rel + open + 1 == s.len() && NOISE.iter().any(|n| inner.contains(n)) {
             s.truncate(open);

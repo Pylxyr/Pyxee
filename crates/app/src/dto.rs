@@ -191,6 +191,10 @@ pub enum CommandDto {
         #[ts(type = "number")]
         to: usize,
     },
+    /// The sleep timer's "stop after this song".
+    StopAfterCurrent {
+        on: bool,
+    },
     Clear,
     Undo,
 }
@@ -536,6 +540,7 @@ impl From<CommandDto> for Command {
                 id: EntryId(id),
                 to,
             },
+            CommandDto::StopAfterCurrent { on } => Command::StopAfterCurrent(on),
             CommandDto::Clear => Command::Clear,
             CommandDto::Undo => Command::Undo,
         }

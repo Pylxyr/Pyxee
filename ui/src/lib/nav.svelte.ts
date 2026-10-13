@@ -21,6 +21,7 @@ class NavStore {
   /** Track whose row menu is open (in-page sheet, never a native menu). */
   menuTrack = $state<TrackDto | null>(null);
   themeSheetOpen = $state(false);
+  sleepSheetOpen = $state(false);
   /** The theme editor (opened from the Settings sheet). */
   themeEditorOpen = $state(false);
   /** Song being added to a playlist (opens the playlist picker). */

@@ -30,6 +30,11 @@
   import ThemePicker from './components/ThemePicker.svelte';
   import ThemeEditor from './components/ThemeEditor.svelte';
   import PlaylistPicker from './components/PlaylistPicker.svelte';
+  import SleepSheet from './components/SleepSheet.svelte';
+  import { lyricsStore } from '$lib/lyrics.svelte';
+  import { sleep } from '$lib/sleep.svelte';
+  import { shellSettings } from '$lib/shell.svelte';
+  import { sleepLabel } from '$lib/lyrics';
 
   const wide = new MediaQuery('min-width: 900px');
 
@@ -43,6 +48,9 @@
       await backend.onNotice((message) => snackbar.push(message, { timeoutMs: 10_000 }));
       search.init(backend);
       library.init(backend);
+      lyricsStore.init(backend);
+      void sleep.init(backend);
+      void shellSettings.init(backend);
       await player.init(backend);
       theme.backdrop = (await backend.windowInfo()).backdrop;
     })();
@@ -156,6 +164,7 @@
 <PlaylistPicker />
 <NameSheet />
 <ThemeEditor />
+<SleepSheet />
 
 <Sheet open={nav.themeSheetOpen} title="Settings" onclose={() => (nav.themeSheetOpen = false)}>
   <section aria-label="Appearance">
@@ -165,6 +174,25 @@
       <span>Color from album art</span>
       <input type="checkbox" checked={theme.settings.dynamicColor} onchange={(e) => theme.update({ dynamicColor: e.currentTarget.checked })} />
     </label>
+  </section>
+  <section class="mt-3 border-t border-line pt-3" aria-label="Windows">
+    <h3 class="px-3 pb-1 text-sm font-semibold">Windows</h3>
+    <label class="flex items-center justify-between rounded-lg px-3 py-3 hover:bg-surface">
+      <span>Keep playing in the tray when the window is closed</span>
+      <input type="checkbox" checked={shellSettings.settings.closeToTray} onchange={(e) => shellSettings.update({ closeToTray: e.currentTarget.checked })} />
+    </label>
+    <label class="flex items-center justify-between rounded-lg px-3 py-3 hover:bg-surface">
+      <span>Start Pyxee when I sign in to Windows</span>
+      <input type="checkbox" checked={shellSettings.settings.startWithWindows} onchange={(e) => shellSettings.update({ startWithWindows: e.currentTarget.checked })} />
+    </label>
+    <label class="flex items-center justify-between rounded-lg px-3 py-3 hover:bg-surface">
+      <span>Show a notification when the song changes</span>
+      <input type="checkbox" checked={shellSettings.settings.toastOnChange} onchange={(e) => shellSettings.update({ toastOnChange: e.currentTarget.checked })} />
+    </label>
+    {#if shellSettings.error}<p class="px-3 text-[13px] text-accent" role="alert">Could not save that setting ({shellSettings.error}).</p>{/if}
+    <button class="flex w-full items-center justify-between rounded-lg px-3 py-3 text-left hover:bg-surface" onclick={() => { nav.themeSheetOpen = false; nav.sleepSheetOpen = true; }}>
+      <span>Sleep timer</span><span class="text-sm text-muted">{sleepLabel(sleep.status)}</span>
+    </button>
   </section>
   <section class="mt-3 border-t border-line px-3 pt-3" aria-label="Diagnostics">
     <h3 class="text-sm font-semibold">Diagnostics</h3>

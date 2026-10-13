@@ -11,6 +11,7 @@ mod logging;
 mod recorder;
 mod runner;
 mod session;
+mod shell;
 mod sim;
 mod state;
 mod tools;
@@ -33,6 +34,16 @@ fn seed() -> u64 {
 
 fn main() {
     tauri::Builder::default()
+        // First, so a second launch is caught before anything else starts: it hands its arguments to the
+        // running player (jump-list tasks, `--next`) and brings it to the front.
+        .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
+            shell::on_second_launch(app, &argv);
+        }))
+        .plugin(tauri_plugin_autostart::init(
+            tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+            Some(vec!["--autostart"]),
+        ))
+        .plugin(tauri_plugin_notification::init())
         .setup(|app| {
             // Logging first, so everything that follows (and every panic) is recorded.
             let log_dir = app
@@ -80,13 +91,18 @@ fn main() {
                 backdrop,
                 session_path,
             });
+            app.manage(shell::ShellState::load(
+                app.path().app_data_dir().ok().map(|d| d.join("shell.json")),
+            ));
             runner::spawn(app.handle().clone(), rx);
+            shell::init(app.handle(), &std::env::args().collect::<Vec<_>>());
             Ok(())
         })
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { .. } = event {
                 window.app_handle().state::<AppState>().save_session();
             }
+            shell::on_window_event(window, event);
         })
         .invoke_handler(tauri::generate_handler![
             commands::dispatch,
@@ -115,7 +131,18 @@ fn main() {
             commands::set_volume,
             commands::get_log_info,
             commands::open_log_folder,
-            commands::set_window_theme
+            commands::set_window_theme,
+            shell::commands::lyrics_get,
+            shell::commands::sleep_set,
+            shell::commands::sleep_cancel,
+            shell::commands::sleep_extend,
+            shell::commands::sleep_get,
+            shell::commands::shell_get,
+            shell::commands::shell_set,
+            shell::commands::flyout_hide,
+            shell::commands::flyout_open_main,
+            shell::commands::mini_toggle,
+            shell::commands::main_show
         ])
         .run(tauri::generate_context!())
         .expect("error while running Pyxee");

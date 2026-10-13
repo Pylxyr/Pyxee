@@ -1,0 +1,22 @@
+<script lang="ts">
+  import { theme } from '$lib/theme.svelte';
+  import type { Backend } from '$lib/backend';
+  import { bootSmallWindow } from './Boot';
+  import Compact from './Compact.svelte';
+
+  // Started at once; a click that comes before it is ready simply waits for it.
+  const booted: Promise<Backend> = bootSmallWindow();
+  const withBackend = (f: (b: Backend) => Promise<void>) => void booted.then(f);
+  $effect(() => theme.apply(document.documentElement));
+
+  // Esc closes it; so does clicking anywhere else (the window hides itself when it loses focus).
+  function onkeydown(e: KeyboardEvent) {
+    if (e.key === 'Escape') withBackend((b) => b.flyoutHide());
+  }
+</script>
+
+<svelte:window {onkeydown} />
+
+<div class="flex h-dvh items-center bg-bg p-3 text-fg" data-testid="flyout">
+  <Compact cover={96} onopen={() => withBackend((b) => b.flyoutOpenMain())} />
+</div>

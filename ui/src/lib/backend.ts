@@ -3,6 +3,10 @@ import type { AddResultDto } from './bindings/AddResultDto';
 import type { FilterInfoDto } from './bindings/FilterInfoDto';
 import type { HistoryItemDto } from './bindings/HistoryItemDto';
 import type { LogInfoDto } from './bindings/LogInfoDto';
+import type { LyricsDto } from './bindings/LyricsDto';
+import type { ShellSettingsDto } from './bindings/ShellSettingsDto';
+import type { SleepSettingDto } from './bindings/SleepSettingDto';
+import type { SleepStateDto } from './bindings/SleepStateDto';
 import type { NoticeDto } from './bindings/NoticeDto';
 import type { HomeDto } from './bindings/HomeDto';
 import type { LibrarySnapshotDto } from './bindings/LibrarySnapshotDto';
@@ -60,6 +64,23 @@ export interface Backend extends LibraryBackend {
   searchFilters(): Promise<FilterInfoDto[]>;
   /** Demo tracks for the simulated engine; removed once real search lands (milestone 4). */
   devCatalog(): Promise<TrackDto[]>;
+
+  /** Lyrics from LRCLIB; never rejects (a failed lookup is `{ kind: 'error' }`). */
+  lyricsGet(track: TrackDto): Promise<LyricsDto>;
+  sleepSet(setting: SleepSettingDto): Promise<void>;
+  sleepCancel(): Promise<void>;
+  /** "+15 minutes" on a running time timer (starts one if none runs). */
+  sleepExtend(minutes: number): Promise<void>;
+  sleepGet(): Promise<SleepStateDto>;
+  onSleep(cb: (s: SleepStateDto) => void): Promise<() => void>;
+  shellGet(): Promise<ShellSettingsDto>;
+  /** Saves the tray / start-with-Windows / toast settings; resolves to what is now in effect. */
+  shellSet(settings: ShellSettingsDto): Promise<ShellSettingsDto>;
+  /** Tray flyout and mini player. */
+  flyoutHide(): Promise<void>;
+  flyoutOpenMain(): Promise<void>;
+  miniToggle(): Promise<void>;
+  mainShow(): Promise<void>;
 }
 
 export function toSearchError(e: unknown): SearchErrorDto {
@@ -70,6 +91,7 @@ export function toSearchError(e: unknown): SearchErrorDto {
 export const STATE_EVENT = 'player-state';
 export const LIBRARY_EVENT = 'library-changed';
 export const NOTICE_EVENT = 'notice';
+export const SLEEP_EVENT = 'sleep-state';
 
 /** Error text from a rejected call: Rust sends plain strings; anything else gets a generic sentence. */
 export function messageOf(e: unknown): string {
@@ -112,6 +134,21 @@ export async function tauriBackend(): Promise<Backend> {
     historyRestore: (items) => invoke<void>('history_restore', { items }),
     homeGet: () => invoke<HomeDto>('home_get'),
     devCatalog: () => invoke<TrackDto[]>('dev_catalog'),
+    lyricsGet: (t) =>
+      invoke<LyricsDto>('lyrics_get', { key: t.key, title: t.title, artist: t.artist, durationMs: t.durationMs }).catch(
+        (e): LyricsDto => ({ kind: 'error', message: messageOf(e) }),
+      ),
+    sleepSet: (setting) => invoke<void>('sleep_set', { setting }),
+    sleepCancel: () => invoke<void>('sleep_cancel'),
+    sleepExtend: (minutes) => invoke<void>('sleep_extend', { minutes }),
+    sleepGet: () => invoke<SleepStateDto>('sleep_get'),
+    onSleep: async (cb) => listen<SleepStateDto>(SLEEP_EVENT, (e) => cb(e.payload)),
+    shellGet: () => invoke<ShellSettingsDto>('shell_get'),
+    shellSet: (settings) => invoke<ShellSettingsDto>('shell_set', { settings }),
+    flyoutHide: () => invoke<void>('flyout_hide'),
+    flyoutOpenMain: () => invoke<void>('flyout_open_main'),
+    miniToggle: () => invoke<void>('mini_toggle'),
+    mainShow: () => invoke<void>('main_show'),
   };
 }
 

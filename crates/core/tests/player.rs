@@ -627,3 +627,66 @@ fn moving_a_song_to_play_next_changes_what_is_prefetched() {
     assert!(has(&fx, |e| matches!(e, Effect::CancelPrefetch)), "{fx:?}");
     assert_eq!(prefetch_id(&fx), Some(ids[3]), "{fx:?}");
 }
+
+#[test]
+fn stop_after_current_parks_on_the_next_song_instead_of_starting_it() {
+    let (mut p, ids, _) = started(3);
+    p.engine(E::Audible { id: ids[0] });
+    p.command(Command::StopAfterCurrent(true));
+    let fx = p.engine(E::Ended { id: ids[0] });
+    assert!(has(&fx, |e| matches!(e, Effect::Stop)), "{fx:?}");
+    assert!(
+        !has(&fx, |e| matches!(e, Effect::StartTrack { .. })),
+        "{fx:?}"
+    );
+    assert_eq!(
+        p.snapshot().transport,
+        Transport::Paused {
+            id: ids[1],
+            loaded: false
+        }
+    );
+    assert_eq!(p.queue().current_id(), Some(ids[1]));
+    // Play starts the parked song; the flag is spent.
+    let fx = p.command(Command::Resume);
+    assert!(
+        has(&fx, |e| matches!(e, Effect::StartTrack { .. })),
+        "{fx:?}"
+    );
+}
+
+#[test]
+fn stop_after_current_prefetches_nothing_and_turning_it_off_prefetches_again() {
+    let (mut p, ids, _) = started(3);
+    p.engine(E::Audible { id: ids[0] });
+    p.engine(E::Prefetched { id: ids[1] });
+    let fx = p.command(Command::StopAfterCurrent(true));
+    assert!(has(&fx, |e| matches!(e, Effect::CancelPrefetch)), "{fx:?}");
+    assert_eq!(prefetch_id(&fx), None, "{fx:?}");
+    let fx = p.command(Command::StopAfterCurrent(false));
+    assert_eq!(prefetch_id(&fx), Some(ids[1]), "{fx:?}");
+}
+
+#[test]
+fn stop_after_current_on_the_last_song_just_stops() {
+    let (mut p, ids, _) = started(1);
+    p.engine(E::Audible { id: ids[0] });
+    p.command(Command::SetAutoplay(false));
+    p.command(Command::StopAfterCurrent(true));
+    let fx = p.engine(E::Ended { id: ids[0] });
+    assert!(has(&fx, |e| matches!(e, Effect::Stop)), "{fx:?}");
+    assert_eq!(p.snapshot().transport, Transport::Idle);
+}
+
+#[test]
+fn a_stale_end_event_does_not_spend_stop_after_current() {
+    let (mut p, ids, _) = started(3);
+    p.engine(E::Audible { id: ids[0] });
+    p.command(Command::StopAfterCurrent(true));
+    p.engine(E::Ended { id: EntryId(999) }); // not the current song
+    let fx = p.engine(E::Ended { id: ids[0] });
+    assert!(
+        has(&fx, |e| matches!(e, Effect::Stop)),
+        "still armed: {fx:?}"
+    );
+}

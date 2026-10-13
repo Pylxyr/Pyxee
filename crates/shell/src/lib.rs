@@ -2,11 +2,13 @@
 //! detection, taskbar progress, settings). No Windows or Tauri calls live here, so all of it is tested on any OS.
 
 pub mod anchor;
+pub mod cli;
 pub mod geometry;
 pub mod power;
 pub mod progress;
 pub mod settings;
 pub mod sleep;
+pub mod winui;
 
 /// A rectangle in physical (device) pixels.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

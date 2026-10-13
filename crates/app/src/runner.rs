@@ -80,6 +80,7 @@ impl Host for AppHost {
     fn engine_event(&self, e: EngineEvent) {
         publish(&self.app, |p| p.engine(e.clone()));
         self.record(&e);
+        crate::shell::on_engine_event(&self.app, &e);
     }
     fn notice(&self, message: String) {
         log::info!("notice shown to the listener: {message}");

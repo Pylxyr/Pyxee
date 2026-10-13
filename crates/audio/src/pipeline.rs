@@ -18,7 +18,12 @@ use std::time::Duration;
 /// The slider is perceptual, so the gain follows a curve (percent squared): 50% is a quarter of the
 /// amplitude (-12 dB), which sounds like "half as loud" far better than a straight line would.
 #[derive(Clone)]
-pub struct Volume(Arc<AtomicU32>);
+pub struct Volume {
+    percent: Arc<AtomicU32>,
+    /// A multiplier in thousandths (1000 = unchanged) that the sleep timer uses to fade out; it never
+    /// touches the user's volume setting.
+    fade_permille: Arc<AtomicU32>,
+}
 
 pub fn gain_for_percent(percent: u8) -> f32 {
     let x = f32::from(percent.min(100)) / 100.0;
@@ -27,16 +32,33 @@ pub fn gain_for_percent(percent: u8) -> f32 {
 
 impl Volume {
     pub fn new(percent: u8) -> Self {
-        Self(Arc::new(AtomicU32::new(u32::from(percent.min(100)))))
+        Self {
+            percent: Arc::new(AtomicU32::new(u32::from(percent.min(100)))),
+            fade_permille: Arc::new(AtomicU32::new(1000)),
+        }
     }
     pub fn set_percent(&self, percent: u8) {
-        self.0.store(u32::from(percent.min(100)), Ordering::Relaxed);
+        self.percent
+            .store(u32::from(percent.min(100)), Ordering::Relaxed);
     }
     pub fn percent(&self) -> u8 {
-        self.0.load(Ordering::Relaxed) as u8
+        self.percent.load(Ordering::Relaxed) as u8
+    }
+    /// 1.0 = no fade, 0.0 = silent. Values outside 0..=1 are clamped.
+    pub fn set_fade(&self, factor: f32) {
+        let f = if factor.is_finite() {
+            factor.clamp(0.0, 1.0)
+        } else {
+            1.0
+        };
+        self.fade_permille
+            .store((f * 1000.0).round() as u32, Ordering::Relaxed);
+    }
+    pub fn fade(&self) -> f32 {
+        self.fade_permille.load(Ordering::Relaxed) as f32 / 1000.0
     }
     pub fn gain(&self) -> f32 {
-        gain_for_percent(self.percent())
+        gain_for_percent(self.percent()) * self.fade()
     }
 }
 

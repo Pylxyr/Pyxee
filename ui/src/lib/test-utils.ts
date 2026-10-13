@@ -28,3 +28,19 @@ export const noDiagnostics = {
   openLogFolder: async () => {},
   onNotice: async () => () => {},
 };
+
+/** Lyrics, sleep timer, tray and shell-settings methods for test backends that do not care about them. */
+export const noShell = {
+  lyricsGet: async () => ({ kind: 'notFound' as const }),
+  sleepSet: async () => {},
+  sleepCancel: async () => {},
+  sleepExtend: async () => {},
+  sleepGet: async () => ({ status: null }),
+  onSleep: async () => () => {},
+  shellGet: async () => ({ closeToTray: false, startWithWindows: false, toastOnChange: false }),
+  shellSet: async (s: { closeToTray: boolean; startWithWindows: boolean; toastOnChange: boolean }) => s,
+  flyoutHide: async () => {},
+  flyoutOpenMain: async () => {},
+  miniToggle: async () => {},
+  mainShow: async () => {},
+};

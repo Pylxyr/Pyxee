@@ -90,6 +90,9 @@ pub enum Command {
         id: EntryId,
         to: usize,
     },
+    /// While on, the song that is playing is the last: nothing is prefetched, and when it ends the player
+    /// parks (paused) on the song that would have followed. The sleep timer uses it. Not saved with the session.
+    StopAfterCurrent(bool),
     Clear,
     Undo,
     /// Result of a `NeedRadio` effect.
@@ -204,6 +207,7 @@ pub struct Player {
     /// (id, ready) of the track the engine is preparing to follow the current one.
     prefetch: Option<(EntryId, bool)>,
     no_prefetch_for: Option<EntryId>,
+    stop_after_current: bool,
     skip: HashSet<EntryId>,
     auto_skips: u8,
     url_retries: u8,
@@ -231,6 +235,7 @@ impl Player {
             pending_advance: false,
             prefetch: None,
             no_prefetch_for: None,
+            stop_after_current: false,
             skip: HashSet::new(),
             auto_skips: 0,
             url_retries: 0,
@@ -390,7 +395,8 @@ impl Player {
         let want = self
             .queue
             .next_candidate(true, &|i| self.skip.contains(&i))
-            .filter(|w| Some(*w) != self.no_prefetch_for);
+            .filter(|w| Some(*w) != self.no_prefetch_for)
+            .filter(|_| !self.stop_after_current);
         if let (Some((p, _)), Some(w)) = (self.prefetch, want) {
             if p == w {
                 return;
@@ -548,6 +554,7 @@ impl Player {
                     self.dirty = true;
                 }
             }
+            Command::StopAfterCurrent(on) => self.stop_after_current = on,
             Command::Clear => {
                 if !self.queue.is_empty() {
                     self.queue.clear();
@@ -699,6 +706,25 @@ impl Player {
             );
         if !mine {
             return; // stale: we already moved on
+        }
+        if self.stop_after_current {
+            // The last song of a sleep timer: park on the one that would have come next.
+            self.stop_after_current = false;
+            self.effects.push(Effect::Stop);
+            self.prefetch = None;
+            self.dirty = true;
+            match self.queue.next_candidate(true, &|i| self.skip.contains(&i)) {
+                Some(next) => {
+                    self.queue.jump_to(next);
+                    self.position_ms = 0;
+                    self.transport = Transport::Paused {
+                        id: next,
+                        loaded: false,
+                    };
+                }
+                None => self.stop(),
+            }
+            return;
         }
         match self.queue.next_candidate(true, &|i| self.skip.contains(&i)) {
             Some(next) => match self.prefetch {

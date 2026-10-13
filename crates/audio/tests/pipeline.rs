@@ -340,6 +340,43 @@ fn volume_scales_exactly_what_the_device_receives() {
 }
 
 #[test]
+fn the_fade_multiplier_scales_the_output_without_touching_the_volume_setting() {
+    let (tx, _rx) = channel();
+    let vol = Volume::new(100);
+    let p = Pipeline::new(RATE, tx, vol.clone());
+    let c = p.consumer();
+    p.push(level_track(1, 3, 0.4));
+    sleep(Duration::from_millis(150));
+    let mut buf = vec![0f32; CHUNK * 2];
+    vol.set_fade(0.5);
+    c.pull(&mut buf, 0); // ramps in
+    c.pull(&mut buf, 0);
+    // The multiplier applies to the gain (percent squared), so 0.5 halves the signal.
+    assert!(
+        buf.iter().all(|s| (s - 0.2).abs() < 1e-4),
+        "{:?}",
+        &buf[..4]
+    );
+    assert_eq!(vol.percent(), 100, "the user's setting is untouched");
+    vol.set_fade(1.0);
+    c.pull(&mut buf, 0);
+    c.pull(&mut buf, 0);
+    assert!(buf.iter().all(|s| (s - 0.4).abs() < 1e-4));
+}
+
+#[test]
+fn the_fade_multiplier_is_clamped_and_ignores_garbage() {
+    let v = Volume::new(80);
+    v.set_fade(7.0);
+    assert_eq!(v.fade(), 1.0);
+    v.set_fade(-3.0);
+    assert_eq!(v.fade(), 0.0);
+    v.set_fade(f32::NAN);
+    assert_eq!(v.fade(), 1.0);
+    assert_eq!(v.gain(), gain_for_percent(80));
+}
+
+#[test]
 fn a_volume_change_ramps_within_one_buffer_instead_of_clicking() {
     let (tx, _rx) = channel();
     let vol = Volume::new(100);

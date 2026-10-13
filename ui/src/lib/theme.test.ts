@@ -164,3 +164,18 @@ describe('ThemeStore', () => {
     });
   });
 });
+
+describe('theme shared between windows', () => {
+  it('reload() takes up what another window saved (the flyout and mini player follow the main window)', () => {
+    const mem = memory();
+    const main = new ThemeStore(mem, fakeMq(true).mq);
+    const flyout = new ThemeStore(mem, fakeMq(true).mq);
+    expect(flyout.settings.themeId).toBe(main.settings.themeId);
+    main.update({ followSystem: false, themeId: 'light' });
+    expect(flyout.settings.themeId).not.toBe('light'); // not yet: it only learns on reload
+    flyout.reload();
+    expect(flyout.settings.followSystem).toBe(false);
+    expect(flyout.settings.themeId).toBe('light');
+    expect(flyout.active.id).toBe('light');
+  });
+});

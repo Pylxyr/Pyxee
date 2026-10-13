@@ -65,6 +65,7 @@ pub fn publish(app: &AppHandle, f: impl FnOnce(&mut Player) -> Vec<Effect>) {
     if save {
         state.save_session();
     }
+    crate::shell::on_state(app, &dto);
     if let Err(e) = app.emit(STATE_EVENT, dto) {
         log::warn!("could not emit state: {e}");
     }

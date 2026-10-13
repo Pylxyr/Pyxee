@@ -98,6 +98,11 @@ export class ThemeStore {
     }
   }
 
+  /** Takes up settings another window saved. */
+  reload() {
+    this.settings = load(this.#storage);
+  }
+
   #save() {
     try {
       this.#storage?.setItem(KEY, JSON.stringify(this.settings));

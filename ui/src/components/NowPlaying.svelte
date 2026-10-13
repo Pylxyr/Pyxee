@@ -9,6 +9,9 @@
   import Icon from './Icon.svelte';
   import Thumb from './Thumb.svelte';
   import Seek from './Seek.svelte';
+  import LyricsPanel from './LyricsPanel.svelte';
+  import { sleep } from '$lib/sleep.svelte';
+  import { sleepLabel } from '$lib/lyrics';
 
   const entry = $derived(player.shown);
   const liked = $derived(entry ? library.isLiked(entry.track.key) : false);
@@ -47,6 +50,10 @@
             <h1 class="truncate text-2xl font-bold">{entry.track.title}</h1>
             <p class="truncate text-muted">{entry.track.artist}</p>
           </div>
+          <button class="flex items-center gap-1 p-2 {sleep.status ? 'text-accent' : 'text-muted hover:text-fg'}" aria-label="Sleep timer" onclick={() => (nav.sleepSheetOpen = true)}>
+            <Icon name="moon" />
+            {#if sleep.status}<span class="text-[12px] font-semibold" data-testid="sleep-chip">{sleepLabel(sleep.status)}</span>{/if}
+          </button>
           <button class="p-2 {liked ? 'text-accent' : 'text-muted hover:text-fg'}" aria-label={liked ? 'Unlike' : 'Like'} aria-pressed={liked} onclick={() => entry && library.toggleLike(entry.track)}><Icon name="heart" fill={liked} /></button>
         </div>
         <div class="w-[min(80vw,22rem)]">
@@ -138,7 +145,7 @@
               {/each}
             </ul>
           {:else if nav.tab === 'lyrics'}
-            <p class="px-3 py-8 text-sm text-muted">Lyrics arrive in milestone 6.</p>
+            <LyricsPanel active={nav.tab === 'lyrics'} />
           {:else}
             <p class="px-3 py-8 text-sm text-muted">Related songs arrive with search in milestone 4.</p>
           {/if}

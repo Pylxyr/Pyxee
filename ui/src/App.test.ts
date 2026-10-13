@@ -205,11 +205,11 @@ describe('Now Playing', () => {
     await waitFor(() => expect(names()[1]).toBe(last));
   });
 
-  it('tabs switch panels, and unbuilt ones say which milestone brings them', async () => {
+  it('tabs switch panels: Lyrics shows the lyrics, Up next the queue', async () => {
     await playing();
     await fireEvent.click(screen.getByRole('button', { name: 'Open Now Playing' }));
     await fireEvent.click(await screen.findByRole('tab', { name: 'Lyrics' }));
-    expect(screen.getByRole('tabpanel').textContent).toContain('milestone 6');
+    expect(within(screen.getByRole('tabpanel')).getByRole('region', { name: 'Lyrics' })).toBeTruthy();
     await fireEvent.click(screen.getByRole('tab', { name: 'Up next' }));
     expect(screen.getByRole('tabpanel').textContent).toContain('Paper Planes');
   });

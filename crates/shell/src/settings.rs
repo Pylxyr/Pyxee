@@ -44,7 +44,10 @@ pub fn load(path: &Path) -> Loaded {
     let text = match std::fs::read_to_string(path) {
         Ok(t) => t,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            return Loaded { settings: ShellSettings::default(), warning: None };
+            return Loaded {
+                settings: ShellSettings::default(),
+                warning: None,
+            };
         }
         Err(e) => {
             return Loaded {
@@ -54,7 +57,10 @@ pub fn load(path: &Path) -> Loaded {
         }
     };
     match serde_json::from_str::<ShellSettings>(&text) {
-        Ok(s) => Loaded { settings: s.sanitized(), warning: None },
+        Ok(s) => Loaded {
+            settings: s.sanitized(),
+            warning: None,
+        },
         Err(e) => {
             let bad = path.with_extension("json.bad");
             let kept = std::fs::rename(path, &bad).is_ok();
@@ -63,7 +69,11 @@ pub fn load(path: &Path) -> Loaded {
                 warning: Some(format!(
                     "{} was damaged ({e}); using defaults{}",
                     path.display(),
-                    if kept { format!(", the old file is kept as {}", bad.display()) } else { String::new() }
+                    if kept {
+                        format!(", the old file is kept as {}", bad.display())
+                    } else {
+                        String::new()
+                    }
                 )),
             }
         }
@@ -97,7 +107,11 @@ mod tests {
         let l = load(&dir("missing").join("shell.json"));
         assert_eq!(l.settings, ShellSettings::default());
         assert!(l.warning.is_none());
-        assert!(!l.settings.close_to_tray && !l.settings.start_with_windows && !l.settings.toast_on_change);
+        assert!(
+            !l.settings.close_to_tray
+                && !l.settings.start_with_windows
+                && !l.settings.toast_on_change
+        );
     }
 
     #[test]
@@ -111,7 +125,10 @@ mod tests {
         };
         save(&p, &s).unwrap();
         assert_eq!(load(&p).settings, s);
-        assert!(!p.with_extension("json.tmp").exists(), "no temporary file is left");
+        assert!(
+            !p.with_extension("json.tmp").exists(),
+            "no temporary file is left"
+        );
     }
 
     #[test]
@@ -136,7 +153,11 @@ mod tests {
 
     #[test]
     fn silly_window_sizes_are_clamped() {
-        let s = ShellSettings { mini_bounds: Some(Rect::new(0, 0, 1, 100_000)), ..Default::default() }.sanitized();
+        let s = ShellSettings {
+            mini_bounds: Some(Rect::new(0, 0, 1, 100_000)),
+            ..Default::default()
+        }
+        .sanitized();
         let b = s.mini_bounds.unwrap();
         assert_eq!((b.w, b.h), (MINI_MIN.0, MINI_MAX.1));
     }

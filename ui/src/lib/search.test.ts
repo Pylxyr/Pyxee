@@ -5,7 +5,7 @@ import type { SearchResponseDto } from './bindings/SearchResponseDto';
 import { DEMO_TRACKS, MockBackend } from './mock';
 import { EMPTY_STATE } from './player.svelte';
 import { SearchStore, SUGGEST_DELAY_MS } from './search.svelte';
-import { noDiagnostics, noLibrary } from './test-utils';
+import { noDiagnostics, noLibrary, noShell } from './test-utils';
 
 /** A backend whose searches resolve when the test says so, to exercise out-of-order answers. */
 function controllable() {
@@ -14,6 +14,7 @@ function controllable() {
   const backend: Backend = {
     ...noLibrary,
     ...noDiagnostics,
+    ...noShell,
     getState: async () => EMPTY_STATE,
     dispatch: async () => {},
     onState: async () => () => {},

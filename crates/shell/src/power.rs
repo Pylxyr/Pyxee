@@ -60,7 +60,9 @@ impl NetworkWatcher {
             Some(prev) => match (prev.online, now.online) {
                 (true, false) => Some(NetEvent::WentOffline),
                 (false, true) => Some(NetEvent::CameOnline),
-                (true, true) if prev.local_addr != now.local_addr && now.local_addr.is_some() => Some(NetEvent::Switched),
+                (true, true) if prev.local_addr != now.local_addr && now.local_addr.is_some() => {
+                    Some(NetEvent::Switched)
+                }
                 _ => None,
             },
         };
@@ -101,7 +103,8 @@ pub fn decide(trigger: Trigger, now: Situation) -> Vec<Action> {
         (Trigger::Net(NetEvent::CameOnline), Situation::FailedRetryable) => {
             vec![Action::Notice("Back online. Trying again."), Action::Retry]
         }
-        (Trigger::Resumed, Situation::FailedRetryable) | (Trigger::Net(NetEvent::Switched), Situation::FailedRetryable) => {
+        (Trigger::Resumed, Situation::FailedRetryable)
+        | (Trigger::Net(NetEvent::Switched), Situation::FailedRetryable) => {
             vec![Action::Retry]
         }
         _ => Vec::new(),
@@ -113,7 +116,10 @@ mod tests {
     use super::*;
 
     fn net(online: bool, addr: &str) -> NetState {
-        NetState { online, local_addr: Some(addr.into()) }
+        NetState {
+            online,
+            local_addr: Some(addr.into()),
+        }
     }
 
     #[test]
@@ -121,7 +127,11 @@ mod tests {
         let mut d = ResumeDetector::new(5_000);
         assert_eq!(d.tick(1_000_000, 10_000), None);
         for i in 1..100u64 {
-            assert_eq!(d.tick(1_000_000 + i * 2_000 + 300, 10_000 + i * 2_000), None, "jitter of 300 ms is fine");
+            assert_eq!(
+                d.tick(1_000_000 + i * 2_000 + 300, 10_000 + i * 2_000),
+                None,
+                "jitter of 300 ms is fine"
+            );
         }
     }
 
@@ -148,27 +158,54 @@ mod tests {
         assert_eq!(w.observe(net(true, "192.168.0.5")), None, "baseline");
         assert_eq!(w.observe(net(true, "192.168.0.5")), None);
         assert_eq!(w.observe(net(true, "10.0.0.2")), Some(NetEvent::Switched));
-        assert_eq!(w.observe(NetState { online: false, local_addr: None }), Some(NetEvent::WentOffline));
-        assert_eq!(w.observe(NetState { online: false, local_addr: None }), None);
+        assert_eq!(
+            w.observe(NetState {
+                online: false,
+                local_addr: None
+            }),
+            Some(NetEvent::WentOffline)
+        );
+        assert_eq!(
+            w.observe(NetState {
+                online: false,
+                local_addr: None
+            }),
+            None
+        );
         assert_eq!(w.observe(net(true, "10.0.0.2")), Some(NetEvent::CameOnline));
     }
 
     #[test]
     fn starting_offline_then_coming_online_is_reported() {
         let mut w = NetworkWatcher::new();
-        assert_eq!(w.observe(NetState { online: false, local_addr: None }), None);
+        assert_eq!(
+            w.observe(NetState {
+                online: false,
+                local_addr: None
+            }),
+            None
+        );
         assert_eq!(w.observe(net(true, "1.2.3.4")), Some(NetEvent::CameOnline));
     }
 
     #[test]
     fn coming_back_online_retries_a_failed_song_and_says_so() {
-        let a = decide(Trigger::Net(NetEvent::CameOnline), Situation::FailedRetryable);
-        assert_eq!(a, vec![Action::Notice("Back online. Trying again."), Action::Retry]);
+        let a = decide(
+            Trigger::Net(NetEvent::CameOnline),
+            Situation::FailedRetryable,
+        );
+        assert_eq!(
+            a,
+            vec![Action::Notice("Back online. Trying again."), Action::Retry]
+        );
     }
 
     #[test]
     fn waking_up_retries_only_a_song_that_failed() {
-        assert_eq!(decide(Trigger::Resumed, Situation::FailedRetryable), vec![Action::Retry]);
+        assert_eq!(
+            decide(Trigger::Resumed, Situation::FailedRetryable),
+            vec![Action::Retry]
+        );
         assert!(decide(Trigger::Resumed, Situation::Playing).is_empty());
         assert!(decide(Trigger::Resumed, Situation::Other).is_empty());
     }
@@ -183,6 +220,9 @@ mod tests {
     #[test]
     fn switching_connections_never_interrupts_a_song_that_is_playing() {
         assert!(decide(Trigger::Net(NetEvent::Switched), Situation::Playing).is_empty());
-        assert_eq!(decide(Trigger::Net(NetEvent::Switched), Situation::FailedRetryable), vec![Action::Retry]);
+        assert_eq!(
+            decide(Trigger::Net(NetEvent::Switched), Situation::FailedRetryable),
+            vec![Action::Retry]
+        );
     }
 }

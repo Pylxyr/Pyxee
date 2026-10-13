@@ -56,7 +56,9 @@ impl SleepTimer {
             SleepSetting::Minutes { minutes } if minutes > 0 => Some(Active::At {
                 deadline_ms: now_ms + u64::from(minutes.min(MAX_MINUTES)) * 60_000,
             }),
-            SleepSetting::Tracks { count } if count > 0 => Some(Active::Tracks { left: count.min(MAX_TRACKS) }),
+            SleepSetting::Tracks { count } if count > 0 => Some(Active::Tracks {
+                left: count.min(MAX_TRACKS),
+            }),
             SleepSetting::EndOfTrack => Some(Active::EndOfTrack),
             _ => None,
         };
@@ -86,7 +88,10 @@ impl SleepTimer {
 
     /// True while the player must not start another song after this one (the core's "stop after current").
     pub fn stop_after_current(&self) -> bool {
-        matches!(self.active, Some(Active::EndOfTrack | Active::Tracks { left: 1 }))
+        matches!(
+            self.active,
+            Some(Active::EndOfTrack | Active::Tracks { left: 1 })
+        )
     }
 
     pub fn status(&self, now_ms: u64) -> Option<SleepStatus> {
@@ -107,10 +112,20 @@ impl SleepTimer {
         let remaining = deadline_ms.saturating_sub(now_ms);
         if remaining == 0 {
             self.active = None;
-            return Some(Tick { volume_factor: 1.0, fire: true });
+            return Some(Tick {
+                volume_factor: 1.0,
+                fire: true,
+            });
         }
-        let factor = if remaining < FADE_MS { remaining as f32 / FADE_MS as f32 } else { 1.0 };
-        Some(Tick { volume_factor: factor, fire: false })
+        let factor = if remaining < FADE_MS {
+            remaining as f32 / FADE_MS as f32
+        } else {
+            1.0
+        };
+        Some(Tick {
+            volume_factor: factor,
+            fire: false,
+        })
     }
 
     /// A song played to its end. Returns true when the timer is now done and playback must stay paused.
@@ -137,8 +152,19 @@ mod tests {
     fn a_time_timer_counts_down_fades_in_the_last_seconds_and_fires_once() {
         let mut t = SleepTimer::new();
         t.set(SleepSetting::Minutes { minutes: 1 }, 1_000);
-        assert_eq!(t.status(1_000), Some(SleepStatus::Minutes { remaining_ms: 60_000 }));
-        assert_eq!(t.tick(30_000), Some(Tick { volume_factor: 1.0, fire: false }));
+        assert_eq!(
+            t.status(1_000),
+            Some(SleepStatus::Minutes {
+                remaining_ms: 60_000
+            })
+        );
+        assert_eq!(
+            t.tick(30_000),
+            Some(Tick {
+                volume_factor: 1.0,
+                fire: false
+            })
+        );
         let fading = t.tick(1_000 + 60_000 - 7_500).unwrap();
         assert!((fading.volume_factor - 0.5).abs() < 1e-6 && !fading.fire);
         let end = t.tick(61_000).unwrap();
@@ -151,7 +177,10 @@ mod tests {
     fn a_late_tick_after_the_deadline_still_fires() {
         let mut t = SleepTimer::new();
         t.set(SleepSetting::Minutes { minutes: 5 }, 0);
-        assert!(t.tick(10 * 60_000).unwrap().fire, "e.g. the PC slept past the deadline");
+        assert!(
+            t.tick(10 * 60_000).unwrap().fire,
+            "e.g. the PC slept past the deadline"
+        );
     }
 
     #[test]
@@ -186,7 +215,12 @@ mod tests {
         t.set(SleepSetting::Tracks { count: 0 }, 0);
         assert!(!t.is_active());
         t.set(SleepSetting::Minutes { minutes: u32::MAX }, 0);
-        assert_eq!(t.status(0), Some(SleepStatus::Minutes { remaining_ms: u64::from(MAX_MINUTES) * 60_000 }));
+        assert_eq!(
+            t.status(0),
+            Some(SleepStatus::Minutes {
+                remaining_ms: u64::from(MAX_MINUTES) * 60_000
+            })
+        );
         t.set(SleepSetting::Tracks { count: 5_000 }, 0);
         assert_eq!(t.status(0), Some(SleepStatus::Tracks { left: MAX_TRACKS }));
     }
@@ -195,11 +229,26 @@ mod tests {
     fn plus_minutes_extends_a_running_timer_starts_one_if_none_and_leaves_song_timers_alone() {
         let mut t = SleepTimer::new();
         t.extend_minutes(15, 1_000);
-        assert_eq!(t.status(1_000), Some(SleepStatus::Minutes { remaining_ms: 15 * 60_000 }));
+        assert_eq!(
+            t.status(1_000),
+            Some(SleepStatus::Minutes {
+                remaining_ms: 15 * 60_000
+            })
+        );
         t.extend_minutes(15, 1_000);
-        assert_eq!(t.status(1_000), Some(SleepStatus::Minutes { remaining_ms: 30 * 60_000 }));
+        assert_eq!(
+            t.status(1_000),
+            Some(SleepStatus::Minutes {
+                remaining_ms: 30 * 60_000
+            })
+        );
         t.extend_minutes(100_000, 1_000);
-        assert_eq!(t.status(1_000), Some(SleepStatus::Minutes { remaining_ms: u64::from(MAX_MINUTES) * 60_000 }));
+        assert_eq!(
+            t.status(1_000),
+            Some(SleepStatus::Minutes {
+                remaining_ms: u64::from(MAX_MINUTES) * 60_000
+            })
+        );
         t.set(SleepSetting::EndOfTrack, 0);
         t.extend_minutes(15, 0);
         assert_eq!(t.status(0), Some(SleepStatus::EndOfTrack));

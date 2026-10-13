@@ -1,7 +1,14 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Main window: core events and commands only.",
-  "windows": ["main"],
-  "permissions": ["core:default"]
+  "description": "Main, flyout and mini player windows: core events and commands, notifications and start-with-Windows.",
+  "windows": ["main", "flyout", "mini"],
+  "permissions": [
+    "core:default",
+    "core:window:allow-start-dragging",
+    "notification:default",
+    "autostart:allow-enable",
+    "autostart:allow-disable",
+    "autostart:allow-is-enabled"
+  ]
 }

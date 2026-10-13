@@ -11,13 +11,34 @@ pyxee-core = { path = "../core" }
 pyxee-audio = { path = "../audio" }
 pyxee-library = { path = "../library" }
 pyxee-sources = { path = "../sources" }
-tauri = { version = "2", features = [] }
+pyxee-lyrics = { path = "../lyrics" }
+pyxee-shell = { path = "../shell" }
+tauri = { version = "2", features = ["tray-icon", "image-png"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 ts-rs = { version = "11", features = ["serde-compat"] }
+tauri-plugin-single-instance = "2"
+tauri-plugin-autostart = "2"
+tauri-plugin-notification = "2"
+souvlaki = { version = "0.8.3", default-features = false, features = ["use_zbus"] }
 
 [target.'cfg(windows)'.dependencies]
 window-vibrancy = "0.6"
+windows = { version = "0.61", optional = true, features = [
+  "Win32_Foundation",
+  "Win32_Storage_EnhancedStorage",
+  "Win32_System_Com",
+  "Win32_UI_Shell",
+  "Win32_UI_Shell_Common",
+  "Win32_UI_Shell_PropertiesSystem",
+  "Win32_UI_WindowsAndMessaging",
+] }
+
+[features]
+# Taskbar thumbnail buttons and the jump list: raw Windows COM calls that could only be written, not compiled,
+# where this was developed. Off by default so the normal build cannot break; try it with
+#   cargo check -p pyxee-app --features win-extras
+win-extras = ["dep:windows"]
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }

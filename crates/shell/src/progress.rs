@@ -22,7 +22,11 @@ pub enum TaskbarProgress {
     Error,
 }
 
-pub fn taskbar_progress(phase: Phase, position_ms: u64, duration_ms: Option<u64>) -> TaskbarProgress {
+pub fn taskbar_progress(
+    phase: Phase,
+    position_ms: u64,
+    duration_ms: Option<u64>,
+) -> TaskbarProgress {
     let percent = || match duration_ms {
         Some(d) if d > 0 => Some((position_ms.min(d) * 100 / d) as u8),
         _ => None,
@@ -42,23 +46,53 @@ mod tests {
 
     #[test]
     fn playing_shows_a_percentage_and_never_more_than_a_hundred() {
-        assert_eq!(taskbar_progress(Phase::Playing, 0, Some(200_000)), TaskbarProgress::Normal(0));
-        assert_eq!(taskbar_progress(Phase::Playing, 50_000, Some(200_000)), TaskbarProgress::Normal(25));
-        assert_eq!(taskbar_progress(Phase::Playing, 999_999, Some(200_000)), TaskbarProgress::Normal(100));
+        assert_eq!(
+            taskbar_progress(Phase::Playing, 0, Some(200_000)),
+            TaskbarProgress::Normal(0)
+        );
+        assert_eq!(
+            taskbar_progress(Phase::Playing, 50_000, Some(200_000)),
+            TaskbarProgress::Normal(25)
+        );
+        assert_eq!(
+            taskbar_progress(Phase::Playing, 999_999, Some(200_000)),
+            TaskbarProgress::Normal(100)
+        );
     }
 
     #[test]
     fn an_unknown_length_is_indeterminate_while_playing() {
-        assert_eq!(taskbar_progress(Phase::Playing, 5_000, None), TaskbarProgress::Indeterminate);
-        assert_eq!(taskbar_progress(Phase::Playing, 5_000, Some(0)), TaskbarProgress::Indeterminate);
+        assert_eq!(
+            taskbar_progress(Phase::Playing, 5_000, None),
+            TaskbarProgress::Indeterminate
+        );
+        assert_eq!(
+            taskbar_progress(Phase::Playing, 5_000, Some(0)),
+            TaskbarProgress::Indeterminate
+        );
     }
 
     #[test]
     fn the_other_phases() {
-        assert_eq!(taskbar_progress(Phase::Idle, 1, Some(2)), TaskbarProgress::None);
-        assert_eq!(taskbar_progress(Phase::Loading, 1, Some(2)), TaskbarProgress::Indeterminate);
-        assert_eq!(taskbar_progress(Phase::Failed, 1, Some(2)), TaskbarProgress::Error);
-        assert_eq!(taskbar_progress(Phase::Paused, 100_000, Some(200_000)), TaskbarProgress::Paused(50));
-        assert_eq!(taskbar_progress(Phase::Paused, 100_000, None), TaskbarProgress::Paused(0));
+        assert_eq!(
+            taskbar_progress(Phase::Idle, 1, Some(2)),
+            TaskbarProgress::None
+        );
+        assert_eq!(
+            taskbar_progress(Phase::Loading, 1, Some(2)),
+            TaskbarProgress::Indeterminate
+        );
+        assert_eq!(
+            taskbar_progress(Phase::Failed, 1, Some(2)),
+            TaskbarProgress::Error
+        );
+        assert_eq!(
+            taskbar_progress(Phase::Paused, 100_000, Some(200_000)),
+            TaskbarProgress::Paused(50)
+        );
+        assert_eq!(
+            taskbar_progress(Phase::Paused, 100_000, None),
+            TaskbarProgress::Paused(0)
+        );
     }
 }

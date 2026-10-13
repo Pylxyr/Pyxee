@@ -73,8 +73,14 @@ pub fn pick_best(mut list: Vec<Candidate>, duration_secs: Option<f64>) -> Option
     };
     list.retain(close);
     let rank = |c: &Candidate| {
-        let synced = c.synced_lyrics.as_deref().is_some_and(|s| !parse_lrc(s).is_empty());
-        let plain = c.plain_lyrics.as_deref().is_some_and(|s| !s.trim().is_empty());
+        let synced = c
+            .synced_lyrics
+            .as_deref()
+            .is_some_and(|s| !parse_lrc(s).is_empty());
+        let plain = c
+            .plain_lyrics
+            .as_deref()
+            .is_some_and(|s| !s.trim().is_empty());
         match (synced, plain, c.instrumental) {
             (true, _, _) => 3,
             (_, true, _) => 2,
@@ -82,12 +88,15 @@ pub fn pick_best(mut list: Vec<Candidate>, duration_secs: Option<f64>) -> Option
             _ => 0,
         }
     };
-    list.into_iter().max_by_key(|c| rank(c)).filter(|c| rank(c) > 0)
+    list.into_iter()
+        .max_by_key(|c| rank(c))
+        .filter(|c| rank(c) > 0)
 }
 
 /// Lyrics from a service answer: one object (`/api/get`) or a list (`/api/search`).
 pub fn from_lrclib(json: &str, duration_secs: Option<f64>) -> Result<Lyrics, LyricsError> {
-    let value: serde_json::Value = serde_json::from_str(json).map_err(|e| LyricsError::Parse(e.to_string()))?;
+    let value: serde_json::Value =
+        serde_json::from_str(json).map_err(|e| LyricsError::Parse(e.to_string()))?;
     let list: Vec<Candidate> = match value {
         serde_json::Value::Array(_) => serde_json::from_value(value),
         serde_json::Value::Object(_) => serde_json::from_value(value).map(|c| vec![c]),
@@ -110,7 +119,9 @@ fn encode(s: &str) -> String {
     let mut out = String::new();
     for b in s.bytes() {
         match b {
-            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => out.push(b as char),
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                out.push(b as char)
+            }
             _ => out.push_str(&format!("%{b:02X}")),
         }
     }

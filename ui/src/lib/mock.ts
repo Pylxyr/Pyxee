@@ -5,6 +5,11 @@ import type { EntryDto } from './bindings/EntryDto';
 import type { PlayerStateDto } from './bindings/PlayerStateDto';
 import type { TrackDto } from './bindings/TrackDto';
 import type { WindowInfoDto } from './bindings/WindowInfoDto';
+import type { LyricsDto } from './bindings/LyricsDto';
+import type { ShellSettingsDto } from './bindings/ShellSettingsDto';
+import type { SleepSettingDto } from './bindings/SleepSettingDto';
+import type { SleepStateDto } from './bindings/SleepStateDto';
+import type { SleepStatusDto } from './bindings/SleepStatusDto';
 import type { FilterInfoDto } from './bindings/FilterInfoDto';
 import type { SearchFilterDto } from './bindings/SearchFilterDto';
 import type { SearchItemDto } from './bindings/SearchItemDto';
@@ -93,6 +98,80 @@ export class MockBackend extends MockLibrary implements Backend {
     for (const cb of this.#noticeListeners) cb(message);
   }
   async devCatalog() { return DEMO_TRACKS; }
+
+  // ---- lyrics, sleep timer, shell settings (simplified stand-ins for the Rust side) ----
+  /** Lyrics a test wants for a song key; otherwise demo lines every 5 s. Keys containing "nolyrics" / "instrumental" / "lyricsfail" give those answers. */
+  lyricsFor = new Map<string, LyricsDto>();
+  lyricsRequests: string[] = [];
+  async lyricsGet(track: TrackDto): Promise<LyricsDto> {
+    this.lyricsRequests.push(track.key);
+    const set = this.lyricsFor.get(track.key);
+    if (set) return set;
+    if (track.key.includes('nolyrics')) return { kind: 'notFound' };
+    if (track.key.includes('instrumental')) return { kind: 'instrumental' };
+    if (track.key.includes('lyricsfail')) return { kind: 'error', message: 'could not reach the lyrics service' };
+    const n = Math.max(2, Math.floor(((track.durationMs ?? 40_000) - 4_000) / 5_000));
+    return { kind: 'synced', lines: Array.from({ length: n }, (_, i) => ({ timeMs: 2_000 + i * 5_000, text: `${track.title}, line ${i + 1}` })) };
+  }
+  #sleep: SleepStatusDto | null = null;
+  #stopAfter = false;
+  #sleepListeners = new Set<(s: SleepStateDto) => void>();
+  #emitSleep() { for (const cb of this.#sleepListeners) cb({ status: this.#sleep ? { ...this.#sleep } : null }); }
+  async sleepSet(setting: SleepSettingDto) {
+    this.#sleep = setting.kind === 'minutes' ? (setting.minutes > 0 ? { kind: 'minutes', remainingMs: setting.minutes * 60_000 } : null)
+      : setting.kind === 'endOfTrack' ? { kind: 'endOfTrack' }
+      : setting.count > 0 ? { kind: 'tracks', left: setting.count } : null;
+    this.#syncStop();
+    this.#emitSleep();
+  }
+  async sleepCancel() { this.#sleep = null; this.#syncStop(); this.#emitSleep(); }
+  async sleepExtend(minutes: number) {
+    if (this.#sleep?.kind === 'minutes') this.#sleep = { kind: 'minutes', remainingMs: this.#sleep.remainingMs + minutes * 60_000 };
+    else if (!this.#sleep) this.#sleep = { kind: 'minutes', remainingMs: minutes * 60_000 };
+    this.#emitSleep();
+  }
+  async sleepGet(): Promise<SleepStateDto> { return { status: this.#sleep ? { ...this.#sleep } : null }; }
+  async onSleep(cb: (s: SleepStateDto) => void) {
+    this.#sleepListeners.add(cb);
+    return () => void this.#sleepListeners.delete(cb);
+  }
+  #syncStop() { this.#stopAfter = this.#sleep?.kind === 'endOfTrack' || (this.#sleep?.kind === 'tracks' && this.#sleep.left === 1); }
+  /** The sleep timer's clock, driven by `tick`. */
+  #sleepTick(ms: number) {
+    if (this.#sleep?.kind !== 'minutes') return;
+    const remainingMs = this.#sleep.remainingMs - ms;
+    if (remainingMs > 0) { this.#sleep = { kind: 'minutes', remainingMs }; this.#emitSleep(); return; }
+    this.#sleep = null;
+    if (this.#s.transport.state === 'playing') this.#s.transport = { state: 'paused', id: this.#s.transport.id, loaded: true };
+    this.#publish();
+    this.#emitSleep();
+  }
+  /** A song finished: count it for the sleep timer. Returns true when playback must stay stopped. */
+  #sleepSongEnded(): boolean {
+    if (this.#sleep?.kind === 'endOfTrack') { this.#sleep = null; this.#syncStop(); this.#emitSleep(); return true; }
+    if (this.#sleep?.kind === 'tracks') {
+      const left = this.#sleep.left - 1;
+      this.#sleep = left > 0 ? { kind: 'tracks', left } : null;
+      this.#syncStop();
+      this.#emitSleep();
+      return left <= 0;
+    }
+    return false;
+  }
+  shell: ShellSettingsDto = { closeToTray: false, startWithWindows: false, toastOnChange: false };
+  /** Set to make `shellSet` fail, to test how the UI reports it. */
+  shellError: string | null = null;
+  async shellGet() { return { ...this.shell }; }
+  async shellSet(settings: ShellSettingsDto) {
+    if (this.shellError) throw this.shellError;
+    this.shell = { ...settings };
+    return { ...this.shell };
+  }
+  trayCalls: string[] = [];
+  async flyoutHide() { this.trayCalls.push('flyoutHide'); }
+  async flyoutOpenMain() { this.trayCalls.push('flyoutOpenMain'); }
+  async miniToggle() { this.trayCalls.push('miniToggle'); }
+  async mainShow() { this.trayCalls.push('mainShow'); }
   async searchFilters(): Promise<FilterInfoDto[]> {
     return (['all', 'songs', 'videos', 'albums', 'artists', 'playlists'] as SearchFilterDto[]).map((filter) => ({
       filter,
@@ -135,6 +214,7 @@ export class MockBackend extends MockLibrary implements Backend {
 
   /** Advances simulated time. Exposed so tests can drive it deterministically. */
   tick(ms: number) {
+    this.#sleepTick(ms);
     const s = this.#s;
     if (s.transport.state === 'loading') {
       this.#loadMs -= ms;
@@ -185,10 +265,17 @@ export class MockBackend extends MockLibrary implements Backend {
 
   #ended(id: number) {
     const s = this.#s;
-    if (s.repeat === 'one') { s.positionMs = 0; this.#newListen(); return; }
+    const park = this.#sleepSongEnded();
+    if (s.repeat === 'one' && !park) { s.positionMs = 0; this.#newListen(); return; }
     const i = this.#index(id);
     const next = s.queue[i + 1] ?? (s.repeat === 'all' ? s.queue[0] : undefined);
     if (!next) return this.#stop();
+    if (park) {
+      // The sleep timer's last song: wait, paused, on the one that would have come next.
+      s.current = next.id; s.audible = null; s.positionMs = 0;
+      s.transport = { state: 'paused', id: next.id, loaded: false };
+      return;
+    }
     // Gapless: the next track becomes audible immediately.
     this.#newListen();
     s.current = next.id; s.audible = next.id; s.positionMs = 0;
@@ -264,6 +351,8 @@ export class MockBackend extends MockLibrary implements Backend {
         if (entry) s.queue.splice(Math.min(base + c.to, s.queue.length), 0, entry);
         break;
       }
+      case 'stopAfterCurrent':
+        break; // the mock keeps its own sleep-timer flag (see #syncStop)
       case 'clear':
         if (s.queue.length) this.#undo.push({ cleared: s.queue, current: s.current });
         s.queue = []; s.current = null; this.#stop();
