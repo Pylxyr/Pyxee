@@ -27,7 +27,7 @@
   --line: var(--t-line, #2a2a2a);
   --fg: var(--t-fg, #ffffff);
   --muted: var(--t-muted, #a8a8a8);
-  --accent: var(--t-accent, #ff3b4a);
+  --accent: var(--t-accent, #ec0422);
   --on-accent: var(--t-on-accent, #ffffff);
   /* Opaque colours that Mica never makes transparent: overlays, menus, and text on solid-fg buttons. */
   --solid: var(--t-solid, #0f0f0f);
@@ -43,7 +43,7 @@
   --line: var(--t-line, #e0e0e0);
   --fg: var(--t-fg, #0f0f0f);
   --muted: var(--t-muted, #5c5c5c);
-  --accent: var(--t-accent, #d92d3a);
+  --accent: var(--t-accent, #d4041f);
   --solid: var(--t-solid, #ffffff);
   --solid-2: var(--t-solid-2, #e8e8e8);
   --on-fg: var(--t-on-fg, #ffffff);
@@ -59,7 +59,7 @@
     --line: var(--t-line, #e0e0e0);
     --fg: var(--t-fg, #0f0f0f);
     --muted: var(--t-muted, #5c5c5c);
-    --accent: var(--t-accent, #d92d3a);
+    --accent: var(--t-accent, #d4041f);
     --solid: var(--t-solid, #ffffff);
     --solid-2: var(--t-solid-2, #e8e8e8);
     --on-fg: var(--t-on-fg, #ffffff);

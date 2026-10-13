@@ -17,3 +17,10 @@ Run each command on its own line in PowerShell 5. Tick an item when it works; pa
 ## WP2 (search filter)
 
 - [ ] Fresh start: Search opens on Songs. Pick Videos, close and reopen the app: still Videos.
+
+## WP3 (icon)
+
+- [ ] Rebuild (`cargo xtask installer` or `cargo run -p pyxee-app`): the window, taskbar and Alt+Tab icon is the red disc; check it is crisp at 100% and at your display scale.
+- [ ] Explorer: set the folder view to Extra large / Small icons on the built exe or installer; the 16 px and 256 px versions look right (16 px has the bolder stem and no centre dot).
+- [ ] Side rail logo is the new mark, on Dark and on a light theme; the accent (seek bar, likes, focus ring) is the same red as the logo.
+- [ ] If Windows still shows the old icon: it is the icon cache. Run `ie4uinit.exe -show`, or restart Explorer.

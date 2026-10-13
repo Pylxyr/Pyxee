@@ -1,6 +1,7 @@
 <script lang="ts">
   import { nav, type Route } from '$lib/nav.svelte';
   import Icon from './Icon.svelte';
+  import Logo from './Logo.svelte';
 
   const items: { route: Route; label: string; icon: string }[] = [
     { route: 'home', label: 'Home', icon: 'home' },
@@ -12,7 +13,7 @@
 
 <nav class="flex w-52 shrink-0 flex-col gap-1.5 border-r border-line px-3 py-5" aria-label="Main">
   <div class="flex items-center gap-2.5 px-4 pb-5 text-xl font-bold">
-    <span class="inline-block h-6 w-6 rounded-full bg-accent"></span>Pyxee
+    <Logo size={28} />Pyxee
   </div>
   {#each items as it (it.route)}
     <button
