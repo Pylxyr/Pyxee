@@ -2787,6 +2787,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "pyxee-lyrics"
+version = "0.0.1"
+dependencies = [
+ "log",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
+ "ureq",
+]
+
+[[package]]
+name = "pyxee-shell"
+version = "0.0.1"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "pyxee-sources"
 version = "0.0.1"
 dependencies = [
