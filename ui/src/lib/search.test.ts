@@ -167,3 +167,53 @@ describe('mock backend search', () => {
     expect((await m.search('', 'artists')).items.length).toBe(new Set(DEMO_TRACKS.map((t) => t.artist)).size);
   });
 });
+
+describe('the remembered search filter', () => {
+  const memory = () => {
+    const m = new Map<string, string>();
+    return { getItem: (k: string) => m.get(k) ?? null, setItem: (k: string, v: string) => void m.set(k, v), m };
+  };
+  const backendWith = (supported: Record<string, boolean>) =>
+    ({
+      searchFilters: () => Promise.resolve(Object.entries(supported).map(([filter, ok]) => ({ filter, supported: ok }))),
+      search: () => Promise.resolve({ items: [] }),
+    }) as never;
+
+  it('starts on Songs', () => {
+    expect(new SearchStore().filter).toBe('songs');
+    expect(new SearchStore(memory()).filter).toBe('songs');
+  });
+
+  it('remembers the filter picked on the chips for the next launch', async () => {
+    const mem = memory();
+    const a = new SearchStore(mem);
+    a.init(backendWith({ all: true, songs: true, videos: true }));
+    await Promise.resolve();
+    await a.setFilter('videos');
+    expect(new SearchStore(mem).filter).toBe('videos');
+  });
+
+  it('does not remember a filter that was only used programmatically (Go to artist)', async () => {
+    const mem = memory();
+    const a = new SearchStore(mem);
+    await a.run('', 'albums');
+    expect(mem.m.size).toBe(0);
+  });
+
+  it('ignores junk in storage and survives a storage that throws', () => {
+    const mem = memory();
+    mem.m.set('pyxee.searchFilter', 'nonsense');
+    expect(new SearchStore(mem).filter).toBe('songs');
+    const broken = { getItem: () => { throw new Error('no'); }, setItem: () => { throw new Error('no'); } };
+    expect(new SearchStore(broken).filter).toBe('songs');
+  });
+
+  it('falls back to Songs when the remembered filter is not supported any more', async () => {
+    const mem = memory();
+    mem.m.set('pyxee.searchFilter', 'albums');
+    const s = new SearchStore(mem);
+    s.init(backendWith({ all: true, songs: true, albums: false }));
+    await new Promise((r) => setTimeout(r, 0));
+    expect(s.filter).toBe('songs');
+  });
+});

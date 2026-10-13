@@ -11,11 +11,26 @@ const DEFAULT_FILTERS: FilterInfoDto[] = (['all', 'songs', 'videos', 'albums', '
   (filter) => ({ filter, supported: true }),
 );
 export const SUGGEST_DELAY_MS = 150;
+export const FILTER_KEY = 'pyxee.searchFilter';
+/** Songs unless the user picked something else last time. */
+export const DEFAULT_FILTER: SearchFilterDto = 'songs';
+
+type Store = Pick<Storage, 'getItem' | 'setItem'>;
+
+function loadFilter(storage: Store | null): SearchFilterDto {
+  try {
+    const v = storage?.getItem(FILTER_KEY);
+    if (v && DEFAULT_FILTERS.some((f) => f.filter === v)) return v as SearchFilterDto;
+  } catch {
+    /* storage unavailable: use the default */
+  }
+  return DEFAULT_FILTER;
+}
 
 /** Search state. Late answers for an older query are dropped, so results never flicker back. */
 export class SearchStore {
   query = $state('');
-  filter = $state<SearchFilterDto>('all');
+  filter = $state<SearchFilterDto>(DEFAULT_FILTER);
   status = $state<SearchStatus>('idle');
   items = $state<SearchItemDto[]>([]);
   error = $state<SearchErrorDto | null>(null);
@@ -25,10 +40,24 @@ export class SearchStore {
   #seq = 0;
   #suggestSeq = 0;
   #timer: ReturnType<typeof setTimeout> | null = null;
+  #storage: Store | null;
+
+  constructor(storage: Store | null = null) {
+    this.#storage = storage;
+    this.filter = loadFilter(storage);
+  }
 
   init(backend: Backend) {
     this.#backend = backend;
-    backend.searchFilters().then((f) => (this.filters = f)).catch(() => {});
+    backend
+      .searchFilters()
+      .then((f) => {
+        this.filters = f;
+        // A remembered filter this source cannot do any more falls back instead of finding nothing.
+        const ok = (x: SearchFilterDto) => f.find((i) => i.filter === x)?.supported;
+        if (!ok(this.filter)) this.filter = ok(DEFAULT_FILTER) ? DEFAULT_FILTER : 'all';
+      })
+      .catch(() => {});
   }
 
   async run(query: string, filter: SearchFilterDto = this.filter) {
@@ -64,6 +93,12 @@ export class SearchStore {
 
   setFilter(filter: SearchFilterDto) {
     if (!this.filters.find((f) => f.filter === filter)?.supported) return Promise.resolve();
+    // Only a choice made on the chips is remembered; "Go to artist" and the like just search.
+    try {
+      this.#storage?.setItem(FILTER_KEY, filter);
+    } catch {
+      /* not remembered, still works */
+    }
     return this.run(this.query, filter);
   }
 
@@ -88,4 +123,4 @@ export class SearchStore {
   }
 }
 
-export const search = new SearchStore();
+export const search = new SearchStore(typeof localStorage !== 'undefined' ? localStorage : null);
