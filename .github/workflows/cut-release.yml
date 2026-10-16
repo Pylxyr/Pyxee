@@ -111,21 +111,34 @@ jobs:
       skip_checks: true # CI just passed above
     secrets: inherit
 
-  # The tag exists but the release failed: say exactly what to do.
-  release-failed:
+  # The last word on whether this worked. A skipped or failed release job must never look like success: this job
+  # checks that a published (non-draft) release exists for the tag, and says what to do when it does not.
+  verify:
     needs: [prepare, release]
-    if: ${{ failure() && needs.prepare.result == 'success' && needs.release.result == 'failure' }}
+    if: ${{ !cancelled() && needs.prepare.result == 'success' }}
     runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    env:
+      TAG: ${{ needs.prepare.outputs.tag }}
+      GH_TOKEN: ${{ github.token }}
     steps:
-      - env:
-          TAG: ${{ needs.prepare.outputs.tag }}
-        run: |
-          echo "::error title=Release failed after tagging::$TAG was pushed but its release was not published."
+      - run: |
+          url="$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json url,isDraft --jq 'select(.isDraft == false) | .url' 2>/dev/null || true)"
+          if [ -n "$url" ]; then
+            echo "### Released $TAG" >> "$GITHUB_STEP_SUMMARY"
+            echo "$url" >> "$GITHUB_STEP_SUMMARY"
+            echo "Released: $url"
+            exit 0
+          fi
+          echo "::error title=No published release::$TAG was tagged, but no published release exists for it."
           {
-            echo "### $TAG was tagged, but the release failed"
+            echo "### $TAG was tagged, but it was NOT published"
             echo
             echo "- **Flaky step (download, runner, network):** open this run and choose **Re-run failed jobs**. The release job is safe to repeat."
             echo "- **A real problem:** fix it on main, then delete the tag so the version can be used again:"
             echo "  \`git push --delete origin $TAG\`"
-            echo "  and run **Cut release** again with the exact version."
+            echo "  and run **Cut release** again."
           } >> "$GITHUB_STEP_SUMMARY"
+          exit 1
