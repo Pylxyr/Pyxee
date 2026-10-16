@@ -62,11 +62,13 @@ jobs:
       - run: cargo clippy --workspace --all-targets --locked -- -D warnings
       - run: cargo test --workspace --locked
       # The TypeScript bindings are generated from the Rust types by the tests above; they must be committed up to date.
+      # Compared by content with `git diff`, not `git status`: on Windows (core.autocrlf=true) status reports files
+      # whose only difference is line endings as modified, with an empty diff. .gitattributes also pins them to LF.
       - name: Generated bindings are committed
         shell: bash
         run: |
-          if [ -n "$(git status --porcelain -- ui/src/lib/bindings)" ]; then
-            git status --short -- ui/src/lib/bindings
+          git add --intent-to-add -- ui/src/lib/bindings # so a brand-new generated file counts as a change
+          if ! git diff --exit-code --stat -- ui/src/lib/bindings; then
             git diff -- ui/src/lib/bindings
             echo "::error::ui/src/lib/bindings is out of date. Run 'cargo test -p pyxee-app' and commit the result."
             exit 1
