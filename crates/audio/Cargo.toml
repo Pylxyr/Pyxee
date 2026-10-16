@@ -6,7 +6,7 @@ license.workspace = true
 
 [dependencies]
 log = "0.4"
-symphonia = { version = "0.5", features = ["all"] }
+symphonia = { version = "0.6", features = ["all"] }
 rubato = "0.16"
 thiserror = "2"
 # native-certs: trust the OS certificate store (antivirus HTTPS scanning, corporate proxies)
