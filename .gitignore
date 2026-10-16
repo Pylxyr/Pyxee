@@ -9,6 +9,7 @@ crates/app/gen
 crates/app/binaries/*
 !crates/app/binaries/README.md
 /dist
+pyxee-check/
 
 # python bytecode from scripts/ and its tests
 __pycache__/
