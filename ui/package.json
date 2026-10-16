@@ -11,7 +11,7 @@
     "preview:single": "SINGLE=1 vite build && node scripts/single-file.mjs"
   },
   "dependencies": {
-    "@tauri-apps/api": "^2.12.2"
+    "@tauri-apps/api": "^2.12.3"
   },
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "^7.3.1",
