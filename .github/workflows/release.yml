@@ -114,6 +114,17 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "yt-dlp does not run" }
           $ff = @(Get-ChildItem $bin -Filter "ffmpeg*" -ErrorAction SilentlyContinue)
           if ($ff.Count -gt 0) { throw "ffmpeg was downloaded again: $($ff.Name -join ', ')" }
+          # yt-dlp parses its --format argument on start-up, so a malformed selector kills every play before any
+          # network call. Run the shipped binary with the app's real selector against a dead local port: it must
+          # fail with an ordinary connection error, never with a selector error.
+          $src = Get-Content crates/sources/src/ytdlp.rs -Raw
+          if ($src -notmatch 'FORMAT_SELECTOR: &str =\s*"([^"]+)"') { throw "FORMAT_SELECTOR not found in ytdlp.rs" }
+          $selector = $Matches[1]
+          $ErrorActionPreference = "Continue"
+          $out = & "$bin/yt-dlp-x86_64-pc-windows-msvc.exe" --ignore-config --no-warnings --socket-timeout 3 --retries 0 -f $selector --simulate "http://127.0.0.1:9/x" 2>&1 | Out-String
+          $global:LASTEXITCODE = 0 # the connection error above is expected; only a selector error is a failure
+          if ($out -match 'Invalid filter|SyntaxError|Traceback|Failed to execute script') { throw "yt-dlp rejects the app's format selector [$selector]:`n$out" }
+          Write-Host "yt-dlp accepts the app's format selector: $selector"
       - run: npm ci --prefix ui
       - run: npm run build --prefix ui
       # Same as `cargo xtask installer`, with the bundle list chosen here: Windows Installer (MSI) only accepts a
