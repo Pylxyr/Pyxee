@@ -49,7 +49,7 @@ The workflows were linted and their scripts tested, but the Windows build itself
 After the first **Cut release**, tick these (the run log and summary show the details):
 
 - [ ] CI is green on the Windows runner, including the informational "win-extras compiles" step (note whether it passes).
-- [ ] **Installed layout works** step: the installed folder lists the app exe plus `yt-dlp.exe` and `ffmpeg.exe`. If a name differs from what the step expects, fix the filter in `release.yml`.
+- [ ] **Installed layout works** step: the installed folder lists the app exe plus `yt-dlp.exe` (and no ffmpeg). If a name differs from what the step expects, fix the filter in `release.yml`.
 - [ ] The release has `Pyxee_x.y.z_x64-setup.exe`, the `.msi` (stable versions only), `SHA256SUMS.txt` and `THIRD_PARTY_NOTICES.txt`; the checksum of the downloaded installer matches.
 - [ ] Release notes read sensibly, and say which layer wrote them (AI line at the bottom of the changes, or commit-message sections).
 - [ ] Install the downloaded installer on a clean user profile: SmartScreen "More info -> Run anyway" works, the app starts, a YouTube song plays.

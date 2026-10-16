@@ -5,7 +5,7 @@
 //! Heavy work (resolve, open, prefill) runs on short-lived worker threads and comes back through a
 //! channel tagged with a generation, so results for a track the user already skipped are dropped.
 
-use pyxee_audio::decode::{FfmpegPipeSource, SampleSource, SymphoniaSource};
+use pyxee_audio::decode::{SampleSource, SymphoniaSource};
 use pyxee_audio::gapless::{FailKind, PreparedTrack};
 use pyxee_audio::http::HttpRangeSource;
 use pyxee_audio::pipeline::{Consumer, PipeEvent, Pipeline, Volume};
@@ -13,7 +13,6 @@ use pyxee_audio::AudioError;
 use pyxee_core::{Command, Effect, EngineEvent, EntryId, Failure, Heard, Track, TrackDetails};
 use pyxee_sources::{MusicSource, SourceError, StreamInfo, StreamMeta, TrackInfo};
 use std::collections::{HashMap, HashSet};
-use std::path::PathBuf;
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -116,7 +115,6 @@ pub fn failure_from_audio(e: &AudioError) -> Failure {
     match e {
         AudioError::UrlExpired(c) => Failure::Expired(Some(*c)),
         AudioError::Network(_) => Failure::Offline,
-        AudioError::Ffmpeg(m) => Failure::Other(m.clone()),
         _ => Failure::Decode,
     }
 }
@@ -124,7 +122,6 @@ pub fn failure_from_audio(e: &AudioError) -> Failure {
 pub struct Engine {
     host: Arc<dyn Host>,
     source: Arc<dyn MusicSource>,
-    ffmpeg: PathBuf,
     rate: u32,
     pipeline: Pipeline,
     pipe_rx: Receiver<PipeEvent>,
@@ -164,7 +161,6 @@ impl Engine {
     pub fn new(
         host: Arc<dyn Host>,
         source: Arc<dyn MusicSource>,
-        ffmpeg: PathBuf,
         rate: u32,
         volume: Volume,
     ) -> Self {
@@ -173,7 +169,6 @@ impl Engine {
         Self {
             host,
             source,
-            ffmpeg,
             rate,
             pipeline: Pipeline::new(rate, pipe_tx, volume),
             pipe_rx,
@@ -306,10 +301,9 @@ impl Engine {
     }
 
     fn spawn_prepare(&self, id: EntryId, key: String, start_ms: u64, purpose: Purpose) {
-        let (source, cache, ffmpeg, rate, tx) = (
+        let (source, cache, rate, tx) = (
             Arc::clone(&self.source),
             Arc::clone(&self.cache),
-            self.ffmpeg.clone(),
             self.rate,
             self.work_tx.clone(),
         );
@@ -319,10 +313,8 @@ impl Engine {
             let on_meta = move |meta: StreamMeta| {
                 let _ = details_tx.send(Work::Details { id, meta });
             };
-            let result = prepare(
-                &*source, &cache, &ffmpeg, rate, id, &key, start_ms, &on_meta,
-            )
-            .map(Box::new);
+            let result =
+                prepare(&*source, &cache, rate, id, &key, start_ms, &on_meta).map(Box::new);
             let _ = tx.send(Work::Prepared {
                 generation,
                 token,
@@ -627,55 +619,47 @@ fn forget(cache: &UrlCache, key: &str) {
     }
 }
 
-/// Opus goes through ffmpeg (symphonia has no Opus decoder); everything else through symphonia,
-/// with ffmpeg as the fallback for formats it cannot read.
-fn open_stream(
-    s: &StreamInfo,
-    start_ms: u64,
-    ffmpeg: &std::path::Path,
-) -> Result<Box<dyn SampleSource>, AudioError> {
+/// Opens a stream with Symphonia, the only decoder (there is no ffmpeg). A format it cannot read
+/// fails here with the format named in the log, and the song is skipped: `yt-dlp` is asked only
+/// for formats Symphonia plays (see `FORMAT_SELECTOR`), so this is the safety net, not a path.
+fn open_stream(s: &StreamInfo, start_ms: u64) -> Result<Box<dyn SampleSource>, AudioError> {
     let remote = s.url.starts_with("http");
-    let opus = s.acodec.as_deref().is_some_and(|c| c.contains("opus"))
-        || matches!(s.ext.as_str(), "webm" | "opus");
-    if !opus {
-        let opened = if remote {
-            HttpRangeSource::open_with(&s.url, &s.headers)
-                .and_then(|h| SymphoniaSource::open(Box::new(h), Some(&s.ext)))
+    let open = || -> Result<SymphoniaSource, AudioError> {
+        if remote {
+            let http = HttpRangeSource::open_with(&s.url, &s.headers)?;
+            SymphoniaSource::open(Box::new(http), Some(&s.ext))
         } else {
             SymphoniaSource::open_path(std::path::Path::new(&s.url))
-        };
-        match opened {
-            Ok(mut src) => {
-                if start_ms == 0 {
-                    return Ok(Box::new(src));
-                }
-                match src.seek_ms(start_ms) {
-                    Ok(()) => return Ok(Box::new(src)),
-                    Err(e @ (AudioError::UrlExpired(_) | AudioError::Network(_))) => return Err(e),
-                    // The format cannot seek (no index): let ffmpeg do it rather than give up on the song.
-                    Err(e) => {
-                        log::warn!("seeking to {start_ms} ms failed ({e}); using ffmpeg instead")
-                    }
-                }
-            }
-            Err(e @ (AudioError::UrlExpired(_) | AudioError::Network(_))) => return Err(e),
-            Err(e) => log::warn!(
-                "the built-in decoder cannot read this stream ({e}); using ffmpeg instead"
-            ),
         }
-    } else {
-        log::info!("opus audio: decoding with ffmpeg");
+    };
+    let mut src = open().inspect_err(|e| {
+        if !matches!(e, AudioError::UrlExpired(_) | AudioError::Network(_)) {
+            log::warn!(
+                "cannot decode this stream (ext={}, acodec={:?}): {e}",
+                s.ext,
+                s.acodec
+            );
+        }
+    })?;
+    if start_ms > 0 {
+        match src.seek_ms(start_ms) {
+            Ok(()) => {}
+            Err(e @ (AudioError::UrlExpired(_) | AudioError::Network(_))) => return Err(e),
+            Err(e) => {
+                // This format cannot seek in place: open it again and decode through the offset
+                // rather than give up on the song.
+                log::warn!("seeking to {start_ms} ms failed ({e}); decoding up to it instead");
+                src = open()?;
+                src.skip_ms(start_ms);
+            }
+        }
     }
-    Ok(Box::new(FfmpegPipeSource::spawn_with(
-        ffmpeg, &s.url, start_ms, &s.headers,
-    )?))
+    Ok(Box::new(src))
 }
 
-#[allow(clippy::too_many_arguments)]
 fn prepare(
     source: &dyn MusicSource,
     cache: &UrlCache,
-    ffmpeg: &std::path::Path,
     rate: u32,
     id: EntryId,
     key: &str,
@@ -683,7 +667,7 @@ fn prepare(
     on_meta: &dyn Fn(StreamMeta),
 ) -> Result<PreparedTrack, Failure> {
     let build = |stream: &StreamInfo| -> Result<PreparedTrack, AudioError> {
-        PreparedTrack::new(id.0, open_stream(stream, start_ms, ffmpeg)?, rate)
+        PreparedTrack::new(id.0, open_stream(stream, start_ms)?, rate)
     };
     let stream = resolve_cached(source, cache, key, false).map_err(|e| failure_from_source(&e))?;
     match build(&stream) {

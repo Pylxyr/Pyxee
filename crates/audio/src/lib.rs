@@ -28,6 +28,4 @@ pub enum AudioError {
     Network(String),
     #[error("stream URL expired or was rejected (HTTP {0}); re-resolve the track")]
     UrlExpired(u16),
-    #[error("ffmpeg error: {0}")]
-    Ffmpeg(String),
 }

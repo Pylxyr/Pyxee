@@ -1,12 +1,8 @@
-//! Sample sources: symphonia (pure Rust) and an ffmpeg pipe (for codecs symphonia lacks, e.g. Opus).
+//! Sample sources. Symphonia (pure Rust) is the only decoder: there is no ffmpeg. A format it cannot
+//! open fails with `AudioError::Unsupported` (e.g. Opus: no released Symphonia has an Opus decoder).
 
 use crate::AudioError;
-use std::io::{BufRead, BufReader, Read};
 use std::path::Path;
-use std::process::{Child, ChildStdout, Command, Stdio};
-use std::sync::atomic::{AtomicU16, Ordering};
-use std::sync::{Arc, Mutex};
-use std::thread::JoinHandle;
 use symphonia::core::audio::SampleBuffer;
 use symphonia::core::codecs::{Decoder, DecoderOptions, CODEC_TYPE_NULL};
 use symphonia::core::errors::Error as SymError;
@@ -125,6 +121,14 @@ impl SymphoniaSource {
             finished: false,
             skip_frames: 0,
         })
+    }
+
+    /// Drops the first `ms` of audio by decoding through it. Slower than [`SampleSource::seek_ms`]
+    /// but needs no seek support: the fallback for a stream that cannot seek in place. Call it on
+    /// a freshly opened source (a failed seek may have moved the reader).
+    pub fn skip_ms(&mut self, ms: u64) {
+        self.skip_frames = ms * u64::from(self.rate) / 1000;
+        self.lead_pending = false; // the quiet start is inside what is being dropped
     }
 
     /// Decodes the next packet's samples, appending to `chunk`. `Ok(false)` at end of stream.
@@ -260,214 +264,5 @@ impl SampleSource for SymphoniaSource {
                 return Ok(true);
             }
         }
-    }
-}
-
-/// Decodes anything ffmpeg understands to 48 kHz stereo f32 over a pipe.
-pub struct FfmpegPipeSource {
-    child: Child,
-    stdout: ChildStdout,
-    leftover: Vec<u8>,
-    last_error: Arc<Mutex<String>>,
-    /// HTTP status (401/403/410) ffmpeg reported when the server refused the URL; 0 = none.
-    refused: Arc<AtomicU16>,
-    stderr_thread: Option<JoinHandle<()>>,
-    checked_exit: bool,
-}
-
-/// The HTTP status behind an ffmpeg error line such as `Server returned 403 Forbidden (access denied)`,
-/// when it means the stream URL is no longer accepted (expired, or refused for these headers).
-pub fn refused_status(line: &str) -> Option<u16> {
-    let rest = ["Server returned ", "HTTP error "]
-        .iter()
-        .find_map(|p| line.find(p).map(|i| &line[i + p.len()..]))?;
-    let code: u16 = rest.get(..3)?.parse().ok()?;
-    crate::http::is_expired(code).then_some(code)
-}
-
-/// ffmpeg input options that make it send the same headers yt-dlp used: the User-Agent through
-/// `-user_agent`, everything else as one CRLF-separated `-headers` value. Line breaks inside a
-/// value are dropped so a header can never smuggle in another one.
-pub fn ffmpeg_header_args(headers: &[(String, String)]) -> Vec<String> {
-    let clean = |s: &str| s.replace(['\r', '\n'], " ").trim().to_string();
-    let mut args = Vec::new();
-    let mut block = String::new();
-    for (k, v) in headers {
-        let (k, v) = (clean(k), clean(v));
-        if k.is_empty() || k.eq_ignore_ascii_case("host") || k.eq_ignore_ascii_case("range") {
-            continue;
-        }
-        if k.eq_ignore_ascii_case("user-agent") {
-            args.push("-user_agent".to_string());
-            args.push(v);
-        } else {
-            block.push_str(&format!("{k}: {v}\r\n"));
-        }
-    }
-    if !block.is_empty() {
-        args.push("-headers".to_string());
-        args.push(block);
-    }
-    args
-}
-
-pub const FFMPEG_RATE: u32 = 48_000;
-
-impl FfmpegPipeSource {
-    pub fn spawn(ffmpeg: &Path, input: &str) -> Result<Self, AudioError> {
-        Self::spawn_at(ffmpeg, input, 0)
-    }
-
-    /// Starts decoding at `start_ms` (ffmpeg seeks before decoding).
-    pub fn spawn_at(ffmpeg: &Path, input: &str, start_ms: u64) -> Result<Self, AudioError> {
-        Self::spawn_with(ffmpeg, input, start_ms, &[])
-    }
-
-    /// Like `spawn_at`, sending `headers` to the server (see [`ffmpeg_header_args`]).
-    pub fn spawn_with(
-        ffmpeg: &Path,
-        input: &str,
-        start_ms: u64,
-        headers: &[(String, String)],
-    ) -> Result<Self, AudioError> {
-        let mut cmd = Command::new(ffmpeg);
-        cmd.args(["-nostdin", "-v", "error"]);
-        // Only the protocols we need; reconnect on dropped HTTP streams.
-        cmd.args(["-protocol_whitelist", "file,http,https,tcp,tls,crypto"]);
-        if input.starts_with("http") {
-            cmd.args([
-                "-reconnect",
-                "1",
-                "-reconnect_streamed",
-                "1",
-                "-reconnect_delay_max",
-                "5",
-            ]);
-            cmd.args(ffmpeg_header_args(headers));
-        }
-        if start_ms > 0 {
-            cmd.args([
-                "-ss",
-                &format!("{}.{:03}", start_ms / 1000, start_ms % 1000),
-            ]);
-        }
-        cmd.args(["-i", input, "-vn", "-f", "f32le", "-ac", "2", "-ar"])
-            .arg(FFMPEG_RATE.to_string())
-            .arg("pipe:1")
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .stdin(Stdio::null());
-        #[cfg(windows)]
-        {
-            use std::os::windows::process::CommandExt;
-            cmd.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
-        }
-        let mut child = cmd.spawn().map_err(|e| {
-            AudioError::Ffmpeg(format!(
-                "ffmpeg could not be started ({}): {e}. Pyxee needs ffmpeg for most YouTube audio: run `cargo xtask tools` or set PYXEE_FFMPEG.",
-                ffmpeg.display()
-            ))
-        })?;
-        let stdout = child
-            .stdout
-            .take()
-            .ok_or_else(|| AudioError::Ffmpeg("no stdout".into()))?;
-        let last_error = Arc::new(Mutex::new(String::new()));
-        let refused = Arc::new(AtomicU16::new(0));
-        let stderr_thread = child.stderr.take().map(|stderr| {
-            let sink = Arc::clone(&last_error);
-            let refused = Arc::clone(&refused);
-            std::thread::spawn(move || {
-                for line in BufReader::new(stderr).lines().map_while(Result::ok) {
-                    if let Some(code) = refused_status(&line) {
-                        refused.store(code, Ordering::Relaxed);
-                    }
-                    if let Ok(mut g) = sink.lock() {
-                        *g = line;
-                    }
-                }
-            })
-        });
-        Ok(Self {
-            child,
-            stdout,
-            leftover: Vec::new(),
-            last_error,
-            refused,
-            stderr_thread,
-            checked_exit: false,
-        })
-    }
-
-    /// At end of stream, a non-zero exit means ffmpeg failed (bad URL, unsupported file), not "track over".
-    fn check_exit(&mut self) -> Result<(), AudioError> {
-        if self.checked_exit {
-            return Ok(());
-        }
-        self.checked_exit = true;
-        let status = self.child.wait()?;
-        if let Some(t) = self.stderr_thread.take() {
-            let _ = t.join();
-        }
-        if !status.success() {
-            let last = self
-                .last_error
-                .lock()
-                .map(|g| g.clone())
-                .unwrap_or_default();
-            log::warn!("ffmpeg exited with {status}: {last}");
-        }
-        if status.success() {
-            Ok(())
-        } else if let code @ 1.. = self.refused.load(Ordering::Relaxed) {
-            // The server said no (403 and friends): same meaning as a refused HTTP range request,
-            // so the engine drops the cached URL and re-resolves instead of reporting a decoder error.
-            Err(AudioError::UrlExpired(code))
-        } else {
-            let msg = self
-                .last_error
-                .lock()
-                .map(|g| g.clone())
-                .unwrap_or_default();
-            Err(AudioError::Ffmpeg(format!(
-                "ffmpeg exited with {status}: {msg}"
-            )))
-        }
-    }
-}
-
-impl Drop for FfmpegPipeSource {
-    fn drop(&mut self) {
-        let _ = self.child.kill();
-        let _ = self.child.wait();
-    }
-}
-
-impl SampleSource for FfmpegPipeSource {
-    fn sample_rate(&self) -> u32 {
-        FFMPEG_RATE
-    }
-    fn channels(&self) -> usize {
-        2
-    }
-
-    fn read(&mut self, out: &mut Vec<f32>) -> Result<bool, AudioError> {
-        let mut raw = [0u8; 16 * 1024];
-        let n = self.stdout.read(&mut raw)?;
-        if n == 0 {
-            self.check_exit()?;
-            return Ok(false);
-        }
-        self.leftover.extend_from_slice(&raw[..n]);
-        let usable = self.leftover.len() / 8 * 8; // whole stereo f32 frames
-        out.extend(
-            self.leftover[..usable]
-                .as_chunks::<4>()
-                .0
-                .iter()
-                .map(|b| f32::from_le_bytes(*b)),
-        );
-        self.leftover.drain(..usable);
-        Ok(true)
     }
 }

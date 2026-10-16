@@ -1,13 +1,7 @@
-Pyxee bundles the following programs. They run as separate processes; Pyxee does not link them.
+Pyxee bundles the following program. It runs as a separate process; Pyxee does not link it.
 
 yt-dlp
   https://github.com/yt-dlp/yt-dlp
   License: The Unlicense (public domain dedication).
-
-FFmpeg (LGPL build)
-  Binary build: https://github.com/BtbN/FFmpeg-Builds (the "lgpl" variant, no GPL components)
-  Source code and licence: https://ffmpeg.org/ and https://github.com/FFmpeg/FFmpeg
-  License: GNU Lesser General Public License v2.1 or later. You may replace the bundled ffmpeg.exe with
-  your own build: put it next to Pyxee as ffmpeg.exe, or set the PYXEE_FFMPEG environment variable.
 
 Using yt-dlp to access YouTube may conflict with YouTube's Terms of Service. Pyxee is for personal use.

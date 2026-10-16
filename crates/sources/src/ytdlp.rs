@@ -1,6 +1,7 @@
 //! yt-dlp sidecar: search, resolve and related, all through one process wrapper that has a timeout
 //! and turns failures into errors the UI can explain.
 
+use crate::gate::{Gate, GateConfig};
 use crate::suggest::{self, encode};
 use crate::{
     classify_stderr, MusicSource, SearchFilter, SearchItem, SourceError, StreamInfo, StreamMeta,
@@ -14,13 +15,89 @@ use std::process::{Command, Stdio};
 use std::thread;
 use std::time::{Duration, Instant};
 
-/// Prefer Opus (best quality YouTube serves without Premium), then AAC, then anything.
-pub const FORMAT_SELECTOR: &str = "bestaudio[acodec=opus]/bestaudio[ext=m4a]/bestaudio";
+/// Only formats the built-in decoder (Symphonia 0.5, the sole decoder: there is no ffmpeg) can play.
+///
+/// YouTube's best audio is Opus in WebM, but no released Symphonia decodes Opus, so it is not
+/// requested. What Symphonia can play from YouTube is AAC-LC in M4A (itag 140, ~128 kbps; 141,
+/// ~256 kbps, with Premium cookies). Each filter excludes something that would fail to play:
+///
+/// * `acodec^=mp4a.40.2`: AAC-LC only. Symphonia's AAC decoder rejects HE-AAC (`mp4a.40.5`,
+///   itag 139) with "aac too complex".
+/// * `audio_channels<=2?`: no 5.1 AAC (itags 256/258; the decoder is stereo at most). The `?`
+///   keeps formats that do not report a channel count.
+/// * `protocol=https`: one plain file the range reader can fetch, not an HLS playlist or DASH
+///   manifest (`http_dash_segments`).
+///
+/// If nothing matches, yt-dlp reports "Requested format is not available", which becomes a clear
+/// "no audio stream this player can decode" error instead of falling back to a codec we cannot play.
+pub const FORMAT_SELECTOR: &str =
+    "bestaudio[ext=m4a][acodec^=mp4a.40.2][protocol=https][audio_channels<=2?]";
 const RESULTS: usize = 20;
+
+/// Optional login cookies for yt-dlp. YouTube is far less likely to answer "sign in to confirm
+/// you're not a bot" / HTTP 429 to a logged-in session. Set one of (the file wins if both are set):
+///
+/// * `PYXEE_COOKIES`: path to a Netscape-format `cookies.txt` (yt-dlp may rewrite it to refresh the session).
+/// * `PYXEE_COOKIES_FROM_BROWSER`: yt-dlp's `BROWSER[+KEYRING][:PROFILE][::CONTAINER]`, e.g. `firefox`.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub enum Cookies {
+    #[default]
+    None,
+    File(PathBuf),
+    Browser(String),
+}
+
+impl Cookies {
+    pub fn from_env() -> Self {
+        Self::from_lookup(|k| std::env::var(k).ok())
+    }
+
+    /// Reads the settings through `get` (the environment in the app, a map in tests). Logs which
+    /// kind is used, never the path or the browser profile.
+    pub fn from_lookup(get: impl Fn(&str) -> Option<String>) -> Self {
+        let var = |k: &str| {
+            get(k)
+                .map(|v| v.trim().to_string())
+                .filter(|v| !v.is_empty())
+        };
+        let browser = var("PYXEE_COOKIES_FROM_BROWSER");
+        if let Some(file) = var("PYXEE_COOKIES").map(PathBuf::from) {
+            if file.is_file() {
+                if browser.is_some() {
+                    log::info!(
+                        "PYXEE_COOKIES and PYXEE_COOKIES_FROM_BROWSER are both set; using the file"
+                    );
+                }
+                log::info!("yt-dlp: using the cookie file from PYXEE_COOKIES");
+                return Self::File(file);
+            }
+            // yt-dlp would create an empty file there and carry on without cookies, silently.
+            log::warn!("PYXEE_COOKIES does not point to an existing file; ignoring it");
+        }
+        if let Some(spec) = browser {
+            let name = spec.split(['+', ':']).next().unwrap_or_default();
+            log::info!(
+                "yt-dlp: reading cookies from the {name} browser (PYXEE_COOKIES_FROM_BROWSER)"
+            );
+            return Self::Browser(spec);
+        }
+        Self::None
+    }
+
+    fn args(&self) -> Vec<String> {
+        match self {
+            Self::None => Vec::new(),
+            Self::File(p) => vec!["--cookies".into(), p.display().to_string()],
+            Self::Browser(b) => vec!["--cookies-from-browser".into(), b.clone()],
+        }
+    }
+}
 
 pub struct YtDlpSource {
     path: PathBuf,
     timeout: Duration,
+    gate: Gate,
+    cookies: Cookies,
 }
 
 impl YtDlpSource {
@@ -28,6 +105,8 @@ impl YtDlpSource {
         Self {
             path: path.into(),
             timeout: Duration::from_secs(40),
+            gate: Gate::new(GateConfig::DEFAULT),
+            cookies: Cookies::None,
         }
     }
 
@@ -36,8 +115,27 @@ impl YtDlpSource {
         self
     }
 
-    fn run(&self, args: &[String]) -> Result<String, SourceError> {
-        run_tool(&self.path, args, self.timeout)
+    /// Replaces the default pacing (see [`GateConfig`]).
+    pub fn with_gate(mut self, cfg: GateConfig) -> Self {
+        self.gate = Gate::new(cfg);
+        self
+    }
+
+    pub fn with_cookies(mut self, cookies: Cookies) -> Self {
+        self.cookies = cookies;
+        self
+    }
+
+    /// One yt-dlp run, when the gate says it is this call's turn.
+    fn run(&self, what: &str, args: &[String]) -> Result<String, SourceError> {
+        let all: Vec<String> = self
+            .cookies
+            .args()
+            .into_iter()
+            .chain(args.iter().cloned())
+            .collect();
+        self.gate
+            .run(what, || run_tool(&self.path, &all, self.timeout))
     }
 }
 
@@ -356,7 +454,7 @@ impl MusicSource for YtDlpSource {
         if query.trim().is_empty() {
             return Ok(Vec::new());
         }
-        let out = self.run(&flat_args(search_target(query, filter)?, RESULTS))?;
+        let out = self.run("search", &flat_args(search_target(query, filter)?, RESULTS))?;
         parse_entries(&out)
     }
 
@@ -373,7 +471,7 @@ impl MusicSource for YtDlpSource {
         .map(|s| (*s).to_string())
         .chain([format!("https://www.youtube.com/watch?v={id}")])
         .collect();
-        let out = self.run(&args)?;
+        let out = self.run("resolve", &args)?;
         let line = out
             .lines()
             .find(|l| l.starts_with('{'))
@@ -397,7 +495,7 @@ impl MusicSource for YtDlpSource {
     fn related(&self, key: &str, count: usize) -> Result<Vec<TrackInfo>, SourceError> {
         let id = video_id(key)?;
         let target = format!("https://www.youtube.com/watch?v={id}&list=RD{id}");
-        let out = self.run(&flat_args(target, count + 1))?;
+        let out = self.run("related", &flat_args(target, count + 1))?;
         Ok(parse_entries(&out)?
             .into_iter()
             .filter_map(|i| {
@@ -609,6 +707,93 @@ mod tests {
     }
 
     #[test]
+    fn the_format_selector_asks_only_for_what_the_built_in_decoder_can_play() {
+        // Symphonia 0.5 has no Opus decoder and its AAC decoder is LC-only: see FORMAT_SELECTOR.
+        for banned in ["opus", "webm", "vorbis", "ba/", "/best"] {
+            assert!(
+                !FORMAT_SELECTOR.contains(banned),
+                "{banned} in {FORMAT_SELECTOR}"
+            );
+        }
+        assert!(
+            !FORMAT_SELECTOR.contains('/'),
+            "no fallback to a format that cannot be played"
+        );
+        for needed in [
+            "ext=m4a",
+            "acodec^=mp4a.40.2",
+            "protocol=https",
+            "audio_channels<=2",
+        ] {
+            assert!(
+                FORMAT_SELECTOR.contains(needed),
+                "{needed} missing from {FORMAT_SELECTOR}"
+            );
+        }
+    }
+
+    #[test]
+    fn no_playable_format_is_a_clear_error_not_a_generic_tool_failure() {
+        let e = classify_stderr(
+            "yt-dlp",
+            "ERROR: [youtube] abc: Requested format is not available. Use --list-formats for a list of available formats",
+        );
+        assert!(
+            matches!(&e, SourceError::Failed(m) if m.contains("no audio stream this player can decode")),
+            "{e:?}"
+        );
+    }
+
+    fn env(pairs: &[(&str, &str)]) -> impl Fn(&str) -> Option<String> {
+        let m: std::collections::HashMap<String, String> = pairs
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect();
+        move |k| m.get(k).cloned()
+    }
+
+    #[test]
+    fn cookie_settings_come_from_the_environment_and_a_bad_file_is_ignored() {
+        assert_eq!(Cookies::from_lookup(env(&[])), Cookies::None);
+        assert_eq!(
+            Cookies::from_lookup(env(&[
+                ("PYXEE_COOKIES", "  "),
+                ("PYXEE_COOKIES_FROM_BROWSER", "")
+            ])),
+            Cookies::None,
+            "blank settings count as unset"
+        );
+        let file = std::env::temp_dir().join(format!("pyxee-cookies-{}.txt", std::process::id()));
+        std::fs::write(&file, "# Netscape HTTP Cookie File\n").unwrap();
+        let path = file.display().to_string();
+        assert_eq!(
+            Cookies::from_lookup(env(&[("PYXEE_COOKIES", &path)])),
+            Cookies::File(file.clone())
+        );
+        assert_eq!(
+            Cookies::from_lookup(env(&[
+                ("PYXEE_COOKIES", &path),
+                ("PYXEE_COOKIES_FROM_BROWSER", "firefox")
+            ])),
+            Cookies::File(file),
+            "the file wins when both are set"
+        );
+        assert_eq!(
+            Cookies::from_lookup(env(&[("PYXEE_COOKIES", "/no/such/cookies.txt")])),
+            Cookies::None,
+            "a missing file must not be handed to yt-dlp (it would create one)"
+        );
+        assert_eq!(
+            Cookies::from_lookup(env(&[
+                ("PYXEE_COOKIES", "/no/such/cookies.txt"),
+                ("PYXEE_COOKIES_FROM_BROWSER", "chrome:Profile 1")
+            ])),
+            Cookies::Browser("chrome:Profile 1".into()),
+            "a bad file falls through to the browser setting"
+        );
+    }
+
+    #[test]
     fn empty_queries_search_nothing_and_non_youtube_keys_are_refused() {
         let s = YtDlpSource::new("definitely-not-installed");
         assert_eq!(s.search("   ", SearchFilter::All).unwrap(), vec![]);
@@ -640,8 +825,17 @@ mod tests {
             (script, log)
         }
 
+        /// A source with no pacing, for tests that are not about pacing.
+        fn quick(script: &Path) -> YtDlpSource {
+            YtDlpSource::new(script).with_gate(GateConfig::NONE)
+        }
+
+        fn runs_logged(log: &Path) -> usize {
+            std::fs::read_to_string(log).map_or(0, |t| t.lines().count())
+        }
+
         fn canned() -> String {
-            let dump = r#"{"id":"abc12345678","title":"Neon Harbor","uploader":"Lowtide","duration":200.0,"url":"https://stream.example/a","ext":"webm","acodec":"opus","abr":139.0}"#;
+            let dump = r#"{"id":"abc12345678","title":"Neon Harbor","uploader":"Lowtide","duration":200.0,"url":"https://stream.example/a","ext":"m4a","acodec":"mp4a.40.2","abr":129.0}"#;
             format!(
                 r#"case "$*" in
   *list=RD*) printf '%s\n' '{TRACK}' '{second}' ;;
@@ -657,14 +851,14 @@ esac"#,
         #[test]
         fn search_resolve_and_related_drive_the_tool_with_the_right_arguments() {
             let (script, log) = fake("ok", &canned());
-            let s = YtDlpSource::new(&script);
+            let s = quick(&script);
 
             let found = s.search("lowtide", SearchFilter::All).unwrap();
             assert_eq!(found.len(), 2);
             let stream = s.resolve_stream("yt:abc12345678").unwrap();
             assert_eq!(
                 (stream.url.as_str(), stream.ext.as_str()),
-                ("https://stream.example/a", "webm")
+                ("https://stream.example/a", "m4a")
             );
             let related = s.related("yt:abc12345678", 5).unwrap();
             assert_eq!(related.len(), 1, "the seed itself is excluded");
@@ -677,7 +871,12 @@ esac"#,
                 ),
                 "{args}"
             );
-            assert!(args.contains("-f bestaudio[acodec=opus]/bestaudio[ext=m4a]/bestaudio -j https://www.youtube.com/watch?v=abc12345678"), "{args}");
+            assert!(
+                args.contains(&format!(
+                    "-f {FORMAT_SELECTOR} -j https://www.youtube.com/watch?v=abc12345678"
+                )),
+                "{args}"
+            );
             assert!(args.contains("list=RDabc12345678"), "{args}");
         }
 
@@ -707,6 +906,122 @@ esac"#,
                 matches!(s.search("x", SearchFilter::All), Err(SourceError::Failed(m)) if m.contains("too long"))
             );
             assert!(t.elapsed() < Duration::from_secs(3));
+        }
+
+        #[test]
+        fn after_a_rate_limit_later_calls_are_refused_without_starting_the_tool() {
+            let (limited, log) = fake(
+                "cooldown",
+                "echo 'ERROR: HTTP Error 429: Too Many Requests' >&2; exit 1",
+            );
+            let gate = GateConfig {
+                min_gap: Duration::ZERO,
+                cooldown: Duration::from_secs(60),
+            };
+            let s = YtDlpSource::new(&limited).with_gate(gate);
+            assert_eq!(
+                s.search("a", SearchFilter::All),
+                Err(SourceError::RateLimited)
+            );
+            assert_eq!(runs_logged(&log), 1);
+            let t = Instant::now();
+            // Every kind of call is refused, instantly, and none of them starts yt-dlp.
+            assert_eq!(
+                s.search("b", SearchFilter::Songs),
+                Err(SourceError::RateLimited)
+            );
+            assert_eq!(s.resolve_stream("yt:abc"), Err(SourceError::RateLimited));
+            assert_eq!(s.related("yt:abc", 5), Err(SourceError::RateLimited));
+            assert!(t.elapsed() < Duration::from_secs(1));
+            assert_eq!(runs_logged(&log), 1, "a retry storm reached the tool");
+        }
+
+        #[test]
+        fn the_tool_is_used_again_once_the_cooldown_is_over() {
+            // Rate limited on its first run (the wrapper has logged one line by then), fine after.
+            let (flaky, log) = fake(
+                "recover",
+                &format!(
+                    "if [ \"$(wc -l < \"$(dirname \"$0\")/args.log\")\" -le 1 ]; then\n  echo 'ERROR: HTTP Error 429: Too Many Requests' >&2; exit 1\nfi\nprintf '%s\\n' '{TRACK}'"
+                ),
+            );
+            let gate = GateConfig {
+                min_gap: Duration::ZERO,
+                cooldown: Duration::from_millis(60),
+            };
+            let s = YtDlpSource::new(&flaky).with_gate(gate);
+            assert_eq!(
+                s.search("a", SearchFilter::All),
+                Err(SourceError::RateLimited)
+            );
+            std::thread::sleep(Duration::from_millis(120));
+            assert_eq!(s.search("a", SearchFilter::All).unwrap().len(), 1);
+            assert_eq!(runs_logged(&log), 2);
+        }
+
+        #[test]
+        fn simultaneous_calls_run_the_tool_one_at_a_time() {
+            // The stand-in records when it starts and ends; overlapping runs would interleave.
+            let (slow, log) = fake("serial", "");
+            let order = log.with_file_name("order.log");
+            let body = format!(
+                "echo start >> '{o}'\nsleep 0.04\necho end >> '{o}'\nprintf '%s\\n' '{TRACK}'",
+                o = order.display()
+            );
+            let script = std::fs::read_to_string(&slow).unwrap();
+            std::fs::write(&slow, format!("{script}{body}\n")).unwrap();
+            let _ = std::fs::remove_file(&order);
+            let s = std::sync::Arc::new(quick(&slow));
+            let handles: Vec<_> = (0..5)
+                .map(|i| {
+                    let s = s.clone();
+                    std::thread::spawn(move || s.search(&format!("q{i}"), SearchFilter::All))
+                })
+                .collect();
+            for h in handles {
+                assert_eq!(h.join().unwrap().unwrap().len(), 1);
+            }
+            let seen: Vec<String> = std::fs::read_to_string(&order)
+                .unwrap()
+                .lines()
+                .map(str::to_string)
+                .collect();
+            let expected: Vec<String> = (0..5)
+                .flat_map(|_| ["start".to_string(), "end".to_string()])
+                .collect();
+            assert_eq!(seen, expected, "yt-dlp runs overlapped");
+        }
+
+        #[test]
+        fn cookies_reach_every_kind_of_call_and_are_absent_by_default() {
+            let (script, log) = fake("cookies", &canned());
+            let file = log.with_file_name("cookies.txt");
+            std::fs::write(&file, "# Netscape HTTP Cookie File\n").unwrap();
+            let s = quick(&script).with_cookies(Cookies::File(file.clone()));
+            s.search("x", SearchFilter::All).unwrap();
+            s.resolve_stream("yt:abc12345678").unwrap();
+            s.related("yt:abc12345678", 3).unwrap();
+            let lines: Vec<String> = std::fs::read_to_string(&log)
+                .unwrap()
+                .lines()
+                .map(str::to_string)
+                .collect();
+            assert_eq!(lines.len(), 3);
+            let want = format!("--cookies {}", file.display());
+            assert!(lines.iter().all(|l| l.starts_with(&want)), "{lines:#?}");
+
+            let (script, log) = fake("nocookies", &canned());
+            quick(&script).search("x", SearchFilter::All).unwrap();
+            assert!(!std::fs::read_to_string(log).unwrap().contains("cookies"));
+
+            let (script, log) = fake("browser", &canned());
+            quick(&script)
+                .with_cookies(Cookies::Browser("firefox:default".into()))
+                .search("x", SearchFilter::All)
+                .unwrap();
+            assert!(std::fs::read_to_string(log)
+                .unwrap()
+                .starts_with("--cookies-from-browser firefox:default "));
         }
 
         #[test]

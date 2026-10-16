@@ -5,7 +5,6 @@ use crate::engine::{Engine, Host};
 use crate::recorder::HistoryRecorder;
 use crate::sim::{catalog, Sim, SimOut, TICK_MS};
 use crate::state::{now_ms, publish, with_library, AppState};
-use crate::tools;
 use pyxee_audio::output::DeviceInfo;
 use pyxee_core::{Command, Effect, EngineEvent, Failure};
 use std::sync::mpsc::{Receiver, RecvTimeoutError};
@@ -113,7 +112,6 @@ fn spawn_real(app: AppHandle, rx: Receiver<Effect>) {
             let engine = Engine::new(
                 host.clone(),
                 source,
-                tools::locate("ffmpeg", "PYXEE_FFMPEG"),
                 device.rate(),
                 app.state::<AppState>().volume.clone(),
             );

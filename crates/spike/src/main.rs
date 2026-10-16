@@ -1,12 +1,12 @@
 //! Milestone 1 spike. Two subcommands:
 //!   spike files <a> <b>            offline: decode two local files through the gapless path, report gaps
 //!   spike play  "<query>" "<query>" resolve with yt-dlp and play track 1 gapless into track 2 on the default device
-//! Optional: --ytdlp <path> --ffmpeg <path> (default: yt-dlp / ffmpeg on PATH).
+//! Optional: --ytdlp <path> (default: yt-dlp on PATH). Audio is decoded by symphonia only.
 
 mod player;
 
 use anyhow::{bail, Context, Result};
-use pyxee_audio::decode::{FfmpegPipeSource, SampleSource, SymphoniaSource};
+use pyxee_audio::decode::{SampleSource, SymphoniaSource};
 use pyxee_audio::gap::find_gaps;
 use pyxee_audio::gapless::{Event, GaplessSource, PreparedTrack};
 use pyxee_audio::http::HttpRangeSource;
@@ -15,7 +15,6 @@ use std::time::Instant;
 
 struct Opts {
     ytdlp: PathBuf,
-    ffmpeg: PathBuf,
     filter: String,
     positional: Vec<String>,
 }
@@ -23,7 +22,6 @@ struct Opts {
 fn parse_opts(args: impl Iterator<Item = String>) -> Opts {
     let mut o = Opts {
         ytdlp: "yt-dlp".into(),
-        ffmpeg: "ffmpeg".into(),
         filter: "all".into(),
         positional: Vec::new(),
     };
@@ -31,7 +29,6 @@ fn parse_opts(args: impl Iterator<Item = String>) -> Opts {
     while let Some(a) = it.next() {
         match a.as_str() {
             "--ytdlp" => o.ytdlp = it.next().unwrap_or_default().into(),
-            "--ffmpeg" => o.ffmpeg = it.next().unwrap_or_default().into(),
             "--filter" => o.filter = it.next().unwrap_or_default(),
             _ => o.positional.push(a),
         }
@@ -39,40 +36,21 @@ fn parse_opts(args: impl Iterator<Item = String>) -> Opts {
     o
 }
 
-/// Opens a stream URL: Opus goes through ffmpeg (symphonia has no Opus decoder),
-/// everything else through symphonia with ffmpeg as fallback.
+/// Opens a stream URL with symphonia, the only decoder. A format it cannot read is an error.
 pub fn open_stream(
     url: &str,
     ext: &str,
-    acodec: Option<&str>,
-    ffmpeg: &Path,
+    headers: &[(String, String)],
 ) -> Result<(Box<dyn SampleSource>, &'static str)> {
-    let is_opus = acodec.is_some_and(|c| c.contains("opus")) || ext == "webm" || ext == "opus";
-    if !is_opus {
-        let attempt = HttpRangeSource::open(url)
-            .and_then(|src| SymphoniaSource::open(Box::new(src), Some(ext)));
-        match attempt {
-            Ok(s) => return Ok((Box::new(s), "symphonia")),
-            Err(e) => eprintln!("  symphonia path failed ({e}); falling back to ffmpeg pipe"),
-        }
-    }
-    let s = FfmpegPipeSource::spawn(ffmpeg, url).map_err(anyhow::Error::from)?;
-    Ok((Box::new(s), "ffmpeg-pipe"))
+    let src = HttpRangeSource::open_with(url, headers)?;
+    let s = SymphoniaSource::open(Box::new(src), Some(ext))?;
+    Ok((Box::new(s), "symphonia"))
 }
 
-fn files_report(a: &Path, b: &Path, ffmpeg: &Path) -> Result<()> {
+fn files_report(a: &Path, b: &Path) -> Result<()> {
     const RATE: u32 = 48_000;
     let open = |p: &Path| -> Result<Box<dyn SampleSource>> {
-        match SymphoniaSource::open_path(p) {
-            Ok(s) => Ok(Box::new(s)),
-            Err(e) => {
-                println!("  {}: symphonia: {e}; using ffmpeg pipe", p.display());
-                Ok(Box::new(FfmpegPipeSource::spawn(
-                    ffmpeg,
-                    &p.to_string_lossy(),
-                )?))
-            }
-        }
+        Ok(Box::new(SymphoniaSource::open_path(p)?))
     };
     let t = Instant::now();
     let mut g = GaplessSource::new();
@@ -120,7 +98,7 @@ fn play_report(qa: &str, qb: &str, o: &Opts) -> Result<()> {
 
     let rate = player::default_rate()?;
     let t1 = Instant::now();
-    let (s1, path1) = open_stream(&r1.stream_url, &r1.ext, r1.acodec.as_deref(), &o.ffmpeg)?;
+    let (s1, path1) = open_stream(&r1.stream_url, &r1.ext, &r1.headers)?;
     g.push(PreparedTrack::new(1, s1, rate)?);
     println!(
         "  track 1 opened via {path1} and pre-decoded in {:?}",
@@ -140,7 +118,7 @@ fn play_report(qa: &str, qb: &str, o: &Opts) -> Result<()> {
         "  {} - {:?} | {} {:?} @ {:?} kbps",
         r2.title, r2.uploader, r2.ext, r2.acodec, r2.abr_kbps
     );
-    let (s2, path2) = open_stream(&r2.stream_url, &r2.ext, r2.acodec.as_deref(), &o.ffmpeg)?;
+    let (s2, path2) = open_stream(&r2.stream_url, &r2.ext, &r2.headers)?;
     let prepared = PreparedTrack::new(2, s2, rate)?;
     let played = p.played_secs();
     p.push(prepared);
@@ -246,10 +224,10 @@ fn main() -> Result<()> {
     let cmd = args.next().unwrap_or_default();
     let o = parse_opts(args);
     match (cmd.as_str(), o.positional.as_slice()) {
-        ("files", [a, b]) => files_report(Path::new(a), Path::new(b), &o.ffmpeg),
+        ("files", [a, b]) => files_report(Path::new(a), Path::new(b)),
         ("play", [qa, qb]) => play_report(qa, qb, &o).context("play spike failed"),
         ("search", [q]) => search_report(q, &o),
         ("related", [key]) => related_report(key, &o),
-        _ => bail!("usage: spike search \"<query>\" [--filter all|songs|videos|artists|playlists] | spike related yt:<id> | spike files <a> <b> | spike play \"<query 1>\" \"<query 2>\"  [--ytdlp path] [--ffmpeg path]"),
+        _ => bail!("usage: spike search \"<query>\" [--filter all|songs|videos|artists|playlists] | spike related yt:<id> | spike files <a> <b> | spike play \"<query 1>\" \"<query 2>\"  [--ytdlp path]"),
     }
 }

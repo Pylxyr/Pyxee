@@ -9,7 +9,6 @@ publish = false
 sha2 = "0.10"
 # native-certs: trust the OS certificate store (antivirus HTTPS scanning, corporate proxies)
 ureq = { version = "2", features = ["native-certs"] }
-zip = { version = "2", default-features = false, features = ["deflate"] }
 
 [lints]
 workspace = true

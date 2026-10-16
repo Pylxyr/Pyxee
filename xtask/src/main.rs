@@ -1,15 +1,12 @@
-//! Developer tasks. `cargo xtask tools` downloads yt-dlp and ffmpeg (with checksum verification);
-//! `cargo xtask installer` builds the Windows installer with both bundled.
+//! Developer tasks. `cargo xtask tools` downloads yt-dlp (with checksum verification);
+//! `cargo xtask installer` builds the Windows installer with it bundled. Audio is decoded in-process
+//! (Symphonia), so yt-dlp is the only helper program.
 
 use sha2::{Digest, Sha256};
-use std::io::{Cursor, Read};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
 const YTDLP_BASE: &str = "https://github.com/yt-dlp/yt-dlp/releases/latest/download";
-/// LGPL build (no GPL components), so Pyxee can ship it without GPL obligations.
-const FFMPEG_BASE: &str = "https://github.com/BtbN/FFmpeg-Builds/releases/latest/download";
-const FFMPEG_ZIP: &str = "ffmpeg-master-latest-win64-lgpl.zip";
 /// Tauri finds sidecars by `<name>-<target triple>.exe`.
 const TRIPLE: &str = "x86_64-pc-windows-msvc";
 
@@ -20,7 +17,7 @@ fn main() {
     let result = match args.first().map(String::as_str) {
         Some("tools") => tools(&args[1..]),
         Some("installer") => installer(),
-        _ => Err("usage:\n  cargo xtask tools [--update] [--dir <folder>]   download yt-dlp and ffmpeg\n  cargo xtask installer                           build the Windows installer".into()),
+        _ => Err("usage:\n  cargo xtask tools [--update] [--dir <folder>]   download yt-dlp\n  cargo xtask installer                           build the Windows installer".into()),
     };
     if let Err(e) = result {
         eprintln!("\nerror: {e}");
@@ -65,24 +62,6 @@ pub fn verify(what: &str, bytes: &[u8], expected: &str) -> Res<()> {
 /// Windows executables start with "MZ".
 pub fn is_windows_exe(bytes: &[u8]) -> bool {
     bytes.starts_with(b"MZ")
-}
-
-/// Pulls `bin/ffmpeg.exe` out of the zip, wherever the top-level folder is named.
-pub fn extract_ffmpeg(zip_bytes: &[u8]) -> Res<Vec<u8>> {
-    let mut zip = zip::ZipArchive::new(Cursor::new(zip_bytes))
-        .map_err(|e| format!("the ffmpeg download is not a valid zip: {e}"))?;
-    for i in 0..zip.len() {
-        let mut f = zip.by_index(i).map_err(|e| e.to_string())?;
-        if f.name().ends_with("/bin/ffmpeg.exe") {
-            let mut out = Vec::with_capacity(f.size() as usize);
-            f.read_to_end(&mut out).map_err(|e| e.to_string())?;
-            return Ok(out);
-        }
-    }
-    Err(
-        "bin/ffmpeg.exe was not found inside the ffmpeg zip (the build layout may have changed)"
-            .into(),
-    )
 }
 
 fn write_atomic(path: &Path, bytes: &[u8]) -> Res<()> {
@@ -166,31 +145,8 @@ fn tools(args: &[String]) -> Res<()> {
         println!("yt-dlp: installed {}", ytdlp.display());
     }
 
-    let ffmpeg = dir.join(format!("ffmpeg-{TRIPLE}.exe"));
-    if ffmpeg.exists() && !update {
-        println!(
-            "ffmpeg: already present ({}). Use --update to refresh it.",
-            ffmpeg.display()
-        );
-    } else {
-        let zip = fetch_verified(
-            "ffmpeg",
-            &format!("{FFMPEG_BASE}/{FFMPEG_ZIP}"),
-            &format!("{FFMPEG_BASE}/checksums.sha256"),
-            FFMPEG_ZIP,
-        )?;
-        let exe = extract_ffmpeg(&zip)?;
-        if !is_windows_exe(&exe) {
-            return Err("the extracted ffmpeg is not a Windows executable".into());
-        }
-        write_atomic(&ffmpeg, &exe)?;
-        println!("ffmpeg: installed {} ({})", ffmpeg.display(), mb(&exe));
-    }
-
-    println!(
-        "\nDone. The app finds these automatically in development; the installer bundles them."
-    );
-    println!("Licenses: yt-dlp is Unlicense; this ffmpeg is an LGPL build (see crates/app/licenses/THIRD_PARTY.txt).");
+    println!("\nDone. The app finds it automatically in development; the installer bundles it.");
+    println!("Licenses: yt-dlp is Unlicense (see crates/app/licenses/THIRD_PARTY.txt).");
     Ok(())
 }
 
@@ -248,7 +204,7 @@ fn installer() -> Res<()> {
             .args(["build", "--config"])
             .arg(&conf)
             .current_dir(root.join("crates/app")),
-        "tauri build (installer with yt-dlp and ffmpeg bundled)",
+        "tauri build (installer with yt-dlp bundled)",
     )?;
     let bundle = root.join("target/release/bundle");
     println!("\nInstallers are in {}:", bundle.display());
@@ -270,9 +226,8 @@ fn installer() -> Res<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::io::Write;
 
-    const SUMS: &str = "AAAA1111  yt-dlp\nbbbb2222  yt-dlp.exe\ncccc3333 *ffmpeg-master-latest-win64-lgpl.zip\n\ndddd4444  ffmpeg-master-latest-win64-lgpl-shared.zip\n";
+    const SUMS: &str = "AAAA1111  yt-dlp\nbbbb2222  yt-dlp.exe\ncccc3333 *tool-win64.zip\n\ndddd4444  tool-win64-shared.zip\n";
 
     #[test]
     fn finds_the_exact_file_in_a_checksum_list_in_both_formats() {
@@ -283,12 +238,12 @@ mod tests {
             "lowercased, exact name only"
         );
         assert_eq!(
-            parse_sums(SUMS, "ffmpeg-master-latest-win64-lgpl.zip").as_deref(),
+            parse_sums(SUMS, "tool-win64.zip").as_deref(),
             Some("cccc3333"),
             "binary-mode '*' prefix"
         );
         assert_eq!(
-            parse_sums(SUMS, "ffmpeg-master-latest-win64-lgpl-shared.zip").as_deref(),
+            parse_sums(SUMS, "tool-win64-shared.zip").as_deref(),
             Some("dddd4444")
         );
         assert_eq!(parse_sums(SUMS, "missing.zip"), None);
@@ -343,41 +298,6 @@ mod tests {
         assert!(is_windows_exe(b"MZ\x90\x00"));
         assert!(!is_windows_exe(b"<html>rate limited</html>"));
         assert!(!is_windows_exe(b""));
-    }
-
-    fn zip_with(entries: &[(&str, &[u8])]) -> Vec<u8> {
-        let mut buf = Cursor::new(Vec::new());
-        {
-            let mut w = zip::ZipWriter::new(&mut buf);
-            for (name, data) in entries {
-                w.start_file(*name, zip::write::SimpleFileOptions::default())
-                    .unwrap();
-                w.write_all(data).unwrap();
-            }
-            w.finish().unwrap();
-        }
-        buf.into_inner()
-    }
-
-    #[test]
-    fn extracts_ffmpeg_exe_from_any_top_level_folder() {
-        let z = zip_with(&[
-            ("ffmpeg-N-123-win64-lgpl/LICENSE.txt", b"license"),
-            ("ffmpeg-N-123-win64-lgpl/bin/ffprobe.exe", b"MZprobe"),
-            ("ffmpeg-N-123-win64-lgpl/bin/ffmpeg.exe", b"MZffmpeg"),
-        ]);
-        assert_eq!(extract_ffmpeg(&z).unwrap(), b"MZffmpeg");
-    }
-
-    #[test]
-    fn a_zip_without_ffmpeg_or_a_non_zip_gives_a_clear_error() {
-        let z = zip_with(&[("readme.txt", b"hi")]);
-        assert!(extract_ffmpeg(&z)
-            .unwrap_err()
-            .contains("was not found inside"));
-        assert!(extract_ffmpeg(b"not a zip")
-            .unwrap_err()
-            .contains("not a valid zip"));
     }
 
     #[test]

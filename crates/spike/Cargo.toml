@@ -8,10 +8,15 @@ license.workspace = true
 name = "spike"
 path = "src/main.rs"
 
+[[bin]]
+name = "livecheck"
+path = "src/bin/livecheck.rs"
+
 [dependencies]
 pyxee-audio = { path = "../audio" }
 pyxee-sources = { path = "../sources" }
 anyhow = "1"
+log = "0.4"
 
 # cpal uses WASAPI on Windows. These are unconditional only so the spike also compiles in CI/sandbox.
 cpal = "0.15"

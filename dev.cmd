@@ -8,7 +8,7 @@ if not exist ui\node_modules (
   call npm install --prefix ui || exit /b 1
 )
 if not exist crates\app\binaries\yt-dlp-x86_64-pc-windows-msvc.exe (
-  echo Downloading yt-dlp and ffmpeg...
+  echo Downloading yt-dlp...
   cargo xtask tools || exit /b 1
 )
 

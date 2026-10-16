@@ -119,7 +119,6 @@ impl Rig {
         let engine = Engine::new(
             Arc::new(TestHost(shared.clone())),
             Arc::new(source),
-            PathBuf::from("ffmpeg"),
             48_000,
             volume.clone(),
         );
@@ -1022,10 +1021,10 @@ fn the_wording_names_the_song_and_the_reason() {
     assert_eq!(n, "\u{201c}My Song\u{201d} can't be played, so it was skipped: its audio could not be read. The log has details.");
     assert!(skipped_notice(
         "S",
-        &Failure::Other("ffmpeg could not be started".into()),
+        &Failure::Other("the tool could not be started".into()),
         true
     )
-    .contains("ffmpeg could not be started"));
+    .contains("the tool could not be started"));
     assert!(early_end_notice("S", 41_000, 200_000).contains("0:41 of 3:20"));
 }
 
@@ -1087,7 +1086,28 @@ fn the_log_tells_the_story_of_a_song_including_why_it_failed() {
     assert!(has("INFO ended: \"LogProbe Good\""), "{lines:#?}");
 }
 
-// ---- a server without range support: the built-in reader cannot be used, ffmpeg can ----------
+// ---- streams the built-in decoder cannot use: skipped cleanly, no other decoder -------------------
+
+#[test]
+fn an_opus_song_is_skipped_with_a_notice_and_the_next_song_plays() {
+    // Symphonia has no Opus decoder and there is no fallback: it must fail cleanly, not hang or panic.
+    let mut r = Rig::new(TestSource::local());
+    r.cmd(Command::SetAutoplay(false));
+    r.cmd(Command::PlayTracks {
+        tracks: vec![file_track("a_48k.opus"), file_track("b_48k.wav")],
+        start: 0,
+    });
+    assert!(r.run_until(10, |r| r.snapshot().audible.is_some()));
+    let ids = r.entry_ids();
+    assert_eq!(r.snapshot().audible.map(|i| i.0), Some(ids[1]));
+    assert!(
+        r.notices()
+            .iter()
+            .any(|n| n.contains("its audio could not be read")),
+        "{:?}",
+        r.notices()
+    );
+}
 
 fn serve_without_range_support(body: Vec<u8>) -> String {
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
@@ -1116,15 +1136,9 @@ fn serve_without_range_support(body: Vec<u8>) -> String {
 }
 
 #[test]
-fn a_server_that_ignores_range_requests_falls_back_to_ffmpeg_instead_of_failing_the_song() {
-    if std::process::Command::new("ffmpeg")
-        .arg("-version")
-        .output()
-        .is_err()
-    {
-        eprintln!("ffmpeg is not installed here; skipping");
-        return;
-    }
+fn a_server_that_ignores_range_requests_fails_the_song_cleanly() {
+    // The range reader cannot use such a server and there is no other way in: the song is
+    // reported as unreadable instead of playing, hanging, or starting another program.
     let url = serve_without_range_support(make_wav(3));
     let src = TestSource {
         related: Vec::new(),
@@ -1147,18 +1161,23 @@ fn a_server_that_ignores_range_requests_falls_back_to_ffmpeg_instead_of_failing_
         start: 0,
     });
     assert!(
-        r.run_until(30, |r| r.snapshot().transport == Transport::Idle
-            && r.audible_log.len() >= 3),
+        r.run_until(10, |r| matches!(
+            r.snapshot().transport,
+            Transport::Failed { .. }
+        )),
         "{:?}",
         r.snapshot()
     );
     assert!(
-        r.notices().is_empty(),
-        "it played normally: {:?}",
-        r.notices()
+        r.audible_log.iter().all(Option::is_none),
+        "nothing should have become audible: {:?}",
+        r.audible_log
     );
     assert!(
-        (2.8..3.3).contains(&(r.samples.len() as f64 / 2.0 / 48_000.0)),
-        "all 3 s were heard"
+        r.notices()
+            .iter()
+            .any(|n| n.contains("its audio could not be read")),
+        "{:?}",
+        r.notices()
     );
 }

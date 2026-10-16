@@ -19,7 +19,7 @@ mod window;
 
 use pyxee_core::Player;
 use pyxee_sources::local::LocalSource;
-use pyxee_sources::ytdlp::YtDlpSource;
+use pyxee_sources::ytdlp::{Cookies, YtDlpSource, FORMAT_SELECTOR};
 use pyxee_sources::{CompositeSource, MusicSource};
 use state::AppState;
 use std::sync::mpsc;
@@ -69,8 +69,10 @@ fn main() {
                 .map_or(dto::BackdropDto::None, |w| window::apply_backdrop(&w));
 
             let (tx, rx) = mpsc::channel();
+            log::info!("yt-dlp audio format preference: {FORMAT_SELECTOR}");
             let source: Arc<dyn MusicSource> = Arc::new(CompositeSource {
-                remote: YtDlpSource::new(tools::locate("yt-dlp", "PYXEE_YTDLP")),
+                remote: YtDlpSource::new(tools::locate("yt-dlp", "PYXEE_YTDLP"))
+                    .with_cookies(Cookies::from_env()),
                 local: LocalSource,
             });
             let library = library_service::LibraryService::open_or_memory(

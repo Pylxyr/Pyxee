@@ -9,7 +9,7 @@ That is all. The workflow then:
 
 1. runs the full CI on `main` (UI check/tests/build, `cargo fmt`, clippy, tests, generated bindings, the release scripts' own tests). If anything fails, nothing is bumped or tagged;
 2. works out the next version, writes it into every file that carries it, commits `Release X.Y.Z` and pushes the commit and the tag `vX.Y.Z` in one atomic push (if `main` moved in the meantime the push is refused and nothing is released);
-3. builds on Windows: downloads yt-dlp and ffmpeg (SHA-256 verified), builds the UI, builds the installer, **installs it silently and runs the bundled yt-dlp and ffmpeg from where it landed**;
+3. builds on Windows: downloads yt-dlp (SHA-256 verified; there is no ffmpeg, audio is decoded in-app), builds the UI, builds the installer, **installs it silently, checks that no ffmpeg slipped in, and runs the bundled yt-dlp from where it landed**;
 4. writes the release notes (below), creates the release as a draft, uploads the installers, `SHA256SUMS.txt` and the third-party notices, then publishes it. A signed build-provenance attestation is added when the repository allows it.
 
 The first release ever (no `v*.*.*` tag yet) publishes the version already in the files as it is. `0.0.1` is the current one.

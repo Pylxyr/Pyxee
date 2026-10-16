@@ -12,16 +12,25 @@ what to verify on Windows. Set `PYXEE_SIM=1` to run the UI against the built-in 
 Rust 1.91 (MSVC; `rust-toolchain.toml` selects it and rustup installs it on first use), Visual Studio Build Tools (C++ workload), Node 22+ and the WebView2 runtime (preinstalled on Windows 11).
 The Tauri CLI comes with the UI's npm packages, so there is nothing else to install (no `cargo install`, no long compile).
 
-## Get yt-dlp and ffmpeg
-Pyxee needs both. You do not install them by hand:
+## Get yt-dlp
+Pyxee needs yt-dlp. You do not install it by hand (audio is decoded inside the app, so there is no ffmpeg):
 ```
 get-tools.cmd            (same as: cargo xtask tools)
 get-tools.cmd --update   refresh to the latest versions
 ```
-This downloads yt-dlp and an LGPL build of ffmpeg from their official GitHub releases, verifies each against the published
-SHA-256 checksum (nothing is installed if it does not match) and puts them in `crates/app/binaries`. Development builds find
-them there automatically. To use your own copies instead, set `PYXEE_YTDLP` / `PYXEE_FFMPEG` to their paths, or put
-`yt-dlp.exe` / `ffmpeg.exe` next to the app. Download size is about 190 MB.
+This downloads yt-dlp from its official GitHub release, verifies it against the published SHA-256 checksum (nothing is
+installed if it does not match) and puts it in `crates/app/binaries`. Development builds find it there automatically. To use
+your own copy instead, set `PYXEE_YTDLP` to its path, or put `yt-dlp.exe` next to the app.
+
+### Optional settings (environment variables)
+| Variable | Effect |
+|---|---|
+| `PYXEE_YTDLP` | Path to `yt-dlp`. |
+| `PYXEE_COOKIES` | Path to a Netscape-format `cookies.txt`. A logged-in session is much less likely to get HTTP 429 or "sign in to confirm you're not a bot". yt-dlp may rewrite this file. A path that is not an existing file is ignored (with a warning). |
+| `PYXEE_COOKIES_FROM_BROWSER` | yt-dlp's `BROWSER[+KEYRING][:PROFILE][::CONTAINER]`, e.g. `firefox`. Ignored if `PYXEE_COOKIES` is usable. Chromium browsers on Windows often lock their cookie store; an exported `cookies.txt` is more reliable. |
+| `PYXEE_LOG` | `error`, `warn`, `info` (default), `debug`, `trace`. |
+
+yt-dlp is also paced by the app (one run at a time, 1 s apart, 2 minutes of refusals after a rate limit); see `docs/engine.md`.
 
 ## Run
 Double-click `dev.cmd` (or run it from a terminal). It installs the UI packages and downloads the tools if they are missing,
@@ -60,10 +69,9 @@ The native window (title bar, Mica) follows the chosen theme, not only the Windo
 build-installer.cmd      (same as: cargo xtask installer)
 ```
 Downloads the tools if missing, builds the UI, then runs `tauri build` with `crates/app/tauri.bundle.conf.json`, which
-bundles yt-dlp and ffmpeg as sidecars (installed next to `pyxee-app.exe`) and the licence notices, and makes the installer
+bundles yt-dlp as a sidecar (installed next to `pyxee-app.exe`) and the licence notices, and makes the installer
 download the WebView2 runtime when a machine lacks it. Installers (NSIS `.exe` and `.msi`) end up in `target/release/bundle/`.
-They are unsigned, so Windows SmartScreen warns on first run: choose "More info", then "Run anyway". The installer is large
-(roughly 60-80 MB) because ffmpeg is about 130 MB uncompressed. Signing and the portable build come in milestone 7.
+They are unsigned, so Windows SmartScreen warns on first run: choose "More info", then "Run anyway". Signing and the portable build come in milestone 7.
 
 ## Release
 On GitHub: **Actions -> Cut release -> Run workflow -> patch / minor / major**. It runs CI, bumps the version, tags, builds and tests the
@@ -86,3 +94,10 @@ cargo test --workspace
 `crates/library` SQLite library ·
 `crates/app` Tauri glue · `crates/spike` milestone 1 harness · `ui/` Svelte frontend · `xtask/` tool downloader and installer build.
 The in-app yt-dlp updater with rollback, the portable build and code signing come in milestone 7.
+
+## Checking a build on Windows
+`scripts\check-windows.cmd` builds, runs every test, proves ffmpeg is never started (a fake `ffmpeg.exe` sits first on `PATH` and logs
+any attempt), and runs live YouTube checks of the real search / resolve / decode / seek / gapless path. It writes one report to
+`pyxee-check\` (stream URLs, cookie paths and your user name are redacted). Useful options: `-SkipTests`, `-SkipLive`, `-Ui`,
+`-Installer`, `-UpdateYtdlp`, `-CookieFile <cookies.txt>`, `-CookieBrowser firefox`, `-Manual` (answer y/n for things to try in the
+app) and `-AnalyzeLog` (summarise the app's own log). Details: the comment block at the top of `scripts\check-windows.ps1`.

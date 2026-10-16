@@ -1,4 +1,4 @@
-//! Finds the helper programs (yt-dlp, ffmpeg).
+//! Finds the helper program (yt-dlp). Audio is decoded in-process (Symphonia), so it is the only one.
 //!
 //! Order: the environment override, next to the app (where the installer puts them), a `binaries`
 //! folder there (portable layouts), the folder `cargo xtask tools` fills (development builds only),
@@ -111,12 +111,12 @@ mod tests {
     fn falls_back_to_the_bare_name_so_path_lookup_still_works() {
         let empty = temp("empty");
         assert_eq!(
-            locate_in("ffmpeg", None, Some(empty.clone()), Some(empty)),
-            PathBuf::from("ffmpeg")
+            locate_in("yt-dlp", None, Some(empty.clone()), Some(empty)),
+            PathBuf::from("yt-dlp")
         );
         assert_eq!(
-            locate_in("ffmpeg", None, None, None),
-            PathBuf::from("ffmpeg")
+            locate_in("yt-dlp", None, None, None),
+            PathBuf::from("yt-dlp")
         );
     }
 }

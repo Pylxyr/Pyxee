@@ -1,6 +1,7 @@
 //! Music sources. Everything the app needs from "where music comes from" goes through
 //! `MusicSource`, so yt-dlp can be swapped or supplemented without touching the player.
 
+pub mod gate;
 pub mod local;
 pub mod suggest;
 pub mod ytdlp;
@@ -169,6 +170,13 @@ pub fn classify_stderr(tool: &str, stderr: &str) -> SourceError {
         "this video is unavailable",
     ]) {
         SourceError::Unavailable(last_line(stderr))
+    } else if has(&["requested format is not available"]) {
+        // Our format selector only allows what the built-in decoder can play (see
+        // `ytdlp::FORMAT_SELECTOR`); there is no other decoder to fall back on.
+        SourceError::Failed(
+            "YouTube offered no audio stream this player can decode (it needs AAC in M4A over HTTPS)"
+                .into(),
+        )
     } else {
         SourceError::Failed(format!("{tool} failed: {}", last_line(stderr)))
     }

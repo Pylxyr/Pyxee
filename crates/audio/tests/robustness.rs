@@ -248,7 +248,7 @@ fn rejected_url_is_reported_as_expired_so_it_can_be_re_resolved() {
 #[test]
 fn a_server_without_range_support_is_reported_as_unusable_for_this_reader_not_as_being_offline() {
     // A plain file server answers 200 with the whole body and no Content-Range. The song is fine; this
-    // reader just cannot use it, so the caller must be able to tell and try another way (ffmpeg).
+    // reader just cannot use it, so the caller must be able to tell it apart from an outage and report it clearly.
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     let addr = listener.local_addr().unwrap();
     std::thread::spawn(move || {
