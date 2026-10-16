@@ -104,7 +104,7 @@ Cookies do not help if the IP address itself is blocked.
 
 **Symphonia only.** ffmpeg is removed from decoding, the build, the installer and `cargo xtask tools`. YouTube's best audio
 is Opus/WebM, but no released Symphonia (0.5.5, 0.6.1) has an Opus decoder, so the format selector (`FORMAT_SELECTOR` in
-`ytdlp.rs`) asks only for what Symphonia 0.5.5 plays: `bestaudio[ext=m4a][acodec^=mp4a.40.2][protocol=https][audio_channels<=2?]`.
+`ytdlp.rs`) asks only for what Symphonia 0.5.5 plays: `bestaudio[ext=m4a][acodec^=mp4a.40.2][protocol=https][audio_channels<=?2]`.
 - `mp4a.40.2` = AAC-LC; its AAC decoder rejects HE-AAC (itag 139) and more than 2 channels ("aac too complex");
 - `protocol=https` = one plain file for range requests, not an HLS/DASH manifest;
 - there is no fallback alternative on purpose. If YouTube offers no such stream, yt-dlp says "Requested format is not

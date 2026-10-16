@@ -23,15 +23,16 @@ use std::time::{Duration, Instant};
 ///
 /// * `acodec^=mp4a.40.2`: AAC-LC only. Symphonia's AAC decoder rejects HE-AAC (`mp4a.40.5`,
 ///   itag 139) with "aac too complex".
-/// * `audio_channels<=2?`: no 5.1 AAC (itags 256/258; the decoder is stereo at most). The `?`
-///   keeps formats that do not report a channel count.
+/// * `audio_channels<=?2`: no 5.1 AAC (itags 256/258; the decoder is stereo at most). The `?`
+///   keeps formats that do not report a channel count. It must sit right after the operator:
+///   yt-dlp rejects `<=2?` with "Invalid filter specification" and then plays nothing at all.
 /// * `protocol=https`: one plain file the range reader can fetch, not an HLS playlist or DASH
 ///   manifest (`http_dash_segments`).
 ///
 /// If nothing matches, yt-dlp reports "Requested format is not available", which becomes a clear
 /// "no audio stream this player can decode" error instead of falling back to a codec we cannot play.
 pub const FORMAT_SELECTOR: &str =
-    "bestaudio[ext=m4a][acodec^=mp4a.40.2][protocol=https][audio_channels<=2?]";
+    "bestaudio[ext=m4a][acodec^=mp4a.40.2][protocol=https][audio_channels<=?2]";
 const RESULTS: usize = 20;
 
 /// Optional login cookies for yt-dlp. YouTube is far less likely to answer "sign in to confirm
@@ -723,12 +724,34 @@ mod tests {
             "ext=m4a",
             "acodec^=mp4a.40.2",
             "protocol=https",
-            "audio_channels<=2",
+            "audio_channels<=?2",
         ] {
             assert!(
                 FORMAT_SELECTOR.contains(needed),
                 "{needed} missing from {FORMAT_SELECTOR}"
             );
+        }
+    }
+
+    #[test]
+    fn every_filter_in_the_format_selector_is_valid_yt_dlp_syntax() {
+        // yt-dlp only accepts the "keep formats that do not report this field" marker right after the operator
+        // (`audio_channels<=?2`). `<=2?` is a SyntaxError that fails every single play, before any network call.
+        // scripts/tests/test_format_selector.py also checks the real string against yt-dlp itself.
+        let filters: Vec<&str> = FORMAT_SELECTOR
+            .split('[')
+            .skip(1)
+            .map(|f| f.strip_suffix(']').expect("every filter closes with ]"))
+            .collect();
+        assert!(filters.len() >= 4, "{FORMAT_SELECTOR}");
+        for filter in filters {
+            if let Some(q) = filter.find('?') {
+                assert!(
+                    q > 0 && matches!(filter.as_bytes()[q - 1], b'<' | b'>' | b'=' | b'~'),
+                    "the ? must directly follow the operator: [{filter}]"
+                );
+                assert!(q + 1 < filter.len(), "nothing after the ? in [{filter}]");
+            }
         }
     }
 
