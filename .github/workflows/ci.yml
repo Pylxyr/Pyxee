@@ -20,7 +20,8 @@ env:
   RUST_BACKTRACE: 1
 
 jobs:
-  # The UI on its own, on the fast Linux runner. The Rust job below builds the UI again because Tauri embeds ui/dist.
+  # The UI on its own, on the fast Linux runner: type check and tests. It does not build the UI; the Rust job below does,
+  # because Tauri embeds ui/dist at compile time, so a broken build still fails CI there.
   ui:
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -34,7 +35,6 @@ jobs:
       - run: npm ci --prefix ui
       - run: npm run check --prefix ui
       - run: npm test --prefix ui
-      - run: npm run build --prefix ui
 
   # Windows is the only platform Pyxee ships on, and it has Windows-only dependencies, so Rust is checked there.
   rust:
