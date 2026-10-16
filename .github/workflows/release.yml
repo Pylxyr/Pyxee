@@ -102,17 +102,18 @@ jobs:
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
           shared-key: release
-      # yt-dlp and an LGPL ffmpeg, each checked against its published SHA-256 (nothing is used if it does not match).
-      - name: Download yt-dlp and ffmpeg
+      # yt-dlp, checked against its published SHA-256 (nothing is used if it does not match).
+      # Audio is decoded inside the app (Symphonia), so yt-dlp is the only bundled tool: there is no ffmpeg.
+      - name: Download yt-dlp
         run: cargo xtask tools
-      - name: Bundled tools run
+      - name: Bundled tools run, and no ffmpeg is bundled
         shell: pwsh
         run: |
           $bin = "crates/app/binaries"
           & "$bin/yt-dlp-x86_64-pc-windows-msvc.exe" --version
           if ($LASTEXITCODE -ne 0) { throw "yt-dlp does not run" }
-          & "$bin/ffmpeg-x86_64-pc-windows-msvc.exe" -version | Select-Object -First 1
-          if ($LASTEXITCODE -ne 0) { throw "ffmpeg does not run" }
+          $ff = @(Get-ChildItem $bin -Filter "ffmpeg*" -ErrorAction SilentlyContinue)
+          if ($ff.Count -gt 0) { throw "ffmpeg was downloaded again: $($ff.Name -join ', ')" }
       - run: npm ci --prefix ui
       - run: npm run build --prefix ui
       # Same as `cargo xtask installer`, with the bundle list chosen here: Windows Installer (MSI) only accepts a
@@ -125,7 +126,7 @@ jobs:
           & "$env:GITHUB_WORKSPACE/ui/node_modules/.bin/tauri.cmd" build --config tauri.bundle.conf.json --bundles $bundles
           if ($LASTEXITCODE -ne 0) { throw "tauri build failed ($LASTEXITCODE)" }
       # Install the built installer for real, silently, and run what it installed. This proves the installed layout
-      # (the app with yt-dlp and ffmpeg next to it) is what the app expects.
+      # (the app with yt-dlp next to it, and no ffmpeg) is what the app expects.
       - name: Installed layout works
         shell: pwsh
         run: |
@@ -134,15 +135,12 @@ jobs:
           $dir = Join-Path $env:RUNNER_TEMP "pyxee-installed"
           Start-Process -FilePath $installer.FullName -ArgumentList "/S", "/D=$dir" -Wait
           Get-ChildItem $dir -Recurse -Filter *.exe | ForEach-Object { "{0}: {1:N1} MB" -f $_.FullName.Substring($dir.Length), ($_.Length / 1MB) }
-          $app = Get-ChildItem $dir -Filter *.exe | Where-Object { $_.Name -notmatch '^(uninstall|yt-dlp|ffmpeg)' } | Select-Object -First 1
+          $app = Get-ChildItem $dir -Filter *.exe | Where-Object { $_.Name -notmatch '^(uninstall|yt-dlp)' } | Select-Object -First 1
           if (-not $app) { throw "The app executable is missing from the installed folder" }
-          foreach ($tool in "yt-dlp", "ffmpeg") {
-            if (-not (Test-Path (Join-Path $dir "$tool.exe"))) { throw "Missing from the installed app: $tool.exe" }
-          }
+          if (-not (Test-Path (Join-Path $dir "yt-dlp.exe"))) { throw "Missing from the installed app: yt-dlp.exe" }
+          if (Get-ChildItem $dir -Recurse -Filter "ffmpeg*" -ErrorAction SilentlyContinue) { throw "ffmpeg is in the installed app, but Pyxee no longer ships it" }
           & (Join-Path $dir "yt-dlp.exe") --version
           if ($LASTEXITCODE -ne 0) { throw "The installed yt-dlp does not run" }
-          & (Join-Path $dir "ffmpeg.exe") -version | Select-Object -First 1
-          if ($LASTEXITCODE -ne 0) { throw "The installed ffmpeg does not run" }
       - name: Collect release files
         shell: pwsh
         run: |
