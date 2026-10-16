@@ -1,0 +1,6 @@
+# One place that decides the Rust version for local builds and every workflow (rustup >= 1.28 reads it).
+# 1.91 is the oldest version checked against; Cargo.toml's rust-version (1.88) is the language floor.
+[toolchain]
+channel = "1.91"
+components = ["clippy", "rustfmt"]
+profile = "minimal"

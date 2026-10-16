@@ -42,3 +42,15 @@ Build and test: `cargo test -p pyxee-shell`, `cargo test -p pyxee-lyrics`, `carg
 - [ ] **Sleep / resume**: put the PC to sleep during a song and wake it: playback resumes or the song retries. Switch Wi-Fi off during a song and on again: "Back online. Trying again." when it had failed.
 - [ ] **Opt-in** `cargo check -p pyxee-app --features win-extras`: if it compiles, run with the feature and check the three thumbnail buttons on the taskbar preview and the jump list (right-click the taskbar icon: Play/Pause, Next, Previous, Mini player). Paste any compiler errors; they are confined to `shell/winextras.rs`.
 - [ ] Flyout and mini player colours match the app theme; the Mica backdrop shows (same as the main window).
+
+## Release pipeline (first real run)
+
+The workflows were linted and their scripts tested, but the Windows build itself has not run on a GitHub runner yet.
+After the first **Cut release**, tick these (the run log and summary show the details):
+
+- [ ] CI is green on the Windows runner, including the informational "win-extras compiles" step (note whether it passes).
+- [ ] **Installed layout works** step: the installed folder lists the app exe plus `yt-dlp.exe` and `ffmpeg.exe`. If a name differs from what the step expects, fix the filter in `release.yml`.
+- [ ] The release has `Pyxee_x.y.z_x64-setup.exe`, the `.msi` (stable versions only), `SHA256SUMS.txt` and `THIRD_PARTY_NOTICES.txt`; the checksum of the downloaded installer matches.
+- [ ] Release notes read sensibly, and say which layer wrote them (AI line at the bottom of the changes, or commit-message sections).
+- [ ] Install the downloaded installer on a clean user profile: SmartScreen "More info -> Run anyway" works, the app starts, a YouTube song plays.
+- [ ] A pre-release (`Cut release` with version `0.0.2-rc1`) builds the NSIS installer only and is marked as a pre-release.

@@ -9,7 +9,7 @@ not yet been run against YouTube, a real sound card or a real Windows profile: s
 what to verify on Windows. Set `PYXEE_SIM=1` to run the UI against the built-in simulator instead.
 
 ## Prerequisites (Windows)
-Rust (stable, MSVC), Visual Studio Build Tools (C++ workload), Node 22+ and the WebView2 runtime (preinstalled on Windows 11).
+Rust 1.91 (MSVC; `rust-toolchain.toml` selects it and rustup installs it on first use), Visual Studio Build Tools (C++ workload), Node 22+ and the WebView2 runtime (preinstalled on Windows 11).
 The Tauri CLI comes with the UI's npm packages, so there is nothing else to install (no `cargo install`, no long compile).
 
 ## Get yt-dlp and ffmpeg
@@ -64,6 +64,10 @@ bundles yt-dlp and ffmpeg as sidecars (installed next to `pyxee-app.exe`) and th
 download the WebView2 runtime when a machine lacks it. Installers (NSIS `.exe` and `.msi`) end up in `target/release/bundle/`.
 They are unsigned, so Windows SmartScreen warns on first run: choose "More info", then "Run anyway". The installer is large
 (roughly 60-80 MB) because ffmpeg is about 130 MB uncompressed. Signing and the portable build come in milestone 7.
+
+## Release
+On GitHub: **Actions -> Cut release -> Run workflow -> patch / minor / major**. It runs CI, bumps the version, tags, builds and tests the
+installer, writes AI-assisted release notes and publishes. See `docs/releasing.md`.
 
 ## Test
 Run each line on its own (PowerShell 5 does not accept `&&`):
