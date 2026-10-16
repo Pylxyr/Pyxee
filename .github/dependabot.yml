@@ -1,0 +1,30 @@
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: ci
+  - package-ecosystem: cargo
+    directory: /
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: deps
+    groups:
+      # Tauri's crates and plugins are released as a set.
+      tauri:
+        patterns: [tauri, tauri-*]
+  - package-ecosystem: npm
+    directory: /ui
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: deps
+    groups:
+      # Tauri's JS packages must match the crates; the page's build tools (vite, svelte, vitest...) move together.
+      tauri:
+        patterns: ["@tauri-apps/*"]
+      frontend:
+        patterns: ["*"]

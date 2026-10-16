@@ -1,0 +1,131 @@
+name: Cut release
+
+# One-click release from the GitHub website:
+#   Actions > Cut release > Run workflow > pick patch / minor / major > Run.
+# It runs the full CI on main first, then bumps the version, commits and tags it on main, then builds and
+# publishes the installer by calling release.yml. If CI fails, nothing is bumped or tagged.
+
+on:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: "Which part of the version to increase (1.2.3 = major.minor.patch)"
+        type: choice
+        options: [patch, minor, major]
+        default: patch
+      version:
+        description: "Optional exact version instead, e.g. 0.2.0 or 0.2.0-rc1 (a '-' makes it a pre-release). Overrides the choice above."
+        type: string
+        required: false
+        default: ""
+
+concurrency:
+  group: cut-release
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  # Releases are cut from main only. Say so, instead of quietly doing nothing.
+  wrong-branch:
+    if: github.ref != 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          echo "::error::Cut release only runs on main, but it was started on ${GITHUB_REF_NAME}. Choose 'main' in the Branch menu of the Run workflow box."
+          exit 1
+
+  ci:
+    if: github.ref == 'refs/heads/main'
+    uses: ./.github/workflows/ci.yml
+
+  prepare:
+    needs: ci
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    outputs:
+      tag: ${{ steps.next.outputs.tag }}
+    steps:
+      # The commit CI just passed on (not whatever main is by now). If main has moved since, the push below is
+      # rejected as a non-fast-forward and nothing is released.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      - id: next
+        env:
+          BUMP: ${{ inputs.bump }}
+          EXACT: ${{ inputs.version }}
+        run: |
+          EXACT="${EXACT#v}"
+          if [ -n "$EXACT" ]; then
+            VERSION="$EXACT"
+          elif [ -z "$(git tag --list 'v*.*.*')" ]; then
+            # Nothing has been released yet, so the version already in the files is the first release.
+            VERSION="$(python scripts/bump_version.py --current)"
+            echo "::notice::No release tag exists yet, so releasing the current version ($VERSION) as is."
+          else
+            VERSION="$(python scripts/bump_version.py --next "$BUMP")"
+          fi
+          if git rev-parse -q --verify "refs/tags/v$VERSION" >/dev/null; then
+            echo "::error::Tag v$VERSION already exists. Pick a different version."
+            exit 1
+          fi
+          echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Releasing $VERSION"
+      - name: Bump, commit and tag
+        env:
+          VERSION: ${{ steps.next.outputs.version }}
+          TAG: ${{ steps.next.outputs.tag }}
+        run: |
+          python scripts/bump_version.py "$VERSION"
+          python scripts/bump_version.py --check "$TAG" > /dev/null
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          # The files may already carry this version (the very first release).
+          if ! git diff --quiet; then
+            git commit -am "Release $VERSION"
+          fi
+          git tag "$TAG"
+          # One atomic push: if main moved since this run started, nothing is pushed.
+          git push --atomic origin HEAD:refs/heads/main "refs/tags/$TAG"
+
+  release:
+    needs: prepare
+    # A called workflow can only use permissions the calling job grants it.
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+      models: read
+    uses: ./.github/workflows/release.yml
+    with:
+      tag: ${{ needs.prepare.outputs.tag }}
+      skip_checks: true # CI just passed above
+    secrets: inherit
+
+  # The tag exists but the release failed: say exactly what to do.
+  release-failed:
+    needs: [prepare, release]
+    if: ${{ failure() && needs.prepare.result == 'success' && needs.release.result == 'failure' }}
+    runs-on: ubuntu-latest
+    steps:
+      - env:
+          TAG: ${{ needs.prepare.outputs.tag }}
+        run: |
+          echo "::error title=Release failed after tagging::$TAG was pushed but its release was not published."
+          {
+            echo "### $TAG was tagged, but the release failed"
+            echo
+            echo "- **Flaky step (download, runner, network):** open this run and choose **Re-run failed jobs**. The release job is safe to repeat."
+            echo "- **A real problem:** fix it on main, then delete the tag so the version can be used again:"
+            echo "  \`git push --delete origin $TAG\`"
+            echo "  and run **Cut release** again with the exact version."
+          } >> "$GITHUB_STEP_SUMMARY"
