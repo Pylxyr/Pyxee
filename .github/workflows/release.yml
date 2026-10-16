@@ -163,7 +163,10 @@ jobs:
   publish:
     needs: [version-guard, build]
     # A tag push, or a call from cut-release.yml. A manual dry run has neither.
-    if: github.event_name == 'push' || inputs.tag != ''
+    # The explicit status check is required: without one GitHub applies an implicit success() over the whole
+    # dependency chain, so the (deliberately) skipped `checks` job upstream of `build` would skip this job too,
+    # silently, even though the build succeeded.
+    if: ${{ !cancelled() && needs.version-guard.result == 'success' && needs.build.result == 'success' && (github.event_name == 'push' || inputs.tag != '') }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
