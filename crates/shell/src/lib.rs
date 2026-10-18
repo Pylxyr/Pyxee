@@ -3,6 +3,7 @@
 
 pub mod anchor;
 pub mod cli;
+pub mod datadir;
 pub mod geometry;
 pub mod power;
 pub mod progress;

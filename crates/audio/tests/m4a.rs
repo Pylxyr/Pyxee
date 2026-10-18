@@ -5,10 +5,10 @@
 //! The `*_frag.m4a` fixtures were made once from `a_44k.m4a` / `b_48k.m4a` by stream copy (no
 //! re-encode) with an MP4 muxer's dash/fragmented mode: 500 ms fragments, empty moov, global sidx.
 
-use pyxee_audio::decode::{SampleSource, SymphoniaSource};
+use pyxee_audio::decode::{LibavSource, SampleSource};
 use pyxee_audio::http::HttpRangeSource;
-use std::io::{Read, Write};
-use std::net::TcpListener;
+mod common;
+use common::range_server;
 use std::path::{Path, PathBuf};
 
 fn fixture(name: &str) -> PathBuf {
@@ -32,54 +32,8 @@ fn secs(frames: usize, s: &dyn SampleSource) -> f64 {
     frames as f64 / f64::from(s.sample_rate())
 }
 
-fn open_file(name: &str) -> SymphoniaSource {
-    SymphoniaSource::open_path(&fixture(name)).unwrap_or_else(|e| panic!("{name}: {e}"))
-}
-
-/// Serves `body` with range support, like googlevideo does for these streams.
-fn range_server(body: Vec<u8>) -> String {
-    let l = TcpListener::bind("127.0.0.1:0").unwrap();
-    let addr = l.local_addr().unwrap();
-    std::thread::spawn(move || {
-        for s in l.incoming() {
-            let Ok(mut s) = s else { continue };
-            let body = body.clone();
-            std::thread::spawn(move || {
-                let (mut req, mut b) = (Vec::new(), [0u8; 1]);
-                while !req.ends_with(b"\r\n\r\n") {
-                    if s.read(&mut b).unwrap_or(0) == 0 {
-                        return;
-                    }
-                    req.push(b[0]);
-                }
-                let req = String::from_utf8_lossy(&req).to_string();
-                let spec = req
-                    .lines()
-                    .find_map(|l| {
-                        l.to_ascii_lowercase()
-                            .strip_prefix("range: bytes=")
-                            .map(str::to_string)
-                    })
-                    .unwrap_or_else(|| "0-".into());
-                let (a, z) = spec.split_once('-').unwrap();
-                let from: usize = a.trim().parse().unwrap_or(0);
-                let to = z
-                    .trim()
-                    .parse::<usize>()
-                    .unwrap_or(body.len() - 1)
-                    .min(body.len() - 1);
-                let part = &body[from..=to];
-                let head = format!(
-                    "HTTP/1.1 206 Partial Content\r\nContent-Range: bytes {from}-{to}/{}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
-                    body.len(),
-                    part.len()
-                );
-                let _ = s.write_all(head.as_bytes());
-                let _ = s.write_all(part);
-            });
-        }
-    });
-    format!("http://{addr}/audio")
+fn open_file(name: &str) -> LibavSource {
+    LibavSource::open_path(&fixture(name)).unwrap_or_else(|e| panic!("{name}: {e}"))
 }
 
 #[test]
@@ -107,7 +61,7 @@ fn a_fragmented_m4a_plays_and_seeks_over_http_range_requests() {
     let url = range_server(std::fs::read(fixture("a_44k_frag.m4a")).unwrap());
     let open = || {
         let h = HttpRangeSource::open(&url).expect("range source");
-        SymphoniaSource::open(Box::new(h), Some("m4a")).expect("open over http")
+        LibavSource::open(Box::new(h)).expect("open over http")
     };
     let mut s = open();
     let n = frames_left(&mut s);

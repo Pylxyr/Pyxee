@@ -1,4 +1,4 @@
-//! Finds the helper program (yt-dlp). Audio is decoded in-process (Symphonia), so it is the only one.
+//! Finds the helper program (yt-dlp). Audio is decoded in-process (libav), so it is the only one.
 //!
 //! Order: the environment override, next to the app (where the installer puts them), a `binaries`
 //! folder there (portable layouts), the folder `cargo xtask tools` fills (development builds only),

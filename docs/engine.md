@@ -16,8 +16,9 @@
 
 ## How playback works now
 1. `StartTrack` flushes the pipeline, resolves the stream (URLs cached 15 minutes), opens it and queues it.
-   Symphonia is the only decoder (no ffmpeg). yt-dlp is asked only for AAC-LC in M4A, which it can play; a stream it cannot
-   read fails with the format named in the log and the song is skipped (see "Symphonia only" below).
+   libav (a minimal static FFmpeg linked into the app; no ffmpeg process) is the only decoder. yt-dlp is asked for Opus in
+   WebM first and AAC-LC in M4A second; a stream it cannot read fails with the format named in the log and the song is
+   skipped (see "In-process libav" below).
 2. While a track plays, the next one is resolved, opened and decoded ahead; the pipeline joins them with no gap.
 3. "Now playing" changes only when the device has consumed the audio (see docs/core.md).
 4. A stream URL that is rejected mid-song (403/410) makes the track stop producing audio; when the listener reaches that
@@ -66,8 +67,8 @@ offline or rate limited is not announced (the player bar already shows it with a
 - Seeking after a gapless handover re-opened the song the session *started* with, so seeking in song 2 played song 1. A seek now
   re-opens the song that is audible (`seeking_after_a_gapless_advance_stays_on_the_song_that_is_playing`).
 - If a stream cannot seek to a position, or a server ignores range requests, the engine used ffmpeg instead of treating the
-  song as unplayable. *(Superseded: ffmpeg is gone. A stream that cannot seek is re-opened and decoded up to the offset; a
-  server that ignores range requests fails the song with a notice. See "Symphonia only".)*
+  song as unplayable. *(Superseded: no ffmpeg process is ever started. A stream that cannot seek is re-opened and decoded up
+  to the offset; a server that ignores range requests fails the song with a notice. See "In-process libav".)*
 
 ## WP1 fixes (third Windows run)
 
@@ -84,7 +85,7 @@ offline or rate limited is not announced (the player bar already shows it with a
 Needs your PC: that yt-dlp's headers really cure the 403 for `yt:Ni5jPjvGxtw`; that songs-only search results show
 the artist after the song starts.
 
-## Rate-limit guard and Symphonia only
+## Rate-limit guard and in-process libav
 
 **Why 429s happened.** Search (`spawn_blocking`) and the engine (one `thread::spawn` per resolve, prefetch and radio) all
 called one shared `run_tool`, which started yt-dlp immediately. Skipping through songs or searching while a song loaded ran
@@ -92,7 +93,7 @@ several yt-dlp processes at once, each making several requests of its own.
 
 **The gate** (`crates/sources/src/gate.rs`, one per `YtDlpSource`, so it covers search, resolve, prefetch and radio):
 - one yt-dlp run at a time; a 1 s quiet gap after each run ends;
-- after a rate-limit answer (HTTP 429, "too many requests", "sign in to confirm"), new runs are refused at once with
+- after a rate-limit answer (HTTP 429, HTTP 403 from YouTube, "too many requests", "Sign in to confirm you're not a bot"), new runs are refused at once with
   `SourceError::RateLimited` for 2 minutes, including callers already waiting, so there is no retry storm. The player
   already treats `RateLimited` as transient (it stops with a Retry; a failed prefetch is not retried);
 - the newest waiter goes first: the engine never cancels the worker of a song you skipped, so without this the song you
@@ -102,16 +103,39 @@ Log lines: `yt-dlp <op> waited ...` (waits over 250 ms), `yt-dlp was rate limite
 <browser> browser` (never the path or profile). Cookies: see the README table (`PYXEE_COOKIES`, `PYXEE_COOKIES_FROM_BROWSER`).
 Cookies do not help if the IP address itself is blocked.
 
-**Symphonia only.** ffmpeg is removed from decoding, the build, the installer and `cargo xtask tools`. YouTube's best audio
-is Opus/WebM, but no released Symphonia (0.5.5, 0.6.1) has an Opus decoder, so the format selector (`FORMAT_SELECTOR` in
-`ytdlp.rs`) asks only for what Symphonia 0.5.5 plays: `bestaudio[ext=m4a][acodec^=mp4a.40.2][protocol=https][audio_channels<=?2]`.
-- `mp4a.40.2` = AAC-LC; its AAC decoder rejects HE-AAC (itag 139) and more than 2 channels ("aac too complex");
-- `protocol=https` = one plain file for range requests, not an HLS/DASH manifest;
-- there is no fallback alternative on purpose. If YouTube offers no such stream, yt-dlp says "Requested format is not
-  available" and the song is skipped with "YouTube offered no audio stream this player can decode".
-Tradeoff: ~128 kbps AAC (itag 140; ~256 kbps with Premium cookies) instead of ~130-160 kbps Opus: a small quality loss.
-Seek on YouTube's fragmented M4A works in-place (`crates/audio/tests/m4a.rs`). A format that cannot seek in place is
-re-opened and decoded through the offset (`SymphoniaSource::skip_ms`). A server that ignores range requests fails the song.
+**Transient or permanent** (`classify_stderr`, `AudioError`, `LyricsError`). A transient failure keeps the song selected with a
+Retry and burns no tracks; a permanent one skips (at most 3 in a row). Transient: yt-dlp 429 / 403 / bot check (`RateLimited`),
+yt-dlp 5xx and a yt-dlp run that hits its 40 s timeout (`Offline`), a stream server's HTTP 429 (`AudioError::RateLimited`),
+network errors. Permanent: unavailable, age-restricted (the age gate is *not* a rate limit), a refused stream URL after its
+re-resolves, undecodable media. An out-of-date yt-dlp is named as such. A stream that fails mid-song says why in words
+(`stopped_early_notice`).
+Lyrics (`crates/lyrics`): 429 is `RateLimited` (honours `Retry-After`, 1 s to 10 min, default 60 s), 401/403 `Blocked`, 5xx
+`Unavailable`; each pauses lookups (`Cooldown`: 60 s default, 5 min blocked, 30 s failing) so flipping songs cannot hammer a
+service that refused the app. Lyrics never affect playback.
+
+**In-process libav.** No `ffmpeg` process is started, ever: the build, the installer and `cargo xtask tools` carry no ffmpeg
+executable (`check-windows.ps1` proves it with a fake `ffmpeg.exe` first on `PATH`). Decoding is libavformat/libavcodec/
+libswresample from a minimal **static, LGPL-only** FFmpeg (pinned commit, `scripts/build-ffmpeg.sh`; `cargo xtask ffmpeg`
+runs it, and `cargo xtask installer` does too), linked through the small C shim `crates/audio/csrc/pxdec.c`. It has audio
+decoders and demuxers only, for the formats below, no network protocols (HTTP stays in Rust: `HttpRangeSource` feeds
+libavformat through read/seek callbacks), no filters, devices or programs.
+- Decoders: Opus, AAC (LC), MP3, FLAC, Vorbis, ALAC, PCM. Containers: WebM/Matroska, MP4/M4A, Ogg, MP3, FLAC, WAV, ADTS, AIFF.
+- `FORMAT_SELECTOR` in `ytdlp.rs` asks for `bestaudio[ext=webm][acodec=opus][protocol=https][audio_channels<=?2]`, then
+  `bestaudio[ext=m4a][acodec^=mp4a.40.2][protocol=https][audio_channels<=?2]`. `mp4a.40.2` = AAC-LC (HE-AAC, itag 139, is not
+  built in); `audio_channels<=?2` keeps stereo (the `?` must follow the operator); `protocol=https` = one plain file for
+  range requests, not an HLS/DASH manifest. There is no third alternative on purpose: if YouTube offers neither, the song
+  is skipped with "YouTube offered no audio stream this player can decode".
+- Gapless: libav applies the container's encoder delay and padding, so Opus (Ogg and WebM) joins to the exact sample count.
+  AAC in M4A is not fully trimmed by libav (plain files keep tail padding; YouTube-style fragmented files declare none), so
+  quiet edges (max 2112 frames) are still trimmed for AAC only, on top of whatever libav did.
+- Seeking is in place for every format. Opus needs its 80 ms pre-roll after a seek: the decoder starts that much early and the
+  lead-in is discarded, so Ogg Opus lands bit-exact (`crates/audio/tests/opus.rs`). Matroska timestamps are whole
+  milliseconds, so a WebM seek lands within 1 ms (48 frames). A stream that cannot seek in place is re-opened and decoded
+  through the offset (`LibavSource::skip_ms`). A server that ignores range requests fails the song.
+- Output is always stereo `f32` at the stream's own rate (libswresample downmixes surround); `rubato` still resamples to the device.
+- Updating FFmpeg: change the tag and commit in `scripts/build-ffmpeg.sh`, then rerun `cargo xtask ffmpeg`; the C shim is the
+  only code that touches libav structs. FFmpeg is LGPL: it is linked statically here, so release builds must keep the
+  object files or the build inputs available for relinking, and ship the LGPL notice (see "FFmpeg licence" in `docs/windows-checklist.md`; `scripts/tests/test_licenses.py` enforces what can be).
 The `*_frag.m4a` test fixtures were made once, with ffmpeg as a dev-time tool, by stream-copying the plain m4a fixtures
 into a fragmented layout (500 ms fragments, empty moov, global sidx); nothing at runtime uses it.
 

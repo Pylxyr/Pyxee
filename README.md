@@ -13,7 +13,7 @@ Rust 1.91 (MSVC; `rust-toolchain.toml` selects it and rustup installs it on firs
 The Tauri CLI comes with the UI's npm packages, so there is nothing else to install (no `cargo install`, no long compile).
 
 ## Get yt-dlp
-Pyxee needs yt-dlp. You do not install it by hand (audio is decoded inside the app, so there is no ffmpeg):
+Pyxee needs yt-dlp. You do not install it by hand (audio is decoded inside the app by a built-in libav, so no ffmpeg is needed or started):
 ```
 get-tools.cmd            (same as: cargo xtask tools)
 get-tools.cmd --update   refresh to the latest versions
@@ -52,7 +52,7 @@ Without Tauri, `npm run dev --prefix ui` also works in a browser against a built
 Pyxee writes a log of what it does: every song it starts, how the stream was resolved and opened, why a song failed or was
 skipped, seeks, stalls, and any crash. Find it in the app: **Settings** (the gear icon, top right) -> **Diagnostics**
 -> **Open log folder** (or copy the path). On Windows the file is
-`%APPDATA%\dev.pyxee.app\logs\pyxee.log`; when it passes 2 MB the old one becomes `pyxee.log.1`. Times are Taipei time (UTC+8, written like `2026-10-12 21:30:00.123+08:00`).
+`%LOCALAPPDATA%\dev.pyxee.app\logs\pyxee.log`; when it passes 2 MB the old one becomes `pyxee.log.1`. Times are Taipei time (UTC+8, written like `2026-10-12 21:30:00.123+08:00`).
 `dev.cmd` also prints the same lines in its console. For more detail set `PYXEE_LOG=debug` before starting.
 If a song misbehaves, send me the lines around its title (search the file for the song's name).
 
@@ -96,8 +96,13 @@ cargo test --workspace
 The in-app yt-dlp updater with rollback, the portable build and code signing come in milestone 7.
 
 ## Checking a build on Windows
-`scripts\check-windows.cmd` builds, runs every test, proves ffmpeg is never started (a fake `ffmpeg.exe` sits first on `PATH` and logs
+`scripts\check-windows.cmd` builds, runs every test, proves no ffmpeg process is ever started (a fake `ffmpeg.exe` sits first on `PATH` and logs
 any attempt), and runs live YouTube checks of the real search / resolve / decode / seek / gapless path. It writes one report to
 `pyxee-check\` (stream URLs, cookie paths and your user name are redacted). Useful options: `-SkipTests`, `-SkipLive`, `-Ui`,
 `-Installer`, `-UpdateYtdlp`, `-CookieFile <cookies.txt>`, `-CookieBrowser firefox`, `-Manual` (answer y/n for things to try in the
 app) and `-AnalyzeLog` (summarise the app's own log). Details: the comment block at the top of `scripts\check-windows.ps1`.
+
+## Licences
+Pyxee is MIT licensed. This software uses libraries from the FFmpeg project under the LGPLv2.1 (a reduced, audio-decoding-only build,
+linked statically; see `scripts/build-ffmpeg.sh`). The installer includes the full licence text and the notices in `licenses/`
+(`THIRD_PARTY.txt`, `FFmpeg-LGPL-2.1.txt`); they are also attached to every release. yt-dlp is bundled as a separate program (The Unlicense).

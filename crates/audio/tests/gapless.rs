@@ -1,7 +1,7 @@
 //! Integration test: two tracks go through the real decode -> resample -> gapless path and
 //! the rendered output is scanned for silence at (and away from) the boundary.
 
-use pyxee_audio::decode::{SampleSource, SymphoniaSource};
+use pyxee_audio::decode::{LibavSource, SampleSource};
 use pyxee_audio::gap::find_gaps;
 use pyxee_audio::gapless::{Event, GaplessSource, PreparedTrack};
 use std::path::{Path, PathBuf};
@@ -56,7 +56,7 @@ fn check(ext: &str, a: Box<dyn SampleSource>, b: Box<dyn SampleSource>) {
 }
 
 fn open(name: &str) -> Box<dyn SampleSource> {
-    Box::new(SymphoniaSource::open_path(&fixture(name)).unwrap_or_else(|e| panic!("{name}: {e}")))
+    Box::new(LibavSource::open_path(&fixture(name)).unwrap_or_else(|e| panic!("{name}: {e}")))
 }
 
 #[test]
@@ -87,17 +87,13 @@ fn gapless_aac_m4a_fragmented_like_youtube() {
     check("m4a-frag", open("a_44k_frag.m4a"), open("b_48k_frag.m4a"));
 }
 
-/// No released Symphonia decodes Opus, and there is no other decoder: it must be refused with a
-/// clear error (the app then skips the song), never panic or hang.
+/// Opus is YouTube's best audio and ships in WebM; Ogg Opus is what local `.opus` files use. Both must
+/// decode with the encoder's pre-skip and end padding removed (no silence, true length).
 #[test]
-fn opus_is_refused_cleanly() {
-    for name in ["a_48k.opus", "a_48k.webm"] {
-        let err = SymphoniaSource::open_path(&fixture(name))
-            .err()
-            .unwrap_or_else(|| panic!("{name} unexpectedly opened"));
-        assert!(
-            matches!(err, pyxee_audio::AudioError::Unsupported(_)),
-            "{name}: {err:?}"
-        );
-    }
+fn gapless_opus_ogg() {
+    check("opus", open("a_48k.opus"), open("a_48k.opus"));
+}
+#[test]
+fn gapless_opus_webm() {
+    check("webm", open("a_48k.webm"), open("a_48k.webm"));
 }

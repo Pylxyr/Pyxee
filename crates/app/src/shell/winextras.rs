@@ -40,6 +40,8 @@ static BUTTON_CREATED_MSG: AtomicU32 = AtomicU32::new(0);
 thread_local! {
     /// Only ever touched on the main (UI) thread, where the COM object was created.
     static TASKBAR: RefCell<Option<Taskbar>> = const { RefCell::new(None) };
+    /// The four button icons, created once (main thread): see `glyph_icon`.
+    static ICONS: RefCell<[Option<HICON>; 4]> = const { RefCell::new([None; 4]) };
 }
 
 struct Taskbar {
@@ -103,7 +105,12 @@ pub fn update(app: &AppHandle, phase: Phase, has_track: bool) {
 
 fn apply(phase: Phase, has_track: bool) {
     TASKBAR.with(|cell| {
-        let mut guard = cell.borrow_mut();
+        // Not `borrow_mut`: this runs COM calls into Explorer, and a window message delivered meanwhile
+        // can land back here. Panicking inside the window procedure would abort the whole app.
+        let Ok(mut guard) = cell.try_borrow_mut() else {
+            log::debug!("thumbnail buttons: update skipped, already in progress");
+            return;
+        };
         let Some(tb) = guard.as_mut() else {
             return;
         };
@@ -144,25 +151,40 @@ fn button(s: &ThumbSpec) -> THUMBBUTTON {
     }
 }
 
+/// The icon for a glyph. Each is created once and kept for the life of the app: `apply` runs on every
+/// play-state change, and an icon made with `CreateIconFromResourceEx` is a GDI object that is never
+/// freed unless `DestroyIcon` is called, so creating them per call would leak three handles each time.
 fn glyph_icon(g: Glyph) -> HICON {
-    let png: &[u8] = match g {
-        Glyph::Previous => include_bytes!("../../icons/thumb/prev.png"),
-        Glyph::Play => include_bytes!("../../icons/thumb/play.png"),
-        Glyph::Pause => include_bytes!("../../icons/thumb/pause.png"),
-        Glyph::Next => include_bytes!("../../icons/thumb/next.png"),
+    let (slot, png): (usize, &[u8]) = match g {
+        Glyph::Previous => (0, include_bytes!("../../icons/thumb/prev.png")),
+        Glyph::Play => (1, include_bytes!("../../icons/thumb/play.png")),
+        Glyph::Pause => (2, include_bytes!("../../icons/thumb/pause.png")),
+        Glyph::Next => (3, include_bytes!("../../icons/thumb/next.png")),
     };
-    // SAFETY: the PNG bytes are static; the icon is owned by Windows for the life of the app.
-    unsafe {
-        CreateIconFromResourceEx(
-            png,
-            true,
-            0x0003_0000,
-            0,
-            0,
-            LR_DEFAULTCOLOR | LR_DEFAULTSIZE,
-        )
-    }
-    .unwrap_or_default()
+    ICONS.with(|cache| {
+        let Ok(mut cache) = cache.try_borrow_mut() else {
+            return HICON::default();
+        };
+        if let Some(icon) = cache[slot] {
+            return icon;
+        }
+        // SAFETY: the PNG bytes are static; the icon is cached, so it is created at most once per glyph.
+        let icon = unsafe {
+            CreateIconFromResourceEx(
+                png,
+                true,
+                0x0003_0000,
+                0,
+                0,
+                LR_DEFAULTCOLOR | LR_DEFAULTSIZE,
+            )
+        }
+        .unwrap_or_default();
+        if !icon.is_invalid() {
+            cache[slot] = Some(icon); // a failed creation is retried next time, not remembered
+        }
+        icon
+    })
 }
 
 /// Watches the main window for thumbnail button clicks and for the taskbar button being (re)created.
@@ -186,8 +208,11 @@ unsafe extern "system" fn subclass(
     if created != 0 && msg == created {
         // The taskbar button exists now (or Explorer restarted): add the buttons afresh.
         TASKBAR.with(|t| {
-            if let Some(tb) = t.borrow_mut().as_mut() {
-                tb.added = false;
+            // `try_borrow_mut`: see `apply`.
+            if let Ok(mut guard) = t.try_borrow_mut() {
+                if let Some(tb) = guard.as_mut() {
+                    tb.added = false;
+                }
             }
         });
         if let Some(app) = APP.get() {

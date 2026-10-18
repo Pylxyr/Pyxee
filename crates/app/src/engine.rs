@@ -5,7 +5,7 @@
 //! Heavy work (resolve, open, prefill) runs on short-lived worker threads and comes back through a
 //! channel tagged with a generation, so results for a track the user already skipped are dropped.
 
-use pyxee_audio::decode::{SampleSource, SymphoniaSource};
+use pyxee_audio::decode::{LibavSource, SampleSource};
 use pyxee_audio::gapless::{FailKind, PreparedTrack};
 use pyxee_audio::http::HttpRangeSource;
 use pyxee_audio::pipeline::{Consumer, PipeEvent, Pipeline, Volume};
@@ -73,6 +73,14 @@ pub fn early_end_notice(title: &str, heard_ms: u64, expected_ms: u64) -> String 
     )
 }
 
+/// A song whose stream failed after it had started playing (so it ends where it was cut off).
+pub fn stopped_early_notice(title: &str, f: &Failure) -> String {
+    format!(
+        "\u{201c}{title}\u{201d} stopped early: {}. The log has details.",
+        skip_reason(f)
+    )
+}
+
 /// A song that ends well before its known length (and not because of a seek) was cut off.
 pub fn ended_early(heard_ms: u64, expected_ms: Option<u64>) -> bool {
     expected_ms.is_some_and(|e| e > 15_000 && heard_ms * 10 < e * 6 && e - heard_ms > 10_000)
@@ -115,6 +123,7 @@ pub fn failure_from_audio(e: &AudioError) -> Failure {
     match e {
         AudioError::UrlExpired(c) => Failure::Expired(Some(*c)),
         AudioError::Network(_) => Failure::Offline,
+        AudioError::RateLimited => Failure::RateLimited,
         _ => Failure::Decode,
     }
 }
@@ -491,10 +500,8 @@ impl Engine {
                         expected
                     );
                     if let (Some((kind, _)), Some(t)) = (failed, self.known.get(&id)) {
-                        self.host.notice(format!(
-                            "\u{201c}{}\u{201d} stopped early because of a playback error ({kind:?}). The log has details.",
-                            t.title
-                        ));
+                        self.host
+                            .notice(stopped_early_notice(&t.title, &failure_for(kind)));
                     } else if ended_early(heard, expected) {
                         let title = self.known.get(&id).map_or("A song", |t| t.title.as_str());
                         log::warn!(
@@ -568,6 +575,7 @@ fn failure_for(kind: FailKind) -> Failure {
     match kind {
         FailKind::Expired(c) => Failure::Expired(Some(c)),
         FailKind::Network => Failure::Offline,
+        FailKind::RateLimited => Failure::RateLimited,
         FailKind::Decode | FailKind::Empty => Failure::Decode,
     }
 }
@@ -619,17 +627,17 @@ fn forget(cache: &UrlCache, key: &str) {
     }
 }
 
-/// Opens a stream with Symphonia, the only decoder (there is no ffmpeg). A format it cannot read
-/// fails here with the format named in the log, and the song is skipped: `yt-dlp` is asked only
-/// for formats Symphonia plays (see `FORMAT_SELECTOR`), so this is the safety net, not a path.
+/// Opens a stream with the in-process libav decoder (no ffmpeg process is ever started). A format
+/// it cannot read fails here with the format named in the log, and the song is skipped: `yt-dlp` is
+/// asked only for formats the minimal build plays (see `FORMAT_SELECTOR`), so this is the safety net.
 fn open_stream(s: &StreamInfo, start_ms: u64) -> Result<Box<dyn SampleSource>, AudioError> {
     let remote = s.url.starts_with("http");
-    let open = || -> Result<SymphoniaSource, AudioError> {
+    let open = || -> Result<LibavSource, AudioError> {
         if remote {
             let http = HttpRangeSource::open_with(&s.url, &s.headers)?;
-            SymphoniaSource::open(Box::new(http), Some(&s.ext))
+            LibavSource::open(Box::new(http))
         } else {
-            SymphoniaSource::open_path(std::path::Path::new(&s.url))
+            LibavSource::open_path(std::path::Path::new(&s.url))
         }
     };
     let mut src = open().inspect_err(|e| {

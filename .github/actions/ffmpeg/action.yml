@@ -1,0 +1,28 @@
+name: Minimal static FFmpeg
+description: >-
+  Builds the audio decoder's static libav libraries (LGPL, pinned commit; see scripts/build-ffmpeg.sh) into
+  target/ffmpeg/<host triple> with the MSVC toolchain, cached on the build script. Windows runners only.
+runs:
+  using: composite
+  steps:
+    - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      id: cache
+      with:
+        path: target/ffmpeg/x86_64-pc-windows-msvc
+        key: ffmpeg-msvc-${{ hashFiles('scripts/build-ffmpeg.sh') }}
+    - name: Build the minimal static FFmpeg
+      if: steps.cache.outputs.cache-hit != 'true'
+      shell: pwsh
+      run: |
+        # make, nasm, diffutils and pkgconf come from the MSYS2 that the runner image ships.
+        C:\msys64\usr\bin\bash.exe -lc "pacman -S --noconfirm --needed make nasm diffutils pkgconf"
+        if ($LASTEXITCODE -ne 0) { throw "pacman failed ($LASTEXITCODE)" }
+        # Import the MSVC environment into this step only (what vcvars64.bat does).
+        $vsw = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
+        $vs = & $vsw -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+        if (-not $vs) { throw "Visual Studio C++ build tools not found" }
+        cmd /c "`"$vs\VC\Auxiliary\Build\vcvars64.bat`" >nul && set" | ForEach-Object {
+          if ($_ -match '^([^=]+)=(.*)$') { Set-Item -Path "env:$($Matches[1])" -Value $Matches[2] }
+        }
+        cargo xtask ffmpeg
+        if ($LASTEXITCODE -ne 0) { throw "cargo xtask ffmpeg failed ($LASTEXITCODE)" }

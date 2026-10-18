@@ -82,8 +82,8 @@ export class MockBackend extends MockLibrary implements Backend {
   logError: string | null = null;
   async logInfo() {
     return {
-      dir: 'C:\\Users\\you\\AppData\\Roaming\\dev.pyxee.app\\logs',
-      file: 'C:\\Users\\you\\AppData\\Roaming\\dev.pyxee.app\\logs\\pyxee.log',
+      dir: 'C:\\Users\\you\\AppData\\Local\\dev.pyxee.app\\logs',
+      file: 'C:\\Users\\you\\AppData\\Local\\dev.pyxee.app\\logs\\pyxee.log',
       error: this.logError,
     };
   }

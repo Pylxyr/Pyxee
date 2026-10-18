@@ -14,6 +14,9 @@ UI  --Command-->  Player  --Effect-->  app glue (audio engine, sources, storage)
 stream (`Event::Started/Finished { at_frame }` from `GaplessSource`), the device callback reports
 frames consumed, and the tracker subtracts output latency. Decoding ahead or filling the ring
 buffer never changes "now playing".
+The latency estimate is re-measured on every device callback and can step up or down, so the heard
+count only ever moves forward (`advance` keeps the larger value); `reset` is the one place it restarts, with the
+consumed counter, when the pipeline is flushed.
 
 ## Effect contract for the engine glue
 - `StartTrack{id, track, start_ms}`: stop everything now, resolve + open + play. May reuse a prepared track. Drops prefetched tracks.
@@ -31,7 +34,9 @@ buffer never changes "now playing".
 ## Failure policy
 - `Offline` / `RateLimited`: stay on the track in `Failed` (no skipping through the queue); `Retry` restarts it.
 - `Unavailable` / `Decode`: mark the entry unplayable and skip to the next, at most 3 in a row, then `Failed`.
-- Expired stream URL: re-resolve in place, twice, then `Failed(Expired)`.
+- Expired stream URL: re-resolve in place, twice, then `Failed(Expired)`. Reaching "audible" again does not refill the
+  two retries (a URL rejected right after every resume would otherwise loop forever); they refill when another song is
+  audible, or after the re-resolved URL has played for a minute (a long stream outliving its URL again).
 
 ## Queue behaviour
 Display order vs play order (shuffle keeps the current track first and is seeded, so it is testable);

@@ -141,7 +141,7 @@ pub fn classify_stderr(tool: &str, stderr: &str) -> SourceError {
     if has(&[
         "http error 429",
         "too many requests",
-        "sign in to confirm",
+        "not a bot", // "Sign in to confirm you're not a bot" (not the age gate, see below)
         "rate-limit",
         "rate limit",
     ]) {
@@ -166,6 +166,7 @@ pub fn classify_stderr(tool: &str, stderr: &str) -> SourceError {
         "has been removed",
         "not made this video available",
         "age-restricted",
+        "confirm your age",
         "members-only",
         "this video is unavailable",
     ]) {
@@ -174,9 +175,33 @@ pub fn classify_stderr(tool: &str, stderr: &str) -> SourceError {
         // Our format selector only allows what the built-in decoder can play (see
         // `ytdlp::FORMAT_SELECTOR`); there is no other decoder to fall back on.
         SourceError::Failed(
-            "YouTube offered no audio stream this player can decode (it needs AAC in M4A over HTTPS)"
+            "YouTube offered no audio stream this player can decode (it needs Opus in WebM or AAC-LC in M4A over HTTPS)"
                 .into(),
         )
+    } else if has(&["http error 403", "403: forbidden"]) {
+        // After the permanent causes above: YouTube refusing this client or IP (often fixed by
+        // cookies, or by waiting) is not a property of the song, so it must not skip through the queue.
+        SourceError::RateLimited
+    } else if has(&[
+        "http error 500",
+        "http error 502",
+        "http error 503",
+        "http error 504",
+        "bad gateway",
+        "service unavailable",
+        "gateway time-out",
+    ]) {
+        // YouTube's own servers failing: transient, the song is fine.
+        SourceError::Offline
+    } else if has(&[
+        "unable to extract",
+        "nsig extraction failed",
+        "signature extraction failed",
+    ]) {
+        SourceError::Failed(format!(
+            "{tool} could not read YouTube's page, so it is probably out of date: update it ({})",
+            last_line(stderr)
+        ))
     } else {
         SourceError::Failed(format!("{tool} failed: {}", last_line(stderr)))
     }

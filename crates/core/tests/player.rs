@@ -200,6 +200,69 @@ fn expired_url_re_resolves_at_the_same_position_up_to_twice() {
 }
 
 #[test]
+fn a_url_the_server_keeps_rejecting_after_each_resume_still_ends_in_expired() {
+    // Each re-resolve reaches "audible" for a moment, then the server refuses again. Reaching
+    // audible must not hand out a fresh retry budget, or this would loop forever.
+    let (mut p, ids, _) = started(2);
+    p.engine(E::Audible { id: ids[0] });
+    p.engine(E::Position {
+        id: ids[0],
+        ms: 61_000,
+    });
+    for n in 1..=2 {
+        let fx = p.engine(E::UrlExpired { id: ids[0] });
+        assert!(start_id(&fx).is_some(), "retry {n} re-resolves");
+        p.engine(E::Audible { id: ids[0] }); // the new URL plays for a moment...
+        p.engine(E::Position {
+            id: ids[0],
+            ms: 62_000 + n * 1_000, // ...but well under a minute
+        });
+    }
+    let fx = p.engine(E::UrlExpired { id: ids[0] });
+    assert!(start_id(&fx).is_none(), "no third re-resolve");
+    assert_eq!(
+        p.snapshot().transport,
+        Transport::Failed {
+            id: ids[0],
+            failure: Failure::Expired(None)
+        }
+    );
+}
+
+#[test]
+fn a_long_stream_that_outlives_its_url_again_gets_a_fresh_budget_after_playing_a_minute() {
+    let (mut p, ids, _) = started(2);
+    p.engine(E::Audible { id: ids[0] });
+    let mut at = 100_000;
+    // Three expiries, each after the re-resolved URL had played for a good while: all re-resolve.
+    for _ in 0..3 {
+        p.engine(E::Position { id: ids[0], ms: at });
+        let fx = p.engine(E::UrlExpired { id: ids[0] });
+        assert!(start_id(&fx).is_some(), "expiry at {at} ms re-resolves");
+        p.engine(E::Audible { id: ids[0] });
+        at += 6 * 3_600_000; // six hours of music, then the URL expires again
+    }
+}
+
+#[test]
+fn another_song_becoming_audible_clears_the_previous_songs_retries() {
+    let (mut p, ids, _) = started(3);
+    p.engine(E::Audible { id: ids[0] });
+    p.engine(E::UrlExpired { id: ids[0] });
+    p.engine(E::Audible { id: ids[0] });
+    p.engine(E::UrlExpired { id: ids[0] });
+    p.engine(E::Audible { id: ids[1] }); // moved on (gapless advance)
+    for _ in 0..2 {
+        let fx = p.engine(E::UrlExpired { id: ids[1] });
+        assert!(
+            start_id(&fx).is_some(),
+            "the new song has its own two retries"
+        );
+        p.engine(E::Audible { id: ids[1] });
+    }
+}
+
+#[test]
 fn pause_and_resume_a_loaded_track() {
     let (mut p, ids, _) = started(2);
     p.engine(E::Audible { id: ids[0] });

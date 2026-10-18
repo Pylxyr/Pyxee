@@ -1,6 +1,6 @@
 //! Failure modes must degrade gracefully: clear errors, no panics, no silent skips.
 
-use pyxee_audio::decode::{SampleSource, SymphoniaSource};
+use pyxee_audio::decode::{LibavSource, SampleSource};
 use pyxee_audio::gapless::{Event, GaplessSource, PreparedTrack};
 use pyxee_audio::http::HttpRangeSource;
 use pyxee_audio::AudioError;
@@ -68,7 +68,7 @@ impl SampleSource for Fake {
 #[test]
 fn garbage_file_gives_a_clear_error() {
     let p = tmp("garbage.mp3", &[0x13, 0x37, 0x42, 0x99].repeat(5000));
-    let err = SymphoniaSource::open_path(&p)
+    let err = LibavSource::open_path(&p)
         .err()
         .expect("garbage must not open");
     println!("{err}");
@@ -80,9 +80,7 @@ fn truncated_file_plays_what_it_has() {
     let full = std::fs::read(fixture("a_44k.mp3")).unwrap();
     let p = tmp("trunc.mp3", &full[..full.len() * 4 / 10]);
     let mut g = GaplessSource::new();
-    g.push(
-        PreparedTrack::new(1, Box::new(SymphoniaSource::open_path(&p).unwrap()), 48_000).unwrap(),
-    );
+    g.push(PreparedTrack::new(1, Box::new(LibavSource::open_path(&p).unwrap()), 48_000).unwrap());
     let frames = drain(&mut g).len() / 2;
     println!("truncated mp3 decoded {frames} frames");
     assert!(frames > 10_000 && frames < 96_000);
@@ -230,7 +228,7 @@ fn streams_over_http_range_requests_like_a_local_file() {
     g.push(
         PreparedTrack::new(
             1,
-            Box::new(SymphoniaSource::open(Box::new(src), Some("flac")).unwrap()),
+            Box::new(LibavSource::open(Box::new(src)).unwrap()),
             48_000,
         )
         .unwrap(),
@@ -243,6 +241,76 @@ fn rejected_url_is_reported_as_expired_so_it_can_be_re_resolved() {
     let url = serve(Vec::new(), true);
     let err = HttpRangeSource::open(&url).err().expect("403 must fail");
     assert!(matches!(err, AudioError::UrlExpired(403)), "{err:?}");
+}
+
+/// Answers the first `ok_requests` requests like a range server, then HTTP 429 to every later one.
+fn serve_then_limit(body: Vec<u8>, ok_requests: usize) -> String {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let addr = listener.local_addr().unwrap();
+    std::thread::spawn(move || {
+        let mut served = 0;
+        for stream in listener.incoming() {
+            let Ok(mut s) = stream else { continue };
+            let mut req = Vec::new();
+            let mut b = [0u8; 1];
+            while !req.ends_with(b"\r\n\r\n") {
+                if s.read(&mut b).unwrap_or(0) == 0 {
+                    break;
+                }
+                req.push(b[0]);
+            }
+            if served >= ok_requests {
+                let _ = s.write_all(
+                    b"HTTP/1.1 429 Too Many Requests\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
+                );
+                continue;
+            }
+            served += 1;
+            let text = String::from_utf8_lossy(&req).to_string();
+            let range = text
+                .lines()
+                .find_map(|l| {
+                    l.to_ascii_lowercase()
+                        .strip_prefix("range: bytes=")
+                        .map(str::to_string)
+                })
+                .unwrap_or_default();
+            let (a, b) = range.split_once('-').unwrap_or(("0", "0"));
+            let from: usize = a.trim().parse().unwrap_or(0);
+            let to: usize = b.trim().parse::<usize>().unwrap_or(0).min(body.len() - 1);
+            let part = &body[from..=to];
+            let head = format!(
+                "HTTP/1.1 206 Partial Content\r\nContent-Range: bytes {from}-{to}/{}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                body.len(),
+                part.len()
+            );
+            let _ = s.write_all(head.as_bytes());
+            let _ = s.write_all(part);
+        }
+    });
+    format!("http://{addr}/track")
+}
+
+#[test]
+fn a_429_from_the_stream_server_is_rate_limited_not_offline_whether_it_comes_at_open_or_mid_stream()
+{
+    let bytes = std::fs::read(fixture("a_44k.flac")).unwrap();
+    // At once: the very first request is refused.
+    let url = serve_then_limit(bytes.clone(), 0);
+    let err = HttpRangeSource::open(&url).err().expect("429 must fail");
+    assert!(matches!(err, AudioError::RateLimited), "{err:?}");
+    // Mid-stream: the probe works, then the server starts limiting before the decoder gets any data.
+    let url = serve_then_limit(bytes, 1);
+    let src = HttpRangeSource::open(&url).expect("the probe is answered");
+    let err = LibavSource::open(Box::new(src))
+        .err()
+        .expect("429 must fail");
+    assert!(matches!(err, AudioError::RateLimited), "{err:?}");
+    // The player keeps the song and shows the transient notice, instead of skipping or saying "offline".
+    assert!(matches!(
+        pyxee_audio::gapless::FailKind::from(&err),
+        pyxee_audio::gapless::FailKind::RateLimited
+    ));
 }
 
 #[test]

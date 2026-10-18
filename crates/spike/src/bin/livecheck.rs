@@ -1,5 +1,5 @@
 //! Headless live check of the real production path: `YtDlpSource` (gate, cookies, format selector)
-//! -> `HttpRangeSource` -> `SymphoniaSource` -> `GaplessSource`. No audio device is needed.
+//! -> `HttpRangeSource` -> `LibavSource` -> `GaplessSource`. No audio device is needed.
 //! Driven by `scripts/check-windows.ps1`; usable by hand:
 //!
 //!   livecheck <formats|search|stream|stress|fake429> [--ytdlp PATH] [--q1 QUERY] [--q2 QUERY]
@@ -9,7 +9,7 @@
 //! every line is scrubbed down to the host. Exit code 1 if any check failed.
 
 use anyhow::{anyhow, bail, Result};
-use pyxee_audio::decode::{SampleSource, SymphoniaSource};
+use pyxee_audio::decode::{LibavSource, SampleSource};
 use pyxee_audio::gap::find_gaps;
 use pyxee_audio::gapless::{Event, GaplessSource, PreparedTrack};
 use pyxee_audio::http::HttpRangeSource;
@@ -70,7 +70,7 @@ fn verdict(ok: bool, name: &str, detail: impl AsRef<str>) {
 struct Stdout;
 impl log::Log for Stdout {
     fn enabled(&self, m: &log::Metadata) -> bool {
-        // Only Pyxee's own decisions (gate waits, cookies, tool failures), not Symphonia's chatter.
+        // Only Pyxee's own decisions (gate waits, cookies, tool failures), not the decoder's chatter.
         m.level() <= log::Level::Info && m.target().starts_with("pyxee")
     }
     fn log(&self, r: &log::Record) {
@@ -143,7 +143,9 @@ fn formats(o: &Opts) -> Result<()> {
     for line in stdout.lines().filter(|l| l.contains("audio only")) {
         audio_rows += 1;
         let row = line.split_whitespace().collect::<Vec<_>>().join(" ");
-        let ok = row.contains(" m4a ") && row.contains("mp4a.40.2") && row.contains("https");
+        let opus = row.contains(" webm ") && row.contains("opus");
+        let aac = row.contains(" m4a ") && row.contains("mp4a.40.2");
+        let ok = (opus || aac) && row.contains("https");
         decodable += usize::from(ok);
         emit(
             "INFO",
@@ -170,7 +172,9 @@ fn formats(o: &Opts) -> Result<()> {
     verdict(
         decodable > 0,
         "playable-format-offered",
-        format!("{decodable} of {audio_rows} audio-only formats are AAC-LC/M4A over https"),
+        format!(
+            "{decodable} of {audio_rows} audio-only formats are Opus/WebM or AAC-LC/M4A over https"
+        ),
     );
     Ok(())
 }
@@ -227,7 +231,7 @@ impl Stats {
     }
 }
 
-fn decode_all(s: &mut SymphoniaSource) -> Result<Stats, AudioError> {
+fn decode_all(s: &mut LibavSource) -> Result<Stats, AudioError> {
     let (mut st, mut buf) = (Stats::default(), Vec::new());
     let ch = s.channels();
     loop {
@@ -247,9 +251,9 @@ fn decode_all(s: &mut SymphoniaSource) -> Result<Stats, AudioError> {
     }
 }
 
-fn open(stream: &StreamInfo, url: &str) -> Result<SymphoniaSource, AudioError> {
+fn open(stream: &StreamInfo, url: &str) -> Result<LibavSource, AudioError> {
     let http = HttpRangeSource::open_with(url, &stream.headers)?;
-    SymphoniaSource::open(Box::new(http), Some(&stream.ext))
+    LibavSource::open(Box::new(http))
 }
 
 /// Corrupts the signature (or expiry) so the CDN must refuse the URL, like an expired one.
@@ -312,15 +316,22 @@ fn stream(o: &Opts) -> Result<()> {
             secs(t.elapsed())
         ),
     );
-    let playable = s.ext == "m4a"
-        && s.acodec
-            .as_deref()
-            .is_some_and(|c| c.starts_with("mp4a.40.2"));
+    let codec = s.acodec.as_deref().unwrap_or("");
+    let opus = s.ext == "webm" && codec == "opus";
+    let aac = s.ext == "m4a" && codec.starts_with("mp4a.40.2");
     verdict(
-        playable,
-        "format-is-aac-lc-m4a",
+        opus || aac,
+        "format-is-opus-or-aac-lc",
         format!("{} / {:?}", s.ext, s.acodec),
     );
+    if aac {
+        // Opus is preferred (FORMAT_SELECTOR); AAC-LC means this video offered none, or the selector missed it.
+        emit(
+            "WARN",
+            "opus-not-selected",
+            "the AAC-LC fallback was chosen: compare with the `formats` check to see whether Opus was offered",
+        );
+    }
 
     // Open + full decode.
     let t = Instant::now();

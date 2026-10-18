@@ -15,24 +15,24 @@ use std::process::{Command, Stdio};
 use std::thread;
 use std::time::{Duration, Instant};
 
-/// Only formats the built-in decoder (Symphonia 0.5, the sole decoder: there is no ffmpeg) can play.
+/// What the built-in decoder (libav, a minimal in-process build: there is no ffmpeg process) plays.
 ///
-/// YouTube's best audio is Opus in WebM, but no released Symphonia decodes Opus, so it is not
-/// requested. What Symphonia can play from YouTube is AAC-LC in M4A (itag 140, ~128 kbps; 141,
-/// ~256 kbps, with Premium cookies). Each filter excludes something that would fail to play:
+/// First choice is Opus in WebM, YouTube's best quality per bitrate (itag 251, ~130-160 kbps). The
+/// fallback is AAC-LC in M4A (itag 140, ~128 kbps; 141, ~256 kbps, with Premium cookies), for videos
+/// that offer no Opus. Each filter excludes something that would fail to play or to seek:
 ///
-/// * `acodec^=mp4a.40.2`: AAC-LC only. Symphonia's AAC decoder rejects HE-AAC (`mp4a.40.5`,
-///   itag 139) with "aac too complex".
-/// * `audio_channels<=?2`: no 5.1 AAC (itags 256/258; the decoder is stereo at most). The `?`
-///   keeps formats that do not report a channel count. It must sit right after the operator:
-///   yt-dlp rejects `<=2?` with "Invalid filter specification" and then plays nothing at all.
+/// * `acodec=opus` + `ext=webm`: the Opus stream YouTube serves. `acodec^=mp4a.40.2` is AAC-LC only:
+///   HE-AAC (`mp4a.40.5`, itag 139) is not in the build's allowlist.
+/// * `audio_channels<=?2`: no 5.1 (itags 256/258, 338). The `?` keeps formats that do not report a
+///   channel count. It must sit right after the operator: yt-dlp rejects `<=2?` with "Invalid filter
+///   specification" and then plays nothing at all.
 /// * `protocol=https`: one plain file the range reader can fetch, not an HLS playlist or DASH
 ///   manifest (`http_dash_segments`).
 ///
-/// If nothing matches, yt-dlp reports "Requested format is not available", which becomes a clear
+/// If neither matches, yt-dlp reports "Requested format is not available", which becomes a clear
 /// "no audio stream this player can decode" error instead of falling back to a codec we cannot play.
 pub const FORMAT_SELECTOR: &str =
-    "bestaudio[ext=m4a][acodec^=mp4a.40.2][protocol=https][audio_channels<=?2]";
+    "bestaudio[ext=webm][acodec=opus][protocol=https][audio_channels<=?2]/bestaudio[ext=m4a][acodec^=mp4a.40.2][protocol=https][audio_channels<=?2]";
 const RESULTS: usize = 20;
 
 /// Optional login cookies for yt-dlp. YouTube is far less likely to answer "sign in to confirm
@@ -172,8 +172,17 @@ pub(crate) fn run_tool(
             String::from_utf8_lossy(&buf).into_owned()
         })
     };
-    let out = read(Box::new(child.stdout.take().expect("piped")));
-    let err = read(Box::new(child.stderr.take().expect("piped")));
+    let (Some(child_out), Some(child_err)) = (child.stdout.take(), child.stderr.take()) else {
+        // Both pipes were requested above, so this should not happen; if it does, do not leave a
+        // running child behind and report it instead of panicking a worker thread.
+        let _ = child.kill();
+        let _ = child.wait();
+        return Err(SourceError::Failed(format!(
+            "could not read the output of {name}"
+        )));
+    };
+    let out = read(Box::new(child_out));
+    let err = read(Box::new(child_err));
     let start = Instant::now();
     let status = loop {
         match child.try_wait() {
@@ -182,9 +191,9 @@ pub(crate) fn run_tool(
                 let _ = child.kill();
                 let _ = child.wait();
                 log::warn!("{name} was stopped after {timeout:?}: {args:?}");
-                return Err(SourceError::Failed(format!(
-                    "{name} took too long and was stopped"
-                )));
+                // A stall means the service cannot be reached right now: transient, so the player
+                // stays on the song with a Retry instead of skipping it (the song is not the problem).
+                return Err(SourceError::Offline);
             }
             Ok(None) => thread::sleep(Duration::from_millis(25)),
             Err(e) => return Err(SourceError::Failed(format!("{name}: {e}"))),
@@ -709,27 +718,35 @@ mod tests {
 
     #[test]
     fn the_format_selector_asks_only_for_what_the_built_in_decoder_can_play() {
-        // Symphonia 0.5 has no Opus decoder and its AAC decoder is LC-only: see FORMAT_SELECTOR.
-        for banned in ["opus", "webm", "vorbis", "ba/", "/best"] {
+        // Opus first, AAC-LC second, nothing else: see FORMAT_SELECTOR.
+        for banned in ["vorbis", "ba/", "mp4a.40.5"] {
             assert!(
                 !FORMAT_SELECTOR.contains(banned),
                 "{banned} in {FORMAT_SELECTOR}"
             );
         }
-        assert!(
-            !FORMAT_SELECTOR.contains('/'),
-            "no fallback to a format that cannot be played"
+        let alternatives: Vec<&str> = FORMAT_SELECTOR.split('/').collect();
+        assert_eq!(
+            alternatives.len(),
+            2,
+            "exactly Opus then AAC-LC, no fallback to a format that cannot be played"
         );
-        for needed in [
-            "ext=m4a",
-            "acodec^=mp4a.40.2",
-            "protocol=https",
-            "audio_channels<=?2",
-        ] {
+        for alt in &alternatives {
             assert!(
-                FORMAT_SELECTOR.contains(needed),
-                "{needed} missing from {FORMAT_SELECTOR}"
+                alt.starts_with("bestaudio["),
+                "no bare `best`/`bestaudio` fallback that could pick an unplayable format: {alt}"
             );
+        }
+        for (alt, needed) in [
+            (alternatives[0], ["ext=webm", "acodec=opus"]),
+            (alternatives[1], ["ext=m4a", "acodec^=mp4a.40.2"]),
+        ] {
+            for n in needed
+                .into_iter()
+                .chain(["protocol=https", "audio_channels<=?2"])
+            {
+                assert!(alt.contains(n), "{n} missing from {alt}");
+            }
         }
     }
 
@@ -739,11 +756,11 @@ mod tests {
         // (`audio_channels<=?2`). `<=2?` is a SyntaxError that fails every single play, before any network call.
         // scripts/tests/test_format_selector.py also checks the real string against yt-dlp itself.
         let filters: Vec<&str> = FORMAT_SELECTOR
-            .split('[')
-            .skip(1)
+            .split('/')
+            .flat_map(|alt| alt.split('[').skip(1))
             .map(|f| f.strip_suffix(']').expect("every filter closes with ]"))
             .collect();
-        assert!(filters.len() >= 4, "{FORMAT_SELECTOR}");
+        assert!(filters.len() >= 8, "{FORMAT_SELECTOR}");
         for filter in filters {
             if let Some(q) = filter.find('?') {
                 assert!(
@@ -765,6 +782,42 @@ mod tests {
             matches!(&e, SourceError::Failed(m) if m.contains("no audio stream this player can decode")),
             "{e:?}"
         );
+    }
+
+    #[test]
+    fn a_403_or_a_5xx_from_youtube_is_transient_and_a_missing_video_is_not() {
+        let c = |s: &str| classify_stderr("yt-dlp", s);
+        // Blocked client or IP: transient (stay on the song, cooldown), not "this song is bad".
+        assert_eq!(
+            c("ERROR: unable to download video data: HTTP Error 403: Forbidden"),
+            SourceError::RateLimited
+        );
+        // YouTube's servers failing: transient.
+        for e in [
+            "ERROR: HTTP Error 503: Service Unavailable",
+            "ERROR: HTTP Error 502: Bad Gateway",
+        ] {
+            assert_eq!(c(e), SourceError::Offline, "{e}");
+        }
+        // The bot check is transient (cookies or a wait help); the age gate is permanent for this player.
+        assert_eq!(
+            c("ERROR: [youtube] abc: Sign in to confirm you\u{2019}re not a bot"),
+            SourceError::RateLimited
+        );
+        assert!(matches!(
+            c("ERROR: [youtube] abc: Sign in to confirm your age. This video may be inappropriate"),
+            SourceError::Unavailable(_)
+        ));
+        // Permanent: wins over a 403 in the same output, and never counts as transient.
+        assert!(matches!(
+            c("ERROR: [youtube] abc: Video unavailable. HTTP Error 403: Forbidden"),
+            SourceError::Unavailable(_)
+        ));
+        // An out-of-date yt-dlp is named as such instead of a bare traceback line.
+        assert!(matches!(
+            c("ERROR: [youtube] abc: Unable to extract player"),
+            SourceError::Failed(m) if m.contains("out of date")
+        ));
     }
 
     fn env(pairs: &[(&str, &str)]) -> impl Fn(&str) -> Option<String> {
@@ -921,12 +974,14 @@ esac"#,
         }
 
         #[test]
-        fn a_hung_tool_is_stopped() {
+        fn a_hung_tool_is_stopped_and_counts_as_unreachable_not_as_a_bad_song() {
             let (slow, _) = fake("slow", "sleep 10");
             let s = YtDlpSource::new(&slow).with_timeout(Duration::from_millis(300));
             let t = Instant::now();
-            assert!(
-                matches!(s.search("x", SearchFilter::All), Err(SourceError::Failed(m)) if m.contains("too long"))
+            assert_eq!(
+                s.search("x", SearchFilter::All),
+                Err(SourceError::Offline),
+                "transient: the player stays on the song"
             );
             assert!(t.elapsed() < Duration::from_secs(3));
         }

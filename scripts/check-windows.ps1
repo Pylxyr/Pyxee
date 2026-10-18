@@ -1,11 +1,13 @@
 <#
 .SYNOPSIS
-  Pyxee Windows check: builds, runs every test, proves ffmpeg is not used, and runs live YouTube
+  Pyxee Windows check: builds, runs every test, proves no ffmpeg process is ever started, and runs live YouTube
   checks of the real search/resolve/decode/seek/gapless path. Writes one pasteable report.
 
 .DESCRIPTION
   Run it from anywhere:   scripts\check-windows.cmd        (or:  powershell -File scripts\check-windows.ps1)
-  Needs: Rust (rustup, with rustfmt + clippy), Node.js, git, internet. No ffmpeg, and none is wanted.
+  Needs: Rust (rustup, with rustfmt + clippy), Node.js, git, internet, plus MSYS2 (make, nasm, diffutils,
+  pkgconf) and the Visual Studio C++ build tools to build the minimal static FFmpeg libraries the decoder links
+  in-process (`cargo xtask ffmpeg`, built once). No ffmpeg.exe is used or wanted: the tripwire below proves it.
   Output: pyxee-check\report-<time>.txt  (paste its contents back). Full logs: pyxee-check\logs\.
   The report never contains stream URLs (only hosts), cookie paths/values, or your user name.
 
@@ -22,6 +24,8 @@
 .PARAMETER Manual         After the automatic part, ask you to confirm things in the real app (y/n).
 .PARAMETER AnalyzeLog     Summarise the app's own log file (run after using the app).
 .PARAMETER FlakeRuns      Repeats of the known timing-sensitive pause test (default 10).
+.PARAMETER KeepBuild      Keep target\debug and the FFmpeg build tree (default: delete them before exiting; the small
+                          static FFmpeg libraries in target\ffmpeg are always kept, so later runs skip that build).
 #>
 [CmdletBinding()]
 param(
@@ -38,7 +42,8 @@ param(
   [switch]$UpdateYtdlp,
   [switch]$Manual,
   [switch]$AnalyzeLog,
-  [int]$FlakeRuns = 10
+  [int]$FlakeRuns = 10,
+  [switch]$KeepBuild
 )
 
 $ErrorActionPreference = 'Continue'
@@ -187,7 +192,7 @@ if ($realFfmpeg.Count -gt 0) { Add-Result 'INFO' 'system-ffmpeg' 'a real ffmpeg 
 
 # ---------------------------------------------------------------- 1. static: ffmpeg is gone from the repo
 
-Section 'ffmpeg is gone from code, build and packaging'
+Section 'no ffmpeg process in code, build and packaging (libav is linked in-process)'
 $bin = Join-Path $Root 'crates\app\binaries'
 $ff = @(Get-ChildItem $bin -Filter 'ffmpeg*' -ErrorAction SilentlyContinue)
 if ($ff.Count -eq 0) { Add-Result 'PASS' 'no-ffmpeg-sidecar-file' 'crates\app\binaries has no ffmpeg*' } else { Add-Result 'FAIL' 'no-ffmpeg-sidecar-file' ($ff.Name -join ', ') }
@@ -196,11 +201,11 @@ try {
   $bins = @($conf.bundle.externalBin)
   if (($bins -join ' ') -match 'ffmpeg') { Add-Result 'FAIL' 'bundle-externalBin' ($bins -join ', ') } else { Add-Result 'PASS' 'bundle-externalBin' ("sidecars: " + ($bins -join ', ')) }
 } catch { Add-Result 'WARN' 'bundle-externalBin' "could not parse tauri.bundle.conf.json: $($_.Exception.Message)" }
-$code = @(& git grep -n -i -E 'FfmpegPipe|ffmpeg\.exe|PYXEE_FFMPEG|Command::new\(.*ffmpeg|externalBin.*ffmpeg|AudioError::Ffmpeg' -- '*.rs' '*.toml' '*.json' '*.cmd' '*.yml' ':!scripts' 2>$null)
-if ($code.Count -eq 0) { Add-Result 'PASS' 'no-ffmpeg-in-code' 'no ffmpeg process/decoder/config references in .rs .toml .json .cmd .yml' }
+$code = @(& git grep -n -i -E 'FfmpegPipe|ffmpeg\.exe|PYXEE_FFMPEG_(PATH|BIN|EXE)|Command::new\(.*ffmpeg|externalBin.*ffmpeg|AudioError::Ffmpeg' -- '*.rs' '*.toml' '*.json' '*.cmd' '*.yml' ':!scripts' 2>$null)
+if ($code.Count -eq 0) { Add-Result 'PASS' 'no-ffmpeg-in-code' 'no ffmpeg process/sidecar/config references in .rs .toml .json .cmd .yml' }
 else { Add-Result 'FAIL' 'no-ffmpeg-in-code' "$($code.Count) reference(s)"; $code | Select-Object -First 10 | ForEach-Object { Write-Report "    $_" } }
 $any = @(& git grep -n -i ffmpeg -- . ':!Cargo.lock' ':!scripts' 2>$null)
-Add-Result 'INFO' 'ffmpeg-mentions-left' "$($any.Count) line(s) mention the word (expected: comments/docs saying it was removed, plus the fixture-provenance note)"
+Add-Result 'INFO' 'ffmpeg-mentions-left' "$($any.Count) line(s) mention the word (expected: the in-process libav build scripts, docs and comments, plus the fixture-provenance note)"
 $any | Select-Object -First 25 | ForEach-Object { Write-Report ("    " + $_.Substring(0, [math]::Min($_.Length, 170))) }
 
 # ---------------------------------------------------------------- 2. yt-dlp (tools flow)
@@ -259,9 +264,36 @@ if (-not $SkipTests) {
     Invoke-UiSteps $false
   }
 
+  # The audio crate links a minimal static FFmpeg (built once from a pinned commit, LGPL only).
+  if (-not (Get-Command cl.exe -ErrorAction SilentlyContinue)) {
+    # Not in a VS Native Tools prompt: import the MSVC environment the way vcvars64.bat would.
+    $vsw = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
+    $vs = if (Test-Path $vsw) { & $vsw -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath } else { $null }
+    $vcv = if ($vs) { Join-Path $vs 'VC\Auxiliary\Build\vcvars64.bat' } else { $null }
+    if ($vcv -and (Test-Path $vcv)) {
+      cmd /c "`"$vcv`" >nul && set" | ForEach-Object { if ($_ -match '^([^=]+)=(.*)$') { Set-Item -Path "env:$($Matches[1])" -Value $Matches[2] } }
+      Add-Result 'INFO' 'msvc-env' 'imported the Visual Studio build environment (vcvars64)'
+    } else { Add-Result 'WARN' 'msvc-env' 'cl.exe not found: install the Visual Studio C++ build tools, or run from an x64 Native Tools prompt' }
+  }
+  $ffOk = $false
+  $bashExe = if ($env:PYXEE_BASH) { $env:PYXEE_BASH } else { 'C:\msys64\usr\bin\bash.exe' }
+  if (-not (Test-Path $bashExe)) {
+    Add-Result 'FAIL' 'ffmpeg-prereq' ('MSYS2 bash not found at ' + $bashExe + '. One-time setup: winget install --id MSYS2.MSYS2 -e   then   C:\msys64\usr\bin\bash.exe -lc "pacman -S --noconfirm --needed make nasm diffutils pkgconf"   (or set PYXEE_BASH to your MSYS2 bash.exe), then run this script again.')
+  } else {
+    $r = Invoke-Logged 'ffmpeg-build' 'cargo xtask ffmpeg'
+    if ($r.Code -eq 0) { $ffOk = $true; Add-Result 'PASS' 'ffmpeg-build' "minimal static FFmpeg ready ($($r.Seconds)s; unchanged builds are skipped next time)" }
+    else { Add-Result 'FAIL' 'ffmpeg-build' "exit $($r.Code): see the log tail below (MSYS2 tools make/nasm/diffutils, the MSVC tools, or the FFmpeg configure/make output)"; Show-LogTail $r.Log 40 }
+  }
+  if (-not $ffOk) {
+    $why = 'SKIPPED: the minimal FFmpeg libraries were not built (see ffmpeg-prereq / ffmpeg-build above), and every cargo step below needs them'
+    $SkipLive = $true
+    Add-Result 'INFO' 'live-checks' $why
+  }
+
   $r = Invoke-Logged 'cargo-fmt' 'cargo fmt --all -- --check'
   if ($r.Code -eq 0) { Add-Result 'PASS' 'cargo-fmt' 'formatting is clean' } else { Add-Result 'FAIL' 'cargo-fmt' "exit $($r.Code) (run: cargo fmt --all)"; Show-LogTail $r.Log 20 }
 
+  if ($ffOk) {
   $r = Invoke-Logged 'cargo-clippy' 'cargo clippy --workspace --all-targets -- -D warnings'
   if ($r.Code -eq 0) { Add-Result 'PASS' 'cargo-clippy' "no warnings ($($r.Seconds)s)" }
   elseif ((Get-Content $r.Log -Raw) -match "no such command: .clippy") { Add-Result 'WARN' 'cargo-clippy' 'clippy is not installed (rustup component add clippy)' }
@@ -286,18 +318,34 @@ if (-not $SkipTests) {
   # Known timing-sensitive test (also flaky on the original code: 6 of 40 failures there).
   if ($FlakeRuns -gt 0) {
     $bad = 0
+    $firstFailure = $null
     for ($i = 1; $i -le $FlakeRuns; $i++) {
       $re = Invoke-Logged "flake-$i" 'cargo test -p pyxee-app pause_freezes_the_position_and_resume_continues'
-      if ($re.Code -ne 0) { $bad++ }
+      if ($re.Code -ne 0) {
+        $bad++
+        # Keep the first failing assertion: it says whether the position moved or audio reached the device.
+        if (-not $firstFailure -and (Test-Path $re.Log)) { $firstFailure = Select-String -Path $re.Log -Pattern 'panicked at' -Context 0,3 | Select-Object -First 1 }
+      }
     }
     Add-Result 'INFO' 'known-flake-pause-test' "failed $bad of $FlakeRuns runs (original code before this work: about 6 of 40; not related to ffmpeg/yt-dlp)"
+    if ($firstFailure) {
+      $post = @($firstFailure.Context.PostContext | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+      Add-Result 'INFO' 'known-flake-first-failure' ($firstFailure.Line.Trim() + ' | ' + ($post -join ' | '))
+    }
+  }
+  } else {
+    Add-Result 'INFO' 'cargo-clippy' $why
+    Add-Result 'INFO' 'cargo-test' $why
+    Add-Result 'INFO' 'known-flake-pause-test' $why
   }
 
   Add-TripResult 'build-and-tests' $before
 
   $dirty = @(& git status --porcelain 2>$null | Where-Object { $_ -notmatch 'pyxee-check' })
-  $bind = @($dirty | Where-Object { $_ -match 'ui/src/lib/bindings' })
-  if ($bind.Count -eq 0) { Add-Result 'PASS' 'bindings-up-to-date' 'ts-rs bindings unchanged by the tests (CI: git diff --exit-code)' } else { Add-Result 'FAIL' 'bindings-up-to-date' ($bind -join '; ') }
+  if ($ffOk) {
+    $bind = @($dirty | Where-Object { $_ -match 'ui/src/lib/bindings' })
+    if ($bind.Count -eq 0) { Add-Result 'PASS' 'bindings-up-to-date' 'ts-rs bindings unchanged by the tests (CI: git diff --exit-code)' } else { Add-Result 'FAIL' 'bindings-up-to-date' ($bind -join '; ') }
+  } else { Add-Result 'INFO' 'bindings-up-to-date' 'SKIPPED: the tests that regenerate them did not run' }
   Add-Result 'INFO' 'git-status-after-tests' "$($dirty.Count) changed/untracked path(s) (the first lines are the files this work changed or added)"
 }
 
@@ -309,8 +357,9 @@ if ($Installer) {
   $r = Invoke-Logged 'xtask-installer' 'cargo xtask installer'
   if ($r.Code -eq 0) { Add-Result 'PASS' 'cargo-xtask-installer' "built in $($r.Seconds)s" } else { Add-Result 'FAIL' 'cargo-xtask-installer' "exit $($r.Code)"; Show-LogTail $r.Log 30 }
   $rel = Join-Path $Root 'target\release'
-  $leak = @(Get-ChildItem $rel -Recurse -Include 'ffmpeg*' -ErrorAction SilentlyContinue | Where-Object { $_.FullName -notlike "*\deps\*" -and $_.FullName -notlike "*\build\*" })
-  if ($leak.Count -eq 0) { Add-Result 'PASS' 'installer-has-no-ffmpeg' 'no ffmpeg* file under target\release' } else { Add-Result 'FAIL' 'installer-has-no-ffmpeg' (($leak | ForEach-Object { $_.Name }) -join ', ') }
+  # An ffmpeg program or a libav DLL (libav is linked in statically). FFmpeg-LGPL-2.1.txt is meant to be there.
+  $leak = @(Get-ChildItem $rel -Recurse -File -ErrorAction SilentlyContinue | Where-Object { $_.Name -match '^(ffmpeg|ffprobe|ffplay)\.exe$|^(avcodec|avformat|avutil|swresample)(-\d+)?\.dll$' -and $_.FullName -notlike "*\deps\*" -and $_.FullName -notlike "*\build\*" })
+  if ($leak.Count -eq 0) { Add-Result 'PASS' 'installer-has-no-ffmpeg' 'no ffmpeg program or libav DLL under target\release' } else { Add-Result 'FAIL' 'installer-has-no-ffmpeg' (($leak | ForEach-Object { $_.Name }) -join ', ') }
   $setup = @(Get-ChildItem (Join-Path $rel 'bundle') -Recurse -Include '*.exe', '*.msi' -ErrorAction SilentlyContinue)
   foreach ($s in $setup) { Add-Result 'INFO' 'installer-file' ("{0}  {1:N1} MB" -f $s.Name, ($s.Length / 1MB)) }
   Add-TripResult 'installer-build' $before
@@ -343,6 +392,14 @@ function Get-YtdlpRoots {
   return $roots
 }
 
+if (-not $SkipLive) {
+  # The live-check tool links the same FFmpeg libraries; without them it cannot be built.
+  $ffLib = if ($env:PYXEE_FFMPEG_DIR) { $env:PYXEE_FFMPEG_DIR } else { Join-Path $Root 'target\ffmpeg\x86_64-pc-windows-msvc' }
+  if (-not (Test-Path (Join-Path $ffLib 'include\libavformat\avformat.h'))) {
+    $SkipLive = $true
+    Add-Result 'INFO' 'live-checks' 'SKIPPED: the minimal FFmpeg libraries are not built (run without -SkipTests, or `cargo xtask ffmpeg` first)'
+  }
+}
 if (-not $SkipLive) {
   Section 'Live YouTube checks (real search / resolve / decode / seek / gapless)'
   Write-Report 'This sends roughly 25 yt-dlp requests, paced by the app itself. If YouTube starts rate limiting, the script stops the live part and says so.'
@@ -436,7 +493,13 @@ if ($Manual) {
 
 if ($AnalyzeLog) {
   Section "The app's own log"
-  $logFile = Join-Path $env:APPDATA 'dev.pyxee.app\logs\pyxee.log'
+  $logFile = Join-Path $env:LOCALAPPDATA 'dev.pyxee.app\logs\pyxee.log'
+  if (-not (Test-Path $logFile)) { $logFile = Join-Path $env:APPDATA 'dev.pyxee.app\logs\pyxee.log' }  # versions up to 0.0.2, or a failed move
+  $localLib = Join-Path $env:LOCALAPPDATA 'dev.pyxee.app\library.db'
+  $roamLib = Join-Path $env:APPDATA 'dev.pyxee.app\library.db'
+  if (Test-Path $localLib) { Add-Result 'PASS' 'data-folder' 'library.db is in %LOCALAPPDATA%\dev.pyxee.app' }
+  elseif (Test-Path $roamLib) { Add-Result 'WARN' 'data-folder' 'library.db is still only in %APPDATA% (Roaming): the move did not happen; see the "data folder:" lines in the log' }
+  else { Add-Result 'INFO' 'data-folder' 'no library.db yet (start the app once)' }
   if (-not (Test-Path $logFile)) { Add-Result 'WARN' 'app-log' 'log file not found (start the app once, or PYXEE_LOG may point elsewhere)' }
   else {
     $lines = @(Get-Content $logFile -Tail 4000)
@@ -445,8 +508,9 @@ if ($AnalyzeLog) {
     $fmt = @($lines | Where-Object { $_ -match 'resolved .*ext=(\S+) acodec=(\S+)' } | ForEach-Object { if ($_ -match 'ext=(\S+) acodec=(\S+)') { "$($Matches[1])/$($Matches[2])" } } | Group-Object | Sort-Object Count -Descending)
     if ($fmt.Count -gt 0) {
       Add-Result 'INFO' 'app-log-formats-played' (($fmt | ForEach-Object { "$($_.Name) x$($_.Count)" }) -join ', ')
-      $odd = @($fmt | Where-Object { $_.Name -notmatch '^m4a/.*mp4a\.40\.2' })
-      if ($odd.Count -eq 0) { Add-Result 'PASS' 'app-log-only-aac-lc-m4a' 'every resolved stream was AAC-LC in M4A' } else { Add-Result 'FAIL' 'app-log-only-aac-lc-m4a' (($odd | ForEach-Object { $_.Name }) -join ', ') }
+      # The log prints the codec as Rust Debug, e.g. webm/Some("opus"), hence the `.*`.
+      $odd = @($fmt | Where-Object { $_.Name -notmatch '^(m4a/.*mp4a\.40\.2|webm/.*opus)' })
+      if ($odd.Count -eq 0) { Add-Result 'PASS' 'app-log-only-supported-formats' 'every resolved stream was Opus in WebM or AAC-LC in M4A' } else { Add-Result 'FAIL' 'app-log-only-supported-formats' (($odd | ForEach-Object { $_.Name }) -join ', ') }
     } else { Add-Result 'INFO' 'app-log-formats-played' 'no "resolved ... ext= acodec=" lines yet (play a few songs first)' }
     Add-Result 'INFO' 'app-log-gate-waits' ("{0} waits logged by the yt-dlp gate" -f (& $count 'yt-dlp .* waited'))
     Add-Result 'INFO' 'app-log-cooldowns' ("{0} rate-limit cooldown start(s), {1} refusal(s)" -f (& $count 'was rate limited'), (& $count 'refused: rate-limit'))
@@ -458,6 +522,22 @@ if ($AnalyzeLog) {
     $ck = @($lines | Where-Object { $_ -match 'cookie' } | Select-Object -Last 2)
     foreach ($c in $ck) { Write-Report ("    " + $c.Substring(0, [math]::Min($c.Length, 200))) }
   }
+}
+
+# ---------------------------------------------------------------- cleanup (large build artifacts)
+
+function Get-DirMB([string]$p) { if (-not (Test-Path $p)) { return 0 }; [math]::Round((((Get-ChildItem $p -Recurse -Force -ErrorAction SilentlyContinue | Measure-Object Length -Sum).Sum) / 1MB), 0) }
+Section 'cleanup'
+if ($KeepBuild) { Add-Result 'INFO' 'cleanup' 'skipped (-KeepBuild): target\debug and the FFmpeg build tree were kept' }
+else {
+  $freed = 0
+  $victims = @((Join-Path $Root 'target\debug')) + @(Get-ChildItem (Join-Path $Root 'target\ffmpeg') -Directory -Filter '*.build' -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName })
+  foreach ($v in $victims) {
+    $mb = Get-DirMB $v
+    if (Test-Path $v) { Remove-Item $v -Recurse -Force -ErrorAction SilentlyContinue }
+    if (Test-Path $v) { Add-Result 'WARN' 'cleanup' "could not fully delete $($v.Replace($Root, '.')) (antivirus or an open handle?)" } else { $freed += $mb }
+  }
+  Add-Result 'INFO' 'cleanup' "deleted target\debug and the FFmpeg build tree, about $freed MB (kept: target\ffmpeg\<triple> libraries, logs, report)"
 }
 
 # ---------------------------------------------------------------- summary

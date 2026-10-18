@@ -50,7 +50,7 @@ pub fn fetch(prefix: &str) -> Result<Vec<String>, SourceError> {
             &r.into_string()
                 .map_err(|e| SourceError::Failed(e.to_string()))?,
         ),
-        Err(ureq::Error::Status(429, _)) => Err(SourceError::RateLimited),
+        Err(ureq::Error::Status(429 | 403, _)) => Err(SourceError::RateLimited),
         Err(ureq::Error::Status(c, _)) => Err(SourceError::Failed(format!(
             "suggestions failed (HTTP {c})"
         ))),

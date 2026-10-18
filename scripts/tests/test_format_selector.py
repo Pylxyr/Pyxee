@@ -1,4 +1,4 @@
-"""The yt-dlp format selector the app sends must be accepted by the real yt-dlp, and must pick what the decoder can play.
+"""The yt-dlp format selector the app sends must be accepted by the real yt-dlp, and must pick Opus, then AAC-LC.
 
 A bad selector (it once shipped as `audio_channels<=2?`; yt-dlp wants `<=?2`) makes yt-dlp die with a SyntaxError on
 every play, before any network call, and no Rust test can see that. This reads FORMAT_SELECTOR out of the Rust source
@@ -60,20 +60,32 @@ class FormatSelector(unittest.TestCase):
         with self.assertRaises(SyntaxError):
             self.ydl.build_format_selector("bestaudio[audio_channels<=2?]")
 
-    def test_picks_the_best_stereo_aac_lc_over_https(self):
+    def test_prefers_opus_over_every_aac(self):
+        # build_format_selector takes the last match: real yt-dlp has already sorted worst to best.
+        formats = [fmt("139", acodec="mp4a.40.5", abr=48), fmt("250", ext="webm", acodec="opus", abr=70),
+                   fmt("140", abr=129), fmt("141", abr=256), fmt("251", ext="webm", acodec="opus", abr=160)]
+        self.assertEqual(self.pick(formats), ["251"])
+
+    def test_falls_back_to_the_best_stereo_aac_lc_when_there_is_no_opus(self):
         formats = [fmt("139", acodec="mp4a.40.5", abr=48), fmt("140", abr=129), fmt("141", abr=256),
-                   fmt("256", channels=6, abr=192), fmt("251", ext="webm", acodec="opus", abr=160),
-                   fmt("hls", protocol="m3u8_native", abr=300)]
+                   fmt("256", channels=6, abr=192), fmt("hls", protocol="m3u8_native", abr=300)]
         self.assertEqual(self.pick(formats), ["141"])
+
+    def test_skips_surround_and_streaming_manifests_even_for_opus(self):
+        formats = [fmt("338", ext="webm", acodec="opus", channels=4, abr=480),
+                   fmt("251-hls", ext="webm", acodec="opus", protocol="m3u8_native", abr=160), fmt("140")]
+        self.assertEqual(self.pick(formats), ["140"])
 
     def test_skips_surround_and_he_aac(self):
         self.assertEqual(self.pick([fmt("139", acodec="mp4a.40.5"), fmt("258", channels=6), fmt("140")]), ["140"])
 
     def test_keeps_a_format_that_does_not_report_its_channel_count(self):
+        self.assertEqual(self.pick([fmt("251", ext="webm", acodec="opus", channels=None)]), ["251"])
         self.assertEqual(self.pick([fmt("140", channels=None)]), ["140"])
 
     def test_nothing_playable_selects_nothing(self):
-        self.assertEqual(self.pick([fmt("258", channels=6), fmt("251", ext="webm", acodec="opus")]), [])
+        self.assertEqual(self.pick([fmt("258", channels=6), fmt("139", acodec="mp4a.40.5"),
+                                    fmt("vorbis", ext="webm", acodec="vorbis")]), [])
 
 
 if __name__ == "__main__":

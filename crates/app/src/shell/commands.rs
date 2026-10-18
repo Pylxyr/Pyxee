@@ -21,6 +21,20 @@ pub async fn lyrics_get(
     if let Some(hit) = shell.lyrics.lock().ok().and_then(|c| c.get(&key).cloned()) {
         return hit.into();
     }
+    let now_ms = || u64::try_from(shell.clock.elapsed().as_millis()).unwrap_or(u64::MAX);
+    // A service that just refused the app is left alone, so flipping songs cannot hammer a block.
+    let waiting = shell
+        .lyrics_cooldown
+        .lock()
+        .ok()
+        .and_then(|c| c.remaining_secs(now_ms()));
+    if let Some(secs) = waiting {
+        return LyricsDto::Error {
+            message: format!(
+                "the lyrics service asked the app to wait, try again in about {secs} s"
+            ),
+        };
+    }
     let query = Query::new(&title, &artist, duration_ms);
     let found = tauri::async_runtime::spawn_blocking(move || fetch(LRCLIB, &query)).await;
     match found {
@@ -35,6 +49,9 @@ pub async fn lyrics_get(
         }
         Ok(Err(e)) => {
             log::info!("lyrics lookup failed: {e}");
+            if let Ok(mut c) = shell.lyrics_cooldown.lock() {
+                c.record(&e, now_ms());
+            }
             LyricsDto::Error {
                 message: e.to_string(),
             }

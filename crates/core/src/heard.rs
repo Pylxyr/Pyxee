@@ -90,7 +90,11 @@ impl HeardTracker {
 
     /// Device side: `consumed_total` frames have been taken by the device so far.
     pub fn advance(&mut self, consumed_total: u64) -> Vec<Heard> {
-        self.heard = consumed_total.saturating_sub(self.latency_frames);
+        // The device's latency estimate changes from callback to callback, so `consumed - latency`
+        // can step backwards. What has been heard cannot un-happen: never let it decrease.
+        self.heard = self
+            .heard
+            .max(consumed_total.saturating_sub(self.latency_frames));
         let mut out = Vec::new();
         while let Some(front) = self.spans.front_mut() {
             if !front.announced && self.heard > front.start {
@@ -114,7 +118,8 @@ impl HeardTracker {
     /// The audible track and how many frames of it have been heard.
     pub fn position(&self) -> Option<(EntryId, u64)> {
         let f = self.spans.front()?;
-        f.announced.then(|| (f.id, self.heard - f.start))
+        f.announced
+            .then(|| (f.id, self.heard.saturating_sub(f.start)))
     }
 }
 
@@ -215,5 +220,46 @@ mod tests {
         t.reset(200);
         assert!(t.advance(5000).is_empty());
         assert_eq!(t.position(), None);
+    }
+
+    #[test]
+    fn a_latency_estimate_that_jumps_up_never_moves_heard_backwards_or_underflows() {
+        let mut t = HeardTracker::new(100);
+        t.track_started(id(1), 500);
+        assert_eq!(t.advance(700), vec![Heard::Audible(id(1))]); // heard 600
+        assert_eq!(t.position(), Some((id(1), 100)));
+        // The next callback estimates a much larger latency: consumed - latency is 410, before the
+        // track even started. That used to underflow `heard - start`.
+        t.set_latency(300);
+        assert!(t.advance(710).is_empty());
+        assert_eq!(t.position(), Some((id(1), 100)), "held, not rewound");
+        // Once the estimate catches up, time moves on again.
+        t.advance(1000);
+        assert_eq!(t.position(), Some((id(1), 200)));
+    }
+
+    #[test]
+    fn a_falling_latency_estimate_moves_heard_forward_and_ends_tracks_on_time() {
+        let mut t = HeardTracker::new(400);
+        t.track_started(id(1), 0);
+        t.track_ended(id(1), 1000);
+        t.advance(900); // heard 500
+        t.set_latency(0);
+        assert_eq!(
+            t.advance(1000),
+            vec![Heard::Ended(id(1))],
+            "with no latency left, 1000 consumed is 1000 heard"
+        );
+    }
+
+    #[test]
+    fn reset_may_lower_heard_because_the_counting_restarts() {
+        let mut t = HeardTracker::new(0);
+        t.track_started(id(1), 0);
+        t.advance(5_000);
+        t.reset(0);
+        t.track_started(id(2), 0);
+        assert_eq!(t.advance(10), vec![Heard::Audible(id(2))]);
+        assert_eq!(t.position(), Some((id(2), 10)));
     }
 }

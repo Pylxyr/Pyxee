@@ -1,12 +1,12 @@
 //! Milestone 1 spike. Two subcommands:
 //!   spike files <a> <b>            offline: decode two local files through the gapless path, report gaps
 //!   spike play  "<query>" "<query>" resolve with yt-dlp and play track 1 gapless into track 2 on the default device
-//! Optional: --ytdlp <path> (default: yt-dlp on PATH). Audio is decoded by symphonia only.
+//! Optional: --ytdlp <path> (default: yt-dlp on PATH). Audio is decoded in-process by libav (no ffmpeg process).
 
 mod player;
 
 use anyhow::{bail, Context, Result};
-use pyxee_audio::decode::{SampleSource, SymphoniaSource};
+use pyxee_audio::decode::{LibavSource, SampleSource};
 use pyxee_audio::gap::find_gaps;
 use pyxee_audio::gapless::{Event, GaplessSource, PreparedTrack};
 use pyxee_audio::http::HttpRangeSource;
@@ -36,22 +36,20 @@ fn parse_opts(args: impl Iterator<Item = String>) -> Opts {
     o
 }
 
-/// Opens a stream URL with symphonia, the only decoder. A format it cannot read is an error.
+/// Opens a stream URL with the in-process libav decoder. A format it cannot read is an error.
 pub fn open_stream(
     url: &str,
-    ext: &str,
     headers: &[(String, String)],
 ) -> Result<(Box<dyn SampleSource>, &'static str)> {
     let src = HttpRangeSource::open_with(url, headers)?;
-    let s = SymphoniaSource::open(Box::new(src), Some(ext))?;
-    Ok((Box::new(s), "symphonia"))
+    let s = LibavSource::open(Box::new(src))?;
+    Ok((Box::new(s), "libav"))
 }
 
 fn files_report(a: &Path, b: &Path) -> Result<()> {
     const RATE: u32 = 48_000;
-    let open = |p: &Path| -> Result<Box<dyn SampleSource>> {
-        Ok(Box::new(SymphoniaSource::open_path(p)?))
-    };
+    let open =
+        |p: &Path| -> Result<Box<dyn SampleSource>> { Ok(Box::new(LibavSource::open_path(p)?)) };
     let t = Instant::now();
     let mut g = GaplessSource::new();
     g.push(PreparedTrack::new(1, open(a)?, RATE)?);
@@ -98,7 +96,7 @@ fn play_report(qa: &str, qb: &str, o: &Opts) -> Result<()> {
 
     let rate = player::default_rate()?;
     let t1 = Instant::now();
-    let (s1, path1) = open_stream(&r1.stream_url, &r1.ext, &r1.headers)?;
+    let (s1, path1) = open_stream(&r1.stream_url, &r1.headers)?;
     g.push(PreparedTrack::new(1, s1, rate)?);
     println!(
         "  track 1 opened via {path1} and pre-decoded in {:?}",
@@ -118,7 +116,7 @@ fn play_report(qa: &str, qb: &str, o: &Opts) -> Result<()> {
         "  {} - {:?} | {} {:?} @ {:?} kbps",
         r2.title, r2.uploader, r2.ext, r2.acodec, r2.abr_kbps
     );
-    let (s2, path2) = open_stream(&r2.stream_url, &r2.ext, &r2.headers)?;
+    let (s2, path2) = open_stream(&r2.stream_url, &r2.headers)?;
     let prepared = PreparedTrack::new(2, s2, rate)?;
     let played = p.played_secs();
     p.push(prepared);

@@ -13,6 +13,10 @@ use std::collections::HashSet;
 pub const RESTART_THRESHOLD_MS: u64 = 3_000;
 const MAX_AUTO_SKIPS: u8 = 3;
 const MAX_URL_RETRIES: u8 = 2;
+/// A re-resolved URL that then played this long worked: the next expiry (a long stream outliving
+/// its URL) gets a fresh budget. Without this, every re-resolve that reaches "audible" would reset
+/// the count, and a URL the server rejects shortly after each resume would loop forever.
+const URL_RETRY_RESET_MS: u64 = 60_000;
 const RADIO_THRESHOLD: usize = 1;
 const RADIO_BATCH: usize = 25;
 
@@ -211,6 +215,9 @@ pub struct Player {
     skip: HashSet<EntryId>,
     auto_skips: u8,
     url_retries: u8,
+    /// The song the retries were spent on, and where it was when the last one began.
+    url_retry_id: Option<EntryId>,
+    url_retry_at_ms: u64,
     dirty: bool,
     effects: Vec<Effect>,
 }
@@ -239,6 +246,8 @@ impl Player {
             skip: HashSet::new(),
             auto_skips: 0,
             url_retries: 0,
+            url_retry_id: None,
+            url_retry_at_ms: 0,
             dirty: false,
             effects: Vec::new(),
         }
@@ -641,7 +650,12 @@ impl Player {
                 }
                 self.transport = Transport::Playing { id };
                 self.auto_skips = 0;
-                self.url_retries = 0;
+                // Another song is audible: its retries start fresh. The same song coming back after a
+                // re-resolve keeps its count (see URL_RETRY_RESET_MS).
+                if self.url_retry_id != Some(id) {
+                    self.url_retries = 0;
+                    self.url_retry_id = None;
+                }
                 self.no_prefetch_for = None;
                 self.dirty = true;
             }
@@ -675,8 +689,14 @@ impl Player {
                 if !mine {
                     return;
                 }
+                let played_since = self.position_ms.saturating_sub(self.url_retry_at_ms);
+                if self.url_retry_id == Some(id) && played_since >= URL_RETRY_RESET_MS {
+                    self.url_retries = 0;
+                }
                 if self.url_retries < MAX_URL_RETRIES {
                     self.url_retries += 1;
+                    self.url_retry_id = Some(id);
+                    self.url_retry_at_ms = self.position_ms;
                     self.begin_load(id, self.position_ms);
                 } else {
                     self.transport = Transport::Failed {

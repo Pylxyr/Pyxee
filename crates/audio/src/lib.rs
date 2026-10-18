@@ -26,6 +26,9 @@ pub enum AudioError {
     Resample(String),
     #[error("network error: {0}")]
     Network(String),
+    /// HTTP 429 from the stream server: transient, so the player stays on the track instead of skipping.
+    #[error("the stream server is limiting requests (HTTP 429)")]
+    RateLimited,
     #[error("stream URL expired or was rejected (HTTP {0}); re-resolve the track")]
     UrlExpired(u16),
 }

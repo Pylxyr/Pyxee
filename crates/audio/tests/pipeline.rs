@@ -1,7 +1,7 @@
 //! The pipeline end to end with real decoding: heard events follow consumption, flush is instant,
 //! pause freezes the clock, and failures are reported without stopping the queue.
 
-use pyxee_audio::decode::{SampleSource, SymphoniaSource};
+use pyxee_audio::decode::{LibavSource, SampleSource};
 use pyxee_audio::gap::find_gaps;
 use pyxee_audio::gapless::{FailKind, PreparedTrack};
 use pyxee_audio::pipeline::{gain_for_percent, Consumer, PipeEvent, Pipeline, Volume};
@@ -22,7 +22,7 @@ fn fixture(name: &str) -> PathBuf {
 }
 
 fn track(id: u64, file: &str) -> PreparedTrack {
-    let src = SymphoniaSource::open_path(&fixture(file)).unwrap();
+    let src = LibavSource::open_path(&fixture(file)).unwrap();
     PreparedTrack::new(id, Box::new(src), RATE).unwrap()
 }
 

@@ -1,9 +1,8 @@
-//! Seekable HTTP source using range requests, so symphonia can probe and seek streamed audio.
+//! Seekable HTTP source using range requests, so the decoder can probe and seek streamed audio.
 
 use crate::AudioError;
 use std::io::{self, Read, Seek, SeekFrom};
 use std::time::Duration;
-use symphonia::core::io::MediaSource;
 
 const CHUNK: u64 = 512 * 1024;
 
@@ -65,6 +64,7 @@ impl HttpRangeSource {
             Err(ureq::Error::Status(c, _)) if is_expired(c) => {
                 return Err(AudioError::UrlExpired(c))
             }
+            Err(ureq::Error::Status(429, _)) => return Err(AudioError::RateLimited),
             Err(ureq::Error::Status(c, _)) => return Err(net(format!("HTTP {c}"))),
             Err(e) => return Err(net(e)),
         };
@@ -155,10 +155,7 @@ impl Seek for HttpRangeSource {
     }
 }
 
-impl MediaSource for HttpRangeSource {
-    fn is_seekable(&self) -> bool {
-        true
-    }
+impl crate::decode::ByteSource for HttpRangeSource {
     fn byte_len(&self) -> Option<u64> {
         Some(self.len)
     }

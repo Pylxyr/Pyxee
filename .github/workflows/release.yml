@@ -102,8 +102,9 @@ jobs:
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
           shared-key: release
+      - uses: ./.github/actions/ffmpeg # the audio crate's static libav (in-process; no ffmpeg program is bundled)
       # yt-dlp, checked against its published SHA-256 (nothing is used if it does not match).
-      # Audio is decoded inside the app (Symphonia), so yt-dlp is the only bundled tool: there is no ffmpeg.
+      # Audio is decoded inside the app (libav, linked in), so yt-dlp is the only bundled tool: there is no ffmpeg program.
       - name: Download yt-dlp
         run: cargo xtask tools
       - name: Bundled tools run, and no ffmpeg is bundled
@@ -149,7 +150,10 @@ jobs:
           $app = Get-ChildItem $dir -Filter *.exe | Where-Object { $_.Name -notmatch '^(uninstall|yt-dlp)' } | Select-Object -First 1
           if (-not $app) { throw "The app executable is missing from the installed folder" }
           if (-not (Test-Path (Join-Path $dir "yt-dlp.exe"))) { throw "Missing from the installed app: yt-dlp.exe" }
-          if (Get-ChildItem $dir -Recurse -Filter "ffmpeg*" -ErrorAction SilentlyContinue) { throw "ffmpeg is in the installed app, but Pyxee no longer ships it" }
+          # An ffmpeg program or a libav DLL. (FFmpeg-LGPL-2.1.txt, the licence text, is meant to be there.)
+          $ffBinary = @(Get-ChildItem $dir -Recurse -File -ErrorAction SilentlyContinue | Where-Object { $_.Name -match '^(ffmpeg|ffprobe|ffplay)\.exe$|^(avcodec|avformat|avutil|swresample)(-\d+)?\.dll$' })
+          if ($ffBinary.Count -gt 0) { throw "an ffmpeg program or libav DLL is in the installed app, but libav is linked in statically: $($ffBinary.Name -join ', ')" }
+          if (-not (Get-ChildItem $dir -Recurse -Filter "FFmpeg-LGPL-2.1.txt" -ErrorAction SilentlyContinue)) { throw "the installed app does not carry FFmpeg-LGPL-2.1.txt (the LGPL text must ship with it)" }
           & (Join-Path $dir "yt-dlp.exe") --version
           if ($LASTEXITCODE -ne 0) { throw "The installed yt-dlp does not run" }
       - name: Collect release files
@@ -164,6 +168,7 @@ jobs:
             Copy-Item $f.FullName release/
           }
           Copy-Item crates/app/licenses/THIRD_PARTY.txt release/THIRD_PARTY_NOTICES.txt
+          Copy-Item crates/app/licenses/FFmpeg-LGPL-2.1.txt release/FFmpeg-LGPL-2.1.txt
           Get-ChildItem release | ForEach-Object { "{0}: {1:N1} MB" -f $_.Name, ($_.Length / 1MB) }
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:

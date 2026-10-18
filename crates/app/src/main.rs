@@ -45,20 +45,29 @@ fn main() {
         ))
         .plugin(tauri_plugin_notification::init())
         .setup(|app| {
+            // Where the files live: the Local application-data folder. Files from the old Roaming folder are
+            // copied over once, before anything opens them (see `pyxee_shell::datadir`).
+            let moved = pyxee_shell::datadir::resolve(
+                app.path().app_data_dir().ok().as_deref(),
+                app.path().app_local_data_dir().ok().as_deref(),
+            );
+            let data_dir = moved.dir;
             // Logging first, so everything that follows (and every panic) is recorded.
-            let log_dir = app
-                .path()
-                .app_data_dir()
-                .map_or_else(|_| std::env::temp_dir().join("pyxee"), |d| d.join("logs"));
+            let log_dir = data_dir
+                .as_ref()
+                .map_or_else(|| std::env::temp_dir().join("pyxee"), |d| d.join("logs"));
             let (log, log_error) = logging::init(&log_dir);
             if let Some(e) = &log_error {
                 eprintln!("{e}");
             }
-            let session_path = app
-                .path()
-                .app_data_dir()
-                .ok()
-                .map(|d| d.join("session.json"));
+            for note in &moved.notes {
+                if note.warn {
+                    log::warn!("data folder: {}", note.text);
+                } else {
+                    log::info!("data folder: {}", note.text);
+                }
+            }
+            let session_path = data_dir.as_ref().map(|d| d.join("session.json"));
             let player = session_path
                 .as_deref()
                 .and_then(session::load)
@@ -76,11 +85,7 @@ fn main() {
                 local: LocalSource,
             });
             let library = library_service::LibraryService::open_or_memory(
-                app.path()
-                    .app_data_dir()
-                    .ok()
-                    .map(|d| d.join("library.db"))
-                    .as_deref(),
+                data_dir.as_ref().map(|d| d.join("library.db")).as_deref(),
             );
             app.manage(AppState {
                 log,
@@ -94,7 +99,7 @@ fn main() {
                 session_path,
             });
             app.manage(shell::ShellState::load(
-                app.path().app_data_dir().ok().map(|d| d.join("shell.json")),
+                data_dir.as_ref().map(|d| d.join("shell.json")),
             ));
             runner::spawn(app.handle().clone(), rx);
             shell::init(app.handle(), &std::env::args().collect::<Vec<_>>());

@@ -9,8 +9,8 @@ That is all. The workflow then:
 
 1. runs the full CI on `main` (UI check/tests/build, `cargo fmt`, clippy, tests, generated bindings, the release scripts' own tests). If anything fails, nothing is bumped or tagged;
 2. works out the next version, writes it into every file that carries it, commits `Release X.Y.Z` and pushes the commit and the tag `vX.Y.Z` in one atomic push (if `main` moved in the meantime the push is refused and nothing is released);
-3. builds on Windows: downloads yt-dlp (SHA-256 verified; there is no ffmpeg, audio is decoded in-app), builds the UI, builds the installer, **installs it silently, checks that no ffmpeg slipped in, and runs the bundled yt-dlp from where it landed**;
-4. writes the release notes (below), creates the release as a draft, uploads the installers, `SHA256SUMS.txt` and the third-party notices, then publishes it. A signed build-provenance attestation is added when the repository allows it.
+3. builds on Windows: builds the minimal static FFmpeg libraries the audio decoder links (cached; there is no ffmpeg program, audio is decoded in-app), downloads yt-dlp (SHA-256 verified), builds the UI, builds the installer, **installs it silently, checks that no ffmpeg program or libav DLL slipped in and that the FFmpeg LGPL text is installed, and runs the bundled yt-dlp from where it landed**;
+4. writes the release notes (below), creates the release as a draft, uploads the installers, `SHA256SUMS.txt`, the third-party notices and the FFmpeg LGPL text, then publishes it. The licence items to check each time are in `docs/windows-checklist.md` ("FFmpeg licence"). A signed build-provenance attestation is added when the repository allows it.
 
 The first release ever (no `v*.*.*` tag yet) publishes the version already in the files as it is. `0.0.1` is the current one.
 

@@ -1,6 +1,6 @@
 //! Developer tasks. `cargo xtask tools` downloads yt-dlp (with checksum verification);
-//! `cargo xtask installer` builds the Windows installer with it bundled. Audio is decoded in-process
-//! (Symphonia), so yt-dlp is the only helper program.
+//! `cargo xtask ffmpeg` builds the minimal static FFmpeg the audio crate links; `cargo xtask installer` builds the Windows installer with it bundled. Audio is decoded in-process
+//! (libav), so yt-dlp is the only helper program.
 
 use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
@@ -16,8 +16,9 @@ fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let result = match args.first().map(String::as_str) {
         Some("tools") => tools(&args[1..]),
+        Some("ffmpeg") => ffmpeg(),
         Some("installer") => installer(),
-        _ => Err("usage:\n  cargo xtask tools [--update] [--dir <folder>]   download yt-dlp\n  cargo xtask installer                           build the Windows installer".into()),
+        _ => Err("usage:\n  cargo xtask tools [--update] [--dir <folder>]   download yt-dlp\n  cargo xtask ffmpeg                              build the minimal static FFmpeg (once per FFmpeg change)\n  cargo xtask installer                           build the Windows installer".into()),
     };
     if let Err(e) = result {
         eprintln!("\nerror: {e}");
@@ -73,6 +74,122 @@ fn write_atomic(path: &Path, bytes: &[u8]) -> Res<()> {
     std::fs::write(&tmp, bytes).map_err(|e| format!("cannot write {}: {e}", tmp.display()))?;
     std::fs::rename(&tmp, path)
         .map_err(|e| format!("cannot move into place {}: {e}", path.display()))
+}
+
+// ------------------------------------------------------------------------- FFmpeg
+
+/// The `host:` line of `rustc -vV`, e.g. `x86_64-pc-windows-msvc`.
+pub fn parse_host(rustc_vv: &str) -> Option<String> {
+    rustc_vv
+        .lines()
+        .find_map(|l| l.strip_prefix("host:"))
+        .map(|h| h.trim().to_string())
+        .filter(|h| !h.is_empty())
+}
+
+/// Where the audio crate's `build.rs` looks for the libraries: `PYXEE_FFMPEG_DIR`, else
+/// `target/ffmpeg/<host triple>`. Keep in sync with `crates/audio/build.rs`.
+fn ffmpeg_prefix(root: &Path) -> Res<PathBuf> {
+    if let Some(dir) = std::env::var_os("PYXEE_FFMPEG_DIR") {
+        return Ok(PathBuf::from(dir));
+    }
+    let out = Command::new("rustc")
+        .arg("-vV")
+        .output()
+        .map_err(|e| format!("cannot run rustc: {e}"))?;
+    let host = parse_host(&String::from_utf8_lossy(&out.stdout))
+        .ok_or("rustc -vV did not report a host triple")?;
+    Ok(root.join("target/ffmpeg").join(host))
+}
+
+/// The arguments for bash to run the build script. On Windows bash must be a *login* shell (`-l`): that is
+/// what puts MSYS2's `/usr/bin` (mkdir, make, sha256sum...) on PATH; without it the script dies on its first
+/// command with "mkdir: command not found".
+pub fn bash_args(windows: bool, script: &Path, prefix: &Path) -> Vec<String> {
+    let mut args = Vec::new();
+    if windows {
+        args.push("-l".to_string());
+    }
+    args.push(bash_path(script));
+    args.push(bash_path(prefix));
+    args
+}
+
+/// bash needs forward slashes even for Windows paths.
+fn bash_path(p: &Path) -> String {
+    p.to_string_lossy().replace('\\', "/")
+}
+
+/// What to run once to get the Windows build tools for FFmpeg.
+const MSYS2_SETUP: &str = r#"winget install --id MSYS2.MSYS2 -e   then   C:\msys64\usr\bin\bash.exe -lc "pacman -S --noconfirm --needed make nasm diffutils pkgconf""#;
+/// MSYS2 programs FFmpeg's `configure` and `make` need.
+const MSYS2_TOOLS: [&str; 3] = ["make", "nasm", "diff"];
+
+/// The MSYS2 bash to use: `PYXEE_BASH`, else the default install. `exists` is injected so this is testable.
+pub fn locate_bash(from_env: Option<String>, exists: impl Fn(&Path) -> bool) -> Res<PathBuf> {
+    let path = PathBuf::from(from_env.unwrap_or_else(|| r"C:\msys64\usr\bin\bash.exe".into()));
+    if exists(&path) {
+        Ok(path)
+    } else {
+        Err(format!(
+            "MSYS2 (bash) was not found at {}. FFmpeg's build needs it, once: {MSYS2_SETUP}. \
+             (Or set PYXEE_BASH to your MSYS2 bash.exe.)",
+            path.display()
+        ))
+    }
+}
+
+/// An error naming the MSYS2 tools that are missing, from the one-per-line output of the probe.
+pub fn missing_tools_error(probe_output: &str) -> Option<String> {
+    let missing: Vec<&str> = probe_output
+        .lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty())
+        .collect();
+    (!missing.is_empty()).then(|| {
+        format!(
+            "MSYS2 is missing {}. Install them once: C:\\msys64\\usr\\bin\\bash.exe -lc \"pacman -S --noconfirm --needed make nasm diffutils pkgconf\"",
+            missing.join(", ")
+        )
+    })
+}
+
+/// Builds the minimal static FFmpeg with `scripts/build-ffmpeg.sh` (skipped when it is current).
+/// Windows: needs MSYS2 (`make`, `nasm`, `diffutils`) and the MSVC tools on PATH, so run
+/// it from an "x64 Native Tools Command Prompt for VS".
+fn ffmpeg() -> Res<()> {
+    let root = workspace_root();
+    let prefix = ffmpeg_prefix(&root)?;
+    let script = root.join("scripts/build-ffmpeg.sh");
+    let mut cmd;
+    if cfg!(windows) {
+        if Command::new("cl").output().is_err() {
+            return Err("the MSVC compiler (cl.exe) is not on PATH. Run this from an \"x64 Native Tools Command Prompt for VS\".".into());
+        }
+        let bash = locate_bash(std::env::var("PYXEE_BASH").ok(), |p| p.is_file())?;
+        // Keep the MSVC tools on PATH inside MSYS2 (and its `link.exe` must not shadow MSVC's).
+        let probe = format!(
+            "for t in {}; do command -v $t >/dev/null || echo $t; done",
+            MSYS2_TOOLS.join(" ")
+        );
+        let out = Command::new(&bash)
+            .args(["-lc", &probe])
+            .env("MSYS2_PATH_TYPE", "inherit")
+            .output()
+            .map_err(|e| format!("could not run {}: {e}", bash.display()))?;
+        if let Some(e) = missing_tools_error(&String::from_utf8_lossy(&out.stdout)) {
+            return Err(e);
+        }
+        cmd = Command::new(bash);
+        cmd.env("MSYS2_PATH_TYPE", "inherit")
+            .env("PYXEE_FF_TOOLCHAIN", "msvc")
+            // A login shell starts in $HOME unless told otherwise.
+            .env("CHERE_INVOKING", "1");
+    } else {
+        cmd = Command::new("bash");
+    }
+    cmd.args(bash_args(cfg!(windows), &script, &prefix));
+    run(cmd.current_dir(&root), "build the minimal static FFmpeg")
 }
 
 // ---------------------------------------------------------------------- network
@@ -146,7 +263,7 @@ fn tools(args: &[String]) -> Res<()> {
     }
 
     println!("\nDone. The app finds it automatically in development; the installer bundles it.");
-    println!("Licenses: yt-dlp is Unlicense (see crates/app/licenses/THIRD_PARTY.txt).");
+    println!("Licenses: yt-dlp is Unlicense; the FFmpeg libraries are LGPL v2.1+ (see crates/app/licenses/).");
     Ok(())
 }
 
@@ -180,6 +297,7 @@ fn installer() -> Res<()> {
     }
     let root = workspace_root();
     tools(&[])?;
+    ffmpeg()?;
     run(
         npm().args(["ci", "--prefix", "ui"]).current_dir(&root),
         "npm ci (UI dependencies)",
@@ -291,6 +409,69 @@ mod tests {
             .unwrap()
             .to_string_lossy()
             .starts_with("tauri"));
+    }
+
+    #[test]
+    fn the_host_triple_is_read_from_rustc_output() {
+        let text = "rustc 1.91.1\nbinary: rustc\nhost: x86_64-pc-windows-msvc\nrelease: 1.91.1\n";
+        assert_eq!(parse_host(text).as_deref(), Some("x86_64-pc-windows-msvc"));
+        assert_eq!(parse_host("no host here"), None);
+    }
+
+    #[test]
+    fn a_missing_msys2_is_explained_with_the_one_time_setup() {
+        let missing = locate_bash(None, |_| false).unwrap_err();
+        assert!(
+            missing.contains("MSYS2")
+                && missing.contains("winget install")
+                && missing.contains("pacman"),
+            "{missing}"
+        );
+        assert!(missing.contains("PYXEE_BASH"), "{missing}");
+        // An explicit path is used as given, and found when it exists.
+        let custom = locate_bash(Some(r"D:\tools\bash.exe".into()), |p| {
+            p == Path::new(r"D:\tools\bash.exe")
+        })
+        .unwrap();
+        assert_eq!(custom, PathBuf::from(r"D:\tools\bash.exe"));
+        assert!(locate_bash(Some(r"D:\nope\bash.exe".into()), |_| false)
+            .unwrap_err()
+            .contains(r"D:\nope\bash.exe"));
+    }
+
+    #[test]
+    fn missing_msys2_tools_are_named() {
+        assert_eq!(
+            missing_tools_error("\n"),
+            None,
+            "nothing printed means nothing is missing"
+        );
+        let e = missing_tools_error("nasm\nmake\n").unwrap();
+        assert!(e.contains("nasm, make") && e.contains("pacman"), "{e}");
+    }
+
+    #[test]
+    fn on_windows_the_build_script_runs_in_a_login_shell_so_msys2_tools_are_on_path() {
+        let (script, prefix) = (
+            Path::new(r"D:\r\scripts\build-ffmpeg.sh"),
+            Path::new(r"D:\r\target\ffmpeg\x"),
+        );
+        assert_eq!(
+            bash_args(true, script, prefix),
+            ["-l", "D:/r/scripts/build-ffmpeg.sh", "D:/r/target/ffmpeg/x"]
+        );
+        assert_eq!(
+            bash_args(false, script, prefix),
+            ["D:/r/scripts/build-ffmpeg.sh", "D:/r/target/ffmpeg/x"]
+        );
+    }
+
+    #[test]
+    fn bash_gets_forward_slashes() {
+        assert_eq!(
+            bash_path(Path::new(r"C:\repo\scripts\build.sh")),
+            "C:/repo/scripts/build.sh"
+        );
     }
 
     #[test]

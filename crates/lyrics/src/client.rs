@@ -11,8 +11,69 @@ const DURATION_SLACK_SECS: f64 = 4.0;
 pub enum LyricsError {
     #[error("could not reach the lyrics service")]
     Network,
+    /// HTTP 429. `retry_after_secs` is the service's `Retry-After`, or a default, within sane bounds.
+    #[error("the lyrics service is limiting requests, try again in about {retry_after_secs} s")]
+    RateLimited { retry_after_secs: u64 },
+    /// HTTP 401/403: the service refuses this client.
+    #[error("the lyrics service refused the request (HTTP {0})")]
+    Blocked(u16),
+    /// HTTP 5xx: the service itself is failing.
+    #[error("the lyrics service is having trouble (HTTP {0})")]
+    Unavailable(u16),
     #[error("the lyrics service answered something unexpected: {0}")]
     Parse(String),
+}
+
+/// Waits when the service gave no `Retry-After`, and the bounds on one it gave.
+const DEFAULT_RETRY_SECS: u64 = 60;
+const MAX_RETRY_SECS: u64 = 600;
+const BLOCKED_PAUSE_SECS: u64 = 300;
+const UNAVAILABLE_PAUSE_SECS: u64 = 30;
+
+/// Seconds to wait from a `Retry-After` header (the number form; the HTTP-date form is not worth
+/// parsing here and gets the default), kept between 1 s and 10 min.
+pub fn retry_after_secs(header: Option<&str>) -> u64 {
+    header
+        .and_then(|h| h.trim().parse::<u64>().ok())
+        .unwrap_or(DEFAULT_RETRY_SECS)
+        .clamp(1, MAX_RETRY_SECS)
+}
+
+impl LyricsError {
+    /// How long to stop asking the service after this error, so a blocked or failing service is not
+    /// hit again on every song change. `None`: asking again right away is fine (offline, bad data).
+    pub fn pause_secs(&self) -> Option<u64> {
+        match self {
+            LyricsError::RateLimited { retry_after_secs } => Some(*retry_after_secs),
+            LyricsError::Blocked(_) => Some(BLOCKED_PAUSE_SECS),
+            LyricsError::Unavailable(_) => Some(UNAVAILABLE_PAUSE_SECS),
+            LyricsError::Network | LyricsError::Parse(_) => None,
+        }
+    }
+}
+
+/// Remembers "do not ask the service before this moment". The clock is injected (milliseconds from
+/// any fixed start) so it is deterministic in tests.
+#[derive(Debug, Default)]
+pub struct Cooldown {
+    until_ms: Option<u64>,
+}
+
+impl Cooldown {
+    /// Whole seconds still to wait (at least 1), or `None` when the service may be asked.
+    pub fn remaining_secs(&self, now_ms: u64) -> Option<u64> {
+        self.until_ms
+            .filter(|&t| t > now_ms)
+            .map(|t| (t - now_ms).div_ceil(1000))
+    }
+
+    /// Notes a failed lookup; errors that carry no pause leave the cooldown as it was.
+    pub fn record(&mut self, err: &LyricsError, now_ms: u64) {
+        if let Some(secs) = err.pause_secs() {
+            let until = now_ms.saturating_add(secs.saturating_mul(1000));
+            self.until_ms = Some(self.until_ms.map_or(until, |t| t.max(until)));
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -110,6 +171,11 @@ fn get(agent: &ureq::Agent, url: &str) -> Result<Option<String>, LyricsError> {
     match agent.get(url).set("User-Agent", USER_AGENT).call() {
         Ok(r) => r.into_string().map(Some).map_err(|_| LyricsError::Network),
         Err(ureq::Error::Status(404, _)) => Ok(None),
+        Err(ureq::Error::Status(429, resp)) => Err(LyricsError::RateLimited {
+            retry_after_secs: retry_after_secs(resp.header("Retry-After")),
+        }),
+        Err(ureq::Error::Status(code @ (401 | 403), _)) => Err(LyricsError::Blocked(code)),
+        Err(ureq::Error::Status(code @ 500..=599, _)) => Err(LyricsError::Unavailable(code)),
         Err(ureq::Error::Status(code, _)) => Err(LyricsError::Parse(format!("HTTP {code}"))),
         Err(ureq::Error::Transport(_)) => Err(LyricsError::Network),
     }

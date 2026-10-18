@@ -6,4 +6,4 @@ Download **`Pyxee_x.y.z_x64-setup.exe`** below and run it. It installs yt-dlp al
 
 **Windows SmartScreen:** the installer is not code-signed yet, so Windows may show "Windows protected your PC". Choose **More info**, then **Run anyway**. To check the file first, compare its SHA-256 with `SHA256SUMS.txt` (`Get-FileHash <file>` in PowerShell).
 
-If something misbehaves, the log is in **Settings -> Diagnostics -> Open log folder** (`%APPDATA%\dev.pyxee.app\logs\pyxee.log`).
+If something misbehaves, the log is in **Settings -> Diagnostics -> Open log folder** (`%LOCALAPPDATA%\dev.pyxee.app\logs\pyxee.log`).

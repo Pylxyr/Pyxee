@@ -1,7 +1,7 @@
 # Pyxee milestone 1: spike
 
 ## Run it on Windows
-1. Install Rust (rustup, stable, MSVC toolchain), Visual Studio Build Tools (C++), yt-dlp.exe (on PATH or pass its path). There is no ffmpeg: symphonia is the only decoder.
+1. Install Rust (rustup, stable, MSVC toolchain), Visual Studio Build Tools (C++), yt-dlp.exe (on PATH or pass its path). Audio is decoded in-process by libav (a minimal static FFmpeg built once with `cargo xtask ffmpeg`; MSYS2 with make, nasm, diffutils and pkgconf is needed for that); no ffmpeg process is ever started.
 2. `cargo test --workspace` (tests use committed fixtures).
 3. Offline check: `cargo run --release -p pyxee-spike -- files crates/audio/tests/fixtures/a_44k.mp3 crates/audio/tests/fixtures/b_48k.mp3`
 4. Real playback: `cargo run --release -p pyxee-spike -- play "artist song one" "artist song two" --ytdlp C:\path\yt-dlp.exe`
@@ -10,12 +10,12 @@
 ## Findings so far (Linux sandbox, fixtures, no network)
 | Codec | Decoder | Joined length | Silence at boundary |
 |---|---|---|---|
-| WAV, FLAC, MP3 320, Vorbis | symphonia | exact | none |
-| AAC (m4a) | symphonia + own edge trim | within 1 frame | none |
-| Opus | not decodable (symphonia has no Opus decoder); refused as unsupported, never requested from YouTube | n/a | n/a |
-| AAC (m4a), fragmented like YouTube | symphonia (+ edge trim) | within 1 frame | none |
+| WAV, FLAC, MP3 320, Vorbis | libav | exact | none |
+| AAC (m4a) | libav + own edge trim | within 1 frame | none |
+| Opus (Ogg and WebM) | libav (pre-skip and end trim applied by libav) | exact | none |
+| AAC (m4a), fragmented like YouTube | libav (+ edge trim) | within 1 frame | none |
 
-- symphonia 0.5.5 trims MP3/Vorbis itself but exposes no delay/padding for AAC-in-MP4, so quiet edges (max 2112 frames) are trimmed in `SymphoniaSource`.
+- libav trims MP3/Vorbis/Opus itself but not all AAC-in-MP4 padding, so quiet AAC edges (max 2112 frames) are still trimmed in `LibavSource`.
 - rubato 0.16 output is already time-aligned: skipping `output_delay()` shifted audio ~69 frames (measured in `examples/lag.rs`).
 
 ## Not verified yet (needs your machine)

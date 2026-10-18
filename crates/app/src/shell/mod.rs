@@ -16,7 +16,7 @@ mod winextras;
 use crate::dto::{PlayerStateDto, TransportDto};
 use crate::state::AppState;
 use pyxee_core::{Command, EngineEvent};
-use pyxee_lyrics::Lyrics;
+use pyxee_lyrics::{Cooldown, Lyrics};
 use pyxee_shell::cli::{parse_args, CliAction};
 use pyxee_shell::progress::{taskbar_progress, Phase, TaskbarProgress};
 use pyxee_shell::settings::{self, ShellSettings};
@@ -49,6 +49,10 @@ pub struct ShellState {
     pub settings_path: Option<PathBuf>,
     pub sleep: Mutex<SleepTimer>,
     pub lyrics: Mutex<HashMap<String, Lyrics>>,
+    /// When the lyrics service refused the app, how long to leave it alone (see `pyxee_lyrics::Cooldown`).
+    pub lyrics_cooldown: Mutex<Cooldown>,
+    /// The cooldown's clock: milliseconds since the app started.
+    pub clock: Instant,
     /// Set by "Quit" so closing the window really ends the app even with close-to-tray on.
     pub quitting: AtomicBool,
     pub flyout_hidden_at: Mutex<Option<Instant>>,
@@ -79,6 +83,8 @@ impl ShellState {
             settings_path: path,
             sleep: Mutex::new(SleepTimer::new()),
             lyrics: Mutex::new(HashMap::new()),
+            lyrics_cooldown: Mutex::new(Cooldown::default()),
+            clock: Instant::now(),
             quitting: AtomicBool::new(false),
             flyout_hidden_at: Mutex::new(None),
             restore_fade: AtomicBool::new(false),

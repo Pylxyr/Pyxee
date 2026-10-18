@@ -1086,11 +1086,10 @@ fn the_log_tells_the_story_of_a_song_including_why_it_failed() {
     assert!(has("INFO ended: \"LogProbe Good\""), "{lines:#?}");
 }
 
-// ---- streams the built-in decoder cannot use: skipped cleanly, no other decoder -------------------
+// ---- Opus: YouTube's preferred format, decoded in-process --------------------------------------
 
 #[test]
-fn an_opus_song_is_skipped_with_a_notice_and_the_next_song_plays() {
-    // Symphonia has no Opus decoder and there is no fallback: it must fail cleanly, not hang or panic.
+fn an_opus_song_plays_and_the_next_song_follows() {
     let mut r = Rig::new(TestSource::local());
     r.cmd(Command::SetAutoplay(false));
     r.cmd(Command::PlayTracks {
@@ -1099,14 +1098,12 @@ fn an_opus_song_is_skipped_with_a_notice_and_the_next_song_plays() {
     });
     assert!(r.run_until(10, |r| r.snapshot().audible.is_some()));
     let ids = r.entry_ids();
-    assert_eq!(r.snapshot().audible.map(|i| i.0), Some(ids[1]));
+    assert_eq!(r.snapshot().audible.map(|i| i.0), Some(ids[0]));
     assert!(
-        r.notices()
-            .iter()
-            .any(|n| n.contains("its audio could not be read")),
-        "{:?}",
-        r.notices()
+        r.run_until(10, |r| r.snapshot().audible.map(|i| i.0) == Some(ids[1])),
+        "the next song must follow the Opus one"
     );
+    assert!(r.notices().is_empty(), "{:?}", r.notices());
 }
 
 fn serve_without_range_support(body: Vec<u8>) -> String {
@@ -1180,4 +1177,77 @@ fn a_server_that_ignores_range_requests_fails_the_song_cleanly() {
         "{:?}",
         r.notices()
     );
+}
+
+// ---- every failure has one clear meaning: transient (stay on the song) or permanent (skip) ------
+
+#[test]
+fn source_and_stream_errors_map_to_transient_or_permanent_failures() {
+    use crate::engine::{failure_from_audio, failure_from_source, skip_reason};
+    use pyxee_audio::AudioError;
+    use pyxee_core::Failure;
+
+    // Transient: the song is fine, so the player stays on it with a Retry and burns no tracks.
+    for (what, f) in [
+        (
+            "yt-dlp rate limit",
+            failure_from_source(&SourceError::RateLimited),
+        ),
+        ("yt-dlp offline", failure_from_source(&SourceError::Offline)),
+        (
+            "stream HTTP 429",
+            failure_from_audio(&AudioError::RateLimited),
+        ),
+        (
+            "stream network",
+            failure_from_audio(&AudioError::Network("x".into())),
+        ),
+    ] {
+        assert!(f.is_transient(), "{what}: {f:?}");
+    }
+    // Permanent: skipping is right.
+    for (what, f) in [
+        (
+            "unavailable",
+            failure_from_source(&SourceError::Unavailable("gone".into())),
+        ),
+        (
+            "URL refused",
+            failure_from_audio(&AudioError::UrlExpired(403)),
+        ),
+        (
+            "undecodable",
+            failure_from_audio(&AudioError::Unsupported("x".into())),
+        ),
+        (
+            "decode error",
+            failure_from_audio(&AudioError::Decode("x".into())),
+        ),
+    ] {
+        assert!(!f.is_transient(), "{what}: {f:?}");
+    }
+    assert_eq!(
+        failure_from_audio(&AudioError::RateLimited),
+        Failure::RateLimited
+    );
+
+    // And each one reads as its own cause: a 429 must not say "offline".
+    let said = |f: Failure| skip_reason(&f);
+    assert!(said(failure_from_audio(&AudioError::RateLimited)).contains("limiting requests"));
+    assert!(said(failure_from_audio(&AudioError::Network("x".into()))).contains("offline"));
+    assert!(said(failure_from_audio(&AudioError::UrlExpired(403))).contains("HTTP 403"));
+}
+
+#[test]
+fn a_stream_that_fails_mid_song_says_why_in_words_not_in_enum_names() {
+    use crate::engine::{failure_from_audio, stopped_early_notice};
+    use pyxee_audio::AudioError;
+    let said = |e: AudioError| stopped_early_notice("Song", &failure_from_audio(&e));
+    let limited = said(AudioError::RateLimited);
+    assert!(limited.contains("limiting requests"), "{limited}");
+    let offline = said(AudioError::Network("x".into()));
+    assert!(offline.contains("offline"), "{offline}");
+    for n in [&limited, &offline] {
+        assert!(!n.contains("RateLimited") && !n.contains("Network"), "{n}");
+    }
 }

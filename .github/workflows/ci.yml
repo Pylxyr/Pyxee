@@ -56,6 +56,8 @@ jobs:
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
           shared-key: ci
+      # The audio crate links a minimal static FFmpeg (in-process, no ffmpeg program): built once, then cached.
+      - uses: ./.github/actions/ffmpeg
       - run: npm ci --prefix ui
       - run: npm run build --prefix ui # Tauri embeds ui/dist at compile time
       - run: cargo fmt --all -- --check

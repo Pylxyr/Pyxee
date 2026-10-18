@@ -36,6 +36,8 @@ pub enum FailKind {
     /// The stream URL was rejected (HTTP 401/403/410): re-resolve and resume.
     Expired(u16),
     Network,
+    /// The stream server answered HTTP 429: transient, like `Network`.
+    RateLimited,
     Decode,
     /// The track decoded to nothing.
     Empty,
@@ -46,6 +48,7 @@ impl From<&AudioError> for FailKind {
         match e {
             AudioError::UrlExpired(c) => FailKind::Expired(*c),
             AudioError::Network(_) => FailKind::Network,
+            AudioError::RateLimited => FailKind::RateLimited,
             _ => FailKind::Decode,
         }
     }

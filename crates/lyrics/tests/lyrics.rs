@@ -213,10 +213,114 @@ fn nothing_found_is_none_not_an_error_and_a_dead_server_is_a_network_error() {
 }
 
 #[test]
-fn a_server_error_is_reported_not_swallowed() {
-    let (base, _rx) = server(vec![("/api", 500, "boom".into())]);
+fn service_refusals_are_told_apart_by_what_the_player_should_do() {
+    use pyxee_lyrics::LyricsError;
+    let ask = |status: u16| {
+        let (base, _rx) = server(vec![("/api", status, "no".into())]);
+        fetch(&base, &Query::new("x", "y", None)).unwrap_err()
+    };
+    // 429: transient, with the default wait when the service names none.
+    assert!(matches!(
+        ask(429),
+        LyricsError::RateLimited {
+            retry_after_secs: 60
+        }
+    ));
+    // 403/401: the service refuses this client; 5xx: the service is failing.
+    assert!(matches!(ask(403), LyricsError::Blocked(403)));
+    assert!(matches!(ask(401), LyricsError::Blocked(401)));
+    assert!(matches!(ask(500), LyricsError::Unavailable(500)));
+    assert!(matches!(ask(503), LyricsError::Unavailable(503)));
+    // Anything else is an unexpected answer, shown as such and asked again right away.
+    let other = ask(418);
+    assert!(
+        matches!(&other, LyricsError::Parse(m) if m.contains("418")),
+        "{other:?}"
+    );
+    assert_eq!(other.pause_secs(), None);
+    // Every message says what happened in words the lyrics panel can show.
+    assert!(ask(429).to_string().contains("limiting requests"));
+    assert!(ask(403).to_string().contains("refused"));
+    assert!(ask(503).to_string().contains("trouble"));
+}
+
+#[test]
+fn a_retry_after_header_sets_the_wait_within_sane_bounds() {
+    use pyxee_lyrics::retry_after_secs;
+    assert_eq!(retry_after_secs(Some("45")), 45);
+    assert_eq!(retry_after_secs(Some(" 7 ")), 7);
+    assert_eq!(
+        retry_after_secs(Some("0")),
+        1,
+        "never zero: that would be a retry storm"
+    );
+    assert_eq!(
+        retry_after_secs(Some("86400")),
+        600,
+        "capped at ten minutes"
+    );
+    assert_eq!(retry_after_secs(None), 60);
+    assert_eq!(retry_after_secs(Some("Wed, 21 Oct 2026 07:28:00 GMT")), 60);
+
+    // And it is read from the real response.
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let base = format!("http://{}", listener.local_addr().unwrap());
+    std::thread::spawn(move || {
+        if let Ok((mut s, _)) = listener.accept() {
+            let mut buf = [0u8; 2048];
+            let _ = s.read(&mut buf);
+            let _ = s.write_all(
+                b"HTTP/1.1 429 Too Many Requests\r\nRetry-After: 17\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
+            );
+        }
+    });
     assert!(matches!(
         fetch(&base, &Query::new("x", "y", None)),
-        Err(pyxee_lyrics::LyricsError::Parse(_))
+        Err(pyxee_lyrics::LyricsError::RateLimited {
+            retry_after_secs: 17
+        })
     ));
+}
+
+#[test]
+fn the_cooldown_stops_asking_a_service_that_refused_and_ignores_harmless_errors() {
+    use pyxee_lyrics::{Cooldown, LyricsError};
+    let mut c = Cooldown::default();
+    assert_eq!(c.remaining_secs(0), None, "a fresh cooldown asks freely");
+
+    // Offline and bad data are not the service's refusal: ask again straight away.
+    c.record(&LyricsError::Network, 1_000);
+    c.record(&LyricsError::Parse("x".into()), 1_000);
+    assert_eq!(c.remaining_secs(1_000), None);
+
+    // A 429 with Retry-After: 30 pauses for 30 s, counting down, rounded up to whole seconds.
+    c.record(
+        &LyricsError::RateLimited {
+            retry_after_secs: 30,
+        },
+        10_000,
+    );
+    assert_eq!(c.remaining_secs(10_000), Some(30));
+    assert_eq!(c.remaining_secs(39_001), Some(1));
+    assert_eq!(
+        c.remaining_secs(40_000),
+        None,
+        "over exactly when the time is up"
+    );
+
+    // A shorter pause never shortens a longer one that is still running.
+    c.record(
+        &LyricsError::RateLimited {
+            retry_after_secs: 100,
+        },
+        50_000,
+    );
+    c.record(&LyricsError::Unavailable(503), 50_000);
+    assert_eq!(c.remaining_secs(50_000), Some(100));
+    // A blocked client waits longer than a failing server.
+    let mut b = Cooldown::default();
+    b.record(&LyricsError::Blocked(403), 0);
+    let mut u = Cooldown::default();
+    u.record(&LyricsError::Unavailable(500), 0);
+    assert!(b.remaining_secs(0) > u.remaining_secs(0));
 }

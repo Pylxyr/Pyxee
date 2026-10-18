@@ -4,7 +4,10 @@
 mod client;
 mod lrc;
 
-pub use client::{fetch, from_lrclib, pick_best, Candidate, LyricsError, Query, LRCLIB};
+pub use client::{
+    fetch, from_lrclib, pick_best, retry_after_secs, Candidate, Cooldown, LyricsError, Query,
+    LRCLIB,
+};
 pub use lrc::{clean_artist, clean_title, current_index, parse_lrc};
 
 use serde::{Deserialize, Serialize};
