@@ -6,6 +6,7 @@ import { player, EMPTY_STATE } from '$lib/player.svelte';
 import { snackbar } from '$lib/snackbar.svelte';
 import { search } from '$lib/search.svelte';
 import { library } from '$lib/library.svelte';
+import { explore } from '$lib/explore.svelte';
 import { theme } from '$lib/theme.svelte';
 import { BUILTIN_THEMES } from '$lib/themes';
 
@@ -89,6 +90,19 @@ describe('App shell', () => {
     expect(screen.getByRole('heading', { name: 'Explore' })).toBeTruthy();
     await fireEvent.click(screen.getByRole('button', { name: /Home/ }));
     expect(screen.getByRole('heading', { name: 'Quick picks' })).toBeTruthy();
+  });
+
+  it('Explore offers moods that open a search, and shelves built from what you like', async () => {
+    explore.status = 'idle';
+    mock.likedGet = async () => [DEMO_TRACKS[0]!];
+    await openApp();
+    await fireEvent.click(screen.getByRole('button', { name: /Explore/ }));
+    expect(await screen.findByRole('heading', { name: `Because you liked ${DEMO_TRACKS[0]!.title}` })).toBeTruthy();
+    expect(await screen.findByRole('list', { name: `Because you liked ${DEMO_TRACKS[0]!.title}` })).toBeTruthy();
+    expect(screen.queryByText(/Explore is not built yet/)).toBeNull();
+    await fireEvent.click(screen.getByRole('button', { name: 'Search Focus' }));
+    await waitFor(() => expect(nav.route).toBe('search'));
+    expect(search.query).toBe('focus instrumental');
   });
 
   it('searching opens the results page with the query', async () => {
@@ -233,22 +247,23 @@ describe('appearance', () => {
     return screen.findByRole('group', { name: 'Theme' });
   }
 
-  it('switching to Light sets the theme on the document', async () => {
+  it('switching to Frost (light) and Ink (dark) sets the theme on the document', async () => {
     await openApp();
     await fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
-    await fireEvent.click(await screen.findByRole('button', { name: 'Light' }));
+    await fireEvent.click(await screen.findByRole('button', { name: 'Frost' }));
     await waitFor(() => expect(document.documentElement.dataset.theme).toBe('light'));
-    await fireEvent.click(screen.getByRole('button', { name: 'Dark' }));
+    await fireEvent.click(screen.getByRole('button', { name: 'Ink' }));
     await waitFor(() => expect(document.documentElement.dataset.theme).toBe('dark'));
   });
 
-  it('offers Dark, Light, YT Music and the other themes, and applies the one picked', async () => {
+  it('offers Ink, Frost and the other themes (and no YT Music look-alike), and applies the one picked', async () => {
     const group = await openAppearance();
-    for (const name of ['Dark', 'Light', 'YT Music', 'Deep blue', 'Graphite and gold']) expect(within(group).getByRole('button', { name })).toBeTruthy();
-    await fireEvent.click(within(group).getByRole('button', { name: 'YT Music' }));
-    await waitFor(() => expect(document.documentElement.dataset.themeId).toBe('ytmusic'));
-    expect(document.documentElement.style.getPropertyValue('--t-accent')).toBe('#ff0000');
-    expect(within(group).getByRole('button', { name: 'YT Music' }).getAttribute('aria-pressed')).toBe('true');
+    for (const name of ['Ink', 'Frost', 'OLED black', 'Deep blue', 'Graphite and gold']) expect(within(group).getByRole('button', { name })).toBeTruthy();
+    expect(within(group).queryByRole('button', { name: 'YT Music' })).toBeNull();
+    await fireEvent.click(within(group).getByRole('button', { name: 'OLED black' }));
+    await waitFor(() => expect(document.documentElement.dataset.themeId).toBe('oled'));
+    expect(document.documentElement.style.getPropertyValue('--t-accent')).toBe('#ff5c6a');
+    expect(within(group).getByRole('button', { name: 'OLED black' }).getAttribute('aria-pressed')).toBe('true');
   });
 
   it('tells the native window which theme to follow (a fixed one, or the system again)', async () => {

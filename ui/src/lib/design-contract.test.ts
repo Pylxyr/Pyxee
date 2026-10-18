@@ -26,8 +26,8 @@ describe('Mica-safe colours', () => {
   it('Mica makes a grey theme background transparent (a coloured one tints it), which is why other tokens must not depend on it', () => {
     expect(rule(":root[data-backdrop='mica']")).toMatch(/--bg:\s*color-mix\(in srgb, var\(--t-bg[^)]*\) var\(--t-mica-tint, 0%\), transparent\)/);
     const tint = (id: string) => themeVars(BUILTIN_THEMES.find((t) => t.id === id)!.colors)['--t-mica-tint'];
-    for (const grey of ['dark', 'light', 'ytmusic', 'oled']) expect(tint(grey), grey).toBe('0%');
-    for (const coloured of ['deepblue', 'sky', 'ember', 'paper']) expect(tint(coloured), coloured).toBe('70%');
+    for (const grey of ['light', 'oled']) expect(tint(grey), grey).toBe('0%');
+    for (const coloured of ['dark', 'deepblue', 'sky', 'ember', 'paper']) expect(tint(coloured), coloured).toBe('70%');
   });
 
   it('every variable a theme writes is read by the stylesheet', () => {
@@ -64,5 +64,21 @@ describe('Mica-safe colours', () => {
 
   it('exposes the opaque tokens to Tailwind utilities', () => {
     for (const t of ['solid', 'solid-2', 'on-fg']) expect(css).toContain(`--color-${t}: var(--${t})`);
+  });
+});
+
+describe('scroll bars', () => {
+  it('are thin and tinted from theme tokens, never a fixed colour', () => {
+    const bars = css.slice(css.indexOf('::-webkit-scrollbar {'));
+    expect(css).toMatch(/scrollbar-width:\s*thin/);
+    expect(css).toMatch(/scrollbar-color:\s*color-mix\(in srgb, var\(--fg\)/);
+    expect(bars).toContain('::-webkit-scrollbar-thumb');
+    const block = css.slice(css.indexOf('/*\n * Scroll bars'), css.indexOf('[data-scroll]:focus-visible'));
+    expect(block).not.toMatch(/#[0-9a-f]{3,8}\b/i);
+  });
+
+  it('the Queue and Now Playing lists scroll in areas the keyboard can reach', () => {
+    expect(source('ScrollPage.svelte')).toMatch(/data-scroll[^>]*tabindex="0"/);
+    expect(source('NowPlaying.svelte')).toMatch(/data-testid="np-scroll" data-scroll tabindex="0"/);
   });
 });

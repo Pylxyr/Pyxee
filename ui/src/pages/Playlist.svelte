@@ -87,10 +87,10 @@
         </div>
       </div>
       <div class="mt-4 flex flex-wrap gap-2">
-        <button class="rounded-full bg-fg px-5 py-2 text-sm font-semibold text-on-fg disabled:opacity-40" disabled={tracks.length === 0} onclick={() => play(false)}>Play</button>
-        <button class="rounded-full bg-surface-2 px-5 py-2 text-sm font-semibold disabled:opacity-40" disabled={tracks.length === 0} onclick={() => play(true)}>Shuffle</button>
-        <button class="rounded-full bg-surface-2 px-5 py-2 text-sm font-medium" onclick={rename}>Rename</button>
-        <button class="rounded-full bg-surface-2 px-5 py-2 text-sm font-medium" onclick={remove}>Delete</button>
+        <button class="rounded-md bg-fg px-5 py-2 text-sm font-semibold text-on-fg disabled:opacity-40" disabled={tracks.length === 0} onclick={() => play(false)}>Play</button>
+        <button class="rounded-md border border-line bg-surface px-5 py-2 text-sm font-semibold disabled:opacity-40" disabled={tracks.length === 0} onclick={() => play(true)}>Shuffle</button>
+        <button class="rounded-md border border-line bg-surface px-5 py-2 text-sm font-medium" onclick={rename}>Rename</button>
+        <button class="rounded-md border border-line bg-surface px-5 py-2 text-sm font-medium" onclick={remove}>Delete</button>
       </div>
     {/if}
   {/snippet}

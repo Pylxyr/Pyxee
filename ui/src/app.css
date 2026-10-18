@@ -21,31 +21,31 @@
  */
 :root {
   color-scheme: dark;
-  --bg: var(--t-bg, #0f0f0f);
-  --surface: var(--t-surface, #181818);
-  --surface-2: var(--t-surface-2, #272727);
-  --line: var(--t-line, #2a2a2a);
-  --fg: var(--t-fg, #ffffff);
-  --muted: var(--t-muted, #a8a8a8);
-  --accent: var(--t-accent, #ec0422);
-  --on-accent: var(--t-on-accent, #ffffff);
+  --bg: var(--t-bg, #12141b);
+  --surface: var(--t-surface, #1a1d27);
+  --surface-2: var(--t-surface-2, #252a37);
+  --line: var(--t-line, #2e3444);
+  --fg: var(--t-fg, #eef0f6);
+  --muted: var(--t-muted, #9ba3b7);
+  --accent: var(--t-accent, #f2a93b);
+  --on-accent: var(--t-on-accent, #14110a);
   /* Opaque colours that Mica never makes transparent: overlays, menus, and text on solid-fg buttons. */
-  --solid: var(--t-solid, #0f0f0f);
-  --solid-2: var(--t-solid-2, #272727);
+  --solid: var(--t-solid, #12141b);
+  --solid-2: var(--t-solid-2, #252a37);
   --on-fg: var(--t-on-fg, #0f0f0f);
 }
 
 :root[data-theme='light'] {
   color-scheme: light;
-  --bg: var(--t-bg, #ffffff);
-  --surface: var(--t-surface, #f4f4f4);
-  --surface-2: var(--t-surface-2, #e8e8e8);
-  --line: var(--t-line, #e0e0e0);
-  --fg: var(--t-fg, #0f0f0f);
-  --muted: var(--t-muted, #5c5c5c);
-  --accent: var(--t-accent, #d4041f);
-  --solid: var(--t-solid, #ffffff);
-  --solid-2: var(--t-solid-2, #e8e8e8);
+  --bg: var(--t-bg, #f4f6fa);
+  --surface: var(--t-surface, #eaeef5);
+  --surface-2: var(--t-surface-2, #dde3ee);
+  --line: var(--t-line, #cdd5e3);
+  --fg: var(--t-fg, #141824);
+  --muted: var(--t-muted, #566078);
+  --accent: var(--t-accent, #b45309);
+  --solid: var(--t-solid, #f4f6fa);
+  --solid-2: var(--t-solid-2, #dde3ee);
   --on-fg: var(--t-on-fg, #ffffff);
 }
 
@@ -53,15 +53,15 @@
 @media (prefers-color-scheme: light) {
   :root:not([data-theme]) {
     color-scheme: light;
-    --bg: var(--t-bg, #ffffff);
-    --surface: var(--t-surface, #f4f4f4);
-    --surface-2: var(--t-surface-2, #e8e8e8);
-    --line: var(--t-line, #e0e0e0);
-    --fg: var(--t-fg, #0f0f0f);
-    --muted: var(--t-muted, #5c5c5c);
-    --accent: var(--t-accent, #d4041f);
-    --solid: var(--t-solid, #ffffff);
-    --solid-2: var(--t-solid-2, #e8e8e8);
+    --bg: var(--t-bg, #f4f6fa);
+    --surface: var(--t-surface, #eaeef5);
+    --surface-2: var(--t-surface-2, #dde3ee);
+    --line: var(--t-line, #cdd5e3);
+    --fg: var(--t-fg, #141824);
+    --muted: var(--t-muted, #566078);
+    --accent: var(--t-accent, #b45309);
+    --solid: var(--t-solid, #f4f6fa);
+    --solid-2: var(--t-solid-2, #dde3ee);
     --on-fg: var(--t-on-fg, #ffffff);
   }
 }
@@ -71,10 +71,10 @@
  * A theme with a coloured background tints the backdrop with it (`--t-mica-tint`), so a blue theme is not grey.
  */
 :root[data-backdrop='mica'] {
-  --bg: color-mix(in srgb, var(--t-bg, #0f0f0f) var(--t-mica-tint, 0%), transparent);
-  --surface: color-mix(in srgb, var(--t-fg, #ffffff) 5%, transparent);
-  --surface-2: color-mix(in srgb, var(--t-fg, #ffffff) 10%, transparent);
-  --line: color-mix(in srgb, var(--t-fg, #ffffff) 12%, transparent);
+  --bg: color-mix(in srgb, var(--t-bg, #12141b) var(--t-mica-tint, 0%), transparent);
+  --surface: color-mix(in srgb, var(--t-fg, #eef0f6) 5%, transparent);
+  --surface-2: color-mix(in srgb, var(--t-fg, #eef0f6) 10%, transparent);
+  --line: color-mix(in srgb, var(--t-fg, #eef0f6) 12%, transparent);
 }
 :root[data-backdrop='mica'][data-theme='light'] {
   --surface: color-mix(in srgb, var(--t-fg, #000000) 4%, transparent);
@@ -95,6 +95,48 @@ body {
 
 button {
   cursor: pointer;
+}
+
+/*
+ * Scroll bars: thin, rounded, tinted from the text colour so they follow every theme (and Mica's veil). Quiet at rest,
+ * clearer when the pointer is over the list, accent while dragged. WebView2 is Chromium, so the -webkit- parts apply;
+ * the standard properties cover any engine that ignores them. Lists with this look: Queue, Now Playing, pages, sheets.
+ */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--fg) 22%, transparent) transparent;
+}
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track,
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  min-height: 36px;
+  border: 3px solid transparent;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--fg) 20%, transparent);
+  background-clip: content-box;
+}
+:hover::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--fg) 34%, transparent);
+  background-clip: content-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--fg) 52%, transparent);
+  background-clip: content-box;
+}
+::-webkit-scrollbar-thumb:active {
+  background: var(--accent);
+  background-clip: content-box;
+}
+/* A scroll area reached with the keyboard shows where focus is without the heavy outline. */
+[data-scroll]:focus-visible {
+  outline-offset: -2px;
+  border-radius: 6px;
 }
 :focus-visible {
   outline: 2px solid var(--accent);

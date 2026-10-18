@@ -55,5 +55,5 @@
 </div>
 
 <div class="flex gap-2 px-2 pb-2">
-  <button class="rounded-full bg-fg px-4 py-1.5 text-sm font-semibold text-on-fg" onclick={() => nav.openThemeEditor()}>Customize…</button>
+  <button class="rounded-md bg-fg px-4 py-1.5 text-sm font-semibold text-on-fg" onclick={() => nav.openThemeEditor()}>Customize…</button>
 </div>

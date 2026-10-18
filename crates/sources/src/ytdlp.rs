@@ -96,6 +96,9 @@ impl Cookies {
 
 pub struct YtDlpSource {
     path: PathBuf,
+    /// A copy kept up to date by the in-app updater. Used whenever the file exists, so an update applies to the
+    /// next search without restarting the app.
+    preferred: Option<PathBuf>,
     timeout: Duration,
     gate: Gate,
     cookies: Cookies,
@@ -105,6 +108,7 @@ impl YtDlpSource {
     pub fn new(path: impl Into<PathBuf>) -> Self {
         Self {
             path: path.into(),
+            preferred: None,
             timeout: Duration::from_secs(40),
             gate: Gate::new(GateConfig::DEFAULT),
             cookies: Cookies::None,
@@ -122,6 +126,20 @@ impl YtDlpSource {
         self
     }
 
+    /// Prefers `path` over the located program whenever that file exists (see the field's note).
+    pub fn with_preferred(mut self, path: impl Into<PathBuf>) -> Self {
+        self.preferred = Some(path.into());
+        self
+    }
+
+    /// The program the next run starts: the updater's copy if there is one, else the located one.
+    pub fn current_path(&self) -> &Path {
+        match &self.preferred {
+            Some(p) if p.is_file() => p,
+            _ => &self.path,
+        }
+    }
+
     pub fn with_cookies(mut self, cookies: Cookies) -> Self {
         self.cookies = cookies;
         self
@@ -136,7 +154,7 @@ impl YtDlpSource {
             .chain(args.iter().cloned())
             .collect();
         self.gate
-            .run(what, || run_tool(&self.path, &all, self.timeout))
+            .run(what, || run_tool(self.current_path(), &all, self.timeout))
     }
 }
 
@@ -1116,5 +1134,24 @@ esac"#,
                 1
             );
         }
+    }
+
+    #[test]
+    fn the_updaters_copy_is_used_only_while_it_exists() {
+        let dir = std::env::temp_dir().join(format!("pyxee-ytdlp-pref-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let managed = dir.join("yt-dlp.exe");
+        let src = YtDlpSource::new("installed/yt-dlp.exe").with_preferred(&managed);
+        assert_eq!(src.current_path(), Path::new("installed/yt-dlp.exe"));
+        std::fs::write(&managed, b"MZ").unwrap();
+        assert_eq!(src.current_path(), managed.as_path());
+        std::fs::remove_file(&managed).unwrap();
+        assert_eq!(src.current_path(), Path::new("installed/yt-dlp.exe"));
+        assert_eq!(
+            YtDlpSource::new("a").current_path(),
+            Path::new("a"),
+            "no preferred copy configured"
+        );
     }
 }

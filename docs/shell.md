@@ -21,5 +21,14 @@ position. Damaged files are kept as `shell.json.bad`. A second launch (or a jump
 (`--toggle --play --pause --next --prev --mini`) to the running player. `--autostart` (added by start-with-Windows)
 keeps the window hidden in the tray when close-to-tray is on.
 
+## Notification-area mini player (decision)
+The goal was a compact player in the taskbar notification area, left of the "show hidden icons" chevron. Windows has no supported way to put an app's own toolbar there: deskbands are gone from the Windows 11 taskbar and unsupported on Windows 10's, and the undocumented ways break between builds. What every Windows version supports, and what Pyxee does:
+
+* **The main tray icon** shows "Title – Artist" when you point at it, and a left click opens the **flyout** (title, artist, progress, previous / play-pause / next), anchored to the icon. Setting "Clicking the Pyxee tray icon opens the mini controls" turns this off, and a click then opens the window. The right-click menu is always there.
+* **Optional transport icons** (setting "Show previous, play and next buttons in the notification area"): three more tray icons (previous, play/pause, next) beside the main one. Play/pause shows what pressing it will do. Each press is the same command as a media key. The icons are outlined so they read on a light and a dark taskbar (`assets/logo/make-tray-glyphs.py`).
+* Limits that are Windows', not Pyxee's: it decides where new tray icons sit and whether they start in the overflow flyout, and an app cannot pin or order them. The user drags them out once (Windows 11: Settings > Personalization > Taskbar > Other system tray icons) and Windows remembers. The title and artist are in the tooltip and flyout, not printed in the strip, and there is no progress bar in the strip (the taskbar button keeps its own progress bar).
+
+Logic: `pyxee_shell::tray_controls` (glyph, tooltip, 120-character cut) and the settings; glue: `shell/tray_buttons.rs`, `shell/tray.rs`.
+
 Known limits: the window theme command only drives the main window, so the flyout and mini player follow the Windows
 theme for their Mica backdrop while their colours follow the app theme.

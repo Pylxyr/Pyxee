@@ -14,6 +14,8 @@ import type { FilterInfoDto } from './bindings/FilterInfoDto';
 import type { SearchFilterDto } from './bindings/SearchFilterDto';
 import type { SearchItemDto } from './bindings/SearchItemDto';
 import type { SearchResponseDto } from './bindings/SearchResponseDto';
+import type { AppUpdateDto } from './bindings/AppUpdateDto';
+import type { YtdlpUpdateDto } from './bindings/YtdlpUpdateDto';
 
 /** JSON round trip, like the real IPC boundary. (structuredClone rejects Svelte's reactive proxies.) */
 const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v)) as T;
@@ -88,6 +90,15 @@ export class MockBackend extends MockLibrary implements Backend {
     };
   }
   async openLogFolder() { this.logFolderOpens++; }
+  /** What the update checks answer; set `updateFailure` to make any update call reject. */
+  appUpdate: AppUpdateDto = { current: '0.1.0', latest: '0.1.0', available: false, notesUrl: 'https://example.test/releases', installable: true };
+  ytdlpUpdate: YtdlpUpdateDto = { available: false, currentVersion: '2026.01.01' };
+  updateFailure: string | null = null;
+  updateCalls: string[] = [];
+  async updateCheckApp() { this.updateCalls.push('checkApp'); if (this.updateFailure) throw this.updateFailure; return clone(this.appUpdate); }
+  async updateInstallApp() { this.updateCalls.push('installApp'); if (this.updateFailure) throw this.updateFailure; }
+  async updateCheckYtdlp() { this.updateCalls.push('checkYtdlp'); if (this.updateFailure) throw this.updateFailure; return clone(this.ytdlpUpdate); }
+  async updateInstallYtdlp() { this.updateCalls.push('installYtdlp'); if (this.updateFailure) throw this.updateFailure; this.ytdlpUpdate = { available: false, currentVersion: '2026.10.01' }; return '2026.10.01'; }
   #noticeListeners = new Set<(m: string) => void>();
   async onNotice(cb: (m: string) => void) {
     this.#noticeListeners.add(cb);
@@ -158,7 +169,7 @@ export class MockBackend extends MockLibrary implements Backend {
     }
     return false;
   }
-  shell: ShellSettingsDto = { closeToTray: false, startWithWindows: false, toastOnChange: false };
+  shell: ShellSettingsDto = { closeToTray: false, startWithWindows: false, toastOnChange: false, trayControls: false, flyoutOnClick: true };
   /** Set to make `shellSet` fail, to test how the UI reports it. */
   shellError: string | null = null;
   async shellGet() { return { ...this.shell }; }
@@ -177,6 +188,14 @@ export class MockBackend extends MockLibrary implements Backend {
       filter,
       supported: filter !== 'albums',
     }));
+  }
+  /** Set to make `relatedGet` reject, e.g. `{ kind: 'offline', message: '...' }`. */
+  relatedFailure: unknown = null;
+  relatedCalls: string[] = [];
+  async relatedGet(key: string, count: number): Promise<TrackDto[]> {
+    this.relatedCalls.push(key);
+    if (this.relatedFailure) throw this.relatedFailure;
+    return DEMO_TRACKS.filter((t) => t.key !== key).slice(0, count);
   }
   async suggest(prefix: string) {
     const p = prefix.trim().toLowerCase();

@@ -3,6 +3,8 @@ import type { AddResultDto } from './bindings/AddResultDto';
 import type { FilterInfoDto } from './bindings/FilterInfoDto';
 import type { HistoryItemDto } from './bindings/HistoryItemDto';
 import type { LogInfoDto } from './bindings/LogInfoDto';
+import type { AppUpdateDto } from './bindings/AppUpdateDto';
+import type { YtdlpUpdateDto } from './bindings/YtdlpUpdateDto';
 import type { LyricsDto } from './bindings/LyricsDto';
 import type { ShellSettingsDto } from './bindings/ShellSettingsDto';
 import type { SleepSettingDto } from './bindings/SleepSettingDto';
@@ -39,6 +41,8 @@ export interface LibraryBackend {
   historyClear(): Promise<HistoryItemDto[]>;
   historyRestore(items: HistoryItemDto[]): Promise<void>;
   homeGet(): Promise<HomeDto>;
+  /** Songs similar to `key` (for Explore). Rejects with a `SearchErrorDto` like `search` does. */
+  relatedGet(key: string, count: number): Promise<TrackDto[]>;
 }
 
 /** Everything the UI needs from Rust. Implemented by Tauri at runtime and by a mock in the browser and in tests. */
@@ -55,6 +59,14 @@ export interface Backend extends LibraryBackend {
   /** Where the log file is, for the Diagnostics section. */
   logInfo(): Promise<LogInfoDto>;
   openLogFolder(): Promise<void>;
+  /** Looks for a newer Pyxee release on GitHub. */
+  updateCheckApp(): Promise<AppUpdateDto>;
+  /** Downloads the installer, checks its SHA-256, starts it and quits Pyxee. Rejects with a readable message. */
+  updateInstallApp(): Promise<void>;
+  /** Compares the yt-dlp in use with the published one. */
+  updateCheckYtdlp(): Promise<YtdlpUpdateDto>;
+  /** Downloads, verifies and swaps in the newest yt-dlp; resolves to its version. The old one is kept if anything fails. */
+  updateInstallYtdlp(): Promise<string>;
   /** Messages for the listener that are not player state (a song was skipped, a stream was cut off). */
   onNotice(cb: (message: string) => void): Promise<() => void>;
   /** Rejects with a `SearchErrorDto` (offline, rate limited, tool missing, ...). */
@@ -112,6 +124,10 @@ export async function tauriBackend(): Promise<Backend> {
     setWindowTheme: (theme) => invoke<void>('set_window_theme', { theme }).catch(() => {}),
     logInfo: () => invoke<LogInfoDto>('get_log_info'),
     openLogFolder: () => invoke<void>('open_log_folder'),
+    updateCheckApp: () => invoke<AppUpdateDto>('update_check_app'),
+    updateInstallApp: () => invoke<void>('update_install_app'),
+    updateCheckYtdlp: () => invoke<YtdlpUpdateDto>('update_check_ytdlp'),
+    updateInstallYtdlp: () => invoke<string>('update_install_ytdlp'),
     onNotice: async (cb) => listen<NoticeDto>(NOTICE_EVENT, (e) => cb(e.payload.message)),
     search: (query, filter) => invoke<SearchResponseDto>('search', { query, filter }),
     suggest: (prefix) => invoke<string[]>('suggest', { prefix }).catch(() => []),
@@ -133,6 +149,7 @@ export async function tauriBackend(): Promise<Backend> {
     historyClear: () => invoke<HistoryItemDto[]>('history_clear'),
     historyRestore: (items) => invoke<void>('history_restore', { items }),
     homeGet: () => invoke<HomeDto>('home_get'),
+    relatedGet: (key, count) => invoke<TrackDto[]>('related_get', { key, count }),
     devCatalog: () => invoke<TrackDto[]>('dev_catalog'),
     lyricsGet: (t) =>
       invoke<LyricsDto>('lyrics_get', { key: t.key, title: t.title, artist: t.artist, durationMs: t.durationMs }).catch(

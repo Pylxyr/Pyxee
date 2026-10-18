@@ -1,0 +1,302 @@
+//! In-app updates for Pyxee itself and for yt-dlp. This file is the network and process glue; every decision (is it
+//! newer, which file, does the checksum match, replace safely) lives in `pyxee_shell::update` and is tested there.
+//!
+//! * Pyxee: looks at the GitHub releases (see docs/releasing.md), downloads the installer, checks it against the
+//!   release's `SHA256SUMS.txt`, starts it and quits so the installer can replace the files. The installers are not
+//!   code-signed yet, so Windows SmartScreen will still ask; checking the SHA-256 is what this adds.
+//! * yt-dlp: checks its published SHA-256 list, downloads, verifies, runs `--version` on the new file and only then
+//!   puts it in the data folder, where `YtDlpSource` prefers it over the installed copy.
+
+use crate::state::AppState;
+use pyxee_shell::update::{self, ToolStatus};
+use serde::Serialize;
+use std::io::Read;
+use std::path::{Path, PathBuf};
+use std::process::{Command, Stdio};
+use std::time::Duration;
+use tauri::{AppHandle, State};
+use ts_rs::TS;
+
+const REPO: &str = "Pylxyr/Pyxee";
+const YTDLP_BASE: &str = "https://github.com/yt-dlp/yt-dlp/releases/latest/download";
+const YTDLP_FILE: &str = "yt-dlp.exe";
+/// Nothing we download is anywhere near this; it stops a wrong URL from filling the disk.
+const MAX_DOWNLOAD: u64 = 300 * 1024 * 1024;
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct AppUpdateDto {
+    pub current: String,
+    pub latest: String,
+    pub available: bool,
+    // The release page, always present so there is something to open even when it cannot be installed in place.
+    pub notes_url: String,
+    // True when the release carries an installer and a checksum list, so "Install" can verify it.
+    pub installable: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct YtdlpUpdateDto {
+    pub available: bool,
+    pub current_version: Option<String>,
+}
+
+fn agent() -> ureq::Agent {
+    ureq::AgentBuilder::new()
+        .user_agent(concat!("Pyxee/", env!("CARGO_PKG_VERSION")))
+        .timeout_connect(Duration::from_secs(20))
+        .timeout_read(Duration::from_secs(120))
+        .build()
+}
+
+fn get(url: &str) -> Result<Vec<u8>, String> {
+    let resp = agent()
+        .get(url)
+        .set("Accept", "application/vnd.github+json, */*")
+        .call()
+        .map_err(|e| match e {
+            ureq::Error::Status(404, _) => format!(
+                "{url} was not found. The release may have been removed, or the repository is private."
+            ),
+            ureq::Error::Status(403 | 429, _) => {
+                "GitHub is limiting requests right now. Try again in a few minutes.".to_string()
+            }
+            ureq::Error::Status(c, _) => format!("{url} answered HTTP {c}"),
+            e => format!("Could not reach {url}: {e}. Check your internet connection (and any proxy or firewall)."),
+        })?;
+    let mut bytes = Vec::new();
+    resp.into_reader()
+        .take(MAX_DOWNLOAD)
+        .read_to_end(&mut bytes)
+        .map_err(|e| format!("The download of {url} was interrupted: {e}"))?;
+    Ok(bytes)
+}
+
+fn text(url: &str) -> Result<String, String> {
+    Ok(String::from_utf8_lossy(&get(url)?).into_owned())
+}
+
+// ------------------------------------------------------------------ Pyxee
+
+fn latest_release(current: &str) -> Result<Option<update::Release>, String> {
+    let beta = update::Version::parse(current).is_some_and(|v| v.is_prerelease());
+    let json = text(&format!(
+        "https://api.github.com/repos/{REPO}/releases?per_page=20"
+    ))?;
+    update::newest_release(&json, beta).map_err(|e| e.to_string())
+}
+
+fn check_app_blocking() -> Result<AppUpdateDto, String> {
+    let current = env!("CARGO_PKG_VERSION").to_string();
+    Ok(match latest_release(&current)? {
+        Some(r) => AppUpdateDto {
+            available: update::is_newer(&current, &r.tag),
+            latest: r.version_text(),
+            notes_url: r.page_url.clone(),
+            installable: r.installer.is_some() && r.sums_url.is_some(),
+            current,
+        },
+        None => AppUpdateDto {
+            latest: current.clone(),
+            available: false,
+            notes_url: format!("https://github.com/{REPO}/releases"),
+            installable: false,
+            current,
+        },
+    })
+}
+
+/// Downloads and verifies the installer; returns where it is.
+fn fetch_installer() -> Result<PathBuf, String> {
+    let current = env!("CARGO_PKG_VERSION");
+    let release = latest_release(current)?.ok_or("No release was found.")?;
+    if !update::is_newer(current, &release.tag) {
+        return Err("Pyxee is already up to date.".into());
+    }
+    let (Some(installer), Some(sums_url)) = (release.installer.as_ref(), release.sums_url.as_ref())
+    else {
+        return Err("This release has no installer with a checksum list attached. Open the release page to download it yourself.".into());
+    };
+    let sums = text(sums_url)?;
+    let expected = update::parse_sums(&sums, &installer.name)
+        .ok_or_else(|| update::UpdateError::NotListed(installer.name.clone()).to_string())?;
+    let bytes = get(&installer.url)?;
+    update::verify(&bytes, &expected).map_err(|e| e.to_string())?;
+    let dir = std::env::temp_dir().join("pyxee-update");
+    std::fs::create_dir_all(&dir)
+        .map_err(|e| format!("Could not create {}: {e}", dir.display()))?;
+    // The name comes from the release; keep only its file name so it can never point outside the folder.
+    let name = Path::new(&installer.name)
+        .file_name()
+        .ok_or("The installer has no usable file name.")?;
+    let path = dir.join(name);
+    std::fs::write(&path, &bytes).map_err(|e| format!("Could not save the installer: {e}"))?;
+    log::info!(
+        "update: {} downloaded and verified ({expected})",
+        path.display()
+    );
+    Ok(path)
+}
+
+fn launch_installer(path: &Path) -> Result<(), String> {
+    let msi = path
+        .extension()
+        .is_some_and(|e| e.eq_ignore_ascii_case("msi"));
+    let mut cmd = if msi {
+        let mut c = Command::new("msiexec");
+        c.arg("/i").arg(path);
+        c
+    } else {
+        Command::new(path)
+    };
+    cmd.spawn()
+        .map(|_| ())
+        .map_err(|e| format!("Could not start the installer: {e}"))
+}
+
+#[tauri::command]
+pub async fn update_check_app() -> Result<AppUpdateDto, String> {
+    tauri::async_runtime::spawn_blocking(check_app_blocking)
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+/// Downloads, verifies and starts the installer, then quits so it can replace the files.
+#[tauri::command]
+pub async fn update_install_app(app: AppHandle) -> Result<(), String> {
+    let path = tauri::async_runtime::spawn_blocking(fetch_installer)
+        .await
+        .map_err(|e| e.to_string())??;
+    launch_installer(&path)?;
+    crate::shell::quit(&app);
+    Ok(())
+}
+
+// ----------------------------------------------------------------- yt-dlp
+
+/// Where the updater keeps its copy of yt-dlp, which `YtDlpSource` prefers over the installed one.
+pub fn managed_ytdlp_path(data_dir: &Path) -> PathBuf {
+    data_dir.join("tools").join(YTDLP_FILE)
+}
+
+fn data_dir(state: &AppState) -> Result<PathBuf, String> {
+    state
+        .session_path
+        .as_deref()
+        .and_then(Path::parent)
+        .map(Path::to_path_buf)
+        .ok_or_else(|| "Pyxee has no data folder to keep an updated yt-dlp in.".to_string())
+}
+
+fn guard_env() -> Result<(), String> {
+    if std::env::var_os("PYXEE_YTDLP").is_some_and(|v| !v.is_empty()) {
+        return Err("yt-dlp is set by the PYXEE_YTDLP variable, so Pyxee leaves it alone. Update that copy yourself.".into());
+    }
+    Ok(())
+}
+
+/// The yt-dlp the next search would start: the updater's copy if there is one, else the installed one.
+fn current_ytdlp(data_dir: &Path) -> PathBuf {
+    let managed = managed_ytdlp_path(data_dir);
+    if managed.is_file() {
+        managed
+    } else {
+        crate::tools::locate("yt-dlp", "PYXEE_YTDLP")
+    }
+}
+
+fn version_of(path: &Path) -> Result<String, String> {
+    let mut cmd = Command::new(path);
+    cmd.arg("--version")
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
+    }
+    let out = cmd.output().map_err(|e| e.to_string())?;
+    if !out.status.success() {
+        return Err(format!("exit status {}", out.status));
+    }
+    Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
+}
+
+fn check_ytdlp_blocking(dir: &Path) -> Result<YtdlpUpdateDto, String> {
+    let current = current_ytdlp(dir);
+    let sums = text(&format!("{YTDLP_BASE}/SHA2-256SUMS"))?;
+    // A program Windows has to find on PATH is not a file we can hash: offer to install our own copy.
+    let status = match std::fs::read(&current) {
+        Ok(bytes) => update::tool_status(&update::sha256_hex(&bytes), &sums, YTDLP_FILE)
+            .map_err(|e| e.to_string())?,
+        Err(_) => ToolStatus::Available {
+            expected: String::new(),
+        },
+    };
+    Ok(YtdlpUpdateDto {
+        available: matches!(status, ToolStatus::Available { .. }),
+        current_version: version_of(&current).ok(),
+    })
+}
+
+fn install_ytdlp_blocking(dir: &Path) -> Result<String, String> {
+    let sums = text(&format!("{YTDLP_BASE}/SHA2-256SUMS"))?;
+    let expected = update::parse_sums(&sums, YTDLP_FILE)
+        .ok_or_else(|| update::UpdateError::NotListed(YTDLP_FILE.into()).to_string())?;
+    let bytes = get(&format!("{YTDLP_BASE}/{YTDLP_FILE}"))?;
+    let target = managed_ytdlp_path(dir);
+    let version = update::install_verified(&target, &bytes, &expected, version_of)
+        .map_err(|e| e.to_string())?;
+    log::info!("update: yt-dlp {version} installed at {}", target.display());
+    Ok(version)
+}
+
+#[tauri::command]
+pub async fn update_check_ytdlp(state: State<'_, AppState>) -> Result<YtdlpUpdateDto, String> {
+    guard_env()?;
+    let dir = data_dir(&state)?;
+    tauri::async_runtime::spawn_blocking(move || check_ytdlp_blocking(&dir))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+/// Installs the verified yt-dlp; returns its version. The next search uses it, no restart needed.
+#[tauri::command]
+pub async fn update_install_ytdlp(state: State<'_, AppState>) -> Result<String, String> {
+    guard_env()?;
+    let dir = data_dir(&state)?;
+    tauri::async_runtime::spawn_blocking(move || install_ytdlp_blocking(&dir))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_updated_yt_dlp_lives_in_a_tools_folder_of_the_data_folder() {
+        assert_eq!(
+            managed_ytdlp_path(Path::new("D:/data")),
+            Path::new("D:/data").join("tools").join("yt-dlp.exe")
+        );
+    }
+
+    #[test]
+    fn app_update_info_crosses_the_boundary_in_camel_case() {
+        let v = serde_json::to_value(AppUpdateDto {
+            current: "0.1.0".into(),
+            latest: "0.2.0".into(),
+            available: true,
+            notes_url: "u".into(),
+            installable: false,
+        })
+        .unwrap();
+        assert_eq!(v["notesUrl"], "u");
+        assert_eq!(v["installable"], false);
+    }
+}

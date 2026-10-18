@@ -56,4 +56,9 @@ The run summary says what to do. Short version: a flaky step (network, runner) -
 
 ## Not done yet
 
-Code signing (SmartScreen still warns), the portable build and in-app updates (milestone 7). A Linux or macOS build is deliberately not part of this.
+Code signing (SmartScreen still warns) and the portable build (milestone 7).
+
+## In-app updates
+Settings > Updates asks `api.github.com/repos/Pylxyr/Pyxee/releases` for the newest release (drafts never count; pre-releases count only when the running build is one). "Download and install" fetches the `-setup.exe` (or the `.msi`), checks it against the release's `SHA256SUMS.txt` (written by the workflow above), starts it and quits Pyxee. A release without an installer and checksum list is reported with its page instead. The installers are unsigned, so SmartScreen still asks. The decisions are in `pyxee_shell::update` (unit tested); the network and process calls are in `crates/app/src/updater.rs`.
+
+yt-dlp is updated separately: its published `SHA2-256SUMS` is compared with the copy in use, a newer one is downloaded, verified, test-run (`--version`) and only then renamed over `<data folder>\tools\yt-dlp.exe`, which `YtDlpSource` prefers over the installed copy (so no restart). If any step fails the working copy is untouched; no backup copy is kept. `PYXEE_YTDLP` pins a copy and disables the updater. A Linux or macOS build is deliberately not part of this.

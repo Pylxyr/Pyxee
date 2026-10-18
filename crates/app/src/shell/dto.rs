@@ -113,6 +113,8 @@ pub struct ShellSettingsDto {
     pub close_to_tray: bool,
     pub start_with_windows: bool,
     pub toast_on_change: bool,
+    pub tray_controls: bool,
+    pub flyout_on_click: bool,
 }
 
 impl From<&ShellSettings> for ShellSettingsDto {
@@ -121,6 +123,8 @@ impl From<&ShellSettings> for ShellSettingsDto {
             close_to_tray: s.close_to_tray,
             start_with_windows: s.start_with_windows,
             toast_on_change: s.toast_on_change,
+            tray_controls: s.tray_controls,
+            flyout_on_click: s.flyout_on_click,
         }
     }
 }

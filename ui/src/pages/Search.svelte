@@ -53,7 +53,7 @@
           <p class="font-semibold">{search.error.message}</p>
           {#if hint}<p class="mt-1 text-sm text-muted">{hint}</p>{/if}
           {#if search.error.kind !== 'unsupported'}
-            <button class="mt-3 rounded-full bg-fg px-4 py-1.5 text-sm font-semibold text-on-fg" onclick={() => search.retry()}>Try again</button>
+            <button class="mt-3 rounded-md bg-fg px-4 py-1.5 text-sm font-semibold text-on-fg" onclick={() => search.retry()}>Try again</button>
           {/if}
         </div>
       {:else if search.status === 'ready' && search.items.length === 0}

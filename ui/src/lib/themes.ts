@@ -59,9 +59,8 @@ const t = (id: string, name: string, scheme: Scheme, description: string, c: str
  * copies of any particular skin.
  */
 export const BUILTIN_THEMES: ThemeDef[] = [
-  t('dark', 'Dark', 'dark', 'Neutral dark', '#0f0f0f #181818 #272727 #2a2a2a #ffffff #a8a8a8 #ec0422'),
-  t('light', 'Light', 'light', 'Neutral light', '#ffffff #f4f4f4 #e8e8e8 #e0e0e0 #0f0f0f #5c5c5c #d4041f'),
-  t('ytmusic', 'YT Music', 'dark', 'Near-black with the red of YouTube Music', '#030303 #121212 #212121 #2f2f2f #ffffff #aaaaaa #ff0000'),
+  t('dark', 'Ink', 'dark', 'Blue-black ink with an amber accent (the default)', '#12141b #1a1d27 #252a37 #2e3444 #eef0f6 #9ba3b7 #f2a93b'),
+  t('light', 'Frost', 'light', 'Cool off-white with a burnt-amber accent', '#f4f6fa #eaeef5 #dde3ee #cdd5e3 #141824 #566078 #b45309'),
   t('oled', 'OLED black', 'dark', 'Pure black, easy on OLED screens', '#000000 #0a0a0a #1a1a1a #262626 #f2f2f2 #9a9a9a #ff5c6a'),
   t('deepblue', 'Deep blue', 'dark', 'Blue with violet highlights', '#0b1426 #111d36 #1b2a4a #243558 #e8eefc #9fb0d3 #8b7bff'),
   t('sky', 'Sky', 'light', 'Light blue with violet highlights', '#f3f8ff #e6f0fc #d5e5f8 #c3d7ee #14233b #50627f #6b4fd8'),

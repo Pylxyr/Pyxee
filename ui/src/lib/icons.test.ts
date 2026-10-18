@@ -49,7 +49,7 @@ describe('app icons', () => {
   });
 });
 
-describe('the logo and the accent colour agree', () => {
+describe('the logo and the accent colour', () => {
   const hex = (h: string) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
   it('the SVG sources and the Logo component use the logo red', () => {
     for (const text of [read('assets/logo/logo.svg').toString(), read('assets/logo/tray.svg').toString(), readFileSync(resolve(__dirname, '../components/Logo.svelte'), 'utf8')]) {
@@ -57,13 +57,11 @@ describe('the logo and the accent colour agree', () => {
     }
   });
 
-  it('the UI accent of Dark and Light is that red, nudged only enough for readable text on buttons', () => {
-    // #ec0422 instead of #f00524: white text on it passes 4.5:1 (the exact logo red gives 4.42).
+  it('the default themes do not use YouTube red (the logo keeps its own red; the UI has its own identity)', () => {
+    const [yr, yg, yb] = hex('#ff0000');
     for (const id of ['dark', 'light']) {
-      const accent = BUILTIN_THEMES.find((t) => t.id === id)!.colors.accent;
-      const [r, g, b] = hex(accent);
-      const [lr, lg, lb] = hex('#f00524');
-      expect(Math.max(Math.abs(r! - lr!), Math.abs(g! - lg!), Math.abs(b! - lb!)), id).toBeLessThanOrEqual(32);
+      const [r, g, b] = hex(BUILTIN_THEMES.find((t) => t.id === id)!.colors.accent);
+      expect(Math.hypot(r! - yr!, g! - yg!, b! - yb!), id).toBeGreaterThan(100);
     }
   });
 });

@@ -30,6 +30,18 @@ impl From<&Track> for TrackDto {
     }
 }
 
+impl From<&pyxee_sources::TrackInfo> for TrackDto {
+    fn from(t: &pyxee_sources::TrackInfo) -> Self {
+        Self {
+            key: t.key.clone(),
+            title: t.title.clone(),
+            artist: t.artist.clone(),
+            duration_ms: t.duration_ms,
+            thumbnail: t.thumbnail.clone(),
+        }
+    }
+}
+
 impl From<TrackDto> for Track {
     fn from(t: TrackDto) -> Self {
         Self {
@@ -658,6 +670,22 @@ mod tests {
         assert_eq!(
             SearchErrorDto::from(&SourceError::Failed("x".into())).kind,
             SearchErrorKind::Other
+        );
+    }
+
+    #[test]
+    fn source_tracks_convert_to_track_dtos_without_losing_fields() {
+        let info = pyxee_sources::TrackInfo {
+            key: "yt:abc".into(),
+            title: "T".into(),
+            artist: "A".into(),
+            duration_ms: Some(2000),
+            thumbnail: Some("u".into()),
+        };
+        let dto = TrackDto::from(&info);
+        assert_eq!(
+            (dto.key.as_str(), dto.duration_ms, dto.thumbnail.as_deref()),
+            ("yt:abc", Some(2000), Some("u"))
         );
     }
 

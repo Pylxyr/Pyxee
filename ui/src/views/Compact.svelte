@@ -28,12 +28,12 @@
       <p class="truncate text-[15px] font-semibold" data-testid="compact-title">{entry?.track.title ?? 'Nothing playing'}</p>
       <p class="truncate text-[13px] text-muted">{entry?.track.artist ?? ''}</p>
     </button>
-    <div class="h-[3px] w-full overflow-hidden rounded-full bg-surface-2" role="progressbar" aria-label="Progress" aria-valuenow={Math.round(percent)} aria-valuemin="0" aria-valuemax="100">
+    <div class="h-[3px] w-full overflow-hidden rounded-md border border-line bg-surface" role="progressbar" aria-label="Progress" aria-valuenow={Math.round(percent)} aria-valuemin="0" aria-valuemax="100">
       <div class="h-full rounded-full bg-accent" style="width:{percent}%"></div>
     </div>
     <div class="flex items-center gap-4">
       <button class="p-1 text-muted hover:text-fg" aria-label="Previous" onclick={player.previous}><Icon name="prev" size={22} /></button>
-      <button class="flex h-9 w-9 items-center justify-center rounded-full bg-fg text-on-fg" aria-label={player.isPlaying ? 'Pause' : 'Play'} onclick={player.toggle}>
+      <button class="flex h-9 w-9 items-center justify-center rounded-md bg-fg text-on-fg" aria-label={player.isPlaying ? 'Pause' : 'Play'} onclick={player.toggle}>
         <Icon name={player.isPlaying ? 'pause' : 'play'} size={20} fill={!player.isPlaying} />
       </button>
       <button class="p-1 text-muted hover:text-fg" aria-label="Next" onclick={player.next}><Icon name="next" size={22} /></button>

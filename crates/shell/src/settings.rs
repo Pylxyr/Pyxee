@@ -7,7 +7,7 @@ use std::path::Path;
 pub const MINI_MIN: (i32, i32) = (260, 90);
 pub const MINI_MAX: (i32, i32) = (900, 400);
 
-#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
 pub struct ShellSettings {
     /// The window's close button hides to the tray instead of quitting.
@@ -15,8 +15,26 @@ pub struct ShellSettings {
     pub start_with_windows: bool,
     /// A notification when the song changes while the window is not focused.
     pub toast_on_change: bool,
+    /// Previous / play-pause / next as three small icons in the notification area (beside the main tray icon).
+    pub tray_controls: bool,
+    /// A left click on the main tray icon opens the flyout (title, artist, progress, buttons). When off it opens
+    /// the main window instead. The right-click menu is always there.
+    pub flyout_on_click: bool,
     /// Where the mini player was last left (physical pixels).
     pub mini_bounds: Option<Rect>,
+}
+
+impl Default for ShellSettings {
+    fn default() -> Self {
+        Self {
+            close_to_tray: false,
+            start_with_windows: false,
+            toast_on_change: false,
+            tray_controls: false,
+            flyout_on_click: true,
+            mini_bounds: None,
+        }
+    }
 }
 
 impl ShellSettings {
@@ -100,6 +118,22 @@ mod tests {
         let _ = std::fs::remove_dir_all(&d);
         std::fs::create_dir_all(&d).unwrap();
         d
+    }
+
+    #[test]
+    fn the_notification_area_defaults_are_a_flyout_on_click_and_no_extra_icons() {
+        let d = ShellSettings::default();
+        assert!(d.flyout_on_click && !d.tray_controls);
+    }
+
+    #[test]
+    fn a_file_from_before_these_settings_existed_keeps_its_values_and_gets_the_new_defaults() {
+        let p = dir("old").join("shell.json");
+        std::fs::write(&p, r#"{"closeToTray": true, "toastOnChange": true}"#).unwrap();
+        let l = load(&p);
+        assert!(l.warning.is_none());
+        assert!(l.settings.close_to_tray && l.settings.toast_on_change);
+        assert!(l.settings.flyout_on_click && !l.settings.tray_controls);
     }
 
     #[test]

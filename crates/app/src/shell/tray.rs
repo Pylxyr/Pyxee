@@ -47,7 +47,15 @@ pub fn init(app: &AppHandle) -> tauri::Result<()> {
                 button_state: MouseButtonState::Up,
                 rect,
                 ..
-            } => flyout::toggle(tray.app_handle(), rect),
+            } => {
+                let app = tray.app_handle();
+                if flyout_on_click(app) {
+                    flyout::toggle(app, rect);
+                } else {
+                    flyout::hide(app);
+                    show_main(app);
+                }
+            }
             TrayIconEvent::DoubleClick {
                 button: MouseButton::Left,
                 ..
@@ -60,6 +68,14 @@ pub fn init(app: &AppHandle) -> tauri::Result<()> {
         .build(app)?;
     let _ = app.state::<ShellState>(); // the tray is only useful with the shell state in place
     Ok(())
+}
+
+/// The "Open the flyout when I click the icon" setting; on by default.
+fn flyout_on_click(app: &AppHandle) -> bool {
+    app.state::<ShellState>()
+        .settings
+        .lock()
+        .is_ok_and(|s| s.flyout_on_click)
 }
 
 pub fn set_tooltip(app: &AppHandle, text: &str) {

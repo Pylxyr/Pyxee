@@ -39,7 +39,7 @@
 
 <header class="px-4 py-3 sm:px-8">
   <form class="relative max-w-xl" role="search" onsubmit={submit}>
-    <div class="flex h-11 items-center gap-3 rounded-full bg-surface-2 px-4">
+    <div class="flex h-10 items-center gap-3 rounded-md border border-line bg-surface px-3 focus-within:border-accent">
       <Icon name="search" size={20} />
       <input
         type="search"
@@ -59,7 +59,7 @@
       />
     </div>
     {#if open}
-      <ul id="search-suggestions" role="listbox" aria-label="Suggestions" class="absolute inset-x-0 top-12 z-20 overflow-hidden rounded-2xl bg-solid-2 py-1 shadow-xl backdrop-blur">
+      <ul id="search-suggestions" role="listbox" aria-label="Suggestions" class="absolute inset-x-0 top-12 z-20 overflow-hidden rounded-md border border-line bg-solid-2 py-1 shadow-xl backdrop-blur">
         {#each search.suggestions as s, i (s)}
           <li
             id="suggest-{i}"

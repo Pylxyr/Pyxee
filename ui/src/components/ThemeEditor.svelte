@@ -157,19 +157,19 @@
     <details class="mt-3 rounded-lg bg-surface px-3 py-2">
       <summary class="cursor-pointer text-sm">Import a theme</summary>
       <textarea class="mt-2 h-24 w-full rounded-lg bg-surface-2 p-2 font-mono text-xs text-fg" aria-label="Theme text" placeholder="Paste theme text here" bind:value={importText}></textarea>
-      <button class="mt-2 rounded-full bg-surface-2 px-4 py-1.5 text-sm font-medium disabled:opacity-40" disabled={!importText.trim()} onclick={doImport}>Import</button>
+      <button class="mt-2 rounded-md border border-line bg-surface px-4 py-1.5 text-sm font-medium disabled:opacity-40" disabled={!importText.trim()} onclick={doImport}>Import</button>
     </details>
 
     {#if error}<p class="mt-3 text-[13px] text-accent" role="alert">{error}</p>{/if}
   </div>
 
   <div class="mt-4 flex flex-wrap gap-2 px-2">
-    <button class="rounded-full bg-fg px-4 py-1.5 text-sm font-semibold text-on-fg" onclick={save}>Save</button>
-    <button class="rounded-full bg-surface px-4 py-1.5 text-sm font-medium" onclick={close}>Cancel</button>
-    <button class="rounded-full bg-surface px-4 py-1.5 text-sm font-medium" onclick={reset}>Reset</button>
-    <button class="rounded-full bg-surface px-4 py-1.5 text-sm font-medium" onclick={copyExport}>Export</button>
+    <button class="rounded-md bg-fg px-4 py-1.5 text-sm font-semibold text-on-fg" onclick={save}>Save</button>
+    <button class="rounded-md border border-line bg-surface px-4 py-1.5 text-sm font-medium" onclick={close}>Cancel</button>
+    <button class="rounded-md border border-line bg-surface px-4 py-1.5 text-sm font-medium" onclick={reset}>Reset</button>
+    <button class="rounded-md border border-line bg-surface px-4 py-1.5 text-sm font-medium" onclick={copyExport}>Export</button>
     {#if editingSaved}
-      <button class="ml-auto rounded-full bg-surface px-4 py-1.5 text-sm font-medium text-accent" onclick={remove}>Delete</button>
+      <button class="ml-auto rounded-md border border-line bg-surface px-4 py-1.5 text-sm font-medium text-accent" onclick={remove}>Delete</button>
     {/if}
   </div>
 </Sheet>

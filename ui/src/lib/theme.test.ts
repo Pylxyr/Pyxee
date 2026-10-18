@@ -31,8 +31,8 @@ describe('ThemeStore', () => {
   it('uses the themes chosen for system light and system dark', () => {
     const { mq, flip } = fakeMq(true);
     const t = new ThemeStore(memory(), mq);
-    t.update({ darkId: 'ytmusic', lightId: 'sky' });
-    expect(t.active.id).toBe('ytmusic');
+    t.update({ darkId: 'oled', lightId: 'sky' });
+    expect(t.active.id).toBe('oled');
     flip(false);
     expect(t.active.id).toBe('sky');
   });
@@ -50,11 +50,11 @@ describe('ThemeStore', () => {
   it('persists changes and restores them', () => {
     const store = memory();
     const a = new ThemeStore(store, null);
-    a.select('ytmusic');
+    a.select('oled');
     a.update({ dynamicColor: true });
     const saved = a.saveCustom(mine());
     const b = new ThemeStore(store, null);
-    expect(b.settings.themeId).toBe('ytmusic');
+    expect(b.settings.themeId).toBe('oled');
     expect(b.settings.dynamicColor).toBe(true);
     expect(b.find(saved.id)?.name).toBe('Mine');
   });
@@ -97,15 +97,15 @@ describe('ThemeStore', () => {
   it('writes the scheme, backdrop and every colour to the root element', () => {
     const t = new ThemeStore(memory(), fakeMq(false).mq);
     t.backdrop = 'mica';
-    t.select('ytmusic');
+    t.select('oled');
     const root = document.createElement('html');
     t.apply(root);
     expect(root.dataset.theme).toBe('dark');
-    expect(root.dataset.themeId).toBe('ytmusic');
+    expect(root.dataset.themeId).toBe('oled');
     expect(root.dataset.backdrop).toBe('mica');
-    expect(root.style.getPropertyValue('--t-bg')).toBe('#030303');
-    expect(root.style.getPropertyValue('--t-accent')).toBe('#ff0000');
-    expect(contrast(root.style.getPropertyValue('--t-on-accent'), '#ff0000')).toBeGreaterThanOrEqual(4.5);
+    expect(root.style.getPropertyValue('--t-bg')).toBe('#000000');
+    expect(root.style.getPropertyValue('--t-accent')).toBe('#ff5c6a');
+    expect(contrast(root.style.getPropertyValue('--t-on-accent'), '#ff5c6a')).toBeGreaterThanOrEqual(4.5);
   });
 
   it('text on the accent stays readable when the dynamic accent is light (the old dark-mode bug)', () => {

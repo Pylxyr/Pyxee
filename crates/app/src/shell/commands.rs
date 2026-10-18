@@ -97,6 +97,8 @@ pub fn shell_get(app: AppHandle) -> ShellSettingsDto {
         close_to_tray: false,
         start_with_windows: false,
         toast_on_change: false,
+        tray_controls: false,
+        flyout_on_click: true,
     })
 }
 
@@ -111,9 +113,12 @@ pub fn shell_set(app: AppHandle, settings: ShellSettingsDto) -> Result<ShellSett
         s.close_to_tray = settings.close_to_tray;
         s.start_with_windows = settings.start_with_windows;
         s.toast_on_change = settings.toast_on_change;
+        s.tray_controls = settings.tray_controls;
+        s.flyout_on_click = settings.flyout_on_click;
     }
     shell.save_settings();
     super::sync_autostart(&app);
+    super::tray_buttons::sync(&app, settings.tray_controls);
     Ok(settings)
 }
 

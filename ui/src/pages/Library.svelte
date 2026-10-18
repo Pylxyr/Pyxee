@@ -84,8 +84,8 @@
       <EmptyState icon="heart" title="No liked songs yet" text="Tap the heart on a song and it will show up here." />
     {:else}
       <div class="mt-4 flex gap-2">
-        <button class="rounded-full bg-fg px-5 py-2 text-sm font-semibold text-on-fg" onclick={() => playAll(false)}>Play all</button>
-        <button class="rounded-full bg-surface-2 px-5 py-2 text-sm font-semibold" onclick={() => playAll(true)}>Shuffle</button>
+        <button class="rounded-md bg-fg px-5 py-2 text-sm font-semibold text-on-fg" onclick={() => playAll(false)}>Play all</button>
+        <button class="rounded-md border border-line bg-surface px-5 py-2 text-sm font-semibold" onclick={() => playAll(true)}>Shuffle</button>
         <span class="ml-auto self-center text-sm text-muted">{liked.length} {liked.length === 1 ? 'song' : 'songs'}</span>
       </div>
       <ul class="mt-2 grid gap-x-6 md:grid-cols-2" aria-label="Liked songs">
@@ -96,7 +96,7 @@
     {/if}
   {:else if nav.libraryTab === 'playlists'}
     <div class="mt-4">
-      <button class="flex items-center gap-2 rounded-full bg-fg px-5 py-2 text-sm font-semibold text-on-fg" onclick={newPlaylist}><Icon name="plus" size={18} />New playlist</button>
+      <button class="flex items-center gap-2 rounded-md bg-fg px-5 py-2 text-sm font-semibold text-on-fg" onclick={newPlaylist}><Icon name="plus" size={18} />New playlist</button>
     </div>
     {#if library.playlists.length === 0}
       <EmptyState icon="library" title="No playlists yet" text="Create one here, or choose Add to playlist on any song. You can also save your queue." />
@@ -121,7 +121,7 @@
     {:else}
       <div class="mt-4 flex items-center">
         <span class="text-sm text-muted">{library.snapshot.historyCount} {library.snapshot.historyCount === 1 ? 'play' : 'plays'}</span>
-        <button class="ml-auto rounded-full bg-surface-2 px-4 py-1.5 text-sm font-medium" onclick={clearHistory}>Clear history</button>
+        <button class="ml-auto rounded-md border border-line bg-surface px-4 py-1.5 text-sm font-medium" onclick={clearHistory}>Clear history</button>
       </div>
       {#each days as g (g.label)}
         <h2 class="mb-1 mt-5 text-sm font-semibold text-muted">{g.label}</h2>

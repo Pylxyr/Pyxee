@@ -30,9 +30,9 @@
       <span class="font-semibold" data-testid="sleep-status">{sleepLabel(sleep.status)}</span>
       <span class="flex gap-2">
         {#if sleep.status.kind === 'minutes'}
-          <button class="rounded-full bg-surface px-3 py-1 text-sm font-medium" onclick={() => sleep.extend(15)}>+15 min</button>
+          <button class="rounded-md border border-line bg-surface px-3 py-1 text-sm font-medium" onclick={() => sleep.extend(15)}>+15 min</button>
         {/if}
-        <button class="rounded-full bg-fg px-3 py-1 text-sm font-semibold text-on-fg" onclick={() => sleep.cancel()}>Turn off</button>
+        <button class="rounded-md bg-fg px-3 py-1 text-sm font-semibold text-on-fg" onclick={() => sleep.cancel()}>Turn off</button>
       </span>
     </div>
   {/if}

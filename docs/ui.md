@@ -49,10 +49,27 @@ seeking (arrow keys work, `aria-valuetext` reads "1:23 of 3:42"), visible focus 
 Space play/pause, Left/Right seek 5 s, N next, P previous, Esc close Now Playing. Ignored while typing in a text field;
 Space and arrows are left to focused buttons and sliders. Global media keys come with SMTC in milestone 6.
 
+## Identity
+Pyxee is its own product, not a YouTube Music look-alike: a rail with a wordmark and an accent bar for the current page
+(not a filled pill), rectangular controls with a hairline border instead of pills, an accent-coloured play button, the seek
+bar inline in the wide player bar, and Ink (blue-black with amber) as the default theme. There is no "YT Music" theme.
+The logo keeps its own red; the UI accent does not use it.
+
+## Scroll bars
+One rule set in `app.css`: thin, rounded, tinted from `--fg` (so every theme and Mica work), quiet at rest, clearer when the
+pointer is over a list, accent while dragged. Scroll areas that are not a form control (`ScrollPage`, the Now Playing
+list, Explore) carry `data-scroll tabindex="0"` so the keyboard can scroll them. `design-contract.test.ts` guards both.
+
+## Explore
+Moods (quick searches), "Jump back in" (recent plays) and a shelf of similar songs per seed (likes first, then recent plays,
+one per artist). The shelves come from the `related_get` command (`MusicSource::related`, a YouTube mix), load one after
+another because yt-dlp is paced, stop early on offline / rate-limited / tool-missing, and are cached for the session
+(Refresh asks again). Logic: `lib/explore.ts` (pure), `lib/explore.svelte.ts`, `pages/Explore.svelte`.
+
 ## Themes
 A theme is seven colours (`bg`, `surface`, `surface2`, `line`, `fg`, `muted`, `accent`) plus a dark/light base
 (`ui/src/lib/themes.ts`). `theme.apply()` writes them onto `<html>` as `--t-*` variables; `app.css` maps them to the
-tokens components use and keeps the built-in Dark and Light values as fallbacks. Text on filled buttons and on the accent is
+tokens components use and keeps the built-in Ink and Frost (ids `dark` and `light`) values as fallbacks. Text on filled buttons and on the accent is
 derived (`readableOn`), so a light dynamic accent never gets white text. Under Mica a grey theme background stays transparent
 and a coloured one tints the backdrop (`--t-mica-tint`); panels are a veil of the text colour, so they suit any theme.
 Custom themes (up to 30) live in `localStorage` with the other theme settings; every built-in is tested for contrast.

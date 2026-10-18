@@ -13,7 +13,7 @@
 <nav class="flex shrink-0 border-t border-line bg-surface" aria-label="Main">
   {#each items as it (it.route)}
     <button
-      class="flex h-14 flex-1 flex-col items-center justify-center gap-0.5 text-[11px] {nav.route === it.route ? 'text-fg' : 'text-muted'}"
+      class="-mt-px flex h-14 flex-1 flex-col items-center justify-center gap-0.5 border-t-2 text-[11px] {nav.route === it.route ? 'border-accent text-fg' : 'border-transparent text-muted'}"
       aria-current={nav.route === it.route ? 'page' : undefined}
       onclick={() => nav.go(it.route)}
     >

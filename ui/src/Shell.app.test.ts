@@ -37,7 +37,7 @@ beforeEach(() => {
   nav.tab = 'upnext';
   lyricsStore.state = { kind: 'idle' };
   sleep.status = null;
-  shellSettings.settings = { closeToTray: false, startWithWindows: false, toastOnChange: false };
+  shellSettings.settings = { closeToTray: false, startWithWindows: false, toastOnChange: false, trayControls: false, flyoutOnClick: true };
   shellSettings.error = null;
   theme.settings = { followSystem: true, themeId: 'dark', lightId: 'light', darkId: 'dark', dynamicColor: false, custom: [] };
   for (const s of [...snackbar.items]) snackbar.dismiss(s.id);
@@ -179,7 +179,20 @@ describe('Windows settings', () => {
     await waitFor(() => expect(mock.shell.closeToTray).toBe(true));
     await fireEvent.click(within(section).getByLabelText(/Start Pyxee when I sign in/));
     await fireEvent.click(within(section).getByLabelText(/notification when the song changes/));
-    await waitFor(() => expect(mock.shell).toEqual({ closeToTray: true, startWithWindows: true, toastOnChange: true }));
+    await waitFor(() => expect(mock.shell).toEqual({ closeToTray: true, startWithWindows: true, toastOnChange: true, trayControls: false, flyoutOnClick: true }));
+  });
+
+  it('the notification area switches say what they do and save through the backend', async () => {
+    const section = await openSettings();
+    const buttons = within(section).getByLabelText(/previous, play and next buttons in the notification area/i);
+    const click = within(section).getByLabelText(/Clicking the Pyxee tray icon opens the mini controls/i);
+    expect((buttons as HTMLInputElement).checked).toBe(false);
+    expect((click as HTMLInputElement).checked).toBe(true);
+    expect(within(section).getByText(/hidden-icons flyout/i)).toBeTruthy();
+    await fireEvent.click(buttons);
+    await waitFor(() => expect(mock.shell.trayControls).toBe(true));
+    await fireEvent.click(click);
+    await waitFor(() => expect(mock.shell.flyoutOnClick).toBe(false));
   });
 
   it('a switch that could not be saved goes back and says why', async () => {
@@ -250,3 +263,63 @@ describe('tray flyout and mini player', () => {
     expect(mock.trayCalls).toContain('miniToggle');
   });
 });
+
+describe('Updates settings', () => {
+  async function openUpdates() {
+    render(App);
+    await waitFor(() => expect(player.ready && library.ready).toBe(true));
+    await fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
+    return screen.findByRole('region', { name: 'Updates' });
+  }
+
+  it('says when Pyxee is up to date', async () => {
+    const section = await openUpdates();
+    await fireEvent.click(within(section).getByRole('button', { name: 'Check for updates' }));
+    await waitFor(() => expect(within(section).getByTestId('app-update-status').textContent).toContain('latest version (0.1.0)'));
+    expect(within(section).queryByRole('button', { name: /Download and install/ })).toBeNull();
+  });
+
+  it('offers the install only for a newer release that can be verified, and installs through the backend', async () => {
+    mock.appUpdate = { current: '0.1.0', latest: '0.2.0', available: true, notesUrl: 'https://example.test/r', installable: true };
+    const section = await openUpdates();
+    await fireEvent.click(within(section).getByRole('button', { name: 'Check for updates' }));
+    await fireEvent.click(await within(section).findByRole('button', { name: 'Download and install 0.2.0' }));
+    await waitFor(() => expect(mock.updateCalls).toEqual(['checkApp', 'installApp']));
+  });
+
+  it('a release without an installer and checksums points to its page instead of offering the install', async () => {
+    mock.appUpdate = { current: '0.1.0', latest: '0.2.0', available: true, notesUrl: 'https://example.test/r', installable: false };
+    const section = await openUpdates();
+    await fireEvent.click(within(section).getByRole('button', { name: 'Check for updates' }));
+    await waitFor(() => expect(within(section).getByText(/https:\/\/example.test\/r/)).toBeTruthy());
+    expect(within(section).queryByRole('button', { name: /Download and install/ })).toBeNull();
+  });
+
+  it('a failed check shows why and can be tried again', async () => {
+    mock.updateFailure = 'GitHub is limiting requests right now.';
+    const section = await openUpdates();
+    await fireEvent.click(within(section).getByRole('button', { name: 'Check for updates' }));
+    expect((await within(section).findByText(/limiting requests/)).getAttribute('role')).toBe('alert');
+    expect((within(section).getByRole('button', { name: 'Check for updates' }) as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it('updates yt-dlp when a newer one exists and says it is used from the next search', async () => {
+    mock.ytdlpUpdate = { available: true, currentVersion: '2026.01.01' };
+    const section = await openUpdates();
+    await fireEvent.click(within(section).getByRole('button', { name: 'Check yt-dlp' }));
+    await fireEvent.click(await within(section).findByRole('button', { name: 'Update yt-dlp' }));
+    await waitFor(() => expect(within(section).getByTestId('ytdlp-update-status').textContent).toContain('Updated to 2026.10.01'));
+    expect(within(section).queryByRole('button', { name: 'Update yt-dlp' })).toBeNull();
+  });
+
+  it('a yt-dlp update that fails says why and leaves the button to retry', async () => {
+    mock.ytdlpUpdate = { available: true, currentVersion: null };
+    const section = await openUpdates();
+    await fireEvent.click(within(section).getByRole('button', { name: 'Check yt-dlp' }));
+    mock.updateFailure = 'The download does not match its published checksum.';
+    await fireEvent.click(await within(section).findByRole('button', { name: 'Update yt-dlp' }));
+    expect(await within(section).findByText(/does not match its published checksum/)).toBeTruthy();
+    expect(within(section).getByRole('button', { name: 'Update yt-dlp' })).toBeTruthy();
+  });
+});
+

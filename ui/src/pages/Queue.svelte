@@ -47,8 +47,8 @@
   {#snippet header()}
   <div class="flex flex-wrap items-center gap-3">
     <h1 class="mr-auto text-2xl font-bold">Queue <span class="text-base font-normal text-muted">{queue.length} {queue.length === 1 ? 'song' : 'songs'}</span></h1>
-    <button class="rounded-full bg-surface-2 px-4 py-1.5 text-sm font-medium disabled:opacity-40" disabled={queue.length === 0} onclick={saveAsPlaylist}>Save as playlist</button>
-    <button class="rounded-full bg-surface-2 px-4 py-1.5 text-sm font-medium disabled:opacity-40" disabled={queue.length === 0} onclick={clearQueue}>Clear queue</button>
+    <button class="rounded-md border border-line bg-surface px-4 py-1.5 text-sm font-medium disabled:opacity-40" disabled={queue.length === 0} onclick={saveAsPlaylist}>Save as playlist</button>
+    <button class="rounded-md border border-line bg-surface px-4 py-1.5 text-sm font-medium disabled:opacity-40" disabled={queue.length === 0} onclick={clearQueue}>Clear queue</button>
   </div>
   {/snippet}
 

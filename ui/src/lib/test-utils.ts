@@ -19,6 +19,7 @@ export const noLibrary: LibraryBackend = {
   historyClear: async () => [],
   historyRestore: async () => {},
   homeGet: async () => ({ quickPicks: [], recent: [], likedCount: 0 }),
+  relatedGet: async () => [],
 };
 
 /** Diagnostics methods for test backends that do not care about them. */
@@ -27,6 +28,10 @@ export const noDiagnostics = {
   logInfo: async () => ({ dir: '', file: '', error: null }),
   openLogFolder: async () => {},
   onNotice: async () => () => {},
+  updateCheckApp: async () => ({ current: '0.1.0', latest: '0.1.0', available: false, notesUrl: '', installable: false }),
+  updateInstallApp: async () => {},
+  updateCheckYtdlp: async () => ({ available: false, currentVersion: null }),
+  updateInstallYtdlp: async () => '',
 };
 
 /** Lyrics, sleep timer, tray and shell-settings methods for test backends that do not care about them. */
@@ -37,8 +42,8 @@ export const noShell = {
   sleepExtend: async () => {},
   sleepGet: async () => ({ status: null }),
   onSleep: async () => () => {},
-  shellGet: async () => ({ closeToTray: false, startWithWindows: false, toastOnChange: false }),
-  shellSet: async (s: { closeToTray: boolean; startWithWindows: boolean; toastOnChange: boolean }) => s,
+  shellGet: async () => ({ closeToTray: false, startWithWindows: false, toastOnChange: false, trayControls: false, flyoutOnClick: true }),
+  shellSet: async (s: { closeToTray: boolean; startWithWindows: boolean; toastOnChange: boolean; trayControls: boolean; flyoutOnClick: boolean }) => s,
   flyoutHide: async () => {},
   flyoutOpenMain: async () => {},
   miniToggle: async () => {},

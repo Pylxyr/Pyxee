@@ -15,6 +15,7 @@ mod shell;
 mod sim;
 mod state;
 mod tools;
+mod updater;
 mod window;
 
 use pyxee_core::Player;
@@ -30,6 +31,16 @@ fn seed() -> u64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(1, |d| d.as_nanos() as u64)
+}
+
+/// Prefers the updater's copy of yt-dlp (see `updater`), unless the developer pinned one with `PYXEE_YTDLP`.
+fn with_updated_ytdlp(source: YtDlpSource, data_dir: Option<&std::path::Path>) -> YtDlpSource {
+    match data_dir {
+        Some(dir) if std::env::var_os("PYXEE_YTDLP").is_none_or(|v| v.is_empty()) => {
+            source.with_preferred(updater::managed_ytdlp_path(dir))
+        }
+        _ => source,
+    }
 }
 
 fn main() {
@@ -80,8 +91,11 @@ fn main() {
             let (tx, rx) = mpsc::channel();
             log::info!("yt-dlp audio format preference: {FORMAT_SELECTOR}");
             let source: Arc<dyn MusicSource> = Arc::new(CompositeSource {
-                remote: YtDlpSource::new(tools::locate("yt-dlp", "PYXEE_YTDLP"))
-                    .with_cookies(Cookies::from_env()),
+                remote: with_updated_ytdlp(
+                    YtDlpSource::new(tools::locate("yt-dlp", "PYXEE_YTDLP"))
+                        .with_cookies(Cookies::from_env()),
+                    data_dir.as_deref(),
+                ),
                 local: LocalSource,
             });
             let library = library_service::LibraryService::open_or_memory(
@@ -118,6 +132,11 @@ fn main() {
             commands::dev_catalog,
             commands::search,
             commands::suggest,
+            commands::related_get,
+            updater::update_check_app,
+            updater::update_install_app,
+            updater::update_check_ytdlp,
+            updater::update_install_ytdlp,
             commands::search_filters,
             commands::get_library,
             commands::library_set_liked,

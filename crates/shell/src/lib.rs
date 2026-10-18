@@ -9,6 +9,8 @@ pub mod power;
 pub mod progress;
 pub mod settings;
 pub mod sleep;
+pub mod tray_controls;
+pub mod update;
 pub mod winui;
 
 /// A rectangle in physical (device) pixels.

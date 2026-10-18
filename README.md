@@ -72,7 +72,7 @@ skipped, seeks, stalls, and any crash. Find it in the app: **Settings** (the gea
 If a song misbehaves, send me the lines around its title (search the file for the song's name).
 
 ## Themes
-Settings (the gear icon, top right) has an Appearance section with a theme picker: Dark, Light, YT Music, OLED black, and six more (Deep blue,
+Settings (the gear icon, top right) has an Appearance section with a theme picker: Ink (the default), Frost, OLED black, and six more (Deep blue,
 Sky, Graphite and gold, Turquoise, Ember, Paper). The last few are original palettes in the spirit of MusicBee's community
 skins, not copies of any skin. **Match system** uses one theme when Windows is light and another when it is dark.
 **Customize...** edits the seven colours of a theme with a live preview and a readability check, and saves it as your own;
@@ -108,7 +108,8 @@ cargo test --workspace
 `crates/core` queue + state machine (no I/O) · `crates/audio` decode, resample, gapless, output · `crates/sources` yt-dlp, local ·
 `crates/library` SQLite library ·
 `crates/app` Tauri glue · `crates/spike` milestone 1 harness · `ui/` Svelte frontend · `xtask/` tool downloader and installer build.
-The in-app yt-dlp updater with rollback, the portable build and code signing come in milestone 7.
+Settings > Updates checks for a newer Pyxee (GitHub releases, installer checked against `SHA256SUMS.txt`) and updates yt-dlp in place (checksum-verified,
+test-run, then swapped in; a failure changes nothing). The portable build and code signing are still milestone 7.
 
 ## Checking a build on Windows
 `scripts\check-windows.cmd` builds, runs every test, proves no ffmpeg process is ever started (a fake `ffmpeg.exe` sits first on `PATH` and logs

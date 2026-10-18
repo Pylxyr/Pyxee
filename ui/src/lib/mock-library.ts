@@ -157,6 +157,8 @@ export class MockLibrary implements LibraryBackend {
     this.#changed();
   }
 
+  /** Related songs: the demo backend overrides this; the bare library mock knows no catalogue. */
+  async relatedGet(_key: string, _count: number): Promise<TrackDto[]> { return []; }
   async homeGet(): Promise<HomeDto> {
     const counts = new Map<string, { track: TrackDto; plays: number }>();
     for (const h of this.#history) {

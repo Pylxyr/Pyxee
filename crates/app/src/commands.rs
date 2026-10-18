@@ -71,6 +71,26 @@ pub async fn suggest(state: State<'_, AppState>, prefix: String) -> Result<Vec<S
     )
 }
 
+/// Songs similar to `key` (a YouTube mix), for Explore and the Related tab. At most `count`, never the seed itself.
+/// Like `search` it runs on a worker thread and rejects with a typed error the UI can branch on.
+#[tauri::command]
+pub async fn related_get(
+    state: State<'_, AppState>,
+    key: String,
+    count: u32,
+) -> Result<Vec<TrackDto>, SearchErrorDto> {
+    let source = std::sync::Arc::clone(&state.source);
+    let count = count.clamp(1, 30) as usize;
+    tauri::async_runtime::spawn_blocking(move || source.related(&key, count))
+        .await
+        .map_err(|e| SearchErrorDto {
+            kind: crate::dto::SearchErrorKind::Other,
+            message: e.to_string(),
+        })?
+        .map(|tracks| tracks.iter().map(TrackDto::from).collect())
+        .map_err(|e| SearchErrorDto::from(&e))
+}
+
 #[tauri::command]
 pub fn search_filters(state: State<AppState>) -> Vec<FilterInfoDto> {
     let supported = state.source.supported_filters();

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import UpdatesSection from './components/UpdatesSection.svelte';
   import { onMount } from 'svelte';
   import { MediaQuery } from 'svelte/reactivity';
   import { createBackend, messageOf, type Backend } from '$lib/backend';
@@ -38,7 +39,7 @@
 
   const wide = new MediaQuery('min-width: 900px');
 
-  let backendRef: Backend | null = null;
+  let backendRef = $state.raw<Backend | null>(null);
   let logInfo = $state<LogInfoDto | null>(null);
 
   onMount(() => {
@@ -189,11 +190,25 @@
       <span>Show a notification when the song changes</span>
       <input type="checkbox" checked={shellSettings.settings.toastOnChange} onchange={(e) => shellSettings.update({ toastOnChange: e.currentTarget.checked })} />
     </label>
+    <label class="flex items-center justify-between gap-3 rounded-lg px-3 py-3 hover:bg-surface">
+      <span>Show previous, play and next buttons in the notification area</span>
+      <input type="checkbox" checked={shellSettings.settings.trayControls} onchange={(e) => shellSettings.update({ trayControls: e.currentTarget.checked })} />
+    </label>
+    <p class="px-3 pb-1 text-[13px] text-muted">
+      They sit beside the Pyxee icon, and the song title shows when you point at it. Windows may put new icons in the
+      hidden-icons flyout (the ^ arrow): drag them out onto the taskbar once and Windows remembers.
+    </p>
+    <label class="flex items-center justify-between gap-3 rounded-lg px-3 py-3 hover:bg-surface">
+      <span>Clicking the Pyxee tray icon opens the mini controls (otherwise it opens the window)</span>
+      <input type="checkbox" checked={shellSettings.settings.flyoutOnClick} onchange={(e) => shellSettings.update({ flyoutOnClick: e.currentTarget.checked })} />
+    </label>
     {#if shellSettings.error}<p class="px-3 text-[13px] text-accent" role="alert">Could not save that setting ({shellSettings.error}).</p>{/if}
     <button class="flex w-full items-center justify-between rounded-lg px-3 py-3 text-left hover:bg-surface" onclick={() => { nav.themeSheetOpen = false; nav.sleepSheetOpen = true; }}>
       <span>Sleep timer</span><span class="text-sm text-muted">{sleepLabel(sleep.status)}</span>
     </button>
   </section>
+  {#if backendRef}<UpdatesSection backend={backendRef} />{/if}
+
   <section class="mt-3 border-t border-line px-3 pt-3" aria-label="Diagnostics">
     <h3 class="text-sm font-semibold">Diagnostics</h3>
     <p class="mt-1 text-[13px] text-muted">Pyxee keeps a log of what it does. If a song won't play or keeps skipping, the log says why.</p>
@@ -201,8 +216,8 @@
       <p class="mt-2 select-all break-all rounded-lg bg-surface px-3 py-2 text-[12px]" data-testid="log-path">{logInfo.file}</p>
       {#if logInfo.error}<p class="mt-1 text-[13px] text-accent" role="alert">{logInfo.error}</p>{/if}
       <div class="mt-2 flex gap-2">
-        <button class="rounded-full bg-fg px-4 py-1.5 text-sm font-semibold text-on-fg" onclick={() => backendRef?.openLogFolder().catch((e) => snackbar.push(messageOf(e)))}>Open log folder</button>
-        <button class="rounded-full bg-surface px-4 py-1.5 text-sm font-medium" onclick={copyLogPath}>Copy path</button>
+        <button class="rounded-md bg-fg px-4 py-1.5 text-sm font-semibold text-on-fg" onclick={() => backendRef?.openLogFolder().catch((e) => snackbar.push(messageOf(e)))}>Open log folder</button>
+        <button class="rounded-md border border-line bg-surface px-4 py-1.5 text-sm font-medium" onclick={copyLogPath}>Copy path</button>
       </div>
     {/if}
   </section>

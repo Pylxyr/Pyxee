@@ -10,6 +10,7 @@ mod mini;
 mod power;
 mod sleep;
 mod tray;
+mod tray_buttons;
 #[cfg(all(windows, feature = "win-extras"))]
 mod winextras;
 
@@ -37,6 +38,8 @@ struct Sent {
     progress: Option<TaskbarProgressKey>,
     track: Option<(u64, Option<String>)>,
     playback: Option<(u8, u64)>,
+    /// The transport phase the notification-area buttons last showed.
+    controls: Option<Phase>,
     #[cfg(all(windows, feature = "win-extras"))]
     thumbs: Option<(Phase, bool)>,
 }
@@ -118,6 +121,12 @@ pub fn init(app: &AppHandle, args: &[String]) {
     if let Err(e) = tray::init(app) {
         log::warn!("could not create the tray icon: {e}");
     }
+    let controls = app
+        .state::<ShellState>()
+        .settings
+        .lock()
+        .is_ok_and(|s| s.tray_controls);
+    tray_buttons::sync(app, controls);
     sleep::spawn(app.clone());
     power::spawn(app.clone());
     if let Ok(mut m) = app.state::<ShellState>().media.lock() {
@@ -275,7 +284,10 @@ pub fn on_state(app: &AppHandle, s: &PlayerStateDto) {
     if sent.track != track_key {
         sent.track.clone_from(&track_key);
         if let Some(e) = entry {
-            tray::set_tooltip(app, &format!("{} – {}", e.track.title, e.track.artist));
+            tray::set_tooltip(
+                app,
+                &pyxee_shell::tray_controls::track_tooltip(&e.track.title, &e.track.artist),
+            );
         } else {
             tray::set_tooltip(app, "Pyxee");
         }
@@ -285,6 +297,11 @@ pub fn on_state(app: &AppHandle, s: &PlayerStateDto) {
             }
         }
         sent.playback = None; // new song: send its state afresh
+    }
+
+    if sent.controls != Some(phase) {
+        sent.controls = Some(phase);
+        tray_buttons::update(app, phase);
     }
 
     let key = (
@@ -386,7 +403,6 @@ fn toast_for(app: &AppHandle, id: u64) {
 }
 
 /// The player's phase right now (for code that is not handed a state, like the taskbar button callback).
-#[cfg(all(windows, feature = "win-extras"))]
 pub(crate) fn current_phase(app: &AppHandle) -> (Phase, bool) {
     let Some(state) = app.try_state::<AppState>() else {
         return (Phase::Idle, false);

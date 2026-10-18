@@ -3424,6 +3424,7 @@ dependencies = [
  "tauri-plugin-notification",
  "tauri-plugin-single-instance",
  "ts-rs",
+ "ureq",
  "window-vibrancy 0.6.0",
  "windows 0.61.3",
 ]
@@ -3475,6 +3476,8 @@ version = "0.1.0"
 dependencies = [
  "serde",
  "serde_json",
+ "sha2",
+ "thiserror 2.0.21",
 ]
 
 [[package]]

@@ -42,12 +42,12 @@
 
     <div class="mx-auto grid min-h-0 w-full max-w-6xl flex-1 grid-rows-[auto_minmax(0,1fr)] gap-4 px-6 pb-4 lg:grid-cols-[1fr_28rem] lg:grid-rows-1 lg:gap-8 lg:pb-8">
       <section class="flex min-h-0 flex-col items-center justify-center gap-3 lg:gap-5 lg:overflow-y-auto" data-testid="np-controls">
-        <div class="aspect-square w-[min(56vw,26vh)] shrink-0 overflow-hidden rounded-xl lg:w-[min(22rem,48vh)]" data-testid="np-art">
-          <Thumb src={entry.track.thumbnail} seed={entry.track.key} size={352} fill rounded="rounded-xl" />
+        <div class="aspect-square w-[min(56vw,26vh)] shrink-0 overflow-hidden rounded-md lg:w-[min(22rem,48vh)]" data-testid="np-art">
+          <Thumb src={entry.track.thumbnail} seed={entry.track.key} size={352} fill rounded="rounded-md" />
         </div>
         <div class="flex w-[min(80vw,22rem)] items-center justify-between gap-3">
           <div class="min-w-0">
-            <h1 class="truncate text-2xl font-bold">{entry.track.title}</h1>
+            <h1 class="truncate text-2xl font-semibold tracking-tight">{entry.track.title}</h1>
             <p class="truncate text-muted">{entry.track.artist}</p>
           </div>
           <button class="flex items-center gap-1 p-2 {sleep.status ? 'text-accent' : 'text-muted hover:text-fg'}" aria-label="Sleep timer" onclick={() => (nav.sleepSheetOpen = true)}>
@@ -71,9 +71,9 @@
         <div class="flex items-center gap-6">
           <button class="p-2 {player.state.shuffle ? 'text-accent' : 'text-muted'}" aria-label="Shuffle" aria-pressed={player.state.shuffle} onclick={player.toggleShuffle}><Icon name="shuffle" /></button>
           <button class="p-2" aria-label="Previous" onclick={player.previous}><Icon name="prev" size={26} /></button>
-          <button class="flex h-16 w-16 items-center justify-center rounded-full bg-fg text-on-fg" aria-label={player.isPlaying ? 'Pause' : 'Play'} onclick={player.toggle}>
+          <button class="flex h-16 w-16 items-center justify-center rounded-xl bg-accent text-on-accent" aria-label={player.isPlaying ? 'Pause' : 'Play'} onclick={player.toggle}>
             {#if player.state.transport.state === 'loading'}
-              <span class="h-6 w-6 animate-spin rounded-full border-2 border-on-fg/30 border-t-on-fg" aria-hidden="true"></span>
+              <span class="h-6 w-6 animate-spin rounded-full border-2 border-on-accent/30 border-t-on-accent" aria-hidden="true"></span>
             {:else}
               <Icon name={player.isPlaying ? 'pause' : 'play'} size={28} fill={!player.isPlaying} />
             {/if}
@@ -92,12 +92,13 @@
             <button
               role="tab"
               aria-selected={nav.tab === t.id}
-              class="-mb-px border-b-2 pb-3 pt-2 text-[15px] font-semibold {nav.tab === t.id ? 'border-accent text-fg' : 'border-transparent text-muted'}"
+              class="-mb-px border-b-2 px-1 pb-2.5 pt-2 text-[13px] font-semibold uppercase tracking-wider {nav.tab === t.id ? 'border-accent text-fg' : 'border-transparent text-muted hover:text-fg'}"
               onclick={() => (nav.tab = t.id)}>{t.label}</button>
           {/each}
           <button class="-mb-px ml-auto pb-3 pt-2 text-sm font-semibold text-muted hover:text-fg" onclick={() => { nav.closeNowPlaying(); nav.go('queue'); }}>Open queue</button>
         </div>
-        <div class="mt-3 min-h-0 flex-1 overflow-y-auto" role="tabpanel" data-testid="np-scroll">
+        <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+        <div class="mt-3 min-h-0 flex-1 overflow-y-auto" role="tabpanel" data-testid="np-scroll" data-scroll tabindex="0">
           {#if nav.tab === 'upnext'}
             <ul class="space-y-0.5" bind:this={upNextEl}>
               <li class="flex items-center gap-3 rounded-lg bg-surface-2 px-3 py-2">
