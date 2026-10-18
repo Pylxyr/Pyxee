@@ -96,6 +96,8 @@ const DEVICE_SPEED: f64 = 6.0;
 
 struct Rig {
     volume: Volume,
+    /// How many times faster than real time the device consumes audio (see `DEVICE_SPEED`).
+    speed: f64,
     budget_frames: f64,
     last_step: Instant,
     shared: Arc<Shared>,
@@ -125,6 +127,7 @@ impl Rig {
         let consumer = engine.consumer();
         Self {
             volume,
+            speed: DEVICE_SPEED,
             budget_frames: 0.0,
             last_step: Instant::now(),
             shared,
@@ -169,7 +172,7 @@ impl Rig {
         self.engine.poll();
         let now = Instant::now();
         self.budget_frames +=
-            now.duration_since(self.last_step).as_secs_f64() * 48_000.0 * DEVICE_SPEED;
+            now.duration_since(self.last_step).as_secs_f64() * 48_000.0 * self.speed;
         self.last_step = now;
         let frames = (self.budget_frames as usize).min(480);
         let mut buf = [0f32; 960];
@@ -283,6 +286,11 @@ fn skipping_stops_the_old_audio_and_the_old_track_never_returns() {
 #[test]
 fn pause_freezes_the_position_and_resume_continues() {
     let mut r = Rig::new(TestSource::local());
+    // Real-time device. At DEVICE_SPEED the 2 s fixture is consumed in ~330 ms, about one position
+    // tick (250 ms): the first update can land near the end of the track, and after Resume the
+    // last few ms play out before the next update (a coin flip on timer phase: ~40% failures).
+    // At 1x the track is nowhere near its end when this test is done with it.
+    r.speed = 1.0;
     r.cmd(Command::SetAutoplay(false));
     r.cmd(Command::PlayTracks {
         tracks: vec![file_track("a_44k.wav")],
@@ -291,8 +299,9 @@ fn pause_freezes_the_position_and_resume_continues() {
     assert!(r.run_until(10, |r| r.snapshot().position_ms >= 250));
     r.cmd(Command::Pause);
     r.step();
-    // The last position update before the pause can be up to 250 ms old; let it settle first.
-    r.run_for(400);
+    // The last position update before the pause can be up to 250 ms old (one POSITION_EVERY plus a
+    // coarse Windows timer tick); let one more update land first, with margin.
+    r.run_for(600);
     let (at, played) = (r.snapshot().position_ms, r.samples.len());
     r.run_for(500);
     assert_eq!(
@@ -306,7 +315,10 @@ fn pause_freezes_the_position_and_resume_continues() {
         "no audio reaches the device while paused"
     );
     r.cmd(Command::Resume);
-    assert!(r.run_until(10, |r| r.snapshot().position_ms > at + 200));
+    assert!(
+        r.run_until(10, |r| r.snapshot().position_ms > at + 200),
+        "the position advances again after Resume (was {at} ms)"
+    );
 }
 
 #[test]

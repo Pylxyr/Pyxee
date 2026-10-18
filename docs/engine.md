@@ -128,6 +128,10 @@ libavformat through read/seek callbacks), no filters, devices or programs.
 - Gapless: libav applies the container's encoder delay and padding, so Opus (Ogg and WebM) joins to the exact sample count.
   AAC in M4A is not fully trimmed by libav (plain files keep tail padding; YouTube-style fragmented files declare none), so
   quiet edges (max 2112 frames) are still trimmed for AAC only, on top of whatever libav did.
+- A live YouTube join can show seconds of digital silence (`silence-at-join` in `check-windows`, INFO). That is the recordings' own
+  fade-out/fade-in or padding, not the player: the join itself is proven by `gapless-join-contiguous` (track 1 ends on the very frame
+  track 2 starts), `gapless-total-length` (rendered length matches the two durations) and the fixture test
+  `two_tracks_play_in_order_gaplessly_and_playback_ends` (no silence run of 8+ frames).
 - Seeking is in place for every format. Opus needs its 80 ms pre-roll after a seek: the decoder starts that much early and the
   lead-in is discarded, so Ogg Opus lands bit-exact (`crates/audio/tests/opus.rs`). Matroska timestamps are whole
   milliseconds, so a WebM seek lands within 1 ms (48 frames). A stream that cannot seek in place is re-opened and decoded

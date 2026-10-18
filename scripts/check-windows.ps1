@@ -60,6 +60,10 @@ New-Item -ItemType Directory -Force -Path $LogDir | Out-Null
 $script:Counts = @{ PASS = 0; FAIL = 0; WARN = 0; INFO = 0 }
 $script:LiveBlocked = $false
 $script:Step = 0
+# Planned number of sections, shown as "Section N of M". An estimate: it is lowered if the live checks get skipped later.
+$script:StepTotal = 3 + [int](-not $SkipTests) + [int][bool]$Installer + [int](-not $SkipLive) + [int][bool]$Manual + [int]([bool]$AnalyzeLog -or [bool]$Manual)
+$script:SectionTitle = 'starting'
+$script:RunSw = [Diagnostics.Stopwatch]::StartNew()
 
 # ---------------------------------------------------------------- output helpers
 
@@ -71,6 +75,8 @@ function Scrub([string]$s) {
   return $s
 }
 
+function Format-Elapsed([TimeSpan]$t) { return ('{0:00}:{1:00}:{2:00}' -f [int][math]::Floor($t.TotalHours), $t.Minutes, $t.Seconds) }
+
 function Write-Report([string]$text, [string]$color = '') {
   $t = Scrub $text
   Add-Content -Path $Report -Value $t -Encoding UTF8
@@ -79,8 +85,9 @@ function Write-Report([string]$text, [string]$color = '') {
 
 function Section([string]$title) {
   $script:Step++
+  $script:SectionTitle = $title
   Write-Report ''
-  Write-Report ("=== {0}. {1} ===" -f $script:Step, $title) 'Cyan'
+  Write-Report ("=== {0} of {1}. {2} (total elapsed {3}) ===" -f $script:Step, $script:StepTotal, $title, (Format-Elapsed $script:RunSw.Elapsed)) 'Cyan'
 }
 
 function Add-Result([string]$Status, [string]$Name, [string]$Detail) {
@@ -96,17 +103,52 @@ function Show-LogTail([string]$LogFile, [int]$Lines = 40) {
   }
 }
 
+# Last non-empty line of a log that another process is still writing (console progress only; never goes in the report).
+function Get-LogLastLine([string]$LogFile) {
+  try {
+    if (-not (Test-Path $LogFile)) { return '' }
+    $l = Get-Content $LogFile -Tail 3 -ErrorAction Stop | Where-Object { $_.Trim() } | Select-Object -Last 1
+    if ($null -eq $l) { return '' }
+    $l = (Scrub $l).Trim()
+    return $l.Substring(0, [math]::Min($l.Length, 90))
+  } catch { return '' }
+}
+
 # Runs a command line through a temp .cmd so stderr/stdout go to a log without PowerShell wrapping them.
-function Invoke-Logged([string]$Name, [string]$CommandLine, [string]$WorkDir = $Root) {
+# While it runs, the console shows a Write-Progress bar plus a heartbeat line every 30 s, so long steps are never silent.
+# Console only: the redacted report file is unchanged.
+function Invoke-Logged([string]$Name, [string]$CommandLine, [string]$WorkDir = $Root, [string]$Label = '') {
   $log = Join-Path $LogDir ("{0}.log" -f $Name)
   $bat = Join-Path $LogDir ("{0}.cmd" -f $Name)
   # `call` matters: npm is a .cmd, and a batch file that runs another one without it never gets control back.
   $content = "@echo off`r`ncd /d `"$WorkDir`"`r`ncall $CommandLine > `"$log`" 2>&1`r`nexit /b %errorlevel%`r`n"
   Set-Content -Path $bat -Value $content -Encoding OEM
+  if (-not $Label) { $Label = $Name }
+  $activity = if ($script:Step -eq 0) { 'Setup' } else { "Section {0} of {1}: {2}" -f $script:Step, $script:StepTotal, $script:SectionTitle }
+  # Version/path probes finish instantly and stay quiet; every other step announces itself before it can go silent.
+  $quiet = $Name -like 'probe-*'
+  if (-not $quiet) { Write-Host ("  > {0} ..." -f $Label) -ForegroundColor DarkGray }
   $sw = [Diagnostics.Stopwatch]::StartNew()
-  & $bat
-  $code = $LASTEXITCODE
+  $p = Start-Process -FilePath $env:ComSpec -ArgumentList ('/d /c ""{0}""' -f $bat) -NoNewWindow -PassThru
+  $null = $p.Handle   # cache the process handle so ExitCode stays readable after exit
+  $nextBeat = 30
+  $lastPoll = -1
+  while (-not $p.HasExited) {
+    Start-Sleep -Milliseconds 250
+    $sec = [int]$sw.Elapsed.TotalSeconds
+    if (-not $quiet -and $sec -ne $lastPoll -and ($sec % 2) -eq 0) {
+      $lastPoll = $sec
+      Write-Progress -Id 1 -Activity $activity -Status ("{0}  elapsed {1}  | {2}" -f $Label, (Format-Elapsed $sw.Elapsed), (Get-LogLastLine $log)) -CurrentOperation ("total elapsed {0}" -f (Format-Elapsed $script:RunSw.Elapsed))
+    }
+    if (-not $quiet -and $sw.Elapsed.TotalSeconds -ge $nextBeat) {
+      Write-Host ("    ... {0} still running, {1} elapsed (total {2})" -f $Label, (Format-Elapsed $sw.Elapsed), (Format-Elapsed $script:RunSw.Elapsed)) -ForegroundColor DarkGray
+      $nextBeat += 30
+    }
+  }
+  $p.WaitForExit()
+  $code = $p.ExitCode
   $sw.Stop()
+  Write-Progress -Id 1 -Activity $activity -Completed
   return [pscustomobject]@{ Code = $code; Log = $log; Seconds = [math]::Round($sw.Elapsed.TotalSeconds, 1) }
 }
 
@@ -220,6 +262,33 @@ if (-not $SkipTools) {
   Add-TripResult 'tools-flow' $before
 } else { Add-Result 'INFO' 'cargo-xtask-tools' 'skipped (-SkipTools)' }
 
+# yt-dlp wants an external JavaScript runtime for YouTube (its EJS solver scripts are bundled in yt-dlp.exe, so only the
+# runtime is missing). It enables Deno 2.x on PATH by itself; any other runtime is switched on with --js-runtimes in
+# a yt-dlp config file. Pyxee itself never needs or starts one, so this is a WARN with the fix, never a FAIL.
+function Test-JsRuntime {
+  $script:JsRuntimeWarned = $false
+  $deno = Get-Command deno -ErrorAction SilentlyContinue
+  if ($deno) {
+    $v = Get-FirstLine 'deno --version'
+    if ($v -match 'deno\s+(\d+)\.') {
+      if ([int]$Matches[1] -ge 2) { Add-Result 'PASS' 'ytdlp-js-runtime' "$v on PATH (yt-dlp uses it automatically)"; return }
+      Add-Result 'WARN' 'ytdlp-js-runtime' "$v is too old: yt-dlp needs Deno 2.0 or newer (winget upgrade DenoLand.Deno)"
+      $script:JsRuntimeWarned = $true
+      return
+    }
+  }
+  $configs = @(
+    (Join-Path $env:APPDATA 'yt-dlp\config'), (Join-Path $env:APPDATA 'yt-dlp\config.txt'),
+    (Join-Path $env:USERPROFILE 'yt-dlp.conf'), (Join-Path (Split-Path -Parent $YtdlpPath) 'yt-dlp.conf')
+  )
+  $hit = @($configs | Where-Object { $_ -and (Test-Path $_) -and (Select-String -Path $_ -Pattern '^\s*--js-runtimes\b' -Quiet) })
+  if ($hit.Count -gt 0) { Add-Result 'PASS' 'ytdlp-js-runtime' "--js-runtimes is set in $(Split-Path -Leaf $hit[0]) (the yt-dlp config file)"; return }
+  $script:JsRuntimeWarned = $true
+  $nodeOk = Have 'node'
+  $alt = if ($nodeOk) { ' Or, since Node is installed: put the line "--js-runtimes node" in %APPDATA%\yt-dlp\config.' } else { '' }
+  Add-Result 'WARN' 'ytdlp-js-runtime' ('no JavaScript runtime for yt-dlp. YouTube extraction without one is deprecated by yt-dlp (some formats may vanish later); Pyxee works for now. Fix: winget install DenoLand.Deno, then open a new terminal.' + $alt + ' See README, "yt-dlp and a JavaScript runtime".')
+}
+
 function Find-Ytdlp {
   if ($Ytdlp -and (Test-Path $Ytdlp)) { return (Resolve-Path $Ytdlp).Path }
   if ($env:PYXEE_YTDLP -and (Test-Path $env:PYXEE_YTDLP)) { return (Resolve-Path $env:PYXEE_YTDLP).Path }
@@ -237,6 +306,7 @@ if (-not $YtdlpPath) {
   Add-Result 'PASS' 'ytdlp-found' (Split-Path -Leaf $YtdlpPath)
   if ($UpdateYtdlp) { $r = Invoke-Logged 'ytdlp-update' "`"$YtdlpPath`" -U"; Add-Result 'INFO' 'ytdlp-update' ((Get-Content $r.Log -ErrorAction SilentlyContinue | Select-Object -Last 2) -join ' | ') }
   Add-Result 'INFO' 'ytdlp-version' (Get-FirstLine "`"$YtdlpPath`" --version")
+  Test-JsRuntime
 }
 
 # ---------------------------------------------------------------- 3. build + tests
@@ -286,6 +356,7 @@ if (-not $SkipTests) {
   }
   if (-not $ffOk) {
     $why = 'SKIPPED: the minimal FFmpeg libraries were not built (see ffmpeg-prereq / ffmpeg-build above), and every cargo step below needs them'
+    if (-not $SkipLive) { $script:StepTotal-- }
     $SkipLive = $true
     Add-Result 'INFO' 'live-checks' $why
   }
@@ -320,7 +391,7 @@ if (-not $SkipTests) {
     $bad = 0
     $firstFailure = $null
     for ($i = 1; $i -le $FlakeRuns; $i++) {
-      $re = Invoke-Logged "flake-$i" 'cargo test -p pyxee-app pause_freezes_the_position_and_resume_continues'
+      $re = Invoke-Logged "flake-$i" 'cargo test -p pyxee-app pause_freezes_the_position_and_resume_continues' $Root "pause-test repeat $i of $FlakeRuns"
       if ($re.Code -ne 0) {
         $bad++
         # Keep the first failing assertion: it says whether the position moved or audio reached the device.
@@ -373,6 +444,10 @@ function Read-CheckLines([string]$file, [string]$prefix = '') {
   foreach ($line in (Get-Content $file)) {
     if ($line -match '^CHECK (PASS|FAIL|WARN|INFO) (\S+) :: (.*)$') {
       $st = $Matches[1]; $nm = $prefix + $Matches[2]; $dt = $Matches[3]
+      # The live phase repeats yt-dlp's own JS-runtime warning; ytdlp-js-runtime above already explained it once.
+      if ($st -eq 'WARN' -and $script:JsRuntimeWarned -and $nm -like '*yt-dlp-warning' -and $dt -match 'JavaScript|\bdeno\b') {
+        $st = 'INFO'; $dt = "$dt  (known: see ytdlp-js-runtime above)"
+      }
       Add-Result $st $nm $dt
       if ($dt -match 'rate.?limit|limiting requests|Too Many Requests|HTTP Error 429|sign in to confirm') { if ($st -eq 'FAIL' -or $st -eq 'WARN') { $script:LiveBlocked = $true } }
     } elseif ($line -match '^LOG (WARN|ERROR) ' -or ($line -match '^LOG INFO ' -and $logLines -lt 25)) {
@@ -416,7 +491,7 @@ if (-not $SkipLive) {
     $common = "--ytdlp `"$YtdlpPath`" --q1 `"$Query1`" --q2 `"$Query2`""
 
     function Invoke-Phase([string]$name, [string]$prefix = '') {
-      $r = Invoke-Logged "live-$name$prefix" "`"$Live`" $name $common"
+      $r = Invoke-Logged "live-$name$prefix" "`"$Live`" $name $common" $Root "live phase $name$prefix"
       Read-CheckLines $r.Log $prefix
       if ($r.Code -ne 0 -and (Select-String -Path $r.Log -Pattern '^CHECK' -Quiet) -eq $false) { Add-Result 'FAIL' "live-$name" "no result lines (exit $($r.Code))"; Show-LogTail $r.Log 20 }
     }

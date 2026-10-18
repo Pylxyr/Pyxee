@@ -32,6 +32,21 @@ your own copy instead, set `PYXEE_YTDLP` to its path, or put `yt-dlp.exe` next t
 
 yt-dlp is also paced by the app (one run at a time, 1 s apart, 2 minutes of refusals after a rate limit); see `docs/engine.md`.
 
+### yt-dlp and a JavaScript runtime (recommended, not required)
+Recent yt-dlp prints a warning that YouTube extraction without an external JavaScript runtime is deprecated, and some
+formats may disappear without one. This is yt-dlp's requirement, not Pyxee's: the app binary stays pure MSVC and does not
+bundle, start or need a runtime itself. The `yt-dlp.exe` that `get-tools` downloads already contains yt-dlp's solver
+scripts (EJS), so only a runtime is missing. Either of these silences the warning (see yt-dlp's
+[EJS wiki page](https://github.com/yt-dlp/yt-dlp/wiki/EJS)):
+
+* **Deno 2.x on `PATH`** (the one yt-dlp enables by default): `winget install DenoLand.Deno`, then open a new terminal (and
+  sign out/in, or restart the app launcher, for the installed app to see the new `PATH`).
+* **Node, which developers here already have**: create `%APPDATA%\yt-dlp\config` containing the line `--js-runtimes node`
+  (or `--js-runtimes deno:C:\path\to\deno.exe` for a Deno that is not on `PATH`). yt-dlp reads this file for every run,
+  including the ones Pyxee starts. Needs a recent yt-dlp (`get-tools.cmd --update`); an old one rejects the option.
+
+`scripts\check-windows.cmd` reports which of these it found (`ytdlp-js-runtime`).
+
 ## Run
 Double-click `dev.cmd` (or run it from a terminal). It installs the UI packages and downloads the tools if they are missing,
 starts the UI dev server in its own window, waits for it, and launches the desktop app.
