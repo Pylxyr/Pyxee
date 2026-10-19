@@ -84,13 +84,13 @@ pub async fn related_get(
     tauri::async_runtime::spawn_blocking(move || {
         pyxee_sources::gate::background(|| source.related(&key, count))
     })
-        .await
-        .map_err(|e| SearchErrorDto {
-            kind: crate::dto::SearchErrorKind::Other,
-            message: e.to_string(),
-        })?
-        .map(|tracks| tracks.iter().map(TrackDto::from).collect())
-        .map_err(|e| SearchErrorDto::from(&e))
+    .await
+    .map_err(|e| SearchErrorDto {
+        kind: crate::dto::SearchErrorKind::Other,
+        message: e.to_string(),
+    })?
+    .map(|tracks| tracks.iter().map(TrackDto::from).collect())
+    .map_err(|e| SearchErrorDto::from(&e))
 }
 
 #[tauri::command]

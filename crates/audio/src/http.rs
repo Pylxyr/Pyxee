@@ -84,8 +84,6 @@ fn with_headers(mut req: ureq::Request, headers: &[(String, String)]) -> ureq::R
     }
     req
 }
-
-
 enum FetchError {
     /// A 4xx answer. Retrying cannot help.
     Fatal(u16),
@@ -156,10 +154,7 @@ fn download_loop(shared: Arc<Shared>, f: Fetcher) {
                 match next_wanted(&mut st, total, big) {
                     Some(i) => break i,
                     None => {
-                        st = shared
-                            .wake
-                            .wait(st)
-                            .unwrap_or_else(PoisonError::into_inner);
+                        st = shared.wake.wait(st).unwrap_or_else(PoisonError::into_inner);
                     }
                 }
             }

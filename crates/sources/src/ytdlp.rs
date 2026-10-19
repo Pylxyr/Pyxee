@@ -1383,11 +1383,17 @@ mod speed_tests {
         let key = ("low tide".to_string(), "Songs".to_string());
         assert!(s.cached_search(&key).is_none());
         s.store_search(key.clone(), &[]);
-        assert!(s.cached_search(&key).is_none(), "empty answers are not cached");
+        assert!(
+            s.cached_search(&key).is_none(),
+            "empty answers are not cached"
+        );
         s.store_search(key.clone(), &[item("a"), item("b")]);
         assert_eq!(s.cached_search(&key).map(|v| v.len()), Some(2));
         let other = ("low tide".to_string(), "Videos".to_string());
-        assert!(s.cached_search(&other).is_none(), "another filter is another search");
+        assert!(
+            s.cached_search(&other).is_none(),
+            "another filter is another search"
+        );
     }
 
     #[test]

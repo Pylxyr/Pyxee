@@ -344,7 +344,11 @@ mod tests {
         assert_eq!(st.granted, Some(2), "the person's own request first");
         st.granted = None;
         assert!(st.pass_on());
-        assert_eq!(st.granted, Some(4), "then background work, newest first as before");
+        assert_eq!(
+            st.granted,
+            Some(4),
+            "then background work, newest first as before"
+        );
         st.granted = None;
         assert!(st.pass_on() && st.pass_on());
         assert!(st.waiting.is_empty());
