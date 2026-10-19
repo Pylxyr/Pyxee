@@ -39,9 +39,19 @@ def dib(blob: bytes) -> bytes:
         b"".join(struct.pack("<BBBB", px[x, y][2], px[x, y][1], px[x, y][0], px[x, y][3]) for x in range(w))
         for y in range(h - 1, -1, -1)  # bottom-up
     )
-    mask_row = ((w + 31) // 32) * 4  # 1 bit per pixel, all 0: the alpha channel does the masking
+    # The AND mask: 1 bit per pixel, bottom-up, MSB first, rows padded to 4 bytes; 1 = transparent. Some shell paths
+    # (Task Manager's process list showed black/cyan noise) ignore the alpha channel and draw with this mask, so it
+    # must agree with the alpha instead of being left all 0 (= "opaque everywhere").
+    mask_row = ((w + 31) // 32) * 4
+    mask = bytearray()
+    for y in range(h - 1, -1, -1):
+        row = bytearray(mask_row)
+        for x in range(w):
+            if px[x, y][3] < 128:
+                row[x // 8] |= 0x80 >> (x % 8)
+        mask += row
     header = struct.pack("<IiiHHIIiiII", 40, w, h * 2, 1, 32, 0, len(rows), 0, 0, 0, 0)
-    return header + rows + bytes(mask_row * h)
+    return header + rows + bytes(mask)
 
 
 def ico(frames: list[tuple[int, bytes]], out: Path) -> None:
