@@ -11,6 +11,7 @@
     "preview:single": "SINGLE=1 vite build && node scripts/single-file.mjs"
   },
   "dependencies": {
+    "@fontsource-variable/fredoka": "^5.3.0",
     "@tauri-apps/api": "^2.12.3"
   },
   "devDependencies": {

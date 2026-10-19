@@ -148,15 +148,32 @@ button {
   outline: none;
 }
 
-/* The name in the top bar. Bahnschrift is a DIN-style face that ships with Windows 10 (1709 and later) and Windows 11,
-   so nothing has to be bundled; the rest is the fallback for anything else. */
+/* The name in the top bar: lower-case Fredoka (bundled, see main.ts) with a gradient from the text colour toward the
+   accent, so it follows the theme. Both ends are mostly accent mixed with the text colour, which keeps the contrast
+   against the background at 5.7:1 or better across the built-in themes (4.5:1 is the AA bar). The plain text colour
+   is the fallback, and forced-colors mode (Windows high contrast) drops the gradient. */
 .wordmark {
-  font-family: 'Bahnschrift', 'Segoe UI Variable Display', 'Segoe UI', system-ui, sans-serif;
-  font-size: 17px;
+  font-family: 'Fredoka Variable', 'Segoe UI Variable Display', 'Segoe UI', system-ui, sans-serif;
+  font-size: 22px;
   font-weight: 600;
-  letter-spacing: 0.3em;
-  line-height: 1;
-  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  line-height: 1.25;
+  text-transform: lowercase;
+  color: var(--fg);
+  background-image: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--accent) 50%, var(--fg)),
+    color-mix(in srgb, var(--accent) 85%, var(--fg))
+  );
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+@media (forced-colors: active) {
+  .wordmark {
+    background-image: none;
+    -webkit-text-fill-color: currentColor;
+  }
 }
 
 /* Seek / volume sliders: a real <input type=range> (keyboard + screen reader friendly), styled thin. */
