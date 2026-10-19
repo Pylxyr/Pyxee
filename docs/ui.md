@@ -50,7 +50,7 @@ Space play/pause, Left/Right seek 5 s, N next, P previous, Esc close Now Playing
 Space and arrows are left to focused buttons and sliders. Global media keys come with SMTC in milestone 6.
 
 ## Identity
-Pyxee is its own product, not a YouTube Music look-alike. The structure, not only the colours, differs:
+Pyxee has its own identity, in structure as well as colour:
 - **Navigation** is a top bar: wordmark, four underlined tabs (Home, Explore, Library, Queue), search at the far end.
   There is no side rail and no pill chips; filters and Library sections are underline tabs.
 - **Lists are tables.** Every song list (`TrackRow`) is one column of full-width rows: place number (a play mark on hover),
@@ -62,7 +62,7 @@ Pyxee is its own product, not a YouTube Music look-alike. The structure, not onl
   the same wall.
 - **Player bar** is a console: a state label (Playing / Paused / Loading / Stopped), an accent edge while playing, square
   controls, an accent-coloured play button and the seek bar inline in the wide layout.
-- Ink (blue-black with amber) is the default theme. There is no "YT Music" theme. The logo keeps its own red; the UI accent does not.
+- Ink (blue-black with amber) is the default theme. The logo keeps its own red; the UI accent does not.
 
 ## Scroll bars
 One rule set in `app.css`: thin, rounded, tinted from `--fg` (so every theme and Mica work), quiet at rest, clearer when the

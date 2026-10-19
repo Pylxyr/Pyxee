@@ -51,13 +51,44 @@ impl Default for GateConfig {
     }
 }
 
+/// How urgent a run is. Only the order of the line changes: the pacing (one run at a time, the gap after each, the
+/// cooldown after a rate limit) is the same for both, so this never means more requests.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Priority {
+    /// Something the person is waiting for: a search, the song they just picked.
+    Interactive,
+    /// Work nobody is waiting for yet: shelves, similar songs, the next song's address.
+    Background,
+}
+
+thread_local! {
+    static CURRENT: std::cell::Cell<Priority> = const { std::cell::Cell::new(Priority::Interactive) };
+}
+
+/// Runs `f`; every gated run it starts on this thread waits as [`Priority::Background`].
+pub fn background<T>(f: impl FnOnce() -> T) -> T {
+    struct Restore(Priority);
+    impl Drop for Restore {
+        fn drop(&mut self) {
+            CURRENT.with(|c| c.set(self.0));
+        }
+    }
+    let _restore = Restore(CURRENT.with(|c| c.replace(Priority::Background)));
+    f()
+}
+
+fn current_priority() -> Priority {
+    CURRENT.with(std::cell::Cell::get)
+}
+
 #[derive(Default)]
 struct State {
     /// A run (or a caller about to start one) owns the slot.
     busy: bool,
     next_ticket: u64,
-    /// Tickets of callers in line; the newest is last and is served first.
-    waiting: Vec<u64>,
+    /// Tickets of callers in line, oldest first. Interactive callers are served before background ones, and
+    /// within each kind the newest is served first.
+    waiting: Vec<(u64, Priority)>,
     /// The ticket the slot was handed to.
     granted: Option<u64>,
     /// Earliest start of the next run: the previous run's end plus `min_gap`.
@@ -87,10 +118,17 @@ impl State {
         }
     }
 
-    /// Gives the slot to the newest waiter, or frees it. Returns whether someone was woken.
+    /// Gives the slot to the newest interactive waiter (else the newest background one), or frees it. Returns whether
+    /// someone was woken.
     fn pass_on(&mut self) -> bool {
-        match self.waiting.pop() {
-            Some(next) => {
+        let pick = self
+            .waiting
+            .iter()
+            .rposition(|(_, p)| *p == Priority::Interactive)
+            .or_else(|| self.waiting.len().checked_sub(1));
+        match pick {
+            Some(i) => {
+                let (next, _) = self.waiting.remove(i);
                 self.granted = Some(next); // `busy` stays set: nobody can jump the line
                 true
             }
@@ -178,7 +216,7 @@ impl Gate {
         if st.busy {
             let me = st.next_ticket;
             st.next_ticket += 1;
-            st.waiting.push(me);
+            st.waiting.push((me, current_priority()));
             ahead = st.waiting.len();
             while st.granted != Some(me) {
                 st = self.turn.wait(st).unwrap_or_else(PoisonError::into_inner);
@@ -273,7 +311,11 @@ mod tests {
     fn the_newest_waiter_gets_the_slot_first_and_the_slot_frees_when_nobody_waits() {
         let mut st = State {
             busy: true,
-            waiting: vec![4, 7, 9],
+            waiting: vec![
+                (4, Priority::Interactive),
+                (7, Priority::Interactive),
+                (9, Priority::Interactive),
+            ],
             ..State::default()
         };
         assert!(st.pass_on());
@@ -281,9 +323,42 @@ mod tests {
         assert!(st.busy, "the slot is handed over, never freed in between");
         st.granted = None;
         assert!(st.pass_on() && st.pass_on());
-        assert_eq!(st.waiting, Vec::<u64>::new());
+        assert_eq!(st.waiting, Vec::<(u64, Priority)>::new());
         assert!(!st.pass_on());
         assert!(!st.busy);
+    }
+
+    #[test]
+    fn interactive_waiters_go_before_background_ones_even_when_the_background_one_is_newer() {
+        let mut st = State {
+            busy: true,
+            waiting: vec![
+                (1, Priority::Background),
+                (2, Priority::Interactive),
+                (3, Priority::Background),
+                (4, Priority::Background),
+            ],
+            ..State::default()
+        };
+        assert!(st.pass_on());
+        assert_eq!(st.granted, Some(2), "the person's own request first");
+        st.granted = None;
+        assert!(st.pass_on());
+        assert_eq!(st.granted, Some(4), "then background work, newest first as before");
+        st.granted = None;
+        assert!(st.pass_on() && st.pass_on());
+        assert!(st.waiting.is_empty());
+    }
+
+    #[test]
+    fn background_marks_only_the_closure_and_restores_the_previous_priority() {
+        assert_eq!(current_priority(), Priority::Interactive);
+        background(|| {
+            assert_eq!(current_priority(), Priority::Background);
+            background(|| assert_eq!(current_priority(), Priority::Background));
+            assert_eq!(current_priority(), Priority::Background);
+        });
+        assert_eq!(current_priority(), Priority::Interactive);
     }
 
     // ---- the gate itself, with real threads and no pacing -----------------------------------

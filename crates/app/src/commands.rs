@@ -81,7 +81,9 @@ pub async fn related_get(
 ) -> Result<Vec<TrackDto>, SearchErrorDto> {
     let source = std::sync::Arc::clone(&state.source);
     let count = count.clamp(1, 30) as usize;
-    tauri::async_runtime::spawn_blocking(move || source.related(&key, count))
+    tauri::async_runtime::spawn_blocking(move || {
+        pyxee_sources::gate::background(|| source.related(&key, count))
+    })
         .await
         .map_err(|e| SearchErrorDto {
             kind: crate::dto::SearchErrorKind::Other,

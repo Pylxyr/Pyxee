@@ -309,7 +309,9 @@ impl Engine {
             Effect::NeedRadio { seed, count } => {
                 let (source, tx) = (Arc::clone(&self.source), self.work_tx.clone());
                 thread::spawn(move || {
-                    let _ = tx.send(Work::Radio(source.related(&seed.key, count)));
+                    let _ = tx.send(Work::Radio(pyxee_sources::gate::background(|| {
+                        source.related(&seed.key, count)
+                    })));
                 });
             }
             Effect::Persist => {}
@@ -357,8 +359,14 @@ impl Engine {
             let on_meta = move |meta: StreamMeta| {
                 let _ = details_tx.send(Work::Details { id, meta });
             };
-            let result =
-                prepare(&*source, &cache, rate, id, &key, start_ms, &on_meta).map(Box::new);
+            // The next song's address is not needed yet: let searches and the song being played go first.
+            let run = || prepare(&*source, &cache, rate, id, &key, start_ms, &on_meta);
+            let result = if purpose == Purpose::Prefetch {
+                pyxee_sources::gate::background(run)
+            } else {
+                run()
+            }
+            .map(Box::new);
             let _ = tx.send(Work::Prepared {
                 generation,
                 token,

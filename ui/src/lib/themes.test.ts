@@ -7,10 +7,9 @@ import {
 const lum = (hex: string) => contrast(hex, '#000000');
 
 describe('built-in themes', () => {
-  it('include the default Ink and Frost themes, with unique ids, and no YouTube Music look-alike', () => {
+  it('include the default Ink and Frost themes, with unique ids', () => {
     const ids = BUILTIN_THEMES.map((x) => x.id);
     expect(ids).toEqual(expect.arrayContaining(['dark', 'light', 'oled']));
-    expect(ids).not.toContain('ytmusic');
     expect(new Set(ids).size).toBe(ids.length);
     expect(BUILTIN_THEMES.length).toBeGreaterThanOrEqual(8);
   });

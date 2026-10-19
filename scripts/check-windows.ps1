@@ -747,7 +747,7 @@ if (-not $SkipLive) {
 
 if ($Manual) {
   Section 'Manual checks in the real app (about 10 minutes)'
-  Write-Report 'Start the app in another window:  dev.cmd   (wait for it to open). Answer each question: y = yes/works, n = no, s = skip.'
+  Write-Report 'Start the app in another window (see docs/development.md, Run)   (wait for it to open). Answer each question: y = yes/works, n = no, s = skip.'
   $items = @(
     @('app-search', "Search '$Query1' on the Songs filter: results appear within ~10 s?"),
     @('app-play', 'Click a result: sound starts within ~10 s and the progress bar moves?'),

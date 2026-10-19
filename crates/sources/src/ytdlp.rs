@@ -9,9 +9,11 @@ use crate::{
 };
 use serde::Deserialize;
 use serde_json::Value;
+use std::collections::HashMap;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::sync::{Mutex, PoisonError};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -34,6 +36,11 @@ use std::time::{Duration, Instant};
 pub const FORMAT_SELECTOR: &str =
     "bestaudio[ext=webm][acodec=opus][protocol=https][audio_channels<=?2]/bestaudio[ext=m4a][acodec^=mp4a.40.2][protocol=https][audio_channels<=?2]";
 const RESULTS: usize = 20;
+/// How long a search answer is reused for the same query and filter (no request at all in that time).
+const SEARCH_CACHE_TTL: Duration = Duration::from_secs(10 * 60);
+const SEARCH_CACHE_MAX: usize = 32;
+/// After the dedicated songs page answers with bare titles, songs searches skip it for this long.
+const SONGS_PAGE_SKIP: Duration = Duration::from_secs(30 * 60);
 
 /// Optional login cookies for yt-dlp. YouTube is far less likely to answer "sign in to confirm
 /// you're not a bot" / HTTP 429 to a logged-in session. Set one of (the file wins if both are set):
@@ -102,6 +109,10 @@ pub struct YtDlpSource {
     timeout: Duration,
     gate: Gate,
     cookies: Cookies,
+    /// Recent search answers, keyed by lower-cased query and filter.
+    search_cache: Mutex<HashMap<(String, String), (Instant, Vec<SearchItem>)>>,
+    /// Set while the dedicated songs page is known to answer with bare titles (see `search_fresh`).
+    songs_page_bare_until: Mutex<Option<Instant>>,
 }
 
 impl YtDlpSource {
@@ -112,6 +123,8 @@ impl YtDlpSource {
             timeout: Duration::from_secs(40),
             gate: Gate::new(GateConfig::DEFAULT),
             cookies: Cookies::None,
+            search_cache: Mutex::new(HashMap::new()),
+            songs_page_bare_until: Mutex::new(None),
         }
     }
 
@@ -143,6 +156,90 @@ impl YtDlpSource {
     pub fn with_cookies(mut self, cookies: Cookies) -> Self {
         self.cookies = cookies;
         self
+    }
+
+    fn cached_search(&self, key: &(String, String)) -> Option<Vec<SearchItem>> {
+        let mut cache = self
+            .search_cache
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
+        let fresh = cache
+            .get(key)
+            .filter(|(at, _)| at.elapsed() < SEARCH_CACHE_TTL)
+            .map(|(_, items)| items.clone());
+        if fresh.is_none() {
+            cache.remove(key);
+        }
+        fresh
+    }
+
+    fn store_search(&self, key: (String, String), items: &[SearchItem]) {
+        if items.is_empty() {
+            return;
+        }
+        let mut cache = self
+            .search_cache
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
+        cache.retain(|_, (at, _)| at.elapsed() < SEARCH_CACHE_TTL);
+        if cache.len() >= SEARCH_CACHE_MAX {
+            let oldest = cache
+                .iter()
+                .min_by_key(|(_, (at, _))| *at)
+                .map(|(k, _)| k.clone());
+            if let Some(k) = oldest {
+                cache.remove(&k);
+            }
+        }
+        cache.insert(key, (Instant::now(), items.to_vec()));
+    }
+
+    fn songs_page_is_bare(&self) -> bool {
+        self.songs_page_bare_until
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .is_some_and(|until| Instant::now() < until)
+    }
+
+    fn note_songs_page_bare(&self) {
+        *self
+            .songs_page_bare_until
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner) = Some(Instant::now() + SONGS_PAGE_SKIP);
+    }
+
+    /// A search that is not in the cache. The dedicated songs page answers with bare titles (no artist, no length),
+    /// and then the ordinary video search is run as well: two runs. Once that has happened, songs searches go
+    /// straight to the video search for a while: one run, so faster and half the requests.
+    fn search_fresh(
+        &self,
+        query: &str,
+        filter: SearchFilter,
+    ) -> Result<Vec<SearchItem>, SourceError> {
+        let skip_songs_page = filter == SearchFilter::Songs && self.songs_page_is_bare();
+        let first = if skip_songs_page {
+            SearchFilter::Videos
+        } else {
+            filter
+        };
+        let out = self.run("search", &flat_args(search_target(query, first)?, RESULTS))?;
+        let items = parse_entries(&out)?;
+        if filter == SearchFilter::Songs && !skip_songs_page && too_bare(&items) {
+            self.note_songs_page_bare();
+            log::info!(
+                "songs search came back without artists or lengths; using the video search instead"
+            );
+            let out = self.run(
+                "search",
+                &flat_args(search_target(query, SearchFilter::Videos)?, RESULTS),
+            )?;
+            if let Ok(richer) = parse_entries(&out) {
+                if !richer.is_empty() && !too_bare(&richer) {
+                    return Ok(richer);
+                }
+            }
+        }
+        Ok(items)
     }
 
     /// One yt-dlp run, when the gate says it is this call's turn.
@@ -507,27 +604,17 @@ fn video_id(key: &str) -> Result<&str, SourceError> {
 
 impl MusicSource for YtDlpSource {
     fn search(&self, query: &str, filter: SearchFilter) -> Result<Vec<SearchItem>, SourceError> {
-        if query.trim().is_empty() {
+        let q = query.trim();
+        if q.is_empty() {
             return Ok(Vec::new());
         }
-        let out = self.run("search", &flat_args(search_target(query, filter)?, RESULTS))?;
-        let items = parse_entries(&out)?;
-        // YouTube Music's own result list comes back from yt-dlp as bare titles (no artist, no length). When most of
-        // the rows are like that, the ordinary video search answers the same query with complete rows.
-        if filter == SearchFilter::Songs && too_bare(&items) {
-            log::info!(
-                "songs search came back without artists or lengths; using the video search instead"
-            );
-            let out = self.run(
-                "search",
-                &flat_args(search_target(query, SearchFilter::Videos)?, RESULTS),
-            )?;
-            if let Ok(richer) = parse_entries(&out) {
-                if !richer.is_empty() && !too_bare(&richer) {
-                    return Ok(richer);
-                }
-            }
+        let key = (q.to_lowercase(), format!("{filter:?}"));
+        if let Some(hit) = self.cached_search(&key) {
+            log::info!("search: answered from the session cache, no yt-dlp run");
+            return Ok(hit);
         }
+        let items = self.search_fresh(query, filter)?;
+        self.store_search(key, &items);
         Ok(items)
     }
 
@@ -1268,5 +1355,51 @@ esac"#,
             Path::new("a"),
             "no preferred copy configured"
         );
+    }
+}
+
+#[cfg(test)]
+mod speed_tests {
+    use super::*;
+
+    fn item(n: &str) -> SearchItem {
+        SearchItem::Track(crate::TrackInfo {
+            key: format!("yt:{n}"),
+            title: n.to_string(),
+            artist: "Artist".into(),
+            duration_ms: Some(1000),
+            thumbnail: None,
+        })
+    }
+
+    #[test]
+    fn the_same_search_is_answered_from_the_cache_and_an_empty_answer_is_not_kept() {
+        let s = YtDlpSource::new("yt-dlp-that-is-never-started");
+        let key = ("low tide".to_string(), "Songs".to_string());
+        assert!(s.cached_search(&key).is_none());
+        s.store_search(key.clone(), &[]);
+        assert!(s.cached_search(&key).is_none(), "empty answers are not cached");
+        s.store_search(key.clone(), &[item("a"), item("b")]);
+        assert_eq!(s.cached_search(&key).map(|v| v.len()), Some(2));
+        let other = ("low tide".to_string(), "Videos".to_string());
+        assert!(s.cached_search(&other).is_none(), "another filter is another search");
+    }
+
+    #[test]
+    fn the_cache_never_holds_more_than_its_limit() {
+        let s = YtDlpSource::new("yt-dlp-that-is-never-started");
+        for i in 0..(SEARCH_CACHE_MAX + 10) {
+            s.store_search((format!("q{i}"), "All".into()), &[item("x")]);
+        }
+        let n = s.search_cache.lock().unwrap().len();
+        assert_eq!(n, SEARCH_CACHE_MAX);
+    }
+
+    #[test]
+    fn a_bare_songs_page_is_skipped_afterwards() {
+        let s = YtDlpSource::new("yt-dlp-that-is-never-started");
+        assert!(!s.songs_page_is_bare());
+        s.note_songs_page_bare();
+        assert!(s.songs_page_is_bare());
     }
 }

@@ -19,7 +19,7 @@
     search.error?.kind === 'offline'
       ? 'Check your internet connection, then try again.'
       : search.error?.kind === 'toolMissing'
-        ? 'Pyxee looks for yt-dlp next to the app. Run "cargo xtask tools" (see the README) or set PYXEE_YTDLP to its path.'
+        ? 'Pyxee looks for yt-dlp next to the app. Run "cargo xtask tools" (see docs/development.md) or set PYXEE_YTDLP to its path.'
         : search.error?.kind === 'rateLimited'
           ? 'Wait a little while before searching again.'
           : '',

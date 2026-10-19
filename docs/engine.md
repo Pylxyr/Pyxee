@@ -33,11 +33,11 @@ local HTTP server that starts returning 403 mid-song.
 ## NOT verified yet: needs your PC (please run these and paste the output)
 Nothing in the sandbox can reach YouTube or a sound card, so these shapes come from what I know of yt-dlp, not from live output:
 - `spike search "lowtide" --filter all|songs|videos|artists|playlists` and `spike related yt:<id>`: do the results parse?
-  Does `music.youtube.com/search?q=` (used for Songs) work in your yt-dlp? Does the `list=RD<id>` mix return tracks?
+  Does the Songs search URL (see `search_target`) work in your yt-dlp? Does the `list=RD<id>` mix return tracks?
   If yt-dlp needs a JavaScript runtime for YouTube it will say so on stderr.
 - The suggestions endpoint (`suggestqueries.google.com`).
 - Real WASAPI output: gapless on a real device, device latency compensation, underruns.
-- Albums search is not supported yet (needs the YouTube Music API); the filter is shown disabled.
+- Albums search is not supported yet (needs a dedicated albums API); the filter is shown disabled.
 - Instant skip to a prefetched track is not implemented in the real engine (the sim has it); a skip re-opens the track, using
   the cached URL, so it is fast but not instant.
 
@@ -76,6 +76,7 @@ offline or rate limited is not announced (the player bar already shows it with a
   (then also to ffmpeg, since removed). A 401/403/410 becomes `AudioError::UrlExpired` (at start and mid-play), so the usual re-resolve and resume-at-position path applies. A URL is cached only after it
   opened; a refused URL is evicted, re-resolved once, and never served from the cache again (Retry resolves fresh).
   The message is "YouTube refused to send it (HTTP 403)" (`Failure::Expired(Option<u16>)`).
+- **Stream buffer.** `HttpRangeSource` downloads the whole song in the background (512 KiB range requests, retried with a short back-off), so the decoder reads from memory and a song that is fully downloaded finishes with no network. If the buffer runs dry the reader waits up to 45 s while the download keeps retrying; after that the song fails with a timeout. Files over 256 MiB are only buffered in a window around the playhead. A 4xx stops the download (the URL is expired or limited) and surfaces as before once the reader reaches the missing part.
 - **Track details.** Resolving also reports artist, length and the largest cover. `EngineEvent::TrackDetails` fills an
   unknown artist, a missing length and the cover in the queue entry (a known artist/length is never overwritten) and
   `Library::refresh_track` updates a saved copy. An "Unknown artist" never erases a stored artist.
@@ -92,7 +93,8 @@ called one shared `run_tool`, which started yt-dlp immediately. Skipping through
 several yt-dlp processes at once, each making several requests of its own.
 
 **The gate** (`crates/sources/src/gate.rs`, one per `YtDlpSource`, so it covers search, resolve, prefetch and radio):
-- one yt-dlp run at a time; a 1 s quiet gap after each run ends;
+- one yt-dlp run at a time; a 1 s quiet gap after each run ends; the line is ordered by urgency (`gate::Priority`): searches and the song being played go before background work (shelves, similar songs, the next song's address), newest first within each kind, with the pacing itself unchanged;
+- a search is answered from a 10-minute session cache when the same query and filter are asked again (no run), and after the songs page has answered with bare titles once, Songs searches skip it for 30 minutes (one run instead of two);
 - after a rate-limit answer (HTTP 429, HTTP 403 from YouTube, "too many requests", "Sign in to confirm you're not a bot"), new runs are refused at once with
   `SourceError::RateLimited` for 2 minutes, including callers already waiting, so there is no retry storm. The player
   already treats `RateLimited` as transient (it stops with a Retry; a failed prefetch is not retried);

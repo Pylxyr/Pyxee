@@ -258,10 +258,9 @@ describe('appearance', () => {
     await waitFor(() => expect(document.documentElement.dataset.theme).toBe('dark'));
   });
 
-  it('offers Ink, Frost and the other themes (and no YT Music look-alike), and applies the one picked', async () => {
+  it('offers Ink, Frost and the other themes, and applies the one picked', async () => {
     const group = await openAppearance();
     for (const name of ['Ink', 'Frost', 'OLED black', 'Deep blue', 'Graphite and gold']) expect(within(group).getByRole('button', { name })).toBeTruthy();
-    expect(within(group).queryByRole('button', { name: 'YT Music' })).toBeNull();
     await fireEvent.click(within(group).getByRole('button', { name: 'OLED black' }));
     await waitFor(() => expect(document.documentElement.dataset.themeId).toBe('oled'));
     expect(document.documentElement.style.getPropertyValue('--t-accent')).toBe('#ff5c6a');
