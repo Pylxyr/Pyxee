@@ -16,9 +16,9 @@ handover, prefetch, radio) so the real state machine drives the UI. Demo tracks 
 
 
 ## Layout
-Wide (>= 900 px): side rail + content + player bar. Narrow: content + player bar + bottom navigation.
+Wide (>= 900 px): a top bar (wordmark, four tabs, search, settings) + content + player bar. Narrow: content + player bar + bottom navigation.
 The player bar shows once a track exists; click it (or the chevron) to open Now Playing
-(Up next / Lyrics / Related; Lyrics and Related are placeholders).
+(Up next / Lyrics / Related).
 
 ## Theming and Mica
 CSS variables on `<html>`: `data-theme` (dark/light, follows the system unless overridden) and `data-backdrop`.
@@ -50,10 +50,19 @@ Space play/pause, Left/Right seek 5 s, N next, P previous, Esc close Now Playing
 Space and arrows are left to focused buttons and sliders. Global media keys come with SMTC in milestone 6.
 
 ## Identity
-Pyxee is its own product, not a YouTube Music look-alike: a rail with a wordmark and an accent bar for the current page
-(not a filled pill), rectangular controls with a hairline border instead of pills, an accent-coloured play button, the seek
-bar inline in the wide player bar, and Ink (blue-black with amber) as the default theme. There is no "YT Music" theme.
-The logo keeps its own red; the UI accent does not use it.
+Pyxee is its own product, not a YouTube Music look-alike. The structure, not only the colours, differs:
+- **Navigation** is a top bar: wordmark, four underlined tabs (Home, Explore, Library, Queue), search at the far end.
+  There is no side rail and no pill chips; filters and Library sections are underline tabs.
+- **Lists are tables.** Every song list (`TrackRow`) is one column of full-width rows: place number (a play mark on hover),
+  a small square cover, title, the artist in its own column when there is room, length, like and menu. There are no two-column
+  grids of big rows. Queue and playlists use the same rhythm with a drag handle.
+- **Section headings** (`SectionHead`) are small tracked-out capitals with a count and a hairline, not big bold titles.
+- **Home** opens with a "Pick up where you left off" panel (the last song, Resume, the liked-songs count), then "On rotation"
+  (the table) and "Recently played" as a wall of square covers with the title over the picture. "Jump back in" on Explore is
+  the same wall.
+- **Player bar** is a console: a state label (Playing / Paused / Loading / Stopped), an accent edge while playing, square
+  controls, an accent-coloured play button and the seek bar inline in the wide layout.
+- Ink (blue-black with amber) is the default theme. There is no "YT Music" theme. The logo keeps its own red; the UI accent does not.
 
 ## Scroll bars
 One rule set in `app.css`: thin, rounded, tinted from `--fg` (so every theme and Mica work), quiet at rest, clearer when the
@@ -65,6 +74,15 @@ Moods (quick searches), "Jump back in" (recent plays) and a shelf of similar son
 one per artist). The shelves come from the `related_get` command (`MusicSource::related`, a YouTube mix), load one after
 another because yt-dlp is paced, stop early on offline / rate-limited / tool-missing, and are cached for the session
 (Refresh asks again). Logic: `lib/explore.ts` (pure), `lib/explore.svelte.ts`, `pages/Explore.svelte`.
+
+## Now Playing > Related
+Songs similar to the one being shown, from the same `related_get` command as Explore (`MusicSource::related`, 20 songs).
+Rows are the usual track rows: click plays that song with the rest of the list queued after it, **Play all** plays from the
+top, and the row's heart and menu give like, play next, add to queue and add to playlist. `lib/related.svelte.ts` asks only
+while the tab is showing, waits 600 ms on a song first (skipping through songs asks for none of the skipped ones), asks at
+most once per song per session, drops the answer for a song the user has left, and never retries a failure by itself. After
+offline / rate-limited / tool-missing the other songs show the same message for 30 s instead of asking. A failure shows the
+message with **Try again**; an empty answer says no related songs were found. Component: `components/RelatedPanel.svelte`.
 
 ## Themes
 A theme is seven colours (`bg`, `surface`, `surface2`, `line`, `fg`, `muted`, `accent`) plus a dark/light base

@@ -80,7 +80,9 @@
       {:else if app}You have the latest version ({app.current}).
       {:else}Looks at the GitHub releases. The installer's SHA-256 is checked before it runs; it is not code-signed yet, so Windows SmartScreen may ask.{/if}
     </p>
-    {#if app?.available && !app.installable}
+    {#if app?.available && app.portable}
+      <p class="mt-1 break-all text-[12px] text-muted" data-testid="portable-update">This is a portable copy. Download the new zip from {app.notesUrl} and unpack it over this folder; your data folder stays.</p>
+    {:else if app?.available && !app.installable}
       <p class="mt-1 break-all text-[12px] text-muted">This release has no installer with a checksum list attached. Download it from {app.notesUrl}</p>
     {/if}
     {#if appError}<p class="mt-1 text-[13px] text-accent" role="alert">{appError}</p>{/if}

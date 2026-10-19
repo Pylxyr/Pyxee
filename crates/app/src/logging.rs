@@ -1,5 +1,5 @@
 //! Logging to a file the user can find: `<app data>\logs\pyxee.log` (one older copy, `pyxee.log.1`, is kept
-//! when it passes 2 MB). Everything is also copied to the console, which is what `tauri dev` shows.
+//! when it passes 2 MB, so the logs never exceed about 4 MB; identical records in a row are cut to two lines and a count). Everything is also copied to the console, which is what `tauri dev` shows.
 //!
 //! Set `PYXEE_LOG` to `error`, `warn`, `info` (default), `debug` or `trace` for more or less detail.
 
@@ -17,9 +17,40 @@ pub struct LogInfo {
     pub file: PathBuf,
 }
 
+/// Identical records in a row (a failing device retried in a loop, a stream erroring on every buffer) are written
+/// `REPEATS_KEPT` times, then counted and summarised when something else is logged, so one fault cannot fill the disk
+/// or bury the line before it.
+pub const REPEATS_KEPT: u32 = 2;
+
+#[derive(Default)]
+pub struct Repeats {
+    last: Option<String>,
+    run: u32,
+    skipped: u32,
+}
+
+impl Repeats {
+    /// For each record: `(how many repeats were swallowed just before this one, whether to write this one)`.
+    pub fn feed(&mut self, key: &str) -> (u32, bool) {
+        if self.last.as_deref() == Some(key) {
+            self.run += 1;
+            if self.run > REPEATS_KEPT {
+                self.skipped += 1;
+                return (0, false);
+            }
+            return (0, true);
+        }
+        let swallowed = std::mem::take(&mut self.skipped);
+        self.last = Some(key.to_string());
+        self.run = 1;
+        (swallowed, true)
+    }
+}
+
 pub struct FileLogger {
     path: PathBuf,
     file: Mutex<File>,
+    repeats: Mutex<Repeats>,
     level: LevelFilter,
     max_bytes: u64,
     to_stderr: bool,
@@ -83,6 +114,7 @@ impl FileLogger {
         Ok(Self {
             path: path.to_path_buf(),
             file: Mutex::new(file),
+            repeats: Mutex::new(Repeats::default()),
             level,
             max_bytes,
             to_stderr,
@@ -123,7 +155,27 @@ impl Log for FileLogger {
         if !self.enabled(r.metadata()) {
             return;
         }
-        let line = format_line(now_ms(), r.level(), r.target(), &r.args().to_string());
+        let message = r.args().to_string();
+        let key = format!("{} {} {message}", r.level(), r.target());
+        let (swallowed, write) = self
+            .repeats
+            .lock()
+            .map_or((0, true), |mut rep| rep.feed(&key));
+        if swallowed > 0 {
+            let note = format_line(
+                now_ms(),
+                Level::Info,
+                "pyxee::log",
+                &format!("the line above was repeated {swallowed} more times"),
+            );
+            if let Ok(mut f) = self.file.lock() {
+                let _ = f.write_all(note.as_bytes());
+            }
+        }
+        if !write {
+            return;
+        }
+        let line = format_line(now_ms(), r.level(), r.target(), &message);
         if self.to_stderr {
             eprint!("{line}");
         }
@@ -278,6 +330,24 @@ mod tests {
         let text = fs::read_to_string(dir.join("p.log")).unwrap();
         assert!(text.contains("visible info") && text.contains("library problem"));
         assert!(!text.contains("too detailed") && !text.contains("library chatter"));
+    }
+
+    #[test]
+    fn a_storm_of_identical_records_is_cut_to_a_few_lines_and_a_count() {
+        let mut r = Repeats::default();
+        let written: Vec<bool> = (0..6).map(|_| r.feed("ERROR a boom").1).collect();
+        assert_eq!(written, [true, true, false, false, false, false]);
+        assert_eq!(
+            r.feed("INFO a fine"),
+            (4, true),
+            "the count is reported when something else is logged"
+        );
+        assert_eq!(r.feed("INFO a fine"), (0, true));
+        assert_eq!(
+            r.feed("ERROR a boom"),
+            (0, true),
+            "a record that comes back later is new again"
+        );
     }
 
     #[test]

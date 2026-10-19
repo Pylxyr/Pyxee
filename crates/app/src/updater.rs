@@ -32,8 +32,11 @@ pub struct AppUpdateDto {
     pub available: bool,
     // The release page, always present so there is something to open even when it cannot be installed in place.
     pub notes_url: String,
-    // True when the release carries an installer and a checksum list, so "Install" can verify it.
+    // True when the release carries an installer and a checksum list, so "Install" can verify it, and this copy is an
+    // installed one (a portable copy is replaced by downloading the new zip, never by running an installer).
     pub installable: bool,
+    // True for a portable copy (`portable.txt` next to the program).
+    pub portable: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
@@ -89,14 +92,22 @@ fn latest_release(current: &str) -> Result<Option<update::Release>, String> {
     update::newest_release(&json, beta).map_err(|e| e.to_string())
 }
 
+/// The data folder of a portable copy, or `None` for an installed one (see `pyxee_shell::datadir::portable_dir`).
+pub fn portable_dir() -> Option<PathBuf> {
+    let exe = std::env::current_exe().ok()?;
+    pyxee_shell::datadir::portable_dir(exe.parent()?)
+}
+
 fn check_app_blocking() -> Result<AppUpdateDto, String> {
     let current = env!("CARGO_PKG_VERSION").to_string();
+    let portable = portable_dir().is_some();
     Ok(match latest_release(&current)? {
         Some(r) => AppUpdateDto {
             available: update::is_newer(&current, &r.tag),
             latest: r.version_text(),
             notes_url: r.page_url.clone(),
-            installable: r.installer.is_some() && r.sums_url.is_some(),
+            installable: !portable && r.installer.is_some() && r.sums_url.is_some(),
+            portable,
             current,
         },
         None => AppUpdateDto {
@@ -104,6 +115,7 @@ fn check_app_blocking() -> Result<AppUpdateDto, String> {
             available: false,
             notes_url: format!("https://github.com/{REPO}/releases"),
             installable: false,
+            portable,
             current,
         },
     })
@@ -111,6 +123,9 @@ fn check_app_blocking() -> Result<AppUpdateDto, String> {
 
 /// Downloads and verifies the installer; returns where it is.
 fn fetch_installer() -> Result<PathBuf, String> {
+    if portable_dir().is_some() {
+        return Err("This is a portable copy: download the new zip from the release page and unpack it over this folder (your data folder stays).".into());
+    }
     let current = env!("CARGO_PKG_VERSION");
     let release = latest_release(current)?.ok_or("No release was found.")?;
     if !update::is_newer(current, &release.tag) {
@@ -294,9 +309,11 @@ mod tests {
             available: true,
             notes_url: "u".into(),
             installable: false,
+            portable: true,
         })
         .unwrap();
         assert_eq!(v["notesUrl"], "u");
         assert_eq!(v["installable"], false);
+        assert_eq!(v["portable"], true);
     }
 }

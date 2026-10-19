@@ -28,7 +28,7 @@ export const noDiagnostics = {
   logInfo: async () => ({ dir: '', file: '', error: null }),
   openLogFolder: async () => {},
   onNotice: async () => () => {},
-  updateCheckApp: async () => ({ current: '0.1.0', latest: '0.1.0', available: false, notesUrl: '', installable: false }),
+  updateCheckApp: async () => ({ current: '0.1.0', latest: '0.1.0', available: false, notesUrl: '', installable: false, portable: false }),
   updateInstallApp: async () => {},
   updateCheckYtdlp: async () => ({ available: false, currentVersion: null }),
   updateInstallYtdlp: async () => '',

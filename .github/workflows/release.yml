@@ -83,6 +83,8 @@ jobs:
     if: ${{ !cancelled() && needs.version-guard.result == 'success' && (needs.checks.result == 'success' || needs.checks.result == 'skipped') }}
     runs-on: windows-latest
     timeout-minutes: 60
+    outputs:
+      signed: ${{ steps.signing.outputs.signed }}
     env:
       VERSION: ${{ needs.version-guard.outputs.version }}
     steps:
@@ -128,6 +130,27 @@ jobs:
           Write-Host "yt-dlp accepts the app's format selector: $selector"
       - run: npm ci --prefix ui
       - run: npm run build --prefix ui
+      # Code signing. Optional: with no certificate secret the release is built unsigned (and says so). To sign, add
+      # the secrets WINDOWS_CERT_PFX_BASE64 (the .pfx, base64) and WINDOWS_CERT_PASSWORD; see docs/releasing.md.
+      # Once the secret exists, a build that fails to sign fails the release instead of shipping unsigned.
+      - name: Code-signing setup
+        id: signing
+        shell: pwsh
+        env:
+          PFX_B64: ${{ secrets.WINDOWS_CERT_PFX_BASE64 }}
+          PFX_PASSWORD: ${{ secrets.WINDOWS_CERT_PASSWORD }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:PFX_B64)) {
+            "signed=false" >> $env:GITHUB_OUTPUT
+            Write-Host "No WINDOWS_CERT_PFX_BASE64 secret: the build is not signed."
+            exit 0
+          }
+          $pfx = Join-Path $env:RUNNER_TEMP "pyxee-signing.pfx"
+          [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:PFX_B64))
+          "PYXEE_SIGN_CERT_FILE=$pfx" >> $env:GITHUB_ENV
+          "PYXEE_SIGN_CERT_PASSWORD=$env:PFX_PASSWORD" >> $env:GITHUB_ENV
+          "PYXEE_REQUIRE_SIGNING=1" >> $env:GITHUB_ENV
+          "signed=true" >> $env:GITHUB_OUTPUT
       # Same as `cargo xtask installer`, with the bundle list chosen here: Windows Installer (MSI) only accepts a
       # numeric pre-release suffix, so a release candidate such as 0.2.0-rc1 gets the NSIS installer alone.
       - name: Build the installer
@@ -135,8 +158,31 @@ jobs:
         shell: pwsh
         run: |
           $bundles = if ($env:VERSION -match '-') { "nsis" } else { "nsis,msi" }
-          & "$env:GITHUB_WORKSPACE/ui/node_modules/.bin/tauri.cmd" build --config tauri.bundle.conf.json --bundles $bundles
+          # The plain bundle config, or the one that signs everything when a certificate is configured.
+          $conf = (cargo xtask signing-config | Select-Object -Last 1)
+          if ($LASTEXITCODE -ne 0) { throw "cargo xtask signing-config failed" }
+          & "$env:GITHUB_WORKSPACE/ui/node_modules/.bin/tauri.cmd" build --config $conf --bundles $bundles
           if ($LASTEXITCODE -ne 0) { throw "tauri build failed ($LASTEXITCODE)" }
+          if ($env:PYXEE_SIGN_CERT_FILE) {
+            foreach ($f in @(Get-ChildItem "$env:GITHUB_WORKSPACE/target/release/bundle/nsis/*-setup.exe") + @(Get-ChildItem "$env:GITHUB_WORKSPACE/target/release/bundle/msi/*.msi" -ErrorAction SilentlyContinue)) {
+              $st = (Get-AuthenticodeSignature -LiteralPath $f.FullName).Status
+              if ($st -ne 'Valid') { throw "$($f.Name) is not validly signed ($st)" }
+            }
+          }
+      - name: Build the portable zip
+        shell: pwsh
+        run: |
+          cargo xtask portable
+          if ($LASTEXITCODE -ne 0) { throw "cargo xtask portable failed" }
+          $zip = Get-ChildItem "target/portable/*_x64-portable.zip" | Select-Object -First 1
+          if (-not $zip) { throw "the portable zip was not built" }
+          # Unpack it and run what it carries: yt-dlp must start, and the marker must be there.
+          $dir = Join-Path $env:RUNNER_TEMP "pyxee-portable"
+          Expand-Archive -LiteralPath $zip.FullName -DestinationPath $dir -Force
+          $root = Get-ChildItem $dir -Directory | Select-Object -First 1
+          if (-not (Test-Path (Join-Path $root.FullName "portable.txt"))) { throw "portable.txt is missing" }
+          & (Join-Path $root.FullName "yt-dlp.exe") --version
+          if ($LASTEXITCODE -ne 0) { throw "the portable yt-dlp does not run" }
       # Install the built installer for real, silently, and run what it installed. This proves the installed layout
       # (the app with yt-dlp next to it, and no ffmpeg) is what the app expects.
       - name: Installed layout works
@@ -162,6 +208,7 @@ jobs:
           New-Item -ItemType Directory -Force -Path release | Out-Null
           $files = @(Get-ChildItem "target/release/bundle/nsis/*-setup.exe")
           if ($env:VERSION -notmatch '-') { $files += @(Get-ChildItem "target/release/bundle/msi/*.msi") }
+          $files += @(Get-ChildItem "target/portable/*_x64-portable.zip")
           if ($files.Count -eq 0) { throw "No installers were built" }
           foreach ($f in $files) {
             if ($f.Name -notlike "*$($env:VERSION)*") { throw "$($f.Name) does not carry version $($env:VERSION)" }
@@ -206,7 +253,7 @@ jobs:
       - name: Checksums
         run: |
           cd release
-          sha256sum $(ls | grep -E '\.(exe|msi)$') > SHA256SUMS.txt
+          sha256sum $(ls | grep -E '\.(exe|msi|zip)$') > SHA256SUMS.txt
           cat SHA256SUMS.txt
       # Needs a public repo, or GitHub Enterprise Cloud for a private one. Never blocks the release.
       - name: Attest build provenance
@@ -217,6 +264,7 @@ jobs:
           subject-path: |
             release/*.exe
             release/*.msi
+            release/*.zip
       - name: Write release notes
         env:
           # AI release notes, tried in this order; with none available the notes come from commit messages and
@@ -241,7 +289,12 @@ jobs:
             echo
             echo "## About these builds"
             echo
-            echo "The Windows installers are **not code-signed**, so SmartScreen will warn about them."
+            if [ "${{ needs.build.outputs.signed }}" = "true" ]; then
+              echo "The Windows installers and \`Pyxee.exe\` in the portable zip are code-signed. \`yt-dlp.exe\` in the zip is the official, unmodified build."
+            else
+              echo "The Windows installers and the portable zip are **not code-signed**, so SmartScreen will warn about them."
+            fi
+            echo "Portable: unpack \`Pyxee_${VERSION}_x64-portable.zip\` anywhere; everything stays in its \`data\` folder."
             if [ "${{ steps.attest.outcome }}" = "success" ]; then
               echo "Build provenance: verify with \`gh attestation verify <file> --repo ${GITHUB_REPOSITORY}\`."
             fi

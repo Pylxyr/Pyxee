@@ -2,6 +2,7 @@
 //! detection, taskbar progress, settings). No Windows or Tauri calls live here, so all of it is tested on any OS.
 
 pub mod anchor;
+pub mod audiodev;
 pub mod cli;
 pub mod datadir;
 pub mod geometry;
@@ -9,6 +10,7 @@ pub mod power;
 pub mod progress;
 pub mod settings;
 pub mod sleep;
+pub mod toast;
 pub mod tray_controls;
 pub mod update;
 pub mod winui;

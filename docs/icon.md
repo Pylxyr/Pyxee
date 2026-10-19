@@ -6,7 +6,7 @@ geometry. Colours: red `#F00524`, black `#0F0E0F`, cream `#F2EDE2`.
 
 - `assets/logo/tray.svg`: simplified for 16-24 px (thicker stem, larger cream disc, no centre dot).
 - `python3 assets/logo/make-icons.py` regenerates everything below (needs `rsvg-convert` and Pillow):
-  `crates/app/icons/icon.ico` (16, 24, 32, 48, 64, 128, 256; 16 and 24 use the tray variant), `icon.png` (512),
+  `crates/app/icons/icon.ico` (16, 20, 24, 32, 40, 48, 64, 128 as 32-bit BMP frames, 256 as PNG; up to 24 px use the tray variant), `icon.png` (512),
   `32x32.png`, `128x128.png`, `128x128@2x.png`, `tray.ico` + `tray-16/24/32.png` (for the system tray in WP4) and
   `assets/logo/png/logo-1024.png`.
 - Side rail: `ui/src/components/Logo.svelte` (same artwork inline; its colours do not follow the theme).

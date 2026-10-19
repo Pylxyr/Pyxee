@@ -15,7 +15,7 @@
 </script>
 
 {#if entry}
-  <div class="relative shrink-0 border-t border-line bg-surface" data-testid="player-bar">
+  <div class="relative shrink-0 border-t border-line bg-surface {player.isPlaying ? 'shadow-[inset_0_2px_0_0_var(--accent)]' : ''}" data-testid="player-bar">
     {#if !wide}
       <div class="absolute inset-x-0 -top-2 z-10">
         <Seek positionMs={player.state.positionMs} durationMs={player.durationMs} onseek={player.seek} accent label="Seek" />
@@ -23,8 +23,9 @@
     {/if}
     <div class="flex h-[76px] items-center gap-4 px-4 sm:px-6">
       <button class="flex min-w-0 flex-1 items-center gap-3 text-left" aria-label="Open Now Playing" onclick={() => nav.openNowPlaying()}>
-        <Thumb src={entry.track.thumbnail} seed={entry.track.key} size={52} rounded="rounded-sm" />
+        <Thumb src={entry.track.thumbnail} seed={entry.track.key} size={48} rounded="rounded-sm" />
         <span class="min-w-0">
+          <span class="label block !text-[10px] {player.isPlaying ? '!text-accent' : ''}" aria-hidden="true">{player.failure ? 'Stopped' : player.isPlaying ? 'Playing' : player.isBusy ? 'Loading' : 'Paused'}</span>
           <span class="block truncate text-[15px] font-semibold">{entry.track.title}</span>
           {#if player.failure}
             <span class="block truncate text-[13px] text-accent" role="alert">{describeFailure(player.failure)}</span>
@@ -42,7 +43,7 @@
         {#if wide}
           <button class="p-1" aria-label="Previous" onclick={player.previous}><Icon name="prev" /></button>
         {/if}
-        <button class="flex h-11 w-11 items-center justify-center rounded-lg bg-accent text-on-accent" aria-label={playLabel} onclick={player.toggle}>
+        <button class="flex h-11 w-11 items-center justify-center rounded bg-accent text-on-accent" aria-label={playLabel} onclick={player.toggle}>
           {#if player.state.transport.state === 'loading'}
             <span class="h-5 w-5 animate-spin rounded-full border-2 border-on-accent/30 border-t-on-accent" aria-hidden="true"></span>
           {:else}

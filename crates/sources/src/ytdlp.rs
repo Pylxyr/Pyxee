@@ -315,6 +315,7 @@ fn artist_of(v: &Value) -> Option<String> {
         .filter(|s| !s.is_empty())
         .or_else(|| text(v, "artist"))
         .or_else(|| text(v, "creator"))
+        .or_else(|| text(v, "album_artist"))
         .or_else(|| text(v, "uploader"))
         .or_else(|| text(v, "channel"))?;
     let name = raw.strip_suffix(" - Topic").unwrap_or(&raw).trim();
@@ -325,24 +326,50 @@ fn artist_name(v: &Value) -> String {
     artist_of(v).unwrap_or_else(|| UNKNOWN_ARTIST.into())
 }
 
-/// Seconds from `duration`, or from a `duration_string` such as `3:45` / `1:02:03`.
+/// Seconds from `duration` (a number, or a number in a string), or from a text such as `3:45` / `1:02:03` in
+/// `duration_string`, `duration_text` or `length` (the names different extractors use).
 fn duration_secs(v: &Value) -> Option<f64> {
-    if let Some(d) = v
-        .get("duration")
-        .and_then(Value::as_f64)
-        .filter(|d| *d > 0.0)
-    {
-        return Some(d);
+    if let Some(d) = v.get("duration").and_then(|d| {
+        d.as_f64()
+            .or_else(|| d.as_str().and_then(|s| s.trim().parse::<f64>().ok()))
+    }) {
+        if d > 0.0 {
+            return Some(d);
+        }
     }
-    let s = text(v, "duration_string")?;
-    let mut total = 0.0;
-    for part in s.split(':') {
-        total = total * 60.0 + part.trim().parse::<f64>().ok()?;
+    for key in ["duration_string", "duration_text", "length"] {
+        let Some(s) = text(v, key) else { continue };
+        let mut total = 0.0;
+        let mut ok = true;
+        for part in s.split(':') {
+            match part.trim().parse::<f64>() {
+                Ok(n) => total = total * 60.0 + n,
+                Err(_) => ok = false,
+            }
+        }
+        if ok && total > 0.0 {
+            return Some(total);
+        }
     }
-    (total > 0.0).then_some(total)
+    None
 }
 
-/// One line of `--flat-playlist -j` output -> a search item.
+/// More than half of the track rows have no artist or no length: not good enough to show.
+fn too_bare(items: &[SearchItem]) -> bool {
+    let tracks: Vec<&TrackInfo> = items
+        .iter()
+        .filter_map(|i| match i {
+            SearchItem::Track(t) => Some(t),
+            _ => None,
+        })
+        .collect();
+    let bare = tracks
+        .iter()
+        .filter(|t| t.artist == UNKNOWN_ARTIST || t.duration_ms.is_none())
+        .count();
+    !tracks.is_empty() && bare * 2 > tracks.len()
+}
+
 pub fn item_from_entry(v: &Value) -> Option<SearchItem> {
     let url = text(v, "url")
         .or_else(|| text(v, "webpage_url"))
@@ -369,10 +396,11 @@ pub fn item_from_entry(v: &Value) -> Option<SearchItem> {
         });
     }
     let id = id?;
+    let artist = artist_of(v).unwrap_or_else(|| UNKNOWN_ARTIST.into());
     Some(SearchItem::Track(TrackInfo {
         key: format!("yt:{id}"),
         title,
-        artist: artist_name(v),
+        artist,
         duration_ms: duration_secs(v).map(|s| (s * 1000.0) as u64),
         thumbnail: thumbnail(v, Some(&id)),
     }))
@@ -483,7 +511,24 @@ impl MusicSource for YtDlpSource {
             return Ok(Vec::new());
         }
         let out = self.run("search", &flat_args(search_target(query, filter)?, RESULTS))?;
-        parse_entries(&out)
+        let items = parse_entries(&out)?;
+        // YouTube Music's own result list comes back from yt-dlp as bare titles (no artist, no length). When most of
+        // the rows are like that, the ordinary video search answers the same query with complete rows.
+        if filter == SearchFilter::Songs && too_bare(&items) {
+            log::info!(
+                "songs search came back without artists or lengths; using the video search instead"
+            );
+            let out = self.run(
+                "search",
+                &flat_args(search_target(query, SearchFilter::Videos)?, RESULTS),
+            )?;
+            if let Ok(richer) = parse_entries(&out) {
+                if !richer.is_empty() && !too_bare(&richer) {
+                    return Ok(richer);
+                }
+            }
+        }
+        Ok(items)
     }
 
     fn resolve_stream(&self, key: &str) -> Result<StreamInfo, SourceError> {
@@ -553,6 +598,10 @@ mod tests {
     use super::*;
 
     const TRACK: &str = r#"{"_type":"url","ie_key":"Youtube","id":"abc12345678","url":"https://www.youtube.com/watch?v=abc12345678","title":"Neon Harbor","duration":213.5,"channel":"Lowtide - Topic","uploader":"Lowtide - Topic","thumbnails":[{"url":"https://i.ytimg.com/vi/abc12345678/small.jpg","width":120},{"url":"https://i.ytimg.com/vi/abc12345678/big.jpg","width":720}]}"#;
+    fn track_item(json: &str) -> SearchItem {
+        item_from_entry(&serde_json::from_str(json).unwrap()).unwrap()
+    }
+
     fn track_of(json: &str) -> TrackInfo {
         match item_from_entry(&serde_json::from_str(json).unwrap()) {
             Some(SearchItem::Track(t)) => t,
@@ -567,6 +616,47 @@ mod tests {
         );
         assert_eq!(t.artist, "Ana, Ben");
         assert_eq!(t.duration_ms, Some(181_000));
+    }
+
+    #[test]
+    fn durations_come_from_numbers_strings_and_the_other_names_extractors_use() {
+        let secs = |j: &str| duration_secs(&serde_json::from_str::<Value>(j).unwrap());
+        assert_eq!(secs(r#"{"duration":"213"}"#), Some(213.0));
+        assert_eq!(
+            secs(r#"{"duration":null,"duration_text":"4:05"}"#),
+            Some(245.0)
+        );
+        assert_eq!(secs(r#"{"length":"1:00:01"}"#), Some(3_601.0));
+        assert_eq!(secs(r#"{"duration":0,"duration_string":"abc"}"#), None);
+        assert_eq!(secs(r#"{}"#), None);
+    }
+
+    #[test]
+    fn a_title_is_never_split_into_artist_and_song_because_that_guess_is_often_wrong() {
+        // Real titles look like "Song (Artist) - Description": splitting at " - " would swap song and artist.
+        let t = track_of(
+            r#"{"id":"v1","title":"Sneaky Snitch (Kevin MacLeod) - Background Music (HD)"}"#,
+        );
+        assert_eq!(t.artist, UNKNOWN_ARTIST);
+        assert_eq!(
+            t.title,
+            "Sneaky Snitch (Kevin MacLeod) - Background Music (HD)"
+        );
+    }
+
+    #[test]
+    fn a_result_list_without_artists_or_lengths_is_recognised_as_too_bare() {
+        let bare = |n: usize| -> Vec<SearchItem> {
+            (0..n)
+                .map(|i| track_item(&format!(r#"{{"id":"b{i:010}","title":"T{i}"}}"#)))
+                .collect()
+        };
+        let rich = r#"{"id":"r0000000000","title":"T","uploader":"A","duration":100}"#;
+        assert!(too_bare(&bare(11)));
+        let mut mixed = bare(3);
+        mixed.extend((0..8).map(|_| track_item(rich)));
+        assert!(!too_bare(&mixed), "mostly complete rows are fine");
+        assert!(!too_bare(&[]), "nothing to judge");
     }
 
     #[test]
@@ -940,6 +1030,31 @@ esac"#,
                     .replace("abc12345678", "def12345678")
                     .replace("Neon Harbor", "Paper Planes"),
             )
+        }
+
+        #[test]
+        fn a_bare_songs_list_is_replaced_by_the_video_search_once_and_a_good_one_is_kept() {
+            let bare = r#"{"id":"s0000000001","title":"Song"}"#;
+            let rich = r#"{"id":"v0000000001","title":"Song","uploader":"Artist","duration":100}"#;
+            let body = format!(
+                "case \"$*\" in\n  *music.youtube.com*) printf '%s\\n' '{bare}' '{bare}' ;;\n  *) printf '%s\\n' '{rich}' ;;\nesac"
+            );
+            let (script, log) = fake("bare-songs", &body);
+            let s = quick(&script);
+            let found = s.search("song", SearchFilter::Songs).unwrap();
+            assert_eq!(runs_logged(&log), 2, "one songs run, one video run");
+            match &found[..] {
+                [SearchItem::Track(t)] => assert_eq!(
+                    (t.artist.as_str(), t.duration_ms),
+                    ("Artist", Some(100_000))
+                ),
+                other => panic!("{other:?}"),
+            }
+            // A songs list that is complete is used as it is: no second run.
+            let good = r#"{"id":"s0000000002","title":"Song","uploader":"Artist","duration":100}"#;
+            let (script, log) = fake("good-songs", &format!("printf '%s\\n' '{good}'"));
+            quick(&script).search("song", SearchFilter::Songs).unwrap();
+            assert_eq!(runs_logged(&log), 1);
         }
 
         #[test]

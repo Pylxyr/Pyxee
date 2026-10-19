@@ -132,6 +132,7 @@ pub struct Engine {
     host: Arc<dyn Host>,
     source: Arc<dyn MusicSource>,
     rate: u32,
+    volume: Volume,
     pipeline: Pipeline,
     pipe_rx: Receiver<PipeEvent>,
     work_tx: Sender<Work>,
@@ -179,6 +180,7 @@ impl Engine {
             host,
             source,
             rate,
+            volume: volume.clone(),
             pipeline: Pipeline::new(rate, pipe_tx, volume),
             pipe_rx,
             work_tx,
@@ -208,6 +210,39 @@ impl Engine {
     /// Hand this to the output device.
     pub fn consumer(&self) -> Consumer {
         self.pipeline.consumer()
+    }
+
+    /// Something is loaded and not paused: silence from the device would be a fault, not a pause.
+    pub fn is_playing(&self) -> bool {
+        self.current.is_some() && !self.paused
+    }
+
+    /// The output moved to a device that runs at another sample rate. Everything decoded for the old rate is
+    /// useless, so the pipeline is rebuilt at `rate` and the song that was playing is reopened where it was heard
+    /// (like a seek: it is not a new song, and the prefetch of the next one is asked for again). Take the new
+    /// `consumer()` afterwards. Nothing happens when the rate is unchanged.
+    pub fn change_rate(&mut self, rate: u32) {
+        if rate == self.rate {
+            return;
+        }
+        log::info!("output rate changed from {} to {rate} Hz", self.rate);
+        let at = self
+            .current
+            .as_ref()
+            .map(|(id, _)| self.last_heard_ms.get(id).copied().unwrap_or(0));
+        let (pipe_tx, pipe_rx) = channel();
+        self.generation += 1;
+        self.rate = rate;
+        self.pipeline = Pipeline::new(rate, pipe_tx, self.volume.clone());
+        self.pipe_rx = pipe_rx;
+        self.held_prefetch = None;
+        self.stalled_since = None;
+        if let (Some((id, track)), Some(ms)) = (self.current.clone(), at) {
+            self.start(id, &track, ms, true);
+            if let Some((pid, pkey)) = self.prefetch_req.clone() {
+                self.spawn_prefetch(pid, pkey);
+            }
+        }
     }
 
     pub fn handle(&mut self, effect: Effect) {

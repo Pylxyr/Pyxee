@@ -11,18 +11,19 @@
   ];
 </script>
 
-<nav class="flex w-52 shrink-0 flex-col gap-0.5 border-r border-line bg-surface py-5" aria-label="Main">
-  <div class="flex items-center gap-2.5 px-5 pb-6 text-[15px] font-semibold uppercase tracking-[0.2em]">
-    <Logo size={26} />Pyxee
+<!-- The wide layout's navigation: the wordmark and four tabs along the top, search and settings at the far end. -->
+<nav class="flex shrink-0 items-stretch gap-1" aria-label="Main">
+  <div class="mr-5 flex items-center gap-2.5 text-[13px] font-semibold uppercase tracking-[0.24em]">
+    <Logo size={24} />Pyxee
   </div>
   {#each items as it (it.route)}
     <button
-      class="relative flex h-10 items-center gap-3.5 px-5 text-[14px] {nav.route === it.route ? 'bg-surface-2 font-semibold text-fg' : 'text-muted hover:bg-surface-2/60 hover:text-fg'}"
+      class="relative flex h-14 items-center gap-2 px-3 text-[14px] {nav.route === it.route ? 'font-semibold text-fg' : 'text-muted hover:text-fg'}"
       aria-current={nav.route === it.route ? 'page' : undefined}
       onclick={() => nav.go(it.route)}
     >
-      {#if nav.route === it.route}<span class="absolute inset-y-1.5 left-0 w-[3px] rounded-r bg-accent" aria-hidden="true"></span>{/if}
-      <Icon name={it.icon} size={20} />{it.label}
+      <Icon name={it.icon} size={18} />{it.label}
+      {#if nav.route === it.route}<span class="absolute inset-x-3 bottom-0 h-[3px] rounded-t bg-accent" aria-hidden="true"></span>{/if}
     </button>
   {/each}
 </nav>

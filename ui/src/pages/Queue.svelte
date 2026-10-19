@@ -11,6 +11,7 @@
   import Thumb from '../components/Thumb.svelte';
   import EmptyState from '../components/EmptyState.svelte';
   import ScrollPage from '../components/ScrollPage.svelte';
+  import SectionHead from '../components/SectionHead.svelte';
 
   const queue = $derived(player.state.queue);
   const firstRadio = $derived(queue.find((e) => e.origin === 'radio')?.id ?? null);
@@ -46,9 +47,9 @@
 <ScrollPage>
   {#snippet header()}
   <div class="flex flex-wrap items-center gap-3">
-    <h1 class="mr-auto text-2xl font-bold">Queue <span class="text-base font-normal text-muted">{queue.length} {queue.length === 1 ? 'song' : 'songs'}</span></h1>
-    <button class="rounded-md border border-line bg-surface px-4 py-1.5 text-sm font-medium disabled:opacity-40" disabled={queue.length === 0} onclick={saveAsPlaylist}>Save as playlist</button>
-    <button class="rounded-md border border-line bg-surface px-4 py-1.5 text-sm font-medium disabled:opacity-40" disabled={queue.length === 0} onclick={clearQueue}>Clear queue</button>
+    <div class="min-w-48 flex-1"><SectionHead level={1} count="{queue.length} {queue.length === 1 ? 'song' : 'songs'}">Queue</SectionHead></div>
+    <button class="rounded border border-line bg-surface px-4 py-1.5 text-sm font-medium disabled:opacity-40" disabled={queue.length === 0} onclick={saveAsPlaylist}>Save as playlist</button>
+    <button class="rounded border border-line bg-surface px-4 py-1.5 text-sm font-medium disabled:opacity-40" disabled={queue.length === 0} onclick={clearQueue}>Clear queue</button>
   </div>
   {/snippet}
 
@@ -58,11 +59,11 @@
     <ul class="mt-4" aria-label="Queue" bind:this={listEl}>
       {#each queue as e, i (e.id)}
         {#if e.id === firstRadio}
-          <li class="px-3 pb-1 pt-5 text-xs font-semibold uppercase tracking-wider text-muted" aria-hidden="true">Autoplay · similar songs</li>
+          <li class="label px-3 pb-1 pt-5" aria-hidden="true">Autoplay · similar songs</li>
         {/if}
         <li
           data-row
-          class="group flex items-center gap-1 rounded-lg border-y-2 border-transparent hover:bg-surface-2 {drag && drag.to === i && drag.id !== e.id ? (drag.to < drag.from ? 'border-t-accent' : 'border-b-accent') : ''} {drag?.id === e.id ? 'opacity-40' : ''} {status(e.id) ? 'bg-surface-2' : ''}"
+          class="group flex items-center gap-1 border-y-2 border-transparent border-b-line/60 hover:bg-surface-2/70 {drag && drag.to === i && drag.id !== e.id ? (drag.to < drag.from ? 'border-t-accent' : 'border-b-accent') : ''} {drag?.id === e.id ? 'opacity-40' : ''} {status(e.id) ? 'bg-surface-2 shadow-[inset_3px_0_0_0_var(--accent)]' : ''}"
         >
           <span
             class="cursor-grab touch-none select-none p-2 text-muted"
@@ -76,10 +77,11 @@
               ondrop: (to) => move(e.id, to),
             }}><Icon name="drag" size={18} /></span>
           <button class="flex min-w-0 flex-1 items-center gap-3 py-2 text-left" onclick={() => player.playEntry(e.id)}>
-            <Thumb src={e.track.thumbnail} seed={e.track.key} size={48} />
+            <span class="w-6 shrink-0 text-center text-[12px] tabular-nums text-muted" aria-hidden="true">{i + 1}</span>
+            <Thumb src={e.track.thumbnail} seed={e.track.key} size={40} rounded="rounded-sm" />
             <span class="min-w-0 flex-1">
-              <span class="block truncate text-[15px] font-semibold">{e.track.title}</span>
-              <span class="block truncate text-[13px] {status(e.id) ? 'text-accent' : 'text-muted'}">{status(e.id) || e.track.artist}</span>
+              <span class="block truncate text-[14px] font-medium">{e.track.title}</span>
+              <span class="block truncate text-[12px] {status(e.id) ? 'text-accent' : 'text-muted'}">{status(e.id) || e.track.artist}</span>
             </span>
             <span class="text-[13px] tabular-nums text-muted">{formatTime(e.track.durationMs)}</span>
           </button>

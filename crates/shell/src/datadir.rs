@@ -34,6 +34,21 @@ pub struct Resolved {
     pub notes: Vec<Note>,
 }
 
+/// An empty file with this name next to the program turns on portable mode (the zip from the release carries one).
+pub const PORTABLE_MARKER: &str = "portable.txt";
+/// In portable mode everything the app writes goes in this folder next to the program.
+pub const PORTABLE_DATA: &str = "data";
+
+/// Portable mode: if `portable.txt` sits next to the program (`exe_dir`), the data folder is `exe_dir\data`, so the
+/// whole app can be copied or deleted as one folder and nothing is left in the user's profile. `None`: installed mode.
+/// The Roaming-to-Local move does not apply to a portable folder.
+pub fn portable_dir(exe_dir: &Path) -> Option<PathBuf> {
+    exe_dir
+        .join(PORTABLE_MARKER)
+        .is_file()
+        .then(|| exe_dir.join(PORTABLE_DATA))
+}
+
 /// Picks the data folder. `old` is the former (Roaming) folder, `new` the Local one.
 pub fn resolve(old: Option<&Path>, new: Option<&Path>) -> Resolved {
     let mut notes = Vec::new();
@@ -186,6 +201,25 @@ mod tests {
             .collect();
         v.sort();
         v
+    }
+
+    #[test]
+    fn portable_mode_needs_the_marker_next_to_the_program() {
+        let t = Tmp::new();
+        assert_eq!(portable_dir(&t.0), None, "no marker: installed mode");
+        write(&t.0, "data/library.db", "not a marker");
+        assert_eq!(
+            portable_dir(&t.0),
+            None,
+            "a data folder alone does not turn it on"
+        );
+        write(&t.0, PORTABLE_MARKER, "");
+        assert_eq!(portable_dir(&t.0), Some(t.0.join("data")));
+        assert_eq!(
+            portable_dir(&t.path("missing")),
+            None,
+            "a folder that does not exist is installed mode"
+        );
     }
 
     fn old_with_everything(t: &Tmp) -> PathBuf {

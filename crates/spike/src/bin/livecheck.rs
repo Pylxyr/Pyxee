@@ -193,6 +193,32 @@ fn search(o: &Opts) -> Result<()> {
         let t = Instant::now();
         match src.search(&o.q1, filter) {
             Ok(items) if !items.is_empty() => {
+                // Track rows must carry an artist and a length when YouTube has them: "Unknown artist" and "--"
+                // on most rows means the entry parsing no longer matches what yt-dlp sends.
+                if matches!(name, "all" | "songs" | "videos") {
+                    let tracks: Vec<_> = items
+                        .iter()
+                        .filter_map(|i| match i {
+                            SearchItem::Track(t) => Some(t),
+                            _ => None,
+                        })
+                        .collect();
+                    let no_artist = tracks
+                        .iter()
+                        .filter(|t| t.artist == pyxee_sources::UNKNOWN_ARTIST)
+                        .count();
+                    let no_length = tracks.iter().filter(|t| t.duration_ms.is_none()).count();
+                    let bad = !tracks.is_empty()
+                        && (no_artist * 2 > tracks.len() || no_length * 2 > tracks.len());
+                    emit(
+                        if bad { "FAIL" } else { "PASS" },
+                        &format!("search-{name}-metadata"),
+                        format!(
+                            "{} track rows: {no_artist} without an artist, {no_length} without a length",
+                            tracks.len()
+                        ),
+                    );
+                }
                 let first = match &items[0] {
                     SearchItem::Track(t) => format!("track {:?}", t.title),
                     SearchItem::Playlist { title, .. } => format!("playlist {title:?}"),

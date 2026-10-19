@@ -37,9 +37,9 @@
   }
 </script>
 
-<header class="px-4 py-3 sm:px-8">
-  <form class="relative max-w-xl" role="search" onsubmit={submit}>
-    <div class="flex h-10 items-center gap-3 rounded-md border border-line bg-surface px-3 focus-within:border-accent">
+<header class="py-2.5">
+  <form class="relative ml-auto max-w-md" role="search" onsubmit={submit}>
+    <div class="flex h-9 items-center gap-3 rounded border border-line bg-surface px-3 focus-within:border-accent">
       <Icon name="search" size={20} />
       <input
         type="search"

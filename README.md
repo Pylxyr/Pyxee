@@ -86,7 +86,7 @@ build-installer.cmd      (same as: cargo xtask installer)
 Downloads the tools if missing, builds the UI, then runs `tauri build` with `crates/app/tauri.bundle.conf.json`, which
 bundles yt-dlp as a sidecar (installed next to `pyxee-app.exe`) and the licence notices, and makes the installer
 download the WebView2 runtime when a machine lacks it. Installers (NSIS `.exe` and `.msi`) end up in `target/release/bundle/`.
-They are unsigned, so Windows SmartScreen warns on first run: choose "More info", then "Run anyway". Signing and the portable build come in milestone 7.
+Until a code-signing certificate is configured they are unsigned, so Windows SmartScreen warns on first run: choose "More info", then "Run anyway". `cargo xtask portable` builds a portable zip (everything stays in a `data` folder beside `Pyxee.exe`). Both are described in `docs/releasing.md`, which also says how signing is switched on.
 
 ## Release
 On GitHub: **Actions -> Cut release -> Run workflow -> patch / minor / major**. It runs CI, bumps the version, tags, builds and tests the
@@ -109,16 +109,18 @@ cargo test --workspace
 `crates/library` SQLite library ·
 `crates/app` Tauri glue · `crates/spike` milestone 1 harness · `ui/` Svelte frontend · `xtask/` tool downloader and installer build.
 Settings > Updates checks for a newer Pyxee (GitHub releases, installer checked against `SHA256SUMS.txt`) and updates yt-dlp in place (checksum-verified,
-test-run, then swapped in; a failure changes nothing). The portable build and code signing are still milestone 7.
+test-run, then swapped in; a failure changes nothing). A portable copy is updated by downloading the new zip instead.
 
 ## Checking a build on Windows
 `scripts\check-windows.cmd` builds, runs every test, proves no ffmpeg process is ever started (a fake `ffmpeg.exe` sits first on `PATH` and logs
 any attempt), and runs live YouTube checks of the real search / resolve / decode / seek / gapless path. It writes one report to
-`pyxee-check\` (stream URLs, cookie paths and your user name are redacted). Useful options: `-SkipTests`, `-SkipLive`, `-Ui`,
-`-Installer`, `-UpdateYtdlp`, `-CookieFile <cookies.txt>`, `-CookieBrowser firefox`, `-Manual` (answer y/n for things to try in the
+`pyxee-check\` (stream URLs, cookies and tokens, your user and computer name and your profile, AppData and Temp folders are redacted, and a self-test proves
+that first in every run). The default run is the full one: formatting, clippy, every test (with `--locked`), the UI checks and the live YouTube checks; a live check that
+cannot run (no FFmpeg libraries, rate limited) is a failure, not a skip, and any FAIL gives a non-zero exit code. Options: `-Installer` (also builds and inspects the installer and the portable zip),
+`-UpdateYtdlp`, `-SelfTest` (only the redaction test), and, not recommended, `-SkipTests` / `-SkipLive` (a run with either does not prove the build), `-CookieFile <cookies.txt>`, `-CookieBrowser firefox`, `-Manual` (answer y/n for things to try in the
 app) and `-AnalyzeLog` (summarise the app's own log). Details: the comment block at the top of `scripts\check-windows.ps1`.
 
 ## Licences
-Pyxee is MIT licensed. This software uses libraries from the FFmpeg project under the LGPLv2.1 (a reduced, audio-decoding-only build,
+Pyxee is MIT licensed (see `LICENSE`). This software uses libraries from the FFmpeg project under the LGPLv2.1 (a reduced, audio-decoding-only build,
 linked statically; see `scripts/build-ffmpeg.sh`). The installer includes the full licence text and the notices in `licenses/`
 (`THIRD_PARTY.txt`, `FFmpeg-LGPL-2.1.txt`); they are also attached to every release. yt-dlp is bundled as a separate program (The Unlicense).

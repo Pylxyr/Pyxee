@@ -80,14 +80,14 @@
   {#snippet header()}
     {#if pl && !missing}
       <div class="flex flex-wrap items-center gap-4">
-        <Thumb src={pl.entries[0]?.track.thumbnail ?? null} seed={`pl:${pl.id}`} size={96} rounded="rounded-xl" />
+        <Thumb src={pl.entries[0]?.track.thumbnail ?? null} seed={`pl:${pl.id}`} size={96} rounded="rounded-sm" />
         <div class="min-w-0 flex-1">
-          <h1 class="truncate text-2xl font-bold">{pl.name}</h1>
+          <h1 class="truncate text-2xl font-semibold tracking-tight">{pl.name}</h1>
           <p class="text-sm text-muted">{pl.entries.length} {pl.entries.length === 1 ? 'song' : 'songs'}</p>
         </div>
       </div>
       <div class="mt-4 flex flex-wrap gap-2">
-        <button class="rounded-md bg-fg px-5 py-2 text-sm font-semibold text-on-fg disabled:opacity-40" disabled={tracks.length === 0} onclick={() => play(false)}>Play</button>
+        <button class="rounded bg-accent px-5 py-2 text-sm font-semibold text-on-accent disabled:opacity-40" disabled={tracks.length === 0} onclick={() => play(false)}>Play</button>
         <button class="rounded-md border border-line bg-surface px-5 py-2 text-sm font-semibold disabled:opacity-40" disabled={tracks.length === 0} onclick={() => play(true)}>Shuffle</button>
         <button class="rounded-md border border-line bg-surface px-5 py-2 text-sm font-medium" onclick={rename}>Rename</button>
         <button class="rounded-md border border-line bg-surface px-5 py-2 text-sm font-medium" onclick={remove}>Delete</button>
@@ -104,7 +104,7 @@
       {#each pl.entries as e, i (e.entryId)}
         <li
           draggable="true"
-          class="group flex items-center gap-1 rounded-lg border-t-2 hover:bg-surface-2 {overIndex === i && dragId !== e.entryId ? 'border-accent' : 'border-transparent'} {dragId === e.entryId ? 'opacity-40' : ''}"
+          class="group flex items-center gap-1 border-b border-t-2 border-b-line/60 hover:bg-surface-2/70 {overIndex === i && dragId !== e.entryId ? 'border-accent' : 'border-transparent'} {dragId === e.entryId ? 'opacity-40' : ''}"
           ondragstart={(ev) => {
             dragId = e.entryId;
             ev.dataTransfer?.setData('text/plain', String(e.entryId));
@@ -119,10 +119,11 @@
         >
           <span class="cursor-grab p-2 text-muted" aria-hidden="true"><Icon name="drag" size={18} /></span>
           <button class="flex min-w-0 flex-1 items-center gap-3 py-2 text-left" onclick={() => play(false, i)}>
-            <Thumb src={e.track.thumbnail} seed={e.track.key} size={48} />
+            <span class="w-6 shrink-0 text-center text-[12px] tabular-nums text-muted" aria-hidden="true">{i + 1}</span>
+            <Thumb src={e.track.thumbnail} seed={e.track.key} size={40} rounded="rounded-sm" />
             <span class="min-w-0 flex-1">
-              <span class="block truncate text-[15px] font-semibold">{e.track.title}</span>
-              <span class="block truncate text-[13px] text-muted">{e.track.artist}</span>
+              <span class="block truncate text-[14px] font-medium">{e.track.title}</span>
+              <span class="block truncate text-[12px] text-muted">{e.track.artist}</span>
             </span>
             <span class="text-[13px] tabular-nums text-muted">{formatTime(e.track.durationMs)}</span>
           </button>

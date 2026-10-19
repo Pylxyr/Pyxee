@@ -10,6 +10,7 @@
   import Thumb from './Thumb.svelte';
   import Seek from './Seek.svelte';
   import LyricsPanel from './LyricsPanel.svelte';
+  import RelatedPanel from './RelatedPanel.svelte';
   import { sleep } from '$lib/sleep.svelte';
   import { sleepLabel } from '$lib/lyrics';
 
@@ -148,7 +149,7 @@
           {:else if nav.tab === 'lyrics'}
             <LyricsPanel active={nav.tab === 'lyrics'} />
           {:else}
-            <p class="px-3 py-8 text-sm text-muted">Related songs arrive with search in milestone 4.</p>
+            <RelatedPanel active={nav.tab === 'related'} />
           {/if}
         </div>
       </section>

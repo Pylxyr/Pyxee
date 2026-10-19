@@ -1,7 +1,15 @@
 //! Developer tasks. `cargo xtask tools` downloads yt-dlp (with checksum verification);
 //! `cargo xtask ffmpeg` builds the minimal static FFmpeg the audio crate links; `cargo xtask installer` builds the Windows installer with it bundled. Audio is decoded in-process
-//! (libav), so yt-dlp is the only helper program.
+//! (libav), so yt-dlp is the only helper program. `cargo xtask portable` makes the portable zip; both it and the
+//! installer are code-signed when a certificate is configured (see `release.rs`).
 
+mod release;
+
+use release::{
+    bundles_for, check_portable_entries, portable_entries, portable_folder_name, portable_zip_name,
+    redacted, signed_tauri_config, unsigned_notice, write_zip, zip_names, Cert, Signing,
+    PORTABLE_MARKER, PORTABLE_README,
+};
 use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -18,7 +26,10 @@ fn main() {
         Some("tools") => tools(&args[1..]),
         Some("ffmpeg") => ffmpeg(),
         Some("installer") => installer(),
-        _ => Err("usage:\n  cargo xtask tools [--update] [--dir <folder>]   download yt-dlp\n  cargo xtask ffmpeg                              build the minimal static FFmpeg (once per FFmpeg change)\n  cargo xtask installer                           build the Windows installer".into()),
+        Some("portable") => portable(),
+        Some("sign-file") => sign_file(&args[1..]),
+        Some("signing-config") => signing_config(),
+        _ => Err("usage:\n  cargo xtask tools [--update] [--dir <folder>]   download yt-dlp\n  cargo xtask ffmpeg                              build the minimal static FFmpeg (once per FFmpeg change)\n  cargo xtask installer                           build the Windows installer (signed when a certificate is configured)\n  cargo xtask portable                            build the portable zip (signed program when a certificate is configured)\n  cargo xtask signing-config                      print the tauri bundle config to use (CI builds the installer with it)\n  cargo xtask sign-file <file>                    sign one file with the configured certificate (used by tauri build)".into()),
     };
     if let Err(e) = result {
         eprintln!("\nerror: {e}");
@@ -291,11 +302,150 @@ pub fn tauri_cli(root: &Path) -> PathBuf {
         .join(if cfg!(windows) { "tauri.cmd" } else { "tauri" })
 }
 
-fn installer() -> Res<()> {
-    if !cfg!(windows) {
-        return Err("the installer can only be built on Windows".into());
+// ---------------------------------------------------------------------- signing
+
+fn signing_from_env() -> Res<Option<Signing>> {
+    Signing::from_env(|k| std::env::var(k).ok())
+}
+
+fn signing_required() -> bool {
+    std::env::var("PYXEE_REQUIRE_SIGNING").is_ok_and(|v| v.trim() == "1")
+}
+
+/// `PYXEE_SIGNTOOL`, else the newest signtool in the Windows SDK, else whatever is on PATH.
+fn find_signtool() -> PathBuf {
+    if let Some(p) = std::env::var_os("PYXEE_SIGNTOOL").filter(|p| !p.is_empty()) {
+        return p.into();
     }
+    let pf = std::env::var_os("ProgramFiles(x86)")
+        .map_or_else(|| PathBuf::from(r"C:\Program Files (x86)"), PathBuf::from);
+    let kits = pf.join(r"Windows Kits\10\bin");
+    let names: Vec<String> = std::fs::read_dir(&kits)
+        .map(|rd| {
+            rd.flatten()
+                .map(|e| e.file_name().to_string_lossy().into_owned())
+                .collect()
+        })
+        .unwrap_or_default();
+    release::newest_sdk(&names)
+        .map(|n| kits.join(n).join("x64").join("signtool.exe"))
+        .filter(|p| p.is_file())
+        .unwrap_or_else(|| PathBuf::from("signtool"))
+}
+
+/// `cargo xtask sign-file <file>`: signs one file. `tauri build` calls this for every file it signs (its
+/// `signCommand`), so the certificate password is read from the environment here and never appears in a config.
+fn sign_file(args: &[String]) -> Res<()> {
+    let file = args.first().ok_or("usage: cargo xtask sign-file <file>")?;
+    let signing = signing_from_env()?.ok_or(
+        "no signing certificate is configured (PYXEE_SIGN_CERT_FILE or PYXEE_SIGN_THUMBPRINT)",
+    )?;
+    if let Cert::File { path, .. } = &signing.cert {
+        if !path.is_file() {
+            return Err(format!(
+                "the certificate file {} does not exist",
+                path.display()
+            ));
+        }
+    }
+    let argv = signing.signtool_args(Path::new(file));
+    println!("signing: signtool {}", redacted(&argv).join(" "));
+    let out = Command::new(find_signtool())
+        .args(&argv)
+        .output()
+        .map_err(|e| format!("could not run signtool: {e}. Install the Windows SDK (signtool.exe) or set PYXEE_SIGNTOOL."))?;
+    if out.status.success() {
+        return Ok(());
+    }
+    Err(format!(
+        "signtool failed ({}):\n{}{}",
+        out.status,
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    ))
+}
+
+/// Single-quotes `s` for a PowerShell command line.
+fn ps_quote(s: &str) -> String {
+    format!("'{}'", s.replace('\'', "''"))
+}
+
+/// The Authenticode status of `file` (`Valid`, `NotSigned`, `HashMismatch`, `NotTrusted`...).
+fn signature_status(file: &Path) -> Res<String> {
+    let script = format!(
+        "(Get-AuthenticodeSignature -LiteralPath {}).Status",
+        ps_quote(&file.to_string_lossy())
+    );
+    let out = Command::new("powershell")
+        .args(["-NoProfile", "-NonInteractive", "-Command", &script])
+        .output()
+        .map_err(|e| format!("could not run PowerShell: {e}"))?;
+    Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
+}
+
+/// Every file must verify as `Valid`; a build that was meant to be signed and is not is an error.
+fn verify_signed(files: &[PathBuf]) -> Res<()> {
+    for f in files {
+        let status = signature_status(f)?;
+        if status != "Valid" {
+            return Err(format!(
+                "{} is not validly signed (Authenticode status: {status}). A certificate that Windows does not trust (self-signed, or the chain is not installed) also reports this.",
+                f.display()
+            ));
+        }
+        println!("signed: {} (Valid)", f.display());
+    }
+    Ok(())
+}
+
+/// The bundle config for `tauri build`: the plain one, or (when signing) one that also makes Tauri call `sign-file`.
+fn bundle_config(root: &Path, signing: &Option<Signing>) -> Res<PathBuf> {
+    let base_path = root.join("crates/app/tauri.bundle.conf.json");
+    if signing.is_none() {
+        return Ok(base_path);
+    }
+    let text = std::fs::read_to_string(&base_path)
+        .map_err(|e| format!("cannot read {}: {e}", base_path.display()))?;
+    let base: serde_json::Value = serde_json::from_str(&text)
+        .map_err(|e| format!("{} is not valid JSON: {e}", base_path.display()))?;
+    let me = std::env::current_exe().map_err(|e| format!("cannot find xtask itself: {e}"))?;
+    let conf = signed_tauri_config(&base, &me);
+    let out = root.join("target/signing/tauri.bundle.signed.conf.json");
+    if let Some(dir) = out.parent() {
+        std::fs::create_dir_all(dir)
+            .map_err(|e| format!("cannot create {}: {e}", dir.display()))?;
+    }
+    let pretty = serde_json::to_string_pretty(&conf).map_err(|e| e.to_string())?;
+    std::fs::write(&out, pretty).map_err(|e| format!("cannot write {}: {e}", out.display()))?;
+    Ok(out)
+}
+
+/// Prints the path of the bundle config `tauri build` should use: the plain one, or the signing one when a
+/// certificate is configured (and an error when signing is required but nothing is configured).
+fn signing_config() -> Res<()> {
+    let signing = signing_from_env()?;
+    if signing.is_none() {
+        unsigned_notice(signing_required())?;
+    }
+    println!("{}", bundle_config(&workspace_root(), &signing)?.display());
+    Ok(())
+}
+
+// ---------------------------------------------------------- installer and portable
+
+struct Prepared {
+    root: PathBuf,
+    cli: PathBuf,
+    signing: Option<Signing>,
+}
+
+/// What both packages need first: yt-dlp, FFmpeg libraries, the built UI, the Tauri CLI, the signing setup.
+fn prepare() -> Res<Prepared> {
     let root = workspace_root();
+    let signing = signing_from_env()?;
+    if signing.is_none() {
+        unsigned_notice(signing_required())?;
+    }
     tools(&[])?;
     ffmpeg()?;
     run(
@@ -316,16 +466,30 @@ fn installer() -> Res<()> {
             cli.display()
         ));
     }
-    let conf = root.join("crates/app/tauri.bundle.conf.json");
+    Ok(Prepared { root, cli, signing })
+}
+
+fn installer() -> Res<()> {
+    if !cfg!(windows) {
+        return Err("the installer can only be built on Windows".into());
+    }
+    let p = prepare()?;
+    let conf = bundle_config(&p.root, &p.signing)?;
     run(
-        Command::new(&cli)
-            .args(["build", "--config"])
+        Command::new(&p.cli)
+            .args([
+                "build",
+                "--bundles",
+                bundles_for(env!("CARGO_PKG_VERSION")),
+                "--config",
+            ])
             .arg(&conf)
-            .current_dir(root.join("crates/app")),
+            .current_dir(p.root.join("crates/app")),
         "tauri build (installer with yt-dlp bundled)",
     )?;
-    let bundle = root.join("target/release/bundle");
+    let bundle = p.root.join("target/release/bundle");
     println!("\nInstallers are in {}:", bundle.display());
+    let mut built = Vec::new();
     for sub in ["nsis", "msi"] {
         if let Ok(rd) = std::fs::read_dir(bundle.join(sub)) {
             for e in rd.flatten().filter(|e| {
@@ -334,10 +498,94 @@ fn installer() -> Res<()> {
                     .is_some_and(|x| x == "exe" || x == "msi")
             }) {
                 println!("  {}", e.path().display());
+                built.push(e.path());
             }
         }
     }
-    println!("\nThe installer is unsigned: Windows SmartScreen will warn on first run (More info -> Run anyway).");
+    if p.signing.is_some() {
+        verify_signed(&built)?;
+    } else {
+        println!(
+            "\nThe installer is {}.",
+            unsigned_notice(false).unwrap_or_default()
+        );
+    }
+    Ok(())
+}
+
+/// The portable zip: `Pyxee.exe`, `yt-dlp.exe`, the licence texts, `portable.txt` (which turns on portable mode: the
+/// data folder is `data\` beside the program) and a readme, all in one folder inside the zip.
+fn portable() -> Res<()> {
+    if !cfg!(windows) {
+        return Err("the portable build can only be made on Windows".into());
+    }
+    let p = prepare()?;
+    let conf = bundle_config(&p.root, &p.signing)?;
+    run(
+        Command::new(&p.cli)
+            .args(["build", "--no-bundle", "--config"])
+            .arg(&conf)
+            .current_dir(p.root.join("crates/app")),
+        "tauri build --no-bundle (the program, no installer)",
+    )?;
+    let version = env!("CARGO_PKG_VERSION");
+    let top = portable_folder_name(version);
+    let out_dir = p.root.join("target/portable");
+    let stage = out_dir.join(&top);
+    let _ = std::fs::remove_dir_all(&stage);
+    std::fs::create_dir_all(&stage)
+        .map_err(|e| format!("cannot create {}: {e}", stage.display()))?;
+    for e in portable_entries() {
+        let dest = stage.join(e.name);
+        match e.from {
+            Some(rel) => {
+                let src = p.root.join(rel);
+                std::fs::copy(&src, &dest).map_err(|err| {
+                    format!(
+                        "cannot copy {} for the portable zip: {err} (did the build above produce it?)",
+                        src.display()
+                    )
+                })?;
+            }
+            None => {
+                let body = if e.name == PORTABLE_MARKER {
+                    "This file turns on Pyxee's portable mode: the library, settings and logs are kept in the data folder next to Pyxee.exe. Delete it to use the normal per-user folder.\r\n"
+                } else {
+                    PORTABLE_README
+                };
+                std::fs::write(&dest, body)
+                    .map_err(|err| format!("cannot write {}: {err}", dest.display()))?;
+            }
+        }
+    }
+    // yt-dlp.exe is somebody else's program and is left as published. Only Pyxee.exe is signed.
+    let exe = stage.join("Pyxee.exe");
+    if p.signing.is_some() {
+        sign_file(&[exe.to_string_lossy().into_owned()])?;
+        verify_signed(&[exe])?;
+    } else {
+        println!(
+            "\nPyxee.exe is {}.",
+            unsigned_notice(false).unwrap_or_default()
+        );
+    }
+    let mut files = Vec::new();
+    for e in portable_entries() {
+        let path = stage.join(e.name);
+        let bytes =
+            std::fs::read(&path).map_err(|err| format!("cannot read {}: {err}", path.display()))?;
+        files.push((e.name.to_string(), bytes));
+    }
+    let zip = out_dir.join(portable_zip_name(version));
+    write_zip(&zip, &top, &files)?;
+    check_portable_entries(&top, &zip_names(&zip)?)?;
+    let bytes = std::fs::read(&zip).map_err(|e| format!("cannot read {}: {e}", zip.display()))?;
+    println!(
+        "\nPortable build: {}  ({}, sha256 {})",
+        zip.display(),
+        mb(&bytes),
+        sha256_hex(&bytes)
+    );
     Ok(())
 }
 
@@ -472,6 +720,12 @@ mod tests {
             bash_path(Path::new(r"C:\repo\scripts\build.sh")),
             "C:/repo/scripts/build.sh"
         );
+    }
+
+    #[test]
+    fn powershell_arguments_are_single_quoted_with_quotes_doubled() {
+        assert_eq!(ps_quote(r"C:\a b\Pyxee.exe"), r"'C:\a b\Pyxee.exe'");
+        assert_eq!(ps_quote("it's"), "'it''s'");
     }
 
     #[test]

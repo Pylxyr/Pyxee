@@ -13,7 +13,7 @@
   import { snackbar } from '$lib/snackbar.svelte';
   import { accentFromImage } from '$lib/color';
   import { actionForKey } from '$lib/shortcuts';
-  import SideRail from './components/SideRail.svelte';
+  import DeckNav from './components/DeckNav.svelte';
   import BottomNav from './components/BottomNav.svelte';
   import TopBar from './components/TopBar.svelte';
   import PlayerBar from './components/PlayerBar.svelte';
@@ -33,6 +33,7 @@
   import PlaylistPicker from './components/PlaylistPicker.svelte';
   import SleepSheet from './components/SleepSheet.svelte';
   import { lyricsStore } from '$lib/lyrics.svelte';
+  import { relatedStore } from '$lib/related.svelte';
   import { sleep } from '$lib/sleep.svelte';
   import { shellSettings } from '$lib/shell.svelte';
   import { sleepLabel } from '$lib/lyrics';
@@ -50,6 +51,7 @@
       search.init(backend);
       library.init(backend);
       lyricsStore.init(backend);
+      relatedStore.init(backend);
       void sleep.init(backend);
       void shellSettings.init(backend);
       await player.init(backend);
@@ -121,11 +123,11 @@
 
 <div class="flex h-dvh flex-col bg-bg text-fg">
   <div class="flex min-h-0 flex-1">
-    {#if wide.current}<SideRail />{/if}
     <main class="flex min-w-0 flex-1 flex-col overflow-hidden">
-      <div class="relative z-20 flex shrink-0 items-center">
-        <div class="flex-1"><TopBar /></div>
-        <button class="mr-4 rounded-full p-2 text-muted hover:text-fg sm:mr-8" aria-label="Settings" onclick={() => (nav.themeSheetOpen = true)}>
+      <div class="relative z-20 flex shrink-0 items-center gap-4 border-b border-line px-4 sm:px-6">
+        {#if wide.current}<DeckNav />{/if}
+        <div class="min-w-0 flex-1"><TopBar /></div>
+        <button class="rounded-md p-2 text-muted hover:text-fg" aria-label="Settings" onclick={() => (nav.themeSheetOpen = true)}>
           <Icon name="settings" size={20} />
         </button>
       </div>

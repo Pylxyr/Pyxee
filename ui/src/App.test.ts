@@ -66,7 +66,7 @@ describe('App shell', () => {
     expect(screen.queryByTestId('player-bar')).toBeNull();
   });
 
-  it('uses the bottom bar when narrow and the side rail when wide, with the same destinations', async () => {
+  it('uses the bottom bar when narrow and the top tabs when wide, with the same destinations', async () => {
     await openApp();
     const narrow = screen.getAllByRole('navigation', { name: 'Main' });
     expect(narrow).toHaveLength(1);
@@ -74,12 +74,14 @@ describe('App shell', () => {
     expect(narrow[0]!.textContent).toMatch(/Home.*Explore.*Library/);
   });
 
-  it('wide layout puts navigation in the side rail', async () => {
+  it('wide layout puts the wordmark and the four destinations in tabs along the top', async () => {
     setWide(true);
     await openApp();
-    const rail = screen.getByRole('navigation', { name: 'Main' });
-    expect(rail.className).toContain('border-r');
-    expect(rail.textContent).toContain('Pyxee');
+    const tabs = screen.getByRole('navigation', { name: 'Main' });
+    expect(tabs.className).not.toContain('border-t');
+    expect(tabs.closest('header, div')?.className).toContain('border-b');
+    expect(tabs.textContent).toMatch(/Pyxee.*Home.*Explore.*Library.*Queue/);
+    expect(screen.queryByRole('navigation', { name: 'Main' })?.querySelector('[aria-current="page"]')?.textContent).toContain('Home');
   });
 
   it('navigates between Home, Explore and Library', async () => {
@@ -89,7 +91,7 @@ describe('App shell', () => {
     await fireEvent.click(screen.getByRole('button', { name: /Explore/ }));
     expect(screen.getByRole('heading', { name: 'Explore' })).toBeTruthy();
     await fireEvent.click(screen.getByRole('button', { name: /Home/ }));
-    expect(screen.getByRole('heading', { name: 'Quick picks' })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'On rotation' })).toBeTruthy();
   });
 
   it('Explore offers moods that open a search, and shelves built from what you like', async () => {
@@ -451,7 +453,8 @@ describe('queue screen', () => {
     const rows = within(screen.getByRole('list', { name: 'Queue' })).getAllByRole('listitem');
     expect(rows).toHaveLength(player.state.queue.length);
     expect(rows[0]!.textContent).toContain('Now playing');
-    expect(screen.getByRole('heading', { name: /Queue/ }).textContent).toContain('songs');
+    expect(screen.getByRole('heading', { name: 'Queue' })).toBeTruthy();
+    expect(screen.getByText(`${player.state.queue.length} songs`)).toBeTruthy();
   });
 
   it('move buttons reorder, and the first and last rows cannot move out of range', async () => {

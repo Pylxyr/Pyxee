@@ -21,10 +21,11 @@ function icoFrames(buf: Buffer) {
 }
 
 describe('app icons', () => {
-  it('icon.ico carries 16 to 256 px, all intact PNG frames', () => {
+  it('icon.ico carries 16 to 256 px: BMP frames below 256 (read by every Windows shell part), a PNG at 256', () => {
     const frames = icoFrames(read('crates/app/icons/icon.ico'));
-    expect(frames.map((f) => f.size)).toEqual([16, 24, 32, 48, 64, 128, 256]);
-    expect(frames.every((f) => f.png && f.inside)).toBe(true);
+    expect(frames.map((f) => f.size)).toEqual([16, 20, 24, 32, 40, 48, 64, 128, 256]);
+    expect(frames.every((f) => f.inside)).toBe(true);
+    expect(frames.filter((f) => f.png).map((f) => f.size)).toEqual([256]);
   });
 
   it('the tray icon has the small sizes', () => {

@@ -16,10 +16,12 @@
 .PARAMETER CookieFile     Netscape cookies.txt to use (sets PYXEE_COOKIES for this run only).
 .PARAMETER CookieBrowser  e.g. firefox (sets PYXEE_COOKIES_FROM_BROWSER for this run only).
 .PARAMETER SkipTests      Skip fmt/clippy/cargo test (only do static checks + live checks).
-.PARAMETER SkipLive       Skip everything that talks to YouTube.
+.PARAMETER SkipLive       NOT RECOMMENDED. Skip everything that talks to YouTube. Without it the live checks always run, and
+                          a live phase that could not run (no FFmpeg libraries, no yt-dlp, rate limited) is a FAIL.
 .PARAMETER SkipTools      Do not run `cargo xtask tools` (the yt-dlp download flow).
-.PARAMETER Ui             Also run the UI checks from CI (npm ci / check / test / build).
-.PARAMETER Installer      Also build the installer (`cargo xtask installer`, slow) and inspect it.
+.PARAMETER Ui             Kept for old command lines. The UI checks (npm ci / check / test / build) always run now.
+.PARAMETER SelfTest       Only run the redaction self-test (it also runs first in every full run) and exit.
+.PARAMETER Installer      Also build the installer and the portable zip (`cargo xtask installer` / `portable`, slow) and inspect them.
 .PARAMETER UpdateYtdlp    Run `yt-dlp -U` first (an old yt-dlp is the most common cause of YouTube failures).
 .PARAMETER Manual         After the automatic part, ask you to confirm things in the real app (y/n).
 .PARAMETER AnalyzeLog     Summarise the app's own log file (run after using the app).
@@ -38,6 +40,7 @@ param(
   [switch]$SkipLive,
   [switch]$SkipTools,
   [switch]$Ui,
+  [switch]$SelfTest,
   [switch]$Installer,
   [switch]$UpdateYtdlp,
   [switch]$Manual,
@@ -59,6 +62,8 @@ New-Item -ItemType Directory -Force -Path $LogDir | Out-Null
 
 $script:Counts = @{ PASS = 0; FAIL = 0; WARN = 0; INFO = 0 }
 $script:LiveBlocked = $false
+# Live checks are part of the default run. Only an explicit -SkipLive makes skipping them acceptable.
+$script:LiveRequested = -not $SkipLive
 $script:Step = 0
 # Planned number of sections, shown as "Section N of M". An estimate: it is lowered if the live checks get skipped later.
 $script:StepTotal = 3 + [int](-not $SkipTests) + [int][bool]$Installer + [int](-not $SkipLive) + [int][bool]$Manual + [int]([bool]$AnalyzeLog -or [bool]$Manual)
@@ -67,12 +72,88 @@ $script:RunSw = [Diagnostics.Stopwatch]::StartNew()
 
 # ---------------------------------------------------------------- output helpers
 
+# Values that identify this PC or this user, each with the label that replaces it. Paths are matched in every spelling
+# they show up in (backslashes, forward slashes, JSON-doubled backslashes), ignoring case, longest first so that
+# %LOCALAPPDATA% wins over %USERPROFILE%.
+$script:ScrubRules = $null
+function Get-ScrubRules {
+  if ($script:ScrubRules) { return $script:ScrubRules }
+  $list = New-Object System.Collections.Generic.List[object]
+  $paths = [ordered]@{ LOCALAPPDATA = $env:LOCALAPPDATA; APPDATA = $env:APPDATA; TEMP = $env:TEMP; TMP = $env:TMP; USERPROFILE = $env:USERPROFILE; HOME = $env:HOME; HOMEPATH = $env:HOMEPATH }
+  foreach ($k in $paths.Keys) {
+    $v = [string]$paths[$k]
+    if ($v.Length -lt 4) { continue }
+    $v = $v.TrimEnd('\', '/')
+    foreach ($form in @($v, $v.Replace('\', '/'), $v.Replace('\', '\\'))) { $list.Add(@{ Pattern = [regex]::Escape($form); To = "%$k%" }) }
+  }
+  foreach ($k in @('USERNAME', 'COMPUTERNAME', 'USERDOMAIN')) {
+    $v = [string][Environment]::GetEnvironmentVariable($k)
+    if ($v.Length -ge 3) { $list.Add(@{ Pattern = '(?<![A-Za-z0-9])' + [regex]::Escape($v) + '(?![A-Za-z0-9])'; To = "<$($k.ToLower())>" }) }
+  }
+  $script:ScrubRules = @($list | Sort-Object { $_.Pattern.Length } -Descending)
+  return $script:ScrubRules
+}
+
 function Scrub([string]$s) {
   if ($null -eq $s) { return '' }
-  $s = [regex]::Replace($s, 'https?://([^/\s"''<>)]+)[^\s"''<>)]*', '<url host=$1>')
-  if ($env:USERPROFILE) { $s = $s.Replace($env:USERPROFILE, '%USERPROFILE%') }
-  if ($env:USERNAME -and $env:USERNAME.Length -gt 2) { $s = $s.Replace($env:USERNAME, '<user>') }
+  $ci = [Text.RegularExpressions.RegexOptions]::IgnoreCase
+  # Netscape cookie-file lines (host, flag, path, secure, expiry, name, value) and cookie/authorization headers.
+  $s = [regex]::Replace($s, '(?m)^\.?[A-Za-z0-9.-]*(youtube|google|googlevideo)\.com\t[^\r\n]*$', '<cookie line removed>', $ci)
+  $s = [regex]::Replace($s, '(?i)\b((?:set-)?cookie|authorization|proxy-authorization)(\s*[:=]\s*)[^\r\n]+', '$1$2<redacted>')
+  # Stream and other URLs: only the host stays; the signed query string and path (which identify the stream and the
+  # session) never reach the report. Google's stream hosts carry a per-session name, so even that is shortened.
+  $s = [regex]::Replace($s, 'https?://([^/\s"''<>)]+)[^\s"''<>)]*', {
+      param($m)
+      $h = $m.Groups[1].Value
+      if ($h -match '(?i)googlevideo\.com$') { $h = '*.googlevideo.com' }
+      "<url host=$h>"
+    })
+  # Google's stream hosts name the session (rr5---sn-xxxx.googlevideo.com), also when printed without a scheme.
+  $s = [regex]::Replace($s, '(?i)\b[a-z0-9.-]*googlevideo\.com\b', '*.googlevideo.com')
+  # key=value / key: value secrets, also inside JSON ("token":"...") and command lines (--password x).
+  $s = [regex]::Replace($s, '(?i)(["'']?\b(?:access_token|refresh_token|id_token|token|api[_-]?key|password|passwd|secret|signature|sig|sapisid|apisid|hsid|ssid|sid|psid|visitor_data|po_?token|session_?id|cookie_?value)\b["'']?\s*[=:]\s*["'']?)[^\s&;,"''<>]+', '$1<redacted>')
+  $s = [regex]::Replace($s, '(?i)(--(?:password|video-password|cookies-from-browser|username)[ =])\S+', '$1<redacted>')
+  $s = [regex]::Replace($s, '(?i)\bbearer\s+[A-Za-z0-9._~+/=-]{8,}', 'Bearer <redacted>')
+  $s = [regex]::Replace($s, '\b(?:gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,})\b', '<github-token>')
+  $s = [regex]::Replace($s, '\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]*', '<jwt>')
+  foreach ($r in (Get-ScrubRules)) { $s = [regex]::Replace($s, $r.Pattern, $r.To, $ci) }
   return $s
+}
+
+# Proves the redaction above on made-up secrets plus this PC's real user, computer and folders. Runs first in every
+# run: if it fails, nothing is written to the report and the run stops.
+function Test-Scrub {
+  $bad = New-Object System.Collections.Generic.List[string]
+  $check = {
+    param([string]$name, [string]$text, [string[]]$mustNotContain, [string[]]$mustContain = @())
+    $out = Scrub $text
+    foreach ($m in $mustNotContain) { if ($m -and $out.IndexOf($m, [StringComparison]::OrdinalIgnoreCase) -ge 0) { $bad.Add("$name leaked '$m' -> $out") } }
+    foreach ($m in $mustContain) { if ($out.IndexOf($m, [StringComparison]::OrdinalIgnoreCase) -lt 0) { $bad.Add("$name lost '$m' -> $out") } }
+  }
+  & $check 'stream-url' 'GET https://rr3---sn-abc123.googlevideo.com/videoplayback?expire=1&sig=SECRETSIG&lsig=AAA&id=o-XYZ done' @('SECRETSIG', 'o-XYZ', 'rr3---sn-abc123', 'videoplayback') @('googlevideo.com', 'done')
+  & $check 'bare-stream-host' 'resolved host=rr5---sn-bavcx-jg3z.googlevideo.com duration=137' @('rr5---sn-bavcx-jg3z') @('googlevideo.com', 'duration=137')
+  & $check 'cookie-header' 'Cookie: SAPISID=abc123SECRET; HSID=xyz' @('abc123SECRET', 'xyz')
+  & $check 'set-cookie' 'set-cookie: LOGIN_INFO=SECRETCOOKIE; Path=/' @('SECRETCOOKIE')
+  & $check 'authorization' 'authorization: Bearer abcdefSECRETtoken123' @('abcdefSECRETtoken123')
+  & $check 'json-token' '{"access_token":"SECRETJSONTOKEN","x":1}' @('SECRETJSONTOKEN')
+  & $check 'cli-password' 'yt-dlp --password hunter2SECRET --no-warnings' @('hunter2SECRET') @('--no-warnings')
+  & $check 'github-token' 'push with ghp_abcdefghijklmnopqrstuvwxyz0123456789 ok' @('ghp_abcdefghijklmnopqrstuvwxyz0123456789')
+  & $check 'jwt' 'id eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.SflKxwRJSMeKKF2QT4fwpM end' @('eyJhbGciOiJIUzI1NiJ9')
+  & $check 'netscape-cookie' ".youtube.com`tTRUE`t/`tTRUE`t1893456000`tSID`tSECRETNETSCAPE" @('SECRETNETSCAPE')
+  foreach ($k in @('USERPROFILE', 'LOCALAPPDATA', 'APPDATA', 'TEMP')) {
+    $v = [string][Environment]::GetEnvironmentVariable($k)
+    if ($v.Length -lt 4) { continue }
+    $v = $v.TrimEnd('\', '/')
+    & $check "path-$k" "in $v\x\y.log" @($v)
+    & $check "path-$k-lower" ("in " + $v.ToLowerInvariant() + "\x\y.log") @($v)
+    & $check "path-$k-slashes" ("in " + $v.Replace('\', '/') + "/x/y.log") @($v.Replace('\', '/'))
+    & $check "path-$k-json" ("in " + $v.Replace('\', '\\') + "\\x\\y.log") @($v.Replace('\', '\\'))
+  }
+  foreach ($k in @('USERNAME', 'COMPUTERNAME')) {
+    $v = [string][Environment]::GetEnvironmentVariable($k)
+    if ($v.Length -ge 3) { & $check "name-$k" "owner $v ran it" @($v) }
+  }
+  return ,$bad
 }
 
 function Format-Elapsed([TimeSpan]$t) { return ('{0:00}:{1:00}:{2:00}' -f [int][math]::Floor($t.TotalHours), $t.Minutes, $t.Seconds) }
@@ -213,6 +294,15 @@ function Add-TripResult([string]$phase, [int]$before) {
 Set-Content -Path $Report -Value '' -Encoding UTF8
 Write-Report '############ Pyxee Windows check ############' 'Cyan'
 Write-Report ("started   : {0}" -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss zzz'))
+# Phase 0: the redaction must work before anything is written to the report.
+$scrubBad = Test-Scrub
+if ($scrubBad.Count -gt 0) {
+  Write-Host 'REDACTION SELF-TEST FAILED: nothing was written to the report. The output below is NOT safe to share.' -ForegroundColor Red
+  foreach ($b in $scrubBad) { Write-Host "  $b" -ForegroundColor Red }
+  exit 3
+}
+if ($SelfTest) { Write-Host 'Redaction self-test passed.' -ForegroundColor Green; exit 0 }
+
 Write-Report ("windows   : {0}   powershell {1}" -f [Environment]::OSVersion.VersionString, $PSVersionTable.PSVersion)
 Write-Report ("git       : {0}  ({1} changed file(s) in working tree)" -f (Get-FirstLine 'git rev-parse --short HEAD'), @(& git status --porcelain 2>$null | Where-Object { $_ -notmatch 'pyxee-check' }).Count)
 Write-Report ("rustc     : {0}" -f (Get-FirstLine 'rustc --version'))
@@ -221,7 +311,7 @@ Write-Report ("node      : {0}" -f (Get-FirstLine 'node --version'))
 Write-Report ("cookies   : {0}" -f $cookieKind)
 $envset = @('PYXEE_YTDLP', 'PYXEE_COOKIES', 'PYXEE_COOKIES_FROM_BROWSER', 'PYXEE_LOG', 'CARGO_TARGET_DIR') | ForEach-Object { $v = [Environment]::GetEnvironmentVariable($_); if ($v) { "$_=set" } }
 Write-Report ("env       : {0}" -f $(if ($envset) { $envset -join ', ' } else { '(none of the PYXEE_* / CARGO_TARGET_DIR variables are set)' }))
-Write-Report ("options   : SkipTests=$SkipTests SkipLive=$SkipLive SkipTools=$SkipTools Ui=$Ui Installer=$Installer Manual=$Manual AnalyzeLog=$AnalyzeLog")
+Write-Report ("options   : SkipTests=$SkipTests SkipLive=$SkipLive SkipTools=$SkipTools Ui=$true Installer=$Installer Manual=$Manual AnalyzeLog=$AnalyzeLog")
 
 foreach ($tool in @('cargo', 'rustc', 'git')) {
   if (-not (Have $tool)) { Add-Result 'FAIL' "tool-$tool" "$tool is not on PATH; install it and re-run"; Write-Report 'Cannot continue.'; exit 2 }
@@ -298,6 +388,7 @@ function Find-Ytdlp {
   if ($g) { return $g.Source }
   return $null
 }
+if ($SkipLive) { Add-Result 'WARN' 'live-checks' '-SkipLive was given: this run does NOT prove search / resolve / decode / seek / gapless against real YouTube' }
 $YtdlpPath = Find-Ytdlp
 if (-not $YtdlpPath) {
   Add-Result 'FAIL' 'ytdlp-found' 'no yt-dlp.exe found (run without -SkipTools, or pass -Ytdlp <path>)'
@@ -329,10 +420,8 @@ function Invoke-UiSteps([bool]$full) {
 if (-not $SkipTests) {
   Section 'Rust build and tests (same steps as CI)'
   $before = Get-TripCount
-  if ($Ui) { Invoke-UiSteps $true } elseif (-not (Test-UiBuilt)) {
-    Add-Result 'INFO' 'ui-dist' 'ui\dist is missing; building the UI first (Tauri embeds it at compile time)'
-    Invoke-UiSteps $false
-  }
+  # The UI checks are part of the full run (-Ui is accepted but no longer needed); the build also gives Tauri its ui\dist.
+  Invoke-UiSteps $true
 
   # The audio crate links a minimal static FFmpeg (built once from a pinned commit, LGPL only).
   if (-not (Get-Command cl.exe -ErrorAction SilentlyContinue)) {
@@ -358,19 +447,24 @@ if (-not $SkipTests) {
     $why = 'SKIPPED: the minimal FFmpeg libraries were not built (see ffmpeg-prereq / ffmpeg-build above), and every cargo step below needs them'
     if (-not $SkipLive) { $script:StepTotal-- }
     $SkipLive = $true
-    Add-Result 'INFO' 'live-checks' $why
+    if ($script:LiveRequested) { Add-Result 'FAIL' 'live-checks' ($why + ' (the live checks are part of the full run, so this is a failure, not a skip)') } else { Add-Result 'INFO' 'live-checks' $why }
   }
 
   $r = Invoke-Logged 'cargo-fmt' 'cargo fmt --all -- --check'
   if ($r.Code -eq 0) { Add-Result 'PASS' 'cargo-fmt' 'formatting is clean' } else { Add-Result 'FAIL' 'cargo-fmt' "exit $($r.Code) (run: cargo fmt --all)"; Show-LogTail $r.Log 20 }
 
   if ($ffOk) {
-  $r = Invoke-Logged 'cargo-clippy' 'cargo clippy --workspace --all-targets -- -D warnings'
+  $r = Invoke-Logged 'cargo-clippy' 'cargo clippy --locked --workspace --all-targets -- -D warnings'
   if ($r.Code -eq 0) { Add-Result 'PASS' 'cargo-clippy' "no warnings ($($r.Seconds)s)" }
   elseif ((Get-Content $r.Log -Raw) -match "no such command: .clippy") { Add-Result 'WARN' 'cargo-clippy' 'clippy is not installed (rustup component add clippy)' }
   else { Add-Result 'FAIL' 'cargo-clippy' "exit $($r.Code)"; Show-LogTail $r.Log 50 }
 
-  $r = Invoke-Logged 'cargo-test' 'cargo test --workspace --no-fail-fast'
+  # The tests regenerate the ts-rs bindings: compare their content before and after (not `git status`, which would
+  # also flag a binding change that is simply not committed yet).
+  $bindDir = Join-Path $Root 'ui\src\lib\bindings'
+  $bindHash = { Get-ChildItem $bindDir -Filter '*.ts' -ErrorAction SilentlyContinue | Sort-Object Name | ForEach-Object { '{0}:{1}' -f $_.Name, (Get-FileHash -Algorithm SHA256 -LiteralPath $_.FullName).Hash } }
+  $bindBefore = @(& $bindHash)
+  $r = Invoke-Logged 'cargo-test' 'cargo test --locked --workspace --no-fail-fast'
   $txt = Get-Content $r.Log -Raw
   $p = 0; $f = 0; $ig = 0
   foreach ($m in [regex]::Matches($txt, 'test result: \w+\. (\d+) passed; (\d+) failed; (\d+) ignored')) { $p += [int]$m.Groups[1].Value; $f += [int]$m.Groups[2].Value; $ig += [int]$m.Groups[3].Value }
@@ -380,7 +474,7 @@ if (-not $SkipTests) {
     Add-Result 'FAIL' 'cargo-test' "$p passed, $f failed (exit $($r.Code)); failed: $($failedNames -join ', ')"
     if ($failedNames.Count -eq 0) { Show-LogTail $r.Log 40 }
     foreach ($n in ($failedNames | Select-Object -First 5)) {
-      $re = Invoke-Logged ("rerun-" + ($n -replace '[^A-Za-z0-9]', '_')) "cargo test --workspace -- $n --exact"
+      $re = Invoke-Logged ("rerun-" + ($n -replace '[^A-Za-z0-9]', '_')) "cargo test --locked --workspace -- $n --exact"
       if ($re.Code -eq 0) { Add-Result 'WARN' "rerun-$n" 'passed when re-run alone (timing flake?)' } else { Add-Result 'FAIL' "rerun-$n" 'failed again when re-run alone'; Show-LogTail $re.Log 25 }
     }
   }
@@ -391,7 +485,7 @@ if (-not $SkipTests) {
     $bad = 0
     $firstFailure = $null
     for ($i = 1; $i -le $FlakeRuns; $i++) {
-      $re = Invoke-Logged "flake-$i" 'cargo test -p pyxee-app pause_freezes_the_position_and_resume_continues' $Root "pause-test repeat $i of $FlakeRuns"
+      $re = Invoke-Logged "flake-$i" 'cargo test --locked -p pyxee-app pause_freezes_the_position_and_resume_continues' $Root "pause-test repeat $i of $FlakeRuns"
       if ($re.Code -ne 0) {
         $bad++
         # Keep the first failing assertion: it says whether the position moved or audio reached the device.
@@ -414,13 +508,35 @@ if (-not $SkipTests) {
 
   $dirty = @(& git status --porcelain 2>$null | Where-Object { $_ -notmatch 'pyxee-check' })
   if ($ffOk) {
-    $bind = @($dirty | Where-Object { $_ -match 'ui/src/lib/bindings' })
-    if ($bind.Count -eq 0) { Add-Result 'PASS' 'bindings-up-to-date' 'ts-rs bindings unchanged by the tests (CI: git diff --exit-code)' } else { Add-Result 'FAIL' 'bindings-up-to-date' ($bind -join '; ') }
+    $bindAfter = @(& $bindHash)
+    $changed = @(Compare-Object $bindBefore $bindAfter | ForEach-Object { ($_.InputObject -split ':')[0] } | Sort-Object -Unique)
+    if ($changed.Count -eq 0) { Add-Result 'PASS' 'bindings-up-to-date' 'the tests regenerated the ts-rs bindings and nothing changed' } else { Add-Result 'FAIL' 'bindings-up-to-date' ('the tests rewrote: ' + ($changed -join ', ') + ' (commit the regenerated files)') }
   } else { Add-Result 'INFO' 'bindings-up-to-date' 'SKIPPED: the tests that regenerate them did not run' }
   Add-Result 'INFO' 'git-status-after-tests' "$($dirty.Count) changed/untracked path(s) (the first lines are the files this work changed or added)"
 }
 
 # ---------------------------------------------------------------- 4. optional installer
+
+# The signing config is only used with a certificate, but whether the installed Tauri CLI accepts its shape
+# (bundle.windows.signCommand as {cmd, args}) is checked on every run, so a CLI upgrade cannot break it silently.
+$tauriCli = Join-Path $Root 'ui\node_modules\.bin\tauri.cmd'
+if (Test-Path $tauriCli) {
+  $env:PYXEE_SIGN_THUMBPRINT = ('0123456789ABCDEF' * 3).Substring(0, 40)
+  try {
+    $r = Invoke-Logged 'signing-config' 'cargo xtask signing-config'
+    $conf = (Get-Content $r.Log -ErrorAction SilentlyContinue | Where-Object { $_ -match 'tauri\.bundle\.signed\.conf\.json' } | Select-Object -Last 1)
+    if ($r.Code -ne 0 -or -not $conf) { Add-Result 'FAIL' 'tauri-signcommand' 'cargo xtask signing-config produced no config' }
+    else {
+      # `tauri info` takes no --config; the CLI merges the TAURI_CONFIG environment variable into the config it loads.
+      $env:TAURI_CONFIG = (Get-Content -Raw -LiteralPath $conf.Trim())
+      try { $r2 = Invoke-Logged 'tauri-signcommand' ('"{0}" info' -f $tauriCli) (Join-Path $Root 'crates\app') } finally { Remove-Item Env:\TAURI_CONFIG -ErrorAction SilentlyContinue }
+      $txt = (Get-Content $r2.Log -ErrorAction SilentlyContinue) -join "`n"
+      if ($txt -match '(?i)signCommand|unknown field|invalid type|did not match any variant') { Add-Result 'FAIL' 'tauri-signcommand' 'the installed Tauri CLI rejected the signing config (see the log)'; Show-LogTail $r2.Log 15 }
+      elseif ($r2.Code -eq 0) { Add-Result 'PASS' 'tauri-signcommand' 'the Tauri CLI accepts the signCommand {cmd, args} config' }
+      else { Add-Result 'WARN' 'tauri-signcommand' "could not validate (tauri info exited $($r2.Code) for another reason)" }
+    }
+  } finally { Remove-Item Env:\PYXEE_SIGN_THUMBPRINT -ErrorAction SilentlyContinue }
+}
 
 if ($Installer) {
   Section 'Installer build (slow)'
@@ -434,6 +550,27 @@ if ($Installer) {
   $setup = @(Get-ChildItem (Join-Path $rel 'bundle') -Recurse -Include '*.exe', '*.msi' -ErrorAction SilentlyContinue)
   foreach ($s in $setup) { Add-Result 'INFO' 'installer-file' ("{0}  {1:N1} MB" -f $s.Name, ($s.Length / 1MB)) }
   Add-TripResult 'installer-build' $before
+
+  # The portable zip: xtask itself refuses a zip without Pyxee.exe / yt-dlp.exe / portable.txt or with a data folder or
+  # ffmpeg program in it; here the finished zip is opened again from the outside.
+  $r = Invoke-Logged 'xtask-portable' 'cargo xtask portable'
+  if ($r.Code -eq 0) { Add-Result 'PASS' 'cargo-xtask-portable' "built in $($r.Seconds)s" } else { Add-Result 'FAIL' 'cargo-xtask-portable' "exit $($r.Code)"; Show-LogTail $r.Log 30 }
+  $zip = Get-ChildItem (Join-Path $Root 'target\portable') -Filter '*_x64-portable.zip' -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+  if (-not $zip) { Add-Result 'FAIL' 'portable-zip' 'no *_x64-portable.zip under target\portable' }
+  else {
+    Add-Result 'INFO' 'portable-file' ("{0}  {1:N1} MB" -f $zip.Name, ($zip.Length / 1MB))
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    $za = [IO.Compression.ZipFile]::OpenRead($zip.FullName)
+    try {
+      $names = @($za.Entries | ForEach-Object { $_.FullName })
+      foreach ($want in @('Pyxee.exe', 'yt-dlp.exe', 'portable.txt', 'README.txt', 'THIRD_PARTY_NOTICES.txt', 'FFmpeg-LGPL-2.1.txt')) {
+        if (@($names | Where-Object { $_ -like "*/$want" }).Count -eq 1) { Add-Result 'PASS' "portable-has-$want" 'present' } else { Add-Result 'FAIL' "portable-has-$want" 'missing from the zip' }
+      }
+      $bad = @($names | Where-Object { $_ -match '(^|/)data(/|$)|(^|/)(ffmpeg|ffprobe|ffplay)\.exe$|(^|/)(avcodec|avformat|avutil|swresample)(-\d+)?\.dll$' })
+      if ($bad.Count -eq 0) { Add-Result 'PASS' 'portable-clean' 'no data folder, no ffmpeg program, no libav DLL' } else { Add-Result 'FAIL' 'portable-clean' ($bad -join ', ') }
+    } finally { $za.Dispose() }
+    foreach ($f in @($setup | Select-Object -First 3)) { Add-Result 'INFO' 'installer-signature' ("{0}: {1} (NotSigned is expected without a certificate; see docs/releasing.md)" -f $f.Name, (Get-AuthenticodeSignature -LiteralPath $f.FullName).Status) }
+  }
 }
 
 # ---------------------------------------------------------------- 5. live checks
@@ -472,7 +609,7 @@ if (-not $SkipLive) {
   $ffLib = if ($env:PYXEE_FFMPEG_DIR) { $env:PYXEE_FFMPEG_DIR } else { Join-Path $Root 'target\ffmpeg\x86_64-pc-windows-msvc' }
   if (-not (Test-Path (Join-Path $ffLib 'include\libavformat\avformat.h'))) {
     $SkipLive = $true
-    Add-Result 'INFO' 'live-checks' 'SKIPPED: the minimal FFmpeg libraries are not built (run without -SkipTests, or `cargo xtask ffmpeg` first)'
+    if ($script:LiveRequested) { Add-Result 'FAIL' 'live-checks' 'NOT RUN: the minimal FFmpeg libraries are not built (run without -SkipTests, or `cargo xtask ffmpeg` first). The live checks are part of the full run, so this is a failure.' } else { Add-Result 'INFO' 'live-checks' 'skipped (-SkipLive)' }
   }
 }
 if (-not $SkipLive) {
@@ -481,7 +618,7 @@ if (-not $SkipLive) {
   $before = Get-TripCount
 
   Write-Report 'building the live-check tool (release build; the first time takes a few minutes)...'
-  $r = Invoke-Logged 'build-livecheck' 'cargo build --release -p pyxee-spike --bin livecheck'
+  $r = Invoke-Logged 'build-livecheck' 'cargo build --locked --release -p pyxee-spike --bin livecheck'
   $targetDir = if ($env:CARGO_TARGET_DIR) { $env:CARGO_TARGET_DIR } else { Join-Path $Root 'target' }
   $Live = Join-Path $targetDir 'release\livecheck.exe'
   if ($r.Code -ne 0 -or -not (Test-Path $Live)) {
@@ -509,12 +646,12 @@ if (-not $SkipLive) {
     }
 
     foreach ($ph in @('search', 'stream')) {
-      if ($script:LiveBlocked) { Add-Result 'WARN' "live-$ph" 'skipped: YouTube is rate limiting this IP right now (try again later, or use cookies)'; continue }
+      if ($script:LiveBlocked) { Add-Result 'FAIL' "live-$ph" 'NOT RUN: YouTube is rate limiting this IP right now (try again in ~15 minutes, or use -CookieFile). A run that could not do its live checks is not a pass.'; continue }
       Invoke-Phase $ph
     }
 
     # Stress: 9 simultaneous calls. Watch from outside how many yt-dlp processes run at once.
-    if ($script:LiveBlocked) { Add-Result 'WARN' 'live-stress' 'skipped: rate limited' }
+    if ($script:LiveBlocked) { Add-Result 'FAIL' 'live-stress' 'NOT RUN: rate limited' }
     else {
       $out = Join-Path $LogDir 'live-stress.log'; $err = Join-Path $LogDir 'live-stress.err'
       $argl = "stress $common"
@@ -535,7 +672,7 @@ if (-not $SkipLive) {
     }
   }
   Add-TripResult 'live-checks' $before
-  if ($script:LiveBlocked) { Add-Result 'WARN' 'live-summary' 'YouTube rate limiting was hit. That is the situation the guard handles; paste this report, and re-run in ~15 minutes or with -CookieFile.' }
+  if ($script:LiveBlocked) { Add-Result 'FAIL' 'live-summary' 'YouTube rate limiting was hit, so the live proof is incomplete. That is the situation the guard handles; paste this report, and re-run in ~15 minutes or with -CookieFile.' }
 }
 
 # ---------------------------------------------------------------- 6. manual checks in the real app

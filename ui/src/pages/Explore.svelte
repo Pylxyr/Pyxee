@@ -8,6 +8,7 @@
   import Icon from '../components/Icon.svelte';
   import Skeleton from '../components/Skeleton.svelte';
   import Thumb from '../components/Thumb.svelte';
+  import SectionHead from '../components/SectionHead.svelte';
   import TrackRow from '../components/TrackRow.svelte';
 
   // Loaded once per session (the shelves cost a search each); Refresh asks again.
@@ -37,7 +38,7 @@
     </button>
   </div>
 
-  <h2 class="mb-3 mt-6 text-[13px] font-semibold uppercase tracking-wider text-muted">Start from a mood</h2>
+  <SectionHead>Start from a mood</SectionHead>
   <ul class="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4" aria-label="Moods">
     {#each MOODS as m (m.id)}
       <li>
@@ -50,14 +51,16 @@
   </ul>
 
   {#if explore.jump.length > 0}
-    <h2 class="mb-3 mt-8 text-[13px] font-semibold uppercase tracking-wider text-muted">Jump back in</h2>
-    <ul class="flex gap-4 overflow-x-auto pb-2" aria-label="Jump back in">
+    <SectionHead count={explore.jump.length}>Jump back in</SectionHead>
+    <ul class="grid grid-cols-[repeat(auto-fill,minmax(112px,1fr))] gap-2 pt-2" aria-label="Jump back in">
       {#each explore.jump as t, i (t.key)}
-        <li class="w-36 shrink-0">
-          <button class="block w-full text-left" aria-label="Play {t.title}" onclick={() => player.playTracks(explore.jump, i)}>
-            <Thumb src={t.thumbnail} seed={t.key} size={144} rounded="rounded-sm" />
-            <span class="mt-2 block truncate text-[14px] font-semibold">{t.title}</span>
-            <span class="block truncate text-[13px] text-muted">{t.artist}</span>
+        <li class="relative aspect-square overflow-hidden rounded-sm">
+          <button class="block h-full w-full text-left" aria-label="Play {t.title}" onclick={() => player.playTracks(explore.jump, i)}>
+            <Thumb src={t.thumbnail} seed={t.key} size={160} fill rounded="rounded-sm" />
+            <span class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 to-transparent px-2 pb-1.5 pt-6 text-white">
+              <span class="block truncate text-[12px] font-semibold">{t.title}</span>
+              <span class="block truncate text-[11px] opacity-75">{t.artist}</span>
+            </span>
           </button>
         </li>
       {/each}
@@ -69,15 +72,17 @@
   {/if}
 
   {#each explore.shelves as shelf (shelf.id)}
-    <div class="mb-2 mt-8 flex items-center justify-between gap-3">
-      <h2 class="min-w-0 truncate text-lg font-semibold">{shelf.title}</h2>
-      {#if shelf.status === 'ready' && shelf.tracks.length > 0}
-        <button
-          class="shrink-0 rounded-md bg-accent px-3 py-1.5 text-sm font-semibold text-on-accent"
-          aria-label="Play {shelf.title}"
-          onclick={() => player.playTracks(shelf.tracks, 0)}>Play all</button>
-      {/if}
-    </div>
+    <SectionHead count={shelf.status === 'ready' ? shelf.tracks.length : null}>
+      {shelf.title}
+      {#snippet actions()}
+        {#if shelf.status === 'ready' && shelf.tracks.length > 0}
+          <button
+            class="shrink-0 rounded bg-accent px-3 py-1 text-sm font-semibold text-on-accent"
+            aria-label="Play {shelf.title}"
+            onclick={() => player.playTracks(shelf.tracks, 0)}>Play all</button>
+        {/if}
+      {/snippet}
+    </SectionHead>
     {#if shelf.status === 'loading'}
       <Skeleton rows={3} />
     {:else if shelf.status === 'error'}
@@ -88,9 +93,9 @@
     {:else if shelf.tracks.length === 0}
       <p class="text-sm text-muted">Nothing new to suggest here yet.</p>
     {:else}
-      <ul class="grid gap-x-6 md:grid-cols-2" aria-label={shelf.title}>
+      <ul aria-label={shelf.title}>
         {#each shelf.tracks as t, i (t.key)}
-          <TrackRow track={t} onplay={() => player.playTracks(shelf.tracks, i)} />
+          <TrackRow track={t} index={i} onplay={() => player.playTracks(shelf.tracks, i)} />
         {/each}
       </ul>
     {/if}

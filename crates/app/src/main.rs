@@ -33,6 +33,26 @@ fn seed() -> u64 {
         .map_or(1, |d| d.as_nanos() as u64)
 }
 
+/// Portable mode: the data folder next to the program, created if needed. `None` when this is an installed copy, or
+/// when the folder cannot be created (a read-only location): the normal folders are used then, and the log says why.
+fn portable_data_folder() -> Option<pyxee_shell::datadir::Resolved> {
+    use pyxee_shell::datadir::{Note, Resolved};
+    let dir = updater::portable_dir()?;
+    match std::fs::create_dir_all(&dir) {
+        Ok(()) => Some(Resolved {
+            notes: vec![Note {
+                warn: false,
+                text: format!("portable mode: everything is kept in {}", dir.display()),
+            }],
+            dir: Some(dir),
+        }),
+        Err(e) => {
+            eprintln!("portable mode: cannot create {}: {e}", dir.display());
+            None
+        }
+    }
+}
+
 /// Prefers the updater's copy of yt-dlp (see `updater`), unless the developer pinned one with `PYXEE_YTDLP`.
 fn with_updated_ytdlp(source: YtDlpSource, data_dir: Option<&std::path::Path>) -> YtDlpSource {
     match data_dir {
@@ -58,10 +78,13 @@ fn main() {
         .setup(|app| {
             // Where the files live: the Local application-data folder. Files from the old Roaming folder are
             // copied over once, before anything opens them (see `pyxee_shell::datadir`).
-            let moved = pyxee_shell::datadir::resolve(
-                app.path().app_data_dir().ok().as_deref(),
-                app.path().app_local_data_dir().ok().as_deref(),
-            );
+            // A portable copy (`portable.txt` next to the program) keeps everything in `data\\` beside it instead.
+            let moved = portable_data_folder().unwrap_or_else(|| {
+                pyxee_shell::datadir::resolve(
+                    app.path().app_data_dir().ok().as_deref(),
+                    app.path().app_local_data_dir().ok().as_deref(),
+                )
+            });
             let data_dir = moved.dir;
             // Logging first, so everything that follows (and every panic) is recorded.
             let log_dir = data_dir

@@ -9,6 +9,7 @@
   import type { TrackDto } from '$lib/bindings/TrackDto';
   import EmptyState from '../components/EmptyState.svelte';
   import ScrollPage from '../components/ScrollPage.svelte';
+  import SectionHead from '../components/SectionHead.svelte';
   import Icon from '../components/Icon.svelte';
   import Thumb from '../components/Thumb.svelte';
   import TrackRow from '../components/TrackRow.svelte';
@@ -65,13 +66,13 @@
 
 <ScrollPage>
   {#snippet header()}
-  <h1 class="text-2xl font-bold">Library</h1>
-  <div class="mt-4 flex flex-wrap gap-2" role="tablist" aria-label="Library sections">
+  <SectionHead level={1}>Library</SectionHead>
+  <div class="flex flex-wrap gap-x-5 border-b border-line" role="tablist" aria-label="Library sections">
     {#each tabs as t (t.id)}
       <button
         role="tab"
         aria-selected={nav.libraryTab === t.id}
-        class="rounded-full px-4 py-1.5 text-sm font-medium {nav.libraryTab === t.id ? 'bg-fg text-on-fg' : 'bg-surface-2 text-fg'}"
+        class="-mb-px border-b-2 px-0.5 py-2 text-sm font-medium {nav.libraryTab === t.id ? 'border-accent text-fg' : 'border-transparent text-muted hover:text-fg'}"
         onclick={() => (nav.libraryTab = t.id)}>{t.label}</button>
     {/each}
   </div>
@@ -84,31 +85,31 @@
       <EmptyState icon="heart" title="No liked songs yet" text="Tap the heart on a song and it will show up here." />
     {:else}
       <div class="mt-4 flex gap-2">
-        <button class="rounded-md bg-fg px-5 py-2 text-sm font-semibold text-on-fg" onclick={() => playAll(false)}>Play all</button>
+        <button class="rounded bg-accent px-5 py-2 text-sm font-semibold text-on-accent" onclick={() => playAll(false)}>Play all</button>
         <button class="rounded-md border border-line bg-surface px-5 py-2 text-sm font-semibold" onclick={() => playAll(true)}>Shuffle</button>
         <span class="ml-auto self-center text-sm text-muted">{liked.length} {liked.length === 1 ? 'song' : 'songs'}</span>
       </div>
-      <ul class="mt-2 grid gap-x-6 md:grid-cols-2" aria-label="Liked songs">
+      <ul class="mt-2" aria-label="Liked songs">
         {#each liked as t, i (t.key)}
-          <TrackRow track={t} onplay={() => player.playTracks(liked, i)} />
+          <TrackRow track={t} index={i} onplay={() => player.playTracks(liked, i)} />
         {/each}
       </ul>
     {/if}
   {:else if nav.libraryTab === 'playlists'}
     <div class="mt-4">
-      <button class="flex items-center gap-2 rounded-md bg-fg px-5 py-2 text-sm font-semibold text-on-fg" onclick={newPlaylist}><Icon name="plus" size={18} />New playlist</button>
+      <button class="flex items-center gap-2 rounded bg-accent px-5 py-2 text-sm font-semibold text-on-accent" onclick={newPlaylist}><Icon name="plus" size={18} />New playlist</button>
     </div>
     {#if library.playlists.length === 0}
       <EmptyState icon="library" title="No playlists yet" text="Create one here, or choose Add to playlist on any song. You can also save your queue." />
     {:else}
-      <ul class="mt-4 grid gap-x-6 md:grid-cols-2" aria-label="Playlists">
+      <ul class="mt-4" aria-label="Playlists">
         {#each library.playlists as p (p.id)}
-          <li class="rounded-lg hover:bg-surface">
-            <button class="flex w-full items-center gap-3 p-2 text-left" onclick={() => nav.openPlaylist(p.id)}>
-              <Thumb src={p.thumbnail} seed={`pl:${p.id}`} size={56} />
+          <li class="border-b border-line/60 hover:bg-surface-2/70">
+            <button class="flex w-full items-center gap-3 py-1.5 pl-2 text-left" onclick={() => nav.openPlaylist(p.id)}>
+              <Thumb src={p.thumbnail} seed={`pl:${p.id}`} size={40} rounded="rounded-sm" />
               <span class="min-w-0 flex-1">
-                <span class="block truncate text-[15px] font-semibold">{p.name}</span>
-                <span class="block text-[13px] text-muted">{p.trackCount} {p.trackCount === 1 ? 'song' : 'songs'}</span>
+                <span class="block truncate text-[14px] font-medium">{p.name}</span>
+                <span class="block text-[12px] text-muted">{p.trackCount} {p.trackCount === 1 ? 'song' : 'songs'}</span>
               </span>
             </button>
           </li>
@@ -124,8 +125,8 @@
         <button class="ml-auto rounded-md border border-line bg-surface px-4 py-1.5 text-sm font-medium" onclick={clearHistory}>Clear history</button>
       </div>
       {#each days as g (g.label)}
-        <h2 class="mb-1 mt-5 text-sm font-semibold text-muted">{g.label}</h2>
-        <ul class="grid gap-x-6 md:grid-cols-2" aria-label="Played {g.label}">
+        <SectionHead>{g.label}</SectionHead>
+        <ul aria-label="Played {g.label}">
           {#each g.items as h, i (`${h.playedAt}-${h.track.key}-${i}`)}
             <TrackRow track={h.track} onplay={() => player.playTracks([h.track])} />
           {/each}

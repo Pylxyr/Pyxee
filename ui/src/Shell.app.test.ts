@@ -280,7 +280,7 @@ describe('Updates settings', () => {
   });
 
   it('offers the install only for a newer release that can be verified, and installs through the backend', async () => {
-    mock.appUpdate = { current: '0.1.0', latest: '0.2.0', available: true, notesUrl: 'https://example.test/r', installable: true };
+    mock.appUpdate = { current: '0.1.0', latest: '0.2.0', available: true, notesUrl: 'https://example.test/r', installable: true, portable: false };
     const section = await openUpdates();
     await fireEvent.click(within(section).getByRole('button', { name: 'Check for updates' }));
     await fireEvent.click(await within(section).findByRole('button', { name: 'Download and install 0.2.0' }));
@@ -288,10 +288,18 @@ describe('Updates settings', () => {
   });
 
   it('a release without an installer and checksums points to its page instead of offering the install', async () => {
-    mock.appUpdate = { current: '0.1.0', latest: '0.2.0', available: true, notesUrl: 'https://example.test/r', installable: false };
+    mock.appUpdate = { current: '0.1.0', latest: '0.2.0', available: true, notesUrl: 'https://example.test/r', installable: false, portable: false };
     const section = await openUpdates();
     await fireEvent.click(within(section).getByRole('button', { name: 'Check for updates' }));
     await waitFor(() => expect(within(section).getByText(/https:\/\/example.test\/r/)).toBeTruthy());
+    expect(within(section).queryByRole('button', { name: /Download and install/ })).toBeNull();
+  });
+
+  it('a portable copy is told to download the zip, never offered the installer', async () => {
+    mock.appUpdate = { current: '0.1.0', latest: '0.2.0', available: true, notesUrl: 'https://example.test/r', installable: false, portable: true };
+    const section = await openUpdates();
+    await fireEvent.click(within(section).getByRole('button', { name: 'Check for updates' }));
+    expect((await within(section).findByTestId('portable-update')).textContent).toContain('portable copy');
     expect(within(section).queryByRole('button', { name: /Download and install/ })).toBeNull();
   });
 

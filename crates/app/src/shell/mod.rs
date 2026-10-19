@@ -22,6 +22,7 @@ use pyxee_shell::cli::{parse_args, CliAction};
 use pyxee_shell::progress::{taskbar_progress, Phase, TaskbarProgress};
 use pyxee_shell::settings::{self, ShellSettings};
 use pyxee_shell::sleep::SleepTimer;
+use pyxee_shell::toast::ToastGate;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -63,6 +64,8 @@ pub struct ShellState {
     restore_fade: AtomicBool,
     /// The song that is audible now (for "a song ended" and for the change toast).
     audible: Mutex<Option<u64>>,
+    /// Decides which song changes get a toast (never a pile of them while the listener is away).
+    toasts: Mutex<ToastGate>,
     sent: Mutex<Sent>,
     media: Mutex<Option<media::Media>>,
     mini_dirty: AtomicBool,
@@ -92,6 +95,7 @@ impl ShellState {
             flyout_hidden_at: Mutex::new(None),
             restore_fade: AtomicBool::new(false),
             audible: Mutex::new(None),
+            toasts: Mutex::new(ToastGate::default()),
             sent: Mutex::new(Sent::default()),
             media: Mutex::new(None),
             mini_dirty: AtomicBool::new(false),
@@ -227,6 +231,11 @@ pub fn on_window_event(window: &tauri::Window, event: &tauri::WindowEvent) {
                 let _ = window.hide();
             } else {
                 quit(app);
+            }
+        }
+        (MAIN, tauri::WindowEvent::Focused(true)) => {
+            if let Ok(mut g) = app.state::<ShellState>().toasts.lock() {
+                g.window_focused();
             }
         }
         (flyout::LABEL, tauri::WindowEvent::Focused(false)) => flyout::hide(app),
@@ -377,11 +386,17 @@ fn toast_for(app: &AppHandle, id: u64) {
     if !shell.settings.lock().is_ok_and(|s| s.toast_on_change) {
         return;
     }
-    // Only when the window is not in front of the user (the player bar already shows the song then).
+    // Only when the window is not in front of the user (the player bar already shows the song then), and not as a
+    // pile while they are away: see `pyxee_shell::toast`.
     let focused = app
         .get_webview_window(MAIN)
         .is_some_and(|w| w.is_focused().unwrap_or(false));
-    if focused {
+    let now_ms = shell.clock.elapsed().as_millis() as u64;
+    if !shell
+        .toasts
+        .lock()
+        .is_ok_and(|mut g| g.allow(id, now_ms, focused))
+    {
         return;
     }
     let track = app.state::<AppState>().player.lock().ok().and_then(|p| {
