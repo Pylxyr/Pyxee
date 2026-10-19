@@ -139,9 +139,7 @@ pub fn init(app: &AppHandle, args: &[String]) {
     if let Ok(mut m) = app.state::<ShellState>().media.lock() {
         *m = media::init(app);
     }
-    if let Ok(mut d) = app.state::<ShellState>().discord.lock() {
-        *d = discord::init();
-    }
+    sync_discord(app);
     sync_autostart(app);
     #[cfg(all(windows, feature = "win-extras"))]
     winextras::init(app);
@@ -153,6 +151,33 @@ pub fn init(app: &AppHandle, args: &[String]) {
         }
     }
     run_actions(app, &cli.actions);
+}
+
+/// Makes Discord Rich Presence match the saved setting: starts it when it is on (and an application ID is
+/// configured), and clears the presence and stops it when it is off. Safe to call at any time.
+pub fn sync_discord(app: &AppHandle) {
+    let shell = app.state::<ShellState>();
+    let want = shell.settings.lock().is_ok_and(|s| s.discord_presence);
+    let stopped = {
+        let Ok(mut slot) = shell.discord.lock() else {
+            return;
+        };
+        match (want, slot.is_some()) {
+            (true, false) => {
+                *slot = discord::init();
+                None
+            }
+            (false, true) => {
+                log::info!("discord presence: off (turned off in Settings)");
+                slot.take()
+            }
+            _ => None,
+        }
+    };
+    // Outside the lock: clearing waits for Discord (a second at most) and `on_state` must not be held up by it.
+    if let Some(discord) = stopped {
+        discord.shutdown();
+    }
 }
 
 /// Makes Windows' start-with-sign-in match the saved setting (the user may have removed it in Task Manager).

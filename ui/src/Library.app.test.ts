@@ -269,6 +269,29 @@ describe('history and Home', () => {
     expect(await screen.findByRole('list', { name: 'Liked songs' })).toBeTruthy();
   });
 
+  it('the Pick up card follows the song that is playing and only says Resume while it is paused', async () => {
+    await mock.setLiked(PAPER, true);
+    await openApp();
+    await player.playTracks([NEON, ORBIT]);
+    await listen(NEON, 31);
+    await go(/Home/);
+    const card = () => screen.getByTestId('resume');
+    await waitFor(() => expect(within(card()).getByText(NEON.title)).toBeTruthy());
+    expect(within(card()).getByText('Now playing')).toBeTruthy();
+    expect(within(card()).getByRole('button', { name: `Pause ${NEON.title}` })).toBeTruthy();
+    expect(within(card()).queryByRole('button', { name: /^Resume/ })).toBeNull();
+    // The next song starts: the card changes with it, without leaving Home.
+    await player.next();
+    await listen(ORBIT, 1);
+    await waitFor(() => expect(within(card()).getByText(ORBIT.title)).toBeTruthy());
+    expect(within(card()).getByText('Now playing')).toBeTruthy();
+    // Paused: now it is a place to pick up from.
+    await fireEvent.click(within(card()).getByRole('button', { name: `Pause ${ORBIT.title}` }));
+    await waitFor(() => expect(within(card()).getByText('Pick up where you left off')).toBeTruthy());
+    await fireEvent.click(within(card()).getByRole('button', { name: `Resume ${ORBIT.title}` }));
+    await waitFor(() => expect(within(card()).getByText('Now playing')).toBeTruthy());
+  });
+
   it('with no library data and no demo tracks, Home says what to do', async () => {
     mock.devCatalog = async () => [];
     await openApp();

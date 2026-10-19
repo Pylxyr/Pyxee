@@ -9,8 +9,12 @@
 <script lang="ts">
   import { fly, fade } from 'svelte/transition';
   import type { Snippet } from 'svelte';
+  import Icon from './Icon.svelte';
 
-  let { open, title, onclose, children }: { open: boolean; title: string; onclose: () => void; children: Snippet } = $props();
+  // `bottom` (the default) is a card that rises from the bottom, centred on wide windows. `right` is a tab that
+  // slides in from the right edge and takes half of the window (all of it when the window is narrow); Settings uses it.
+  let { open, title, onclose, children, side = 'bottom' }: { open: boolean; title: string; onclose: () => void; children: Snippet; side?: 'bottom' | 'right' } = $props();
+  const right = $derived(side === 'right');
   let panel = $state<HTMLElement>();
   let restore: HTMLElement | null = null;
   let z = $state(100);
@@ -45,17 +49,27 @@
 </script>
 
 {#if open}
-  <div class="fixed inset-0 flex items-end justify-center sm:items-center" style="z-index:{z}" role="presentation" data-sheet {onkeydown}>
+  <div class="fixed inset-0 flex {right ? 'justify-end' : 'items-end justify-center sm:items-center'}" style="z-index:{z}" role="presentation" data-sheet {onkeydown}>
     <button class="absolute inset-0 bg-black/50" aria-label="Close" tabindex="-1" onclick={onclose} transition:fade={{ duration: 120 }}></button>
     <div
       bind:this={panel}
       role="dialog"
       aria-modal="true"
       aria-label={title}
-      transition:fly={{ y: 40, duration: 160 }}
-      class="relative max-h-[92dvh] w-full max-w-md overflow-y-auto rounded-t-2xl bg-solid-2 p-4 pb-6 shadow-xl backdrop-blur sm:rounded-2xl"
+      data-side={side}
+      transition:fly={right ? { x: 640, duration: 240 } : { y: 40, duration: 160 }}
+      class="relative overflow-y-auto bg-solid-2 shadow-xl backdrop-blur {right
+        ? 'h-full w-1/2 max-w-full min-w-[min(26rem,100vw)] rounded-l-2xl border-l border-line px-4 pb-6'
+        : 'max-h-[92dvh] w-full max-w-md rounded-t-2xl p-4 pb-6 sm:rounded-2xl'}"
     >
-      <h2 class="px-2 pb-2 text-sm font-semibold text-muted">{title}</h2>
+      {#if right}
+        <div class="sticky top-0 z-10 -mx-4 mb-2 flex items-center justify-between border-b border-line bg-solid-2 px-6 py-3">
+          <h2 class="text-base font-semibold">{title}</h2>
+          <button class="rounded-md p-1.5 text-muted hover:text-fg" aria-label="Close {title}" onclick={onclose}><Icon name="close" size={20} /></button>
+        </div>
+      {:else}
+        <h2 class="px-2 pb-2 text-sm font-semibold text-muted">{title}</h2>
+      {/if}
       {@render children()}
     </div>
   </div>

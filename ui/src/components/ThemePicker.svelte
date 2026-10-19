@@ -6,6 +6,10 @@
   const lights = $derived(theme.all.filter((t) => t.scheme === 'light'));
   const darks = $derived(theme.all.filter((t) => t.scheme === 'dark'));
   const active = $derived(theme.selectedId);
+  const groups = $derived([
+    { label: 'Dark', items: darks },
+    { label: 'Light', items: lights },
+  ]);
 
   function swatches(t: ThemeDef): string[] {
     return [t.colors.bg, t.colors.surface2, t.colors.fg, t.colors.accent];
@@ -38,7 +42,9 @@
 {/if}
 
 <div class="grid grid-cols-2 gap-2 px-2 py-2" role="group" aria-label="Theme">
-  {#each theme.all as t (t.id)}
+  {#each groups as g (g.label)}
+    {#if g.items.length}<p class="col-span-2 px-1 pt-1 text-xs font-semibold uppercase tracking-wide text-muted">{g.label}</p>{/if}
+    {#each g.items as t (t.id)}
     <button
       class="flex items-center gap-2.5 rounded-xl border-2 px-3 py-2.5 text-left text-sm font-medium {active === t.id ? 'border-accent bg-surface-2' : 'border-transparent bg-surface hover:bg-surface-2'}"
       aria-label={t.name}
@@ -51,6 +57,7 @@
       </span>
       <span class="min-w-0 truncate">{t.name}</span>
     </button>
+    {/each}
   {/each}
 </div>
 

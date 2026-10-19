@@ -3,6 +3,7 @@
   import { nav } from '$lib/nav.svelte';
   import { player } from '$lib/player.svelte';
   import type { HomeDto } from '$lib/bindings/HomeDto';
+  import type { TrackDto } from '$lib/bindings/TrackDto';
   import EmptyState from '../components/EmptyState.svelte';
   import Icon from '../components/Icon.svelte';
   import SectionHead from '../components/SectionHead.svelte';
@@ -19,6 +20,32 @@
   });
 
   const hasLibrary = $derived(home !== null && (home.quickPicks.length > 0 || home.recent.length > 0));
+  // The card at the top follows what is playing right now, the moment it changes. "Resume" is only offered when the
+  // song is paused (including the one restored when the app starts); while it plays the button pauses it. With nothing
+  // loaded it falls back to the last song in the history.
+  type Hero = { track: TrackDto; label: string; action: 'pause' | 'resume' | 'retry' | 'replay' };
+  const hero = $derived.by((): Hero | null => {
+    const state = player.state.transport.state;
+    const now = player.shown;
+    if (now && state !== 'idle') {
+      if (state === 'playing' || state === 'loading' || state === 'stalled') return { track: now.track, label: 'Now playing', action: 'pause' };
+      if (state === 'failed') return { track: now.track, label: "Couldn't play this song", action: 'retry' };
+      return { track: now.track, label: 'Pick up where you left off', action: 'resume' };
+    }
+    const last = home?.recent[0];
+    return last ? { track: last, label: 'Pick up where you left off', action: 'replay' } : null;
+  });
+  const HERO_BUTTON = {
+    pause: { text: 'Pause', icon: 'pause' },
+    resume: { text: 'Resume', icon: 'play' },
+    replay: { text: 'Resume', icon: 'play' },
+    retry: { text: 'Try again', icon: null },
+  } as const;
+  function heroClick(h: Hero) {
+    if (h.action === 'replay') void player.playTracks(home!.recent, 0);
+    else if (h.action === 'retry') void player.retry();
+    else void player.toggle();
+  }
   const demo = $derived(!hasLibrary && player.catalog && player.catalog.length > 0 ? player.catalog : null);
 </script>
 
@@ -27,16 +54,16 @@
     <SectionHead level={1}>On rotation</SectionHead>
     <Skeleton rows={8} />
   {:else if hasLibrary}
-    {#if home.recent.length > 0}
-      {@const last = home.recent[0]!}
+    {#if hero}
+      {@const button = HERO_BUTTON[hero.action]}
       <div class="flex items-center gap-5 rounded border border-line bg-surface p-4" data-testid="resume">
-        <Thumb src={last.thumbnail} seed={last.key} size={112} rounded="rounded-sm" />
+        <Thumb src={hero.track.thumbnail} seed={hero.track.key} size={112} rounded="rounded-sm" />
         <div class="min-w-0 flex-1">
-          <p class="label">Pick up where you left off</p>
-          <p class="mt-1 truncate text-xl font-semibold">{last.title}</p>
-          <p class="truncate text-sm text-muted">{last.artist}</p>
-          <button class="mt-3 flex items-center gap-2 rounded bg-accent px-4 py-1.5 text-sm font-semibold text-on-accent" aria-label="Resume {last.title}" onclick={() => player.playTracks(home!.recent, 0)}>
-            <Icon name="play" size={16} fill />Resume
+          <p class="label">{hero.label}</p>
+          <p class="mt-1 truncate text-xl font-semibold">{hero.track.title}</p>
+          <p class="truncate text-sm text-muted">{hero.track.artist}</p>
+          <button class="mt-3 flex items-center gap-2 rounded bg-accent px-4 py-1.5 text-sm font-semibold text-on-accent" aria-label="{button.text} {hero.track.title}" onclick={() => heroClick(hero)}>
+            {#if button.icon}<Icon name={button.icon} size={16} fill={button.icon === 'play'} />{/if}{button.text}
           </button>
         </div>
         {#if home.likedCount > 0}

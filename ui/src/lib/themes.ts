@@ -68,6 +68,21 @@ export const BUILTIN_THEMES: ThemeDef[] = [
   t('turquoise', 'Turquoise', 'dark', 'Dark slate with a turquoise player colour', '#101416 #181e21 #232b2f #2c363b #eef6f7 #9db1b6 #1fd1c1'),
   t('ember', 'Ember', 'dark', 'Dark brown with an orange glow', '#17110e #211813 #30221a #3b2a20 #fbeee6 #bfa392 #ff7a2f'),
   t('paper', 'Paper', 'light', 'Warm off-white with a burnt-orange accent', '#fffaf5 #f6ede4 #ebddd0 #e2d2c3 #2b1d14 #6b5648 #c2410c'),
+  // Dark
+  t('amethyst', 'Amethyst', 'dark', 'Deep purple-black with a soft violet accent', '#120d1f #1a1429 #271e3d #33284d #f1ecfb #b0a3cc #b388ff'),
+  t('forest', 'Forest', 'dark', 'Dark green-black with a fresh green accent', '#0d1410 #141d17 #1e2b22 #283a2d #e9f3ec #9bb4a3 #4ade80'),
+  t('crimson', 'Crimson', 'dark', 'Dark wine with a crimson-pink accent', '#170c10 #211217 #301a22 #3d222c #fbeaee #c0a0a9 #ff4d6d'),
+  t('synthwave', 'Synthwave', 'dark', 'Night purple with a hot pink accent', '#130a24 #1c1133 #2a1b4a #37245d #f6eefe #b9a2d6 #ff3ea5'),
+  t('steel', 'Steel', 'dark', 'Cool blue-grey with a sky-blue accent', '#161a20 #1e242c #2a323d #343e4b #e8edf3 #9aa7b8 #5eb8ff'),
+  t('midnightsun', 'Midnight sun', 'dark', 'Navy with a golden-yellow accent', '#0c1320 #131d2f #1d2a42 #26364f #eaf0fa #9aaccb #ffcf4a'),
+  t('abyss', 'Abyss', 'dark', 'Deep sea green with a bright teal accent', '#071a1c #0d2427 #153238 #1d4046 #e6f6f6 #8fb6b9 #2dd4bf'),
+  // Light
+  t('mint', 'Mint', 'light', 'Pale green with a deep teal accent', '#f1faf5 #e3f3ea #d2e9dc #bfdcca #10241a #4a6556 #0f766e'),
+  t('lavender', 'Lavender', 'light', 'Soft lilac with a rich purple accent', '#f7f4fd #ede7f9 #e0d6f3 #d0c3e8 #1d1530 #5d5177 #6d28d9'),
+  t('rose', 'Rose', 'light', 'Blush pink with a raspberry accent', '#fff5f7 #fde8ed #f9d6df #efc3cf #2a1018 #6e4a56 #be185d'),
+  t('sandstone', 'Sandstone', 'light', 'Warm sand with a bronze accent', '#f8f4ec #efe8da #e3d9c5 #d6cab2 #2a2417 #645a44 #8a5a00'),
+  t('silver', 'Silver', 'light', 'Neutral light grey with a clear blue accent', '#f4f5f7 #e9ebee #dcdfe4 #cbd0d7 #16181d #565c68 #2563eb'),
+  t('lemonade', 'Lemonade', 'light', 'Pale lemon with a dark gold accent', '#fffdf0 #f7f3d9 #ede7bf #e0d9a6 #26230d #615c33 #926200'),
 ];
 
 export const DEFAULT_DARK_ID = 'dark';

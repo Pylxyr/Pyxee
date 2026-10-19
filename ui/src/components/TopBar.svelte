@@ -49,11 +49,12 @@
         aria-autocomplete="list"
         aria-activedescendant={active >= 0 ? `suggest-${active}` : undefined}
         autocomplete="off"
+        spellcheck="false"
         bind:value={text}
         {oninput}
         {onkeydown}
         onblur={() => setTimeout(() => search.clearSuggestions(), 120)}
-        class="min-w-0 flex-1 bg-transparent text-[15px] outline-none placeholder:text-muted"
+        class="search-input min-w-0 flex-1 bg-transparent text-[15px] outline-none placeholder:text-muted"
         placeholder="Search songs, albums, artists"
         aria-label="Search"
       />

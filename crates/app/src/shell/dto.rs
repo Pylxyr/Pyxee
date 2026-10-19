@@ -115,6 +115,7 @@ pub struct ShellSettingsDto {
     pub toast_on_change: bool,
     pub tray_controls: bool,
     pub flyout_on_click: bool,
+    pub discord_presence: bool,
 }
 
 impl From<&ShellSettings> for ShellSettingsDto {
@@ -125,6 +126,7 @@ impl From<&ShellSettings> for ShellSettingsDto {
             toast_on_change: s.toast_on_change,
             tray_controls: s.tray_controls,
             flyout_on_click: s.flyout_on_click,
+            discord_presence: s.discord_presence,
         }
     }
 }

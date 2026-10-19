@@ -142,6 +142,22 @@ button {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
+/* The search box shows focus on its frame (the accent border), so the field inside needs no outline of its own. The
+   rule above is not in a layer, so Tailwind's outline-none utility loses to it; this one is more specific. */
+.search-input:focus-visible {
+  outline: none;
+}
+
+/* The name in the top bar. Bahnschrift is a DIN-style face that ships with Windows 10 (1709 and later) and Windows 11,
+   so nothing has to be bundled; the rest is the fallback for anything else. */
+.wordmark {
+  font-family: 'Bahnschrift', 'Segoe UI Variable Display', 'Segoe UI', system-ui, sans-serif;
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: 0.3em;
+  line-height: 1;
+  text-transform: uppercase;
+}
 
 /* Seek / volume sliders: a real <input type=range> (keyboard + screen reader friendly), styled thin. */
 input[type='range'].slider {

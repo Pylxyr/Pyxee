@@ -39,3 +39,26 @@ export function thumbCandidates(src: string, px: number, dpr = 1): string[] {
 
   return [secure];
 }
+
+const YT_HOST = /^https?:\/\/i\d?\.ytimg\.com\//;
+
+/**
+ * YouTube answers a still that does not exist (no maxresdefault or hq720 for many videos, or a deleted video) with a
+ * small grey "no picture" image (120x90) and a 404 status. An <img> shows that body like any other picture and fires
+ * `load`, not `error`, so it has to be recognised by its size. Every real still we ask for is larger than this.
+ */
+export function isMissingStill(url: string, width: number, height: number): boolean {
+  return YT_HOST.test(url) && width > 0 && width <= 120 && height > 0 && height <= 90;
+}
+
+/** Stills already found to be missing, so another row showing the same song does not request them again. */
+const missing = new Set<string>();
+
+export function noteMissing(url: string): void {
+  if (missing.size >= 2000) missing.clear();
+  missing.add(url);
+}
+
+export function isKnownMissing(url: string): boolean {
+  return missing.has(url);
+}

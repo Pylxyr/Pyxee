@@ -15,6 +15,16 @@ describe('built-in themes', () => {
     expect(BUILTIN_THEMES.length).toBeGreaterThanOrEqual(8);
   });
 
+  it('offer a good choice of both light and dark skins', () => {
+    const count = (s: string) => BUILTIN_THEMES.filter((x) => x.scheme === s).length;
+    expect(count('dark')).toBeGreaterThanOrEqual(12);
+    expect(count('light')).toBeGreaterThanOrEqual(8);
+    expect(BUILTIN_THEMES.map((x) => x.id)).toEqual(expect.arrayContaining(['amethyst', 'forest', 'mint', 'lavender']));
+    // Every skin has its own look: no two share the same background and accent.
+    const looks = BUILTIN_THEMES.map((x) => `${x.colors.bg}/${x.colors.accent}`);
+    expect(new Set(looks).size).toBe(looks.length);
+  });
+
   for (const def of BUILTIN_THEMES) {
     it(`${def.name} is readable`, () => {
       const failing = contrastChecks(def.colors).filter((c) => !c.ok).map((c) => `${c.label}: ${c.ratio.toFixed(2)} < ${c.min}`);

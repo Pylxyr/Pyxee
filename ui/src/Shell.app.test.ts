@@ -37,7 +37,7 @@ beforeEach(() => {
   nav.tab = 'upnext';
   lyricsStore.state = { kind: 'idle' };
   sleep.status = null;
-  shellSettings.settings = { closeToTray: false, startWithWindows: false, toastOnChange: false, trayControls: false, flyoutOnClick: true };
+  shellSettings.settings = { closeToTray: false, startWithWindows: false, toastOnChange: false, trayControls: false, flyoutOnClick: true, discordPresence: true };
   shellSettings.error = null;
   theme.settings = { followSystem: true, themeId: 'dark', lightId: 'light', darkId: 'dark', dynamicColor: false, custom: [] };
   for (const s of [...snackbar.items]) snackbar.dismiss(s.id);
@@ -179,7 +179,7 @@ describe('Windows settings', () => {
     await waitFor(() => expect(mock.shell.closeToTray).toBe(true));
     await fireEvent.click(within(section).getByLabelText(/Start Pyxee when I sign in/));
     await fireEvent.click(within(section).getByLabelText(/notification when the song changes/));
-    await waitFor(() => expect(mock.shell).toEqual({ closeToTray: true, startWithWindows: true, toastOnChange: true, trayControls: false, flyoutOnClick: true }));
+    await waitFor(() => expect(mock.shell).toEqual({ closeToTray: true, startWithWindows: true, toastOnChange: true, trayControls: false, flyoutOnClick: true, discordPresence: true }));
   });
 
   it('the notification area switches say what they do and save through the backend', async () => {
@@ -193,6 +193,28 @@ describe('Windows settings', () => {
     await waitFor(() => expect(mock.shell.trayControls).toBe(true));
     await fireEvent.click(click);
     await waitFor(() => expect(mock.shell.flyoutOnClick).toBe(false));
+  });
+
+  it('the Discord switch is on by default and saves through the backend', async () => {
+    const section = await openSettings();
+    const discord = within(section).getByLabelText(/playing on Discord/i);
+    expect((discord as HTMLInputElement).checked).toBe(true);
+    await fireEvent.click(discord);
+    await waitFor(() => expect(mock.shell.discordPresence).toBe(false));
+    await fireEvent.click(discord);
+    await waitFor(() => expect(mock.shell.discordPresence).toBe(true));
+  });
+
+  it('Settings is a tab that slides in from the right, and closes with its button, Escape or a click outside', async () => {
+    await openSettings();
+    const tab = screen.getByRole('dialog', { name: 'Settings' });
+    expect(tab.getAttribute('data-side')).toBe('right');
+    expect(tab.className).toContain('w-1/2');
+    await fireEvent.click(within(tab).getByRole('button', { name: 'Close Settings' }));
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Settings' })).toBeNull());
+    await fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
+    await fireEvent.keyDown(await screen.findByRole('dialog', { name: 'Settings' }), { key: 'Escape' });
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Settings' })).toBeNull());
   });
 
   it('a switch that could not be saved goes back and says why', async () => {

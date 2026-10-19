@@ -147,6 +147,11 @@ describe('pages keep their header in place while the body scrolls', () => {
     expect(within(screen.getByTestId('page-scroll')).getByRole('list', { name: 'Songs in Mix' })).toBeTruthy();
   });
 
+  it('the search box does not spell-check', async () => {
+    await openApp();
+    expect(screen.getByRole('combobox', { name: 'Search' }).getAttribute('spellcheck')).toBe('false');
+  });
+
   it('Search: the heading and filters stay, the results scroll', async () => {
     await openApp();
     const box = screen.getByRole('combobox', { name: 'Search' });

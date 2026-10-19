@@ -20,6 +20,9 @@ pub struct ShellSettings {
     /// A left click on the main tray icon opens the flyout (title, artist, progress, buttons). When off it opens
     /// the main window instead. The right-click menu is always there.
     pub flyout_on_click: bool,
+    /// Discord Rich Presence ("Listening to Pyxee"). Only does anything when a Discord application ID is
+    /// configured (`PYXEE_DISCORD_CLIENT_ID`); on by default, so such a build behaves as before.
+    pub discord_presence: bool,
     /// Where the mini player was last left (physical pixels).
     pub mini_bounds: Option<Rect>,
 }
@@ -32,6 +35,7 @@ impl Default for ShellSettings {
             toast_on_change: false,
             tray_controls: false,
             flyout_on_click: true,
+            discord_presence: true,
             mini_bounds: None,
         }
     }
@@ -134,6 +138,22 @@ mod tests {
         assert!(l.warning.is_none());
         assert!(l.settings.close_to_tray && l.settings.toast_on_change);
         assert!(l.settings.flyout_on_click && !l.settings.tray_controls);
+        assert!(
+            l.settings.discord_presence,
+            "an older file keeps Discord presence on"
+        );
+    }
+
+    #[test]
+    fn discord_presence_is_on_by_default_and_can_be_saved_off() {
+        assert!(ShellSettings::default().discord_presence);
+        let p = dir("discord").join("shell.json");
+        let s = ShellSettings {
+            discord_presence: false,
+            ..Default::default()
+        };
+        save(&p, &s).unwrap();
+        assert!(!load(&p).settings.discord_presence);
     }
 
     #[test]

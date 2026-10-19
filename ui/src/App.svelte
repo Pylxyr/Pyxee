@@ -169,7 +169,7 @@
 <ThemeEditor />
 <SleepSheet />
 
-<Sheet open={nav.themeSheetOpen} title="Settings" onclose={() => (nav.themeSheetOpen = false)}>
+<Sheet open={nav.themeSheetOpen} title="Settings" side="right" onclose={() => (nav.themeSheetOpen = false)}>
   <section aria-label="Appearance">
     <h3 class="px-3 pb-1 text-sm font-semibold">Appearance</h3>
     <ThemePicker />
@@ -204,6 +204,13 @@
       <span>Clicking the Pyxee tray icon opens the mini controls (otherwise it opens the window)</span>
       <input type="checkbox" checked={shellSettings.settings.flyoutOnClick} onchange={(e) => shellSettings.update({ flyoutOnClick: e.currentTarget.checked })} />
     </label>
+    <label class="flex items-center justify-between gap-3 rounded-lg px-3 py-3 hover:bg-surface">
+      <span>Show what I'm playing on Discord</span>
+      <input type="checkbox" checked={shellSettings.settings.discordPresence} onchange={(e) => shellSettings.update({ discordPresence: e.currentTarget.checked })} />
+    </label>
+    <p class="px-3 pb-1 text-[13px] text-muted">
+      Shows "Listening to Pyxee" with the current song in the Discord desktop app, while it is running.
+    </p>
     {#if shellSettings.error}<p class="px-3 text-[13px] text-accent" role="alert">Could not save that setting ({shellSettings.error}).</p>{/if}
     <button class="flex w-full items-center justify-between rounded-lg px-3 py-3 text-left hover:bg-surface" onclick={() => { nav.themeSheetOpen = false; nav.sleepSheetOpen = true; }}>
       <span>Sleep timer</span><span class="text-sm text-muted">{sleepLabel(sleep.status)}</span>

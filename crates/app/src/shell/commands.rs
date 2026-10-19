@@ -99,6 +99,7 @@ pub fn shell_get(app: AppHandle) -> ShellSettingsDto {
         toast_on_change: false,
         tray_controls: false,
         flyout_on_click: true,
+        discord_presence: true,
     })
 }
 
@@ -115,10 +116,12 @@ pub fn shell_set(app: AppHandle, settings: ShellSettingsDto) -> Result<ShellSett
         s.toast_on_change = settings.toast_on_change;
         s.tray_controls = settings.tray_controls;
         s.flyout_on_click = settings.flyout_on_click;
+        s.discord_presence = settings.discord_presence;
     }
     shell.save_settings();
     super::sync_autostart(&app);
     super::tray_buttons::sync(&app, settings.tray_controls);
+    super::sync_discord(&app);
     Ok(settings)
 }
 

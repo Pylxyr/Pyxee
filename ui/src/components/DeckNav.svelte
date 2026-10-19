@@ -13,8 +13,8 @@
 
 <!-- The wide layout's navigation: the wordmark and four tabs along the top, search and settings at the far end. -->
 <nav class="flex shrink-0 items-stretch gap-1" aria-label="Main">
-  <div class="mr-5 flex items-center gap-2.5 text-[13px] font-semibold uppercase tracking-[0.24em]">
-    <Logo size={24} />Pyxee
+  <div class="mr-5 flex items-center gap-3">
+    <Logo size={26} /><span class="wordmark">Pyxee</span>
   </div>
   {#each items as it (it.route)}
     <button
