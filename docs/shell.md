@@ -32,3 +32,13 @@ Logic: `pyxee_shell::tray_controls` (glyph, tooltip, 120-character cut) and the 
 
 Known limits: the window theme command only drives the main window, so the flyout and mini player follow the Windows
 theme for their Mica backdrop while their colours follow the app theme.
+
+## Discord Rich Presence
+
+Shows the current song as "Listening to Pyxee" in the Discord desktop client, through Discord's local IPC (no bot token, no OAuth, no network). Code: `crates/app/src/shell/discord.rs`, fed from `shell::on_state`.
+
+- **Setup:** create an application in the Discord Developer Portal (its name is what members see after "Listening to") and set `PYXEE_DISCORD_CLIENT_ID` to its Application ID, at run time or when building. There is no built-in ID. Without a valid one the feature is off and the log says so.
+- **Needs:** the Discord desktop app running on the same PC (the web client has no local IPC).
+- **Behaviour:** title and artist while playing, with a progress bar when the duration is known; "Paused" without a clock while paused; cleared when idle or on quit. Seeks correct the bar; ordinary position ticks send nothing. A song that is only sitting paused (restored session) is not shown until something plays.
+- **Failures:** if Discord is not running or the pipe drops, playback is unaffected. Reconnects back off from 2 to 30 seconds, and only while something is waiting to be shown.
+- **Limits:** no cover art, no buttons, no settings switch. A paused presence stays until another song plays or the app quits. Only the Quit path clears the presence on exit.

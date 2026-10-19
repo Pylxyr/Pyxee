@@ -3,6 +3,7 @@
 //! Tauri. Anything that needs real Windows, a tray or a display can only be checked on the user's PC.
 
 pub mod commands;
+pub mod discord;
 pub mod dto;
 mod flyout;
 mod media;
@@ -68,6 +69,7 @@ pub struct ShellState {
     toasts: Mutex<ToastGate>,
     sent: Mutex<Sent>,
     media: Mutex<Option<media::Media>>,
+    discord: Mutex<Option<discord::Discord>>,
     mini_dirty: AtomicBool,
     mini_saved: Mutex<Option<Instant>>,
 }
@@ -98,6 +100,7 @@ impl ShellState {
             toasts: Mutex::new(ToastGate::default()),
             sent: Mutex::new(Sent::default()),
             media: Mutex::new(None),
+            discord: Mutex::new(None),
             mini_dirty: AtomicBool::new(false),
             mini_saved: Mutex::new(None),
         }
@@ -135,6 +138,9 @@ pub fn init(app: &AppHandle, args: &[String]) {
     power::spawn(app.clone());
     if let Ok(mut m) = app.state::<ShellState>().media.lock() {
         *m = media::init(app);
+    }
+    if let Ok(mut d) = app.state::<ShellState>().discord.lock() {
+        *d = discord::init();
     }
     sync_autostart(app);
     #[cfg(all(windows, feature = "win-extras"))]
@@ -216,6 +222,11 @@ pub fn quit(app: &AppHandle) {
     shell.quitting.store(true, Ordering::Relaxed);
     mini::flush(app);
     app.state::<AppState>().save_session();
+    // Take the presence down while the process is still alive; waits at most a second.
+    let discord = shell.discord.lock().ok().and_then(|mut d| d.take());
+    if let Some(discord) = discord {
+        discord.shutdown();
+    }
     app.exit(0);
 }
 
@@ -330,6 +341,13 @@ pub fn on_state(app: &AppHandle, s: &PlayerStateDto) {
             }
         }
     }
+
+    // Discord decides for itself (and cheaply) whether anything changed enough to be worth sending.
+    if let Ok(guard) = shell.discord.lock() {
+        if let Some(discord) = guard.as_ref() {
+            discord.on_state(phase, entry.map(|e| &e.track), s.position_ms);
+        }
+    };
 }
 
 fn apply_taskbar_progress(app: &AppHandle, p: TaskbarProgress) {

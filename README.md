@@ -29,6 +29,7 @@ your own copy instead, set `PYXEE_YTDLP` to its path, or put `yt-dlp.exe` next t
 | `PYXEE_COOKIES` | Path to a Netscape-format `cookies.txt`. A logged-in session is much less likely to get HTTP 429 or "sign in to confirm you're not a bot". yt-dlp may rewrite this file. A path that is not an existing file is ignored (with a warning). |
 | `PYXEE_COOKIES_FROM_BROWSER` | yt-dlp's `BROWSER[+KEYRING][:PROFILE][::CONTAINER]`, e.g. `firefox`. Ignored if `PYXEE_COOKIES` is usable. Chromium browsers on Windows often lock their cookie store; an exported `cookies.txt` is more reliable. |
 | `PYXEE_LOG` | `error`, `warn`, `info` (default), `debug`, `trace`. |
+| `PYXEE_DISCORD_CLIENT_ID` | Your Discord application ID (17 to 20 digits, from the Discord Developer Portal). Turns on Rich Presence ("Listening to Pyxee" with the current song). Unset or invalid: the feature stays off. Can also be set at build time. See `docs/shell.md`. |
 
 yt-dlp is also paced by the app (one run at a time, 1 s apart, 2 minutes of refusals after a rate limit); see `docs/engine.md`.
 
