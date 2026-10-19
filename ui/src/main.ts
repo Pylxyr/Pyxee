@@ -1,4 +1,3 @@
-import '@fontsource-variable/fredoka/wght.css';
 import './app.css';
 import { mount } from 'svelte';
 import App from './App.svelte';
