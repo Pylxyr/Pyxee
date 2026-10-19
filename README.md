@@ -116,7 +116,7 @@ test-run, then swapped in; a failure changes nothing). A portable copy is update
 any attempt), and runs live YouTube checks of the real search / resolve / decode / seek / gapless path. It writes one report to
 `pyxee-check\` (stream URLs, cookies and tokens, your user and computer name and your profile, AppData and Temp folders are redacted, and a self-test proves
 that first in every run). The default run is the full one: formatting, clippy, every test (with `--locked`), the UI checks and the live YouTube checks; a live check that
-cannot run (no FFmpeg libraries, rate limited) is a failure, not a skip, and any FAIL gives a non-zero exit code. Options: `-Installer` (also builds and inspects the installer and the portable zip),
+cannot run (no FFmpeg libraries, rate limited) is a failure, not a skip, and any FAIL gives a non-zero exit code. Options: `-Installer` (also builds and inspects the installer and the portable zip), `-Ci` (replays the release workflow's portable step the way a clean runner meets it, including MSYS2's first-ever login),
 `-UpdateYtdlp`, `-SelfTest` (only the redaction test), and, not recommended, `-SkipTests` / `-SkipLive` (a run with either does not prove the build), `-CookieFile <cookies.txt>`, `-CookieBrowser firefox`, `-Manual` (answer y/n for things to try in the
 app) and `-AnalyzeLog` (summarise the app's own log). Details: the comment block at the top of `scripts\check-windows.ps1`.
 

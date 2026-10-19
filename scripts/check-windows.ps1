@@ -22,6 +22,10 @@
 .PARAMETER Ui             Kept for old command lines. The UI checks (npm ci / check / test / build) always run now.
 .PARAMETER SelfTest       Only run the redaction self-test (it also runs first in every full run) and exit.
 .PARAMETER Installer      Also build the installer and the portable zip (`cargo xtask installer` / `portable`, slow) and inspect them.
+.PARAMETER Ci            Replay the release workflow's "Build the portable zip" step the way a clean GitHub runner meets it: the
+                          FFmpeg libraries already built (a cache hit), and MSYS2 starting for the very first time (a fresh home
+                          folder, so its one-time "Copying skeleton files" output appears), then unpack the zip and run what it
+                          carries, as release.yml does. Slow (builds the app); catches bugs that only show on a clean machine.
 .PARAMETER UpdateYtdlp    Run `yt-dlp -U` first (an old yt-dlp is the most common cause of YouTube failures).
 .PARAMETER Manual         After the automatic part, ask you to confirm things in the real app (y/n).
 .PARAMETER AnalyzeLog     Summarise the app's own log file (run after using the app).
@@ -42,6 +46,7 @@ param(
   [switch]$Ui,
   [switch]$SelfTest,
   [switch]$Installer,
+  [switch]$Ci,
   [switch]$UpdateYtdlp,
   [switch]$Manual,
   [switch]$AnalyzeLog,
@@ -66,7 +71,7 @@ $script:LiveBlocked = $false
 $script:LiveRequested = -not $SkipLive
 $script:Step = 0
 # Planned number of sections, shown as "Section N of M". An estimate: it is lowered if the live checks get skipped later.
-$script:StepTotal = 3 + [int](-not $SkipTests) + [int][bool]$Installer + [int](-not $SkipLive) + [int][bool]$Manual + [int]([bool]$AnalyzeLog -or [bool]$Manual)
+$script:StepTotal = 3 + [int](-not $SkipTests) + [int][bool]$Installer + [int][bool]$Ci + [int](-not $SkipLive) + [int][bool]$Manual + [int]([bool]$AnalyzeLog -or [bool]$Manual)
 $script:SectionTitle = 'starting'
 $script:RunSw = [Diagnostics.Stopwatch]::StartNew()
 
@@ -311,7 +316,7 @@ Write-Report ("node      : {0}" -f (Get-FirstLine 'node --version'))
 Write-Report ("cookies   : {0}" -f $cookieKind)
 $envset = @('PYXEE_YTDLP', 'PYXEE_COOKIES', 'PYXEE_COOKIES_FROM_BROWSER', 'PYXEE_LOG', 'CARGO_TARGET_DIR') | ForEach-Object { $v = [Environment]::GetEnvironmentVariable($_); if ($v) { "$_=set" } }
 Write-Report ("env       : {0}" -f $(if ($envset) { $envset -join ', ' } else { '(none of the PYXEE_* / CARGO_TARGET_DIR variables are set)' }))
-Write-Report ("options   : SkipTests=$SkipTests SkipLive=$SkipLive SkipTools=$SkipTools Ui=$true Installer=$Installer Manual=$Manual AnalyzeLog=$AnalyzeLog")
+Write-Report ("options   : SkipTests=$SkipTests SkipLive=$SkipLive SkipTools=$SkipTools Ui=$true Installer=$Installer Ci=$Ci Manual=$Manual AnalyzeLog=$AnalyzeLog")
 
 foreach ($tool in @('cargo', 'rustc', 'git')) {
   if (-not (Have $tool)) { Add-Result 'FAIL' "tool-$tool" "$tool is not on PATH; install it and re-run"; Write-Report 'Cannot continue.'; exit 2 }
@@ -571,6 +576,69 @@ if ($Installer) {
     } finally { $za.Dispose() }
     foreach ($f in @($setup | Select-Object -First 3)) { Add-Result 'INFO' 'installer-signature' ("{0}: {1} (NotSigned is expected without a certificate; see docs/releasing.md)" -f $f.Name, (Get-AuthenticodeSignature -LiteralPath $f.FullName).Status) }
   }
+}
+
+# ---------------------------------------------------------------- 4b. CI simulation
+
+# release.yml's portable step runs on a clean runner: the FFmpeg libraries come from the cache (so the MSYS2 login that
+# the FFmpeg step would have made never happens) and the first MSYS2 login therefore happens inside `cargo xtask portable`,
+# where MSYS2 prints its first-run notice on stdout. A developer PC has long since passed that first login, which is why
+# this only showed up in CI. Here a throwaway HOME makes MSYS2 meet it as new, for the child processes of this section only.
+if ($Ci) {
+  Section 'CI simulation (release workflow: cached FFmpeg, first MSYS2 login)'
+  $before = Get-TripCount
+  $ciBash = if ($env:PYXEE_BASH) { $env:PYXEE_BASH } else { 'C:\msys64\usr\bin\bash.exe' }
+  $ciFfDir = if ($env:PYXEE_FFMPEG_DIR) { $env:PYXEE_FFMPEG_DIR } else { Join-Path $Root 'target\ffmpeg\x86_64-pc-windows-msvc' }
+  $oldHome = $env:HOME
+  $ciHomes = New-Object System.Collections.Generic.List[string]
+  $newCiHome = { $h = Join-Path ([IO.Path]::GetTempPath()) ('pyxee-ci-home-' + [guid]::NewGuid().ToString('N').Substring(0, 8)); $ciHomes.Add($h); return $h }
+  try {
+    if (-not (Test-Path $ciBash)) {
+      Add-Result 'FAIL' 'ci-msys2' ('MSYS2 bash not found at ' + $ciBash + ' (see ffmpeg-prereq above for the one-time setup)')
+    } else {
+      # The workflow's cache hit: the libraries exist before the portable step. Build them with the normal home if absent.
+      if (-not (Test-Path (Join-Path $ciFfDir 'include\libavformat\avformat.h'))) {
+        $r = Invoke-Logged 'ci-ffmpeg-build' 'cargo xtask ffmpeg'
+        if ($r.Code -eq 0) { Add-Result 'PASS' 'ci-ffmpeg-build' "libraries built first, like a cache hit ($($r.Seconds)s)" } else { Add-Result 'FAIL' 'ci-ffmpeg-build' "exit $($r.Code)"; Show-LogTail $r.Log 40 }
+      }
+
+      # Prove the fresh-home trick works on this PC; if it does not, the portable run below would not be a faithful replay.
+      $h = & $newCiHome
+      $env:HOME = $h
+      $r = Invoke-Logged 'ci-msys2-first-login' ('"{0}" -lc "echo pyxee-ready"' -f $ciBash)
+      $loginTxt = Get-Content $r.Log -Raw -ErrorAction SilentlyContinue
+      if ($loginTxt -match 'Copying skeleton files') { Add-Result 'PASS' 'ci-first-login-reproduced' 'a fresh HOME makes MSYS2 print its first-run notice, as on a clean runner' }
+      else { Add-Result 'WARN' 'ci-first-login-reproduced' 'a fresh HOME did not trigger the MSYS2 first-run notice here, so the replay below is weaker than CI (MSYS2 ignored HOME?)' }
+      Remove-Item $h -Recurse -Force -ErrorAction SilentlyContinue
+
+      # A new fresh home for the real run: the probe above used up the first login of the previous one.
+      $env:HOME = (& $newCiHome)
+      $r = Invoke-Logged 'ci-xtask-portable' 'cargo xtask portable'
+      if ($r.Code -eq 0) { Add-Result 'PASS' 'ci-cargo-xtask-portable' "built in $($r.Seconds)s on a first MSYS2 login" } else { Add-Result 'FAIL' 'ci-cargo-xtask-portable' "exit $($r.Code) (what release.yml reports as: cargo xtask portable failed)"; Show-LogTail $r.Log 30 }
+    }
+  } finally {
+    if ($null -eq $oldHome) { Remove-Item Env:\HOME -ErrorAction SilentlyContinue } else { $env:HOME = $oldHome }
+    foreach ($h in $ciHomes) { if (Test-Path $h) { Remove-Item $h -Recurse -Force -ErrorAction SilentlyContinue } }
+  }
+
+  # The rest of release.yml's step: unpack the zip and run what it carries.
+  $ciZip = Get-ChildItem (Join-Path $Root 'target\portable') -Filter '*_x64-portable.zip' -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+  if (-not $ciZip) { Add-Result 'FAIL' 'ci-portable-zip' 'the portable zip was not built' }
+  else {
+    $ciDir = Join-Path ([IO.Path]::GetTempPath()) ('pyxee-ci-portable-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
+    try {
+      Expand-Archive -LiteralPath $ciZip.FullName -DestinationPath $ciDir -Force
+      $ciRoot = Get-ChildItem $ciDir -Directory | Select-Object -First 1
+      if (-not $ciRoot -or -not (Test-Path (Join-Path $ciRoot.FullName 'portable.txt'))) { Add-Result 'FAIL' 'ci-portable-marker' 'portable.txt is missing from the unpacked zip' }
+      else { Add-Result 'PASS' 'ci-portable-marker' 'portable.txt is in the unpacked zip' }
+      $ciYt = if ($ciRoot) { Join-Path $ciRoot.FullName 'yt-dlp.exe' } else { $null }
+      if ($ciYt -and (Test-Path $ciYt)) {
+        $ver = & $ciYt --version 2>&1 | Select-Object -First 1
+        if ($LASTEXITCODE -eq 0) { Add-Result 'PASS' 'ci-portable-ytdlp-runs' "yt-dlp $ver" } else { Add-Result 'FAIL' 'ci-portable-ytdlp-runs' 'the portable yt-dlp does not run' }
+      } else { Add-Result 'FAIL' 'ci-portable-ytdlp-runs' 'yt-dlp.exe is missing from the unpacked zip' }
+    } finally { if (Test-Path $ciDir) { Remove-Item $ciDir -Recurse -Force -ErrorAction SilentlyContinue } }
+  }
+  Add-TripResult 'ci-simulation' $before
 }
 
 # ---------------------------------------------------------------- 5. live checks

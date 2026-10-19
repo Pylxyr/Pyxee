@@ -155,7 +155,8 @@ pub fn missing_tools_error(probe_output: &str) -> Option<String> {
     let missing: Vec<&str> = probe_output
         .lines()
         .map(str::trim)
-        .filter(|l| !l.is_empty())
+        // A first MSYS2 login shell also prints its "Copying skeleton files" notice to stdout; only tool names count.
+        .filter(|l| MSYS2_TOOLS.contains(l))
         .collect();
     (!missing.is_empty()).then(|| {
         format!(
@@ -802,6 +803,10 @@ mod tests {
             missing_tools_error("\n"),
             None,
             "nothing printed means nothing is missing"
+        );
+        assert_eq!(
+            missing_tools_error("Copying skeleton files.\nThese files are for the users to personalise their msys2 experience.\n"),
+            None
         );
         let e = missing_tools_error("nasm\nmake\n").unwrap();
         assert!(e.contains("nasm, make") && e.contains("pacman"), "{e}");
