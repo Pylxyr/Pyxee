@@ -5,6 +5,7 @@ pub mod anchor;
 pub mod audiodev;
 pub mod cli;
 pub mod datadir;
+pub mod envfile;
 pub mod geometry;
 pub mod power;
 pub mod progress;

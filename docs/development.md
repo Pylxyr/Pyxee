@@ -24,6 +24,8 @@ installed if it does not match) and puts it in `crates/app/binaries`. Developmen
 your own copy instead, set `PYXEE_YTDLP` to its path, or put `yt-dlp.exe` next to the app.
 
 ### Optional settings (environment variables)
+The same variables can be set in **Settings** > **Advanced**, which saves them to `.env` in the data folder (see the README); a variable set in Windows wins over that file. `crates/shell/src/envfile.rs` reads it at start-up.
+
 | Variable | Effect |
 |---|---|
 | `PYXEE_YTDLP` | Path to `yt-dlp`. |

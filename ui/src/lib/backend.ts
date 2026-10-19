@@ -3,6 +3,8 @@ import type { AddResultDto } from './bindings/AddResultDto';
 import type { FilterInfoDto } from './bindings/FilterInfoDto';
 import type { HistoryItemDto } from './bindings/HistoryItemDto';
 import type { LogInfoDto } from './bindings/LogInfoDto';
+import type { EnvSettingsDto } from './bindings/EnvSettingsDto';
+import type { EnvVarDto } from './bindings/EnvVarDto';
 import type { AppUpdateDto } from './bindings/AppUpdateDto';
 import type { YtdlpUpdateDto } from './bindings/YtdlpUpdateDto';
 import type { LyricsDto } from './bindings/LyricsDto';
@@ -59,6 +61,10 @@ export interface Backend extends LibraryBackend {
   /** Where the log file is, for the Diagnostics section. */
   logInfo(): Promise<LogInfoDto>;
   openLogFolder(): Promise<void>;
+  /** The variables kept in the `.env` file (Settings > Advanced). */
+  envGet(): Promise<EnvSettingsDto>;
+  /** Saves them to `.env`; they are used from the next start. Rejects with a readable message for a value that cannot be used. */
+  envSet(vars: EnvVarDto[]): Promise<EnvSettingsDto>;
   /** Looks for a newer Pyxee release on GitHub. */
   updateCheckApp(): Promise<AppUpdateDto>;
   /** Downloads the installer, checks its SHA-256, starts it and quits Pyxee. Rejects with a readable message. */
@@ -124,6 +130,8 @@ export async function tauriBackend(): Promise<Backend> {
     setWindowTheme: (theme) => invoke<void>('set_window_theme', { theme }).catch(() => {}),
     logInfo: () => invoke<LogInfoDto>('get_log_info'),
     openLogFolder: () => invoke<void>('open_log_folder'),
+    envGet: () => invoke<EnvSettingsDto>('env_get'),
+    envSet: (vars) => invoke<EnvSettingsDto>('env_set', { vars }),
     updateCheckApp: () => invoke<AppUpdateDto>('update_check_app'),
     updateInstallApp: () => invoke<void>('update_install_app'),
     updateCheckYtdlp: () => invoke<YtdlpUpdateDto>('update_check_ytdlp'),

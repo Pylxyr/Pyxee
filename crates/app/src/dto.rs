@@ -478,6 +478,25 @@ pub struct LogInfoDto {
     pub error: Option<String>,
 }
 
+// One variable in Settings > Advanced. `from_windows`: Windows also sets it, and that value is the one used.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct EnvVarDto {
+    pub name: String,
+    pub value: String,
+    pub from_windows: bool,
+}
+
+// The `.env` file (`None` when there is no data folder to keep it in) and its variables, in display order.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct EnvSettingsDto {
+    pub file: Option<String>,
+    pub vars: Vec<EnvVarDto>,
+}
+
 /// A message for the listener that is not player state (a song was skipped, a stream was cut off).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]

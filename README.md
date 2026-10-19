@@ -28,16 +28,31 @@ your music up to date, which fixes most "it suddenly stopped finding songs" prob
 
 ## If something goes wrong
 * **Songs will not load, or you see "too many requests" or "sign in to confirm you're not a bot".** First try
-  **Settings** -> **Updates** and update. If it keeps happening, signing in helps a lot. Export your cookies to a
-  `cookies.txt` file from a browser where you are signed in, then set the environment variable `PYXEE_COOKIES` to that
-  file's full path. (To set it: search Windows for "Edit environment variables for your account", add a new variable,
-  then restart Pyxee.) Setting `PYXEE_COOKIES_FROM_BROWSER` to `firefox` works too, but Chrome-style browsers often lock
-  their cookies on Windows, so an exported file is more reliable.
+  **Settings** -> **Updates** and update. If it keeps happening, signing in helps a lot: open **Settings** ->
+  **Advanced**, fill in **Cookie file** (an exported `cookies.txt`) or **Cookies from a browser**, press **Save** and
+  restart Pyxee. Chrome-style browsers often lock their cookies on Windows, so an exported file is more reliable than
+  reading them from the browser. How to get the file is in [Advanced settings](#advanced-settings).
 * **A song misbehaves.** Pyxee keeps a log. Open **Settings** -> **Diagnostics** -> **Open log folder**, or look at
   `%LOCALAPPDATA%\dev.pyxee.app\logs\pyxee.log`. Search it for the song's name and send me the lines around it. For more
-  detail, set the environment variable `PYXEE_LOG` to `debug`.
+  detail, set **Log detail** to `debug` in **Settings** -> **Advanced**.
 * **A warning about a "JavaScript runtime".** Pyxee still works. To silence it and keep every audio format available,
   install Deno: open a terminal and run `winget install DenoLand.Deno`, then restart Pyxee.
+
+## Advanced settings
+**Settings** -> **Advanced** lists the environment variables Pyxee understands. Type a value, press **Save** and restart
+Pyxee. The values are kept in a file called `.env` in Pyxee's data folder (`%LOCALAPPDATA%\dev.pyxee.app\.env`, or
+`data\.env` next to `Pyxee.exe` for a portable copy), one `NAME="value"` per line, so you can also edit it by hand. A
+variable you set in Windows itself wins over the file. An empty field means the default.
+
+| Variable | What it is | How to fill it |
+|---|---|---|
+| `PYXEE_COOKIES` | Signs yt-dlp in to your account, so YouTube is less likely to say "sign in to confirm you're not a bot" or "too many requests". | The full path to a `cookies.txt` file (Netscape format). Sign in to YouTube in your browser and export its cookies with a cookies.txt extension (for example "Get cookies.txt LOCALLY" for Chrome, "cookies.txt" for Firefox), or run `yt-dlp --cookies-from-browser firefox --cookies cookies.txt`, which saves the cookies of every site. The file holds your login, so keep it private. See yt-dlp's [How do I pass cookies to yt-dlp?](https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp) |
+| `PYXEE_COOKIES_FROM_BROWSER` | The same sign-in without a file: yt-dlp reads the cookies straight from a browser on this PC. Ignored when the cookie file works. | A browser name such as `firefox`, optionally with a profile after a colon (`firefox:default-release`). Chrome, Edge and Brave often lock their cookies on Windows; Firefox or a cookie file is more reliable. |
+| `PYXEE_YTDLP` | Your own yt-dlp instead of the one Pyxee installs and keeps up to date. While it is set, Pyxee does not update yt-dlp. | The full path to `yt-dlp.exe`. Leave it empty to use the built-in one. |
+| `PYXEE_LOG` | How much Pyxee writes to its log file. | `error`, `warn`, `info` (the default), `debug` or `trace`. Use `debug` when you report a problem with a song. |
+| `PYXEE_DISCORD_CLIENT_ID` | Shows "Listening to Pyxee" under your own Discord application name instead of the one built into the release. | Create an application at [discord.com/developers/applications](https://discord.com/developers/applications), open it and copy its **Application ID** (17 to 20 digits). Leave it empty to keep the built-in one. |
+
+Variables used only for building and testing Pyxee are in [docs/development.md](docs/development.md).
 
 ## For developers
 Building from source, tests and releases: see [docs/development.md](docs/development.md).

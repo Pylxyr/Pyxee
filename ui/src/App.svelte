@@ -1,5 +1,6 @@
 <script lang="ts">
   import UpdatesSection from './components/UpdatesSection.svelte';
+  import AdvancedSection from './components/AdvancedSection.svelte';
   import { onMount } from 'svelte';
   import { MediaQuery } from 'svelte/reactivity';
   import { createBackend, messageOf, type Backend } from '$lib/backend';
@@ -230,4 +231,5 @@
       </div>
     {/if}
   </section>
+  {#if backendRef}<AdvancedSection backend={backendRef} />{/if}
 </Sheet>

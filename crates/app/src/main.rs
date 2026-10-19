@@ -1,6 +1,7 @@
 // Hide the console window in release builds on Windows.
 #![cfg_attr(all(not(debug_assertions), windows), windows_subsystem = "windows")]
 
+mod advanced;
 mod commands;
 mod dto;
 mod engine;
@@ -86,6 +87,13 @@ fn main() {
                 )
             });
             let data_dir = moved.dir;
+            // The `.env` file in the data folder (Settings > Advanced) is applied before anything reads the
+            // environment, the log level included.
+            let env_file = data_dir.as_ref().map(|d| d.join(".env"));
+            let env_applied = match &env_file {
+                Some(file) => pyxee_shell::envfile::apply(file),
+                None => Default::default(),
+            };
             // Logging first, so everything that follows (and every panic) is recorded.
             let log_dir = data_dir
                 .as_ref()
@@ -101,6 +109,16 @@ fn main() {
                     log::info!("data folder: {}", note.text);
                 }
             }
+            if let Some(warning) = &env_applied.warning {
+                log::warn!("settings: {warning}");
+            }
+            for name in &env_applied.from_windows {
+                log::info!("settings: {name} is set in Windows, so .env is not used for it");
+            }
+            app.manage(advanced::EnvState {
+                file: env_file,
+                from_windows: env_applied.from_windows,
+            });
             let session_path = data_dir.as_ref().map(|d| d.join("session.json"));
             let player = session_path
                 .as_deref()
@@ -180,6 +198,8 @@ fn main() {
             commands::set_volume,
             commands::get_log_info,
             commands::open_log_folder,
+            advanced::env_get,
+            advanced::env_set,
             commands::set_window_theme,
             shell::commands::lyrics_get,
             shell::commands::sleep_set,

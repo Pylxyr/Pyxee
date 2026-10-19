@@ -32,6 +32,8 @@ export const noDiagnostics = {
   updateInstallApp: async () => {},
   updateCheckYtdlp: async () => ({ available: false, currentVersion: null }),
   updateInstallYtdlp: async () => '',
+  envGet: async () => ({ file: null, vars: [] }),
+  envSet: async () => ({ file: null, vars: [] }),
 };
 
 /** Lyrics, sleep timer, tray and shell-settings methods for test backends that do not care about them. */
