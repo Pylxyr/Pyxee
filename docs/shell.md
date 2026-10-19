@@ -39,6 +39,7 @@ Shows the current song as "Listening to Pyxee" in the Discord desktop client, th
 
 - **Setup:** create an application in the Discord Developer Portal (its name is what members see after "Listening to") and set `PYXEE_DISCORD_CLIENT_ID` to its Application ID, at run time or when building. There is no built-in ID. Without a valid one the feature is off and the log says so.
 - **Needs:** the Discord desktop app running on the same PC (the web client has no local IPC).
-- **Behaviour:** title and artist while playing, with a progress bar when the duration is known; "Paused" without a clock while paused; cleared when idle or on quit. Seeks correct the bar; ordinary position ticks send nothing. A song that is only sitting paused (restored session) is not shown until something plays.
+- **Behaviour:** like Spotify's: "Listening to Pyxee" with the title, "by" the artist, the cover art and a progress bar when the duration is known. Pausing takes the activity down; resuming puts it back with a fresh bar. Seeks correct the bar; ordinary position ticks send nothing. While a song loads it is shown without a bar. Cleared when idle or on quit.
+- **Cover art:** the song's thumbnail is used when it is a short `https` URL (YouTube thumbnails are). Local files and anything else are skipped, and Discord shows the application's icon instead, so upload an app icon in the Developer Portal.
 - **Failures:** if Discord is not running or the pipe drops, playback is unaffected. Reconnects back off from 2 to 30 seconds, and only while something is waiting to be shown.
-- **Limits:** no cover art, no buttons, no settings switch. A paused presence stays until another song plays or the app quits. Only the Quit path clears the presence on exit.
+- **Limits:** no album name (Pyxee has none to send), no buttons, no settings switch. Only the Quit path clears the presence on exit.

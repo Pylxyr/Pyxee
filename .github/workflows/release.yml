@@ -87,6 +87,9 @@ jobs:
       signed: ${{ steps.signing.outputs.signed }}
     env:
       VERSION: ${{ needs.version-guard.outputs.version }}
+      # Discord Rich Presence: the application ID is public (it ships inside the exe), so it is a repository
+      # *variable*, not a secret. Unset or empty means the release is built with presence off.
+      PYXEE_DISCORD_CLIENT_ID: ${{ vars.PYXEE_DISCORD_CLIENT_ID }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

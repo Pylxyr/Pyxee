@@ -10,7 +10,7 @@
 //! something is playing, and keeps to Discord's update rate limit. If Discord is not running nothing else changes.
 
 use crate::dto::TrackDto;
-use discord_rich_presence::activity::{Activity, ActivityType, Timestamps};
+use discord_rich_presence::activity::{Activity, ActivityType, Assets, Timestamps};
 use discord_rich_presence::{DiscordIpc, DiscordIpcClient};
 use pyxee_shell::progress::Phase;
 use std::collections::VecDeque;
@@ -67,9 +67,7 @@ fn resolve_client_id(
 pub enum Mode {
     /// Audible: a progress bar anchored to the wall clock (unix milliseconds).
     Playing { start_ms: i64, end_ms: Option<i64> },
-    /// Paused: no clock, so nothing keeps counting.
-    Paused,
-    /// Between songs or re-buffering: no clock either.
+    /// Between songs or re-buffering: the song is shown, but with no bar until it is audible.
     Loading,
 }
 
@@ -77,7 +75,20 @@ pub enum Mode {
 pub struct Spec {
     pub title: String,
     pub artist: Option<String>,
+    /// Cover art shown as the large image: an `https` URL Discord can fetch (see `cover_url`).
+    pub cover: Option<String>,
     pub mode: Mode,
+}
+
+/// Discord loads the large image itself, so it must be a short `https` URL. Local files, `data:` URIs and anything
+/// else are left out (Discord then shows the application's own icon).
+fn cover_url(thumbnail: Option<&str>) -> Option<String> {
+    let t = thumbnail?.trim();
+    let ok = t.len() <= 256
+        && t.len() > "https://".len()
+        && t.starts_with("https://")
+        && !t.chars().any(char::is_whitespace);
+    ok.then(|| t.to_owned())
 }
 
 /// Fits a line to Discord's limits: trimmed, at most `MAX_TEXT` characters, at least 2.
@@ -96,7 +107,8 @@ fn clamp_text(s: &str) -> String {
     out
 }
 
-/// The presence for the current player state, or `None` when nothing should be shown (idle, failed, no song).
+/// The presence for the current player state, or `None` when nothing should be shown: idle, failed, no song, or
+/// paused (like Spotify, pausing takes the activity down; resuming puts it back with a fresh bar).
 pub fn build_spec(
     phase: Phase,
     track: Option<&TrackDto>,
@@ -113,9 +125,8 @@ pub fn build_spec(
                 .map(|d| start_ms.saturating_add(i64::try_from(d).unwrap_or(i64::MAX)));
             Mode::Playing { start_ms, end_ms }
         }
-        Phase::Paused => Mode::Paused,
         Phase::Loading => Mode::Loading,
-        Phase::Idle | Phase::Failed => return None,
+        Phase::Idle | Phase::Paused | Phase::Failed => return None,
     };
     let title = if t.title.trim().is_empty() {
         "Unknown title"
@@ -128,17 +139,18 @@ pub fn build_spec(
     Some(Spec {
         title: clamp_text(title),
         artist,
+        cover: cover_url(t.thumbnail.as_deref()),
         mode,
     })
 }
 
 /// Whether Discord already shows (close enough to) `new`, so sending it again would only waste the rate limit.
 fn same_enough(old: &Spec, new: &Spec) -> bool {
-    if old.title != new.title || old.artist != new.artist {
+    if old.title != new.title || old.artist != new.artist || old.cover != new.cover {
         return false;
     }
     match (&old.mode, &new.mode) {
-        (Mode::Paused, Mode::Paused) | (Mode::Loading, Mode::Loading) => true,
+        (Mode::Loading, Mode::Loading) => true,
         (
             Mode::Playing {
                 start_ms: a,
@@ -174,9 +186,6 @@ impl Publisher {
                 self.shown = None;
                 Some(Msg::Clear)
             }
-            // A song that is merely sitting paused (a restored session, say) is not "listening": show nothing
-            // until something has actually been played.
-            (None, Some(s)) if s.mode == Mode::Paused => None,
             (None, Some(s)) => {
                 self.shown = Some(s.clone());
                 Some(Msg::Set(s))
@@ -224,19 +233,15 @@ impl RateLimit {
 }
 
 fn to_activity(spec: &Spec) -> Activity<'_> {
-    let state = match (&spec.mode, &spec.artist) {
-        (Mode::Playing { .. }, Some(a)) => Some(a.clone()),
-        (Mode::Paused, Some(a)) => Some(format!("Paused \u{00B7} {a}")),
-        (Mode::Loading, Some(a)) => Some(format!("Loading \u{00B7} {a}")),
-        (Mode::Paused, None) => Some("Paused".to_owned()),
-        (Mode::Loading, None) => Some("Loading".to_owned()),
-        (Mode::Playing { .. }, None) => None,
-    };
+    // Discord's own layout does the rest: bold title, "by Artist", the cover, and the bar.
     let mut activity = Activity::new()
         .activity_type(ActivityType::Listening)
         .details(spec.title.as_str());
-    if let Some(s) = state {
-        activity = activity.state(clamp_text(&s));
+    if let Some(artist) = &spec.artist {
+        activity = activity.state(artist.as_str());
+    }
+    if let Some(cover) = &spec.cover {
+        activity = activity.assets(Assets::new().large_image(cover.as_str()));
     }
     if let Mode::Playing { start_ms, end_ms } = spec.mode {
         let mut ts = Timestamps::new().start(start_ms);
@@ -554,21 +559,45 @@ mod tests {
     }
 
     #[test]
-    fn paused_and_loading_carry_no_clock() {
+    fn paused_shows_nothing_and_loading_shows_the_song_without_a_bar() {
         let t = track("Song", "Artist", Some(1000));
-        assert_eq!(
-            build_spec(Phase::Paused, Some(&t), 500, NOW).unwrap().mode,
-            Mode::Paused
-        );
-        assert_eq!(
-            build_spec(Phase::Loading, Some(&t), 0, NOW).unwrap().mode,
-            Mode::Loading
-        );
-        let paused = build_spec(Phase::Paused, Some(&t), 500, NOW).unwrap();
-        // The built activity has the "Paused" label and no timestamps field at all.
-        let json = serde_json::to_value(to_activity(&paused)).unwrap();
-        assert_eq!(json["state"], "Paused \u{00B7} Artist");
+        assert_eq!(build_spec(Phase::Paused, Some(&t), 500, NOW), None);
+        let loading = build_spec(Phase::Loading, Some(&t), 0, NOW).unwrap();
+        assert_eq!(loading.mode, Mode::Loading);
+        let json = serde_json::to_value(to_activity(&loading)).unwrap();
+        assert_eq!(json["details"], "Song");
+        assert_eq!(json["state"], "Artist");
         assert!(json.get("timestamps").is_none());
+    }
+
+    #[test]
+    fn only_short_https_thumbnails_become_cover_art() {
+        let ok = "https://i.ytimg.com/vi/abc/hqdefault.jpg";
+        assert_eq!(cover_url(Some(ok)), Some(ok.to_owned()));
+        assert_eq!(cover_url(Some("http://example.com/a.jpg")), None);
+        assert_eq!(cover_url(Some(r"C:\Music\cover.jpg")), None);
+        assert_eq!(cover_url(Some("data:image/png;base64,AAAA")), None);
+        assert_eq!(cover_url(Some("https://")), None);
+        assert_eq!(cover_url(Some("https://a b.com/x.jpg")), None);
+        assert_eq!(
+            cover_url(Some(&format!("https://x.com/{}", "a".repeat(260)))),
+            None
+        );
+        assert_eq!(cover_url(None), None);
+    }
+
+    #[test]
+    fn the_cover_goes_out_as_the_large_image() {
+        let mut t = track("Song", "Artist", Some(10_000));
+        t.thumbnail = Some("https://i.ytimg.com/vi/abc/hqdefault.jpg".into());
+        let json = serde_json::to_value(to_activity(&playing(&t, 0, NOW))).unwrap();
+        assert_eq!(
+            json["assets"]["large_image"],
+            "https://i.ytimg.com/vi/abc/hqdefault.jpg"
+        );
+        let json =
+            serde_json::to_value(to_activity(&playing(&track("S", "A", None), 0, NOW))).unwrap();
+        assert!(json.get("assets").is_none());
     }
 
     #[test]
@@ -619,9 +648,9 @@ mod tests {
             p.decide(Some(playing(&t, 63_000, NOW + 3_000))),
             Some(Msg::Set(_))
         ));
-        // Pausing freezes it, repeated paused states send nothing, resuming sends a fresh bar.
+        // Pausing takes the activity down once; resuming puts it back with a fresh bar.
         let paused = build_spec(Phase::Paused, Some(&t), 63_000, NOW + 4_000);
-        assert!(matches!(p.decide(paused.clone()), Some(Msg::Set(_))));
+        assert!(matches!(p.decide(paused.clone()), Some(Msg::Clear)));
         assert!(p.decide(paused).is_none());
         assert!(matches!(
             p.decide(Some(playing(&t, 63_000, NOW + 9_000))),
@@ -647,15 +676,19 @@ mod tests {
     }
 
     #[test]
-    fn a_restored_paused_song_shows_nothing_until_something_plays() {
+    fn a_restored_paused_song_shows_nothing_and_loading_then_playing_updates() {
         let t = track("Song", "Artist", Some(1000));
         let mut p = Publisher::default();
         assert!(p
             .decide(build_spec(Phase::Paused, Some(&t), 500, NOW))
             .is_none());
-        // Loading means the user asked for a song: show it.
+        // The user asked for a song: show it at once, then add the bar when it is audible.
         assert!(matches!(
             p.decide(build_spec(Phase::Loading, Some(&t), 0, NOW)),
+            Some(Msg::Set(_))
+        ));
+        assert!(matches!(
+            p.decide(Some(playing(&t, 0, NOW + 1_500))),
             Some(Msg::Set(_))
         ));
     }
