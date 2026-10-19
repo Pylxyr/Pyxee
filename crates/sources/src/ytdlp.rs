@@ -101,6 +101,11 @@ impl Cookies {
     }
 }
 
+/// Search cache key: (lower-cased query, filter).
+type SearchCacheKey = (String, String);
+/// Search cache value: (time stored, results).
+type SearchCacheEntry = (Instant, Vec<SearchItem>);
+
 pub struct YtDlpSource {
     path: PathBuf,
     /// A copy kept up to date by the in-app updater. Used whenever the file exists, so an update applies to the
@@ -110,7 +115,7 @@ pub struct YtDlpSource {
     gate: Gate,
     cookies: Cookies,
     /// Recent search answers, keyed by lower-cased query and filter.
-    search_cache: Mutex<HashMap<(String, String), (Instant, Vec<SearchItem>)>>,
+    search_cache: Mutex<HashMap<SearchCacheKey, SearchCacheEntry>>,
     /// Set while the dedicated songs page is known to answer with bare titles (see `search_fresh`).
     songs_page_bare_until: Mutex<Option<Instant>>,
 }
