@@ -165,18 +165,125 @@ pub fn missing_tools_error(probe_output: &str) -> Option<String> {
     })
 }
 
+// ------------------------------------------------------------ MSVC environment (tested)
+
+const MSVC_MISSING: &str = "the MSVC compiler (cl.exe) is not on PATH and no Visual Studio C++ build tools were found (vswhere). Install them, or run this from an \"x64 Native Tools Command Prompt for VS\".";
+
+/// The Visual Studio folder: the first non-empty line of `vswhere -property installationPath`.
+pub fn parse_vswhere_install(stdout: &str) -> Option<PathBuf> {
+    stdout
+        .lines()
+        .map(str::trim)
+        .find(|l| !l.is_empty())
+        .map(PathBuf::from)
+}
+
+/// The `NAME=value` lines printed by cmd's `set`. Lines without a name (cmd's own `=C:=...` entries) are skipped.
+pub fn parse_env_dump(text: &str) -> Vec<(String, String)> {
+    text.lines()
+        .filter_map(|l| {
+            let (name, value) = l.trim_end_matches('\r').split_once('=')?;
+            (!name.is_empty()).then(|| (name.to_string(), value.to_string()))
+        })
+        .collect()
+}
+
+/// Where Visual Studio keeps the script that puts the x64 compiler on PATH.
+pub fn vcvars_path(vs: &Path) -> PathBuf {
+    vs.join("VC")
+        .join("Auxiliary")
+        .join("Build")
+        .join("vcvars64.bat")
+}
+
+/// A batch file that runs `vcvars64.bat` and prints the resulting environment. (A file, not `cmd /c "..."`: the
+/// path has spaces and often parentheses, which `cmd /c` mis-handles when Rust quotes the argument.)
+pub fn msvc_env_script(vcvars: &Path) -> String {
+    [
+        "@echo off".to_string(),
+        // `set` prints in the console code page; UTF-8 keeps non-ASCII profile paths intact.
+        "chcp 65001 >nul".to_string(),
+        format!("call \"{}\" >nul", vcvars.display()),
+        "if errorlevel 1 exit /b 1".to_string(),
+        "set".to_string(),
+    ]
+    .join("\r\n")
+        + "\r\n"
+}
+
+/// The variables to add to child processes so the MSVC tools are found: nothing when `cl` is already on PATH (an
+/// "x64 Native Tools" prompt), else what `vcvars64.bat` sets. The lookups are injected so this is testable.
+pub fn msvc_environment(
+    cl_on_path: bool,
+    vs_install: impl FnOnce() -> Option<PathBuf>,
+    dump_env: impl FnOnce(&Path) -> Res<String>,
+) -> Res<Vec<(String, String)>> {
+    if cl_on_path {
+        return Ok(Vec::new());
+    }
+    let vs = vs_install().ok_or(MSVC_MISSING)?;
+    let env = parse_env_dump(&dump_env(&vcvars_path(&vs))?);
+    if !env.iter().any(|(k, _)| k.eq_ignore_ascii_case("path")) {
+        return Err(format!(
+            "vcvars64.bat under {} did not produce an environment (no PATH was printed)",
+            vs.display()
+        ));
+    }
+    Ok(env)
+}
+
+/// Windows only (not compiled to run anywhere else): the newest Visual Studio with the x64 C++ tools, via vswhere.
+fn find_vs_install() -> Option<PathBuf> {
+    let pf = std::env::var_os("ProgramFiles(x86)")
+        .map_or_else(|| PathBuf::from(r"C:\Program Files (x86)"), PathBuf::from);
+    let vswhere = pf.join(r"Microsoft Visual Studio\Installer\vswhere.exe");
+    let out = Command::new(vswhere)
+        .args([
+            "-latest",
+            "-products",
+            "*",
+            "-requires",
+            "Microsoft.VisualStudio.Component.VC.Tools.x86.x64",
+            "-property",
+            "installationPath",
+        ])
+        .output()
+        .ok()?;
+    parse_vswhere_install(&String::from_utf8_lossy(&out.stdout))
+}
+
+/// Runs `vcvars64.bat` in a throwaway cmd and returns the environment it ends with.
+fn dump_msvc_env(vcvars: &Path) -> Res<String> {
+    if !vcvars.is_file() {
+        return Err(format!("{} does not exist", vcvars.display()));
+    }
+    let bat = std::env::temp_dir().join(format!("pyxee-msvc-env-{}.cmd", std::process::id()));
+    std::fs::write(&bat, msvc_env_script(vcvars))
+        .map_err(|e| format!("cannot write {}: {e}", bat.display()))?;
+    let out = Command::new(&bat).output();
+    let _ = std::fs::remove_file(&bat);
+    let out = out.map_err(|e| format!("could not run vcvars64.bat: {e}"))?;
+    if out.status.success() {
+        Ok(String::from_utf8_lossy(&out.stdout).into_owned())
+    } else {
+        Err(format!("vcvars64.bat failed ({})", out.status))
+    }
+}
+
 /// Builds the minimal static FFmpeg with `scripts/build-ffmpeg.sh` (skipped when it is current).
-/// Windows: needs MSYS2 (`make`, `nasm`, `diffutils`) and the MSVC tools on PATH, so run
-/// it from an "x64 Native Tools Command Prompt for VS".
+/// Windows: needs MSYS2 (`make`, `nasm`, `diffutils`) and the MSVC tools. When `cl` is not on PATH (a plain shell,
+/// a CI step) the Visual Studio environment is imported with vswhere + `vcvars64.bat` for the build only.
 fn ffmpeg() -> Res<()> {
     let root = workspace_root();
     let prefix = ffmpeg_prefix(&root)?;
     let script = root.join("scripts/build-ffmpeg.sh");
     let mut cmd;
     if cfg!(windows) {
-        if Command::new("cl").output().is_err() {
-            return Err("the MSVC compiler (cl.exe) is not on PATH. Run this from an \"x64 Native Tools Command Prompt for VS\".".into());
-        }
+        let msvc_env = msvc_environment(
+            Command::new("cl").output().is_ok(),
+            find_vs_install,
+            dump_msvc_env,
+        )?;
         let bash = locate_bash(std::env::var("PYXEE_BASH").ok(), |p| p.is_file())?;
         // Keep the MSVC tools on PATH inside MSYS2 (and its `link.exe` must not shadow MSVC's).
         let probe = format!(
@@ -185,6 +292,7 @@ fn ffmpeg() -> Res<()> {
         );
         let out = Command::new(&bash)
             .args(["-lc", &probe])
+            .envs(msvc_env.iter().map(|(k, v)| (k, v)))
             .env("MSYS2_PATH_TYPE", "inherit")
             .output()
             .map_err(|e| format!("could not run {}: {e}", bash.display()))?;
@@ -192,7 +300,8 @@ fn ffmpeg() -> Res<()> {
             return Err(e);
         }
         cmd = Command::new(bash);
-        cmd.env("MSYS2_PATH_TYPE", "inherit")
+        cmd.envs(msvc_env.iter().map(|(k, v)| (k, v)))
+            .env("MSYS2_PATH_TYPE", "inherit")
             .env("PYXEE_FF_TOOLCHAIN", "msvc")
             // A login shell starts in $HOME unless told otherwise.
             .env("CHERE_INVOKING", "1");
@@ -748,5 +857,119 @@ mod tests {
             .map(|e| e.unwrap().file_name())
             .collect();
         assert_eq!(names, vec![std::ffi::OsString::from("tool.exe")]);
+    }
+
+    #[test]
+    fn vswhere_output_gives_the_first_non_empty_line() {
+        assert_eq!(
+            parse_vswhere_install(
+                "\r\nC:\\Program Files\\Microsoft Visual Studio\\2022\\Enterprise\r\n"
+            )
+            .as_deref(),
+            Some(Path::new(
+                r"C:\Program Files\Microsoft Visual Studio\2022\Enterprise"
+            ))
+        );
+        assert_eq!(parse_vswhere_install(""), None);
+        assert_eq!(parse_vswhere_install("  \r\n\r\n"), None);
+    }
+
+    #[test]
+    fn an_environment_dump_is_split_at_the_first_equals_sign() {
+        let dump = "Path=C:\\VC\\bin;C:\\Windows\r\nINCLUDE=C:\\VC\\include\r\nodd=a=b\r\n=C:=C:\\work\r\nnot a variable\r\nEMPTY=\r\n";
+        assert_eq!(
+            parse_env_dump(dump),
+            vec![
+                ("Path".to_string(), r"C:\VC\bin;C:\Windows".to_string()),
+                ("INCLUDE".to_string(), r"C:\VC\include".to_string()),
+                ("odd".to_string(), "a=b".to_string()),
+                ("EMPTY".to_string(), String::new()),
+            ],
+            "CRLF stripped, '=' inside a value kept, nameless and non-variable lines skipped"
+        );
+    }
+
+    #[test]
+    fn the_vcvars_script_is_quoted_and_prints_the_environment() {
+        let vcvars = Path::new(
+            r"C:\Program Files (x86)\Microsoft Visual Studio\2019\BuildTools\VC\Auxiliary\Build\vcvars64.bat",
+        );
+        let script = msvc_env_script(vcvars);
+        let lines: Vec<&str> = script.split("\r\n").filter(|l| !l.is_empty()).collect();
+        assert!(
+            lines.contains(&format!("call \"{}\" >nul", vcvars.display()).as_str()),
+            "a path with spaces and parentheses must be quoted: {script}"
+        );
+        assert_eq!(
+            lines.last(),
+            Some(&"set"),
+            "the environment is printed last"
+        );
+        assert!(
+            lines.iter().any(|l| l.starts_with("if errorlevel 1")),
+            "a failing vcvars64.bat must fail the script"
+        );
+    }
+
+    const VS: &str = r"C:\Program Files\Microsoft Visual Studio\2022\Enterprise";
+
+    #[test]
+    fn vcvars_lives_under_vc_auxiliary_build() {
+        let p = vcvars_path(Path::new(VS));
+        let tail: Vec<_> = p.components().rev().take(4).collect();
+        let names: Vec<String> = tail
+            .iter()
+            .rev()
+            .map(|c| c.as_os_str().to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(names, ["VC", "Auxiliary", "Build", "vcvars64.bat"]);
+        assert!(p.starts_with(VS));
+    }
+
+    #[test]
+    fn a_native_tools_prompt_is_left_alone() {
+        let env = msvc_environment(
+            true,
+            || panic!("vswhere must not run when cl is already on PATH"),
+            |_| panic!("vcvars must not run when cl is already on PATH"),
+        );
+        assert_eq!(env, Ok(Vec::new()));
+    }
+
+    #[test]
+    fn a_plain_shell_gets_the_vcvars_environment() {
+        // The GitHub Actions case: Visual Studio is installed but cl.exe is not on PATH.
+        let env = msvc_environment(
+            false,
+            || Some(PathBuf::from(VS)),
+            |vcvars| {
+                assert_eq!(vcvars, vcvars_path(Path::new(VS)));
+                Ok(
+                    "Path=C:\\VC\\bin\\Hostx64\\x64;C:\\Windows\r\nINCLUDE=C:\\VC\\include\r\n"
+                        .into(),
+                )
+            },
+        )
+        .expect("the environment is imported");
+        assert!(env
+            .iter()
+            .any(|(k, v)| k == "Path" && v.contains(r"C:\VC\bin\Hostx64\x64")));
+        assert!(env.iter().any(|(k, _)| k == "INCLUDE"));
+    }
+
+    #[test]
+    fn no_visual_studio_keeps_the_helpful_error() {
+        let e = msvc_environment(false, || None, |_| panic!("nothing to run")).unwrap_err();
+        assert!(e.contains("cl.exe") && e.contains("Native Tools"), "{e}");
+    }
+
+    #[test]
+    fn a_vcvars_run_that_prints_no_path_is_an_error_not_a_silent_no_op() {
+        for dump in ["", "INCLUDE=C:\\VC\\include\r\n"] {
+            let e = msvc_environment(false, || Some(PathBuf::from(VS)), |_| Ok(dump.to_string()));
+            assert!(e.is_err(), "dump {dump:?} must be refused");
+        }
+        let e = msvc_environment(false, || Some(PathBuf::from(VS)), |_| Err("boom".into()));
+        assert_eq!(e, Err("boom".to_string()));
     }
 }
