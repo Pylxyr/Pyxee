@@ -50,7 +50,6 @@ variable you set in Windows itself wins over the file. An empty field means the 
 | `PYXEE_COOKIES_FROM_BROWSER` | The same sign-in without a file: yt-dlp reads the cookies straight from a browser on this PC. Ignored when the cookie file works. | A browser name such as `firefox`, optionally with a profile after a colon (`firefox:default-release`). Chrome, Edge and Brave often lock their cookies on Windows; Firefox or a cookie file is more reliable. |
 | `PYXEE_YTDLP` | Your own yt-dlp instead of the one Pyxee installs and keeps up to date. While it is set, Pyxee does not update yt-dlp. | The full path to `yt-dlp.exe`. Leave it empty to use the built-in one. |
 | `PYXEE_LOG` | How much Pyxee writes to its log file. | `error`, `warn`, `info` (the default), `debug` or `trace`. Use `debug` when you report a problem with a song. |
-| `PYXEE_DISCORD_CLIENT_ID` | Shows "Listening to Pyxee" under your own Discord application name instead of the one built into the release. | Create an application at [discord.com/developers/applications](https://discord.com/developers/applications), open it and copy its **Application ID** (17 to 20 digits). Leave it empty to keep the built-in one. |
 
 Variables used only for building and testing Pyxee are in [docs/development.md](docs/development.md).
 

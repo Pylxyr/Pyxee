@@ -20,8 +20,8 @@ pub struct ShellSettings {
     /// A left click on the main tray icon opens the flyout (title, artist, progress, buttons). When off it opens
     /// the main window instead. The right-click menu is always there.
     pub flyout_on_click: bool,
-    /// Discord Rich Presence ("Listening to Pyxee"). Only does anything when a Discord application ID is
-    /// configured (`PYXEE_DISCORD_CLIENT_ID`); on by default, so such a build behaves as before.
+    /// Discord Rich Presence ("Listening to Pyxee"). Only does anything when the build has a Discord application
+    /// ID baked in (`PYXEE_DISCORD_CLIENT_ID` at build time); on by default, so such a build behaves as before.
     pub discord_presence: bool,
     /// Where the mini player was last left (physical pixels).
     pub mini_bounds: Option<Rect>,

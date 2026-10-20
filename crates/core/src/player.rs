@@ -30,13 +30,19 @@ pub enum Failure {
     /// The server refused the stream URL (401/403/410) and re-resolving did not help. Carries the
     /// HTTP status when it is known.
     Expired(Option<u16>),
+    /// The tool that finds songs is missing or broken (not this song's fault): it will fail the same
+    /// way for the next song, so the queue must not be skipped through. Carries the explanation.
+    Tool(String),
     Other(String),
 }
 
 impl Failure {
     /// Retrying later may work, so skipping through the queue would only burn tracks.
     pub fn is_transient(&self) -> bool {
-        matches!(self, Failure::Offline | Failure::RateLimited)
+        matches!(
+            self,
+            Failure::Offline | Failure::RateLimited | Failure::Tool(_)
+        )
     }
 }
 
@@ -101,6 +107,8 @@ pub enum Command {
     Undo,
     /// Result of a `NeedRadio` effect.
     AppendRadio(Vec<Track>),
+    /// A `NeedRadio` effect failed (as opposed to finding nothing).
+    RadioFailed(Failure),
 }
 
 /// What the audio engine reports back.
@@ -208,6 +216,10 @@ pub struct Player {
     radio_requested: bool,
     radio_dry: bool,
     pending_advance: bool,
+    /// The song that was playing when a radio request failed: no new request until another song plays.
+    radio_failed_on: Option<EntryId>,
+    /// Radio answers still to come for requests made before the queue was replaced or cleared; each is ignored.
+    stale_radio: u8,
     /// (id, ready) of the track the engine is preparing to follow the current one.
     prefetch: Option<(EntryId, bool)>,
     no_prefetch_for: Option<EntryId>,
@@ -240,6 +252,8 @@ impl Player {
             radio_requested: false,
             radio_dry: false,
             pending_advance: false,
+            radio_failed_on: None,
+            stale_radio: 0,
             prefetch: None,
             no_prefetch_for: None,
             stop_after_current: false,
@@ -335,11 +349,20 @@ impl Player {
         });
     }
 
+    /// A load the listener asked for (not an automatic one): the retries spent on earlier expired URLs
+    /// do not count against it.
+    fn begin_load_fresh(&mut self, id: EntryId, start_ms: u64) {
+        self.url_retries = 0;
+        self.url_retry_id = None;
+        self.begin_load(id, start_ms);
+    }
+
     fn stop(&mut self) {
         self.effects.push(Effect::Stop);
         self.prefetch = None;
         self.transport = Transport::Idle;
         self.position_ms = 0;
+        self.pending_advance = false;
         self.dirty = true;
     }
 
@@ -361,7 +384,7 @@ impl Player {
 
     fn next_user(&mut self) {
         match self.queue.advance(false, &|i| self.skip.contains(&i)) {
-            Some(id) => self.begin_load(id, 0),
+            Some(id) => self.begin_load_fresh(id, 0),
             None => self.end_of_queue(),
         }
     }
@@ -429,6 +452,7 @@ impl Player {
         if !self.autoplay
             || self.radio_requested
             || self.radio_dry
+            || self.radio_failed_on.is_some() && self.radio_failed_on == self.queue.current_id()
             || self.queue.repeat() != Repeat::Off
             || !self.is_active()
             || self.queue.upcoming().len() > RADIO_THRESHOLD
@@ -449,18 +473,25 @@ impl Player {
         match c {
             Command::PlayEntry(id) => {
                 if self.queue.jump_to(id) {
-                    self.begin_load(id, 0);
+                    self.skip.remove(&id);
+                    self.begin_load_fresh(id, 0);
                 }
             }
             Command::PlayTracks { tracks, start } => {
+                if tracks.is_empty() {
+                    return;
+                }
                 if let Some(id) = self.queue.replace(tracks, start) {
                     self.skip.clear();
+                    if self.radio_requested {
+                        self.stale_radio = self.stale_radio.saturating_add(1);
+                    }
                     self.radio_requested = false;
                     self.radio_dry = false;
+                    self.radio_failed_on = None;
                     self.auto_skips = 0;
-                    self.url_retries = 0;
                     self.no_prefetch_for = None;
-                    self.begin_load(id, 0);
+                    self.begin_load_fresh(id, 0);
                 }
             }
             Command::Toggle => match self.transport {
@@ -477,6 +508,7 @@ impl Player {
                 Transport::Loading { id } => {
                     self.effects.push(Effect::Stop);
                     self.prefetch = None;
+                    self.pending_advance = false;
                     self.transport = Transport::Paused { id, loaded: false };
                 }
                 _ => {}
@@ -486,7 +518,9 @@ impl Player {
                     self.effects.push(Effect::Resume);
                     self.transport = Transport::Playing { id };
                 }
-                Transport::Paused { id, loaded: false } => self.begin_load(id, self.position_ms),
+                Transport::Paused { id, loaded: false } => {
+                    self.begin_load_fresh(id, self.position_ms)
+                }
                 Transport::Idle => self.play_from_idle(),
                 Transport::Failed { .. } => self.on_command(Command::Retry),
                 _ => {}
@@ -495,8 +529,8 @@ impl Player {
                 if let Transport::Failed { id, .. } = self.transport.clone() {
                     self.no_prefetch_for = None;
                     self.auto_skips = 0;
-                    self.url_retries = 0;
-                    self.begin_load(id, self.position_ms);
+                    self.skip.remove(&id);
+                    self.begin_load_fresh(id, self.position_ms);
                 }
             }
             Command::Next => self.next_user(),
@@ -505,7 +539,7 @@ impl Player {
                 if can_restart {
                     self.restart_current();
                 } else if let Some(id) = self.queue.previous(&|i| self.skip.contains(&i)) {
-                    self.begin_load(id, 0);
+                    self.begin_load_fresh(id, 0);
                 } else {
                     self.restart_current();
                 }
@@ -567,6 +601,10 @@ impl Player {
             Command::Clear => {
                 if !self.queue.is_empty() {
                     self.queue.clear();
+                    if self.radio_requested {
+                        self.stale_radio = self.stale_radio.saturating_add(1);
+                        self.radio_requested = false;
+                    }
                     self.stop();
                 }
             }
@@ -581,6 +619,7 @@ impl Player {
                 }
             }
             Command::AppendRadio(tracks) => self.append_radio(tracks),
+            Command::RadioFailed(_) => self.radio_failed(),
         }
     }
 
@@ -602,6 +641,11 @@ impl Player {
     }
 
     fn append_radio(&mut self, tracks: Vec<Track>) {
+        if self.stale_radio > 0 {
+            // The answer to a request made before the queue was replaced or cleared.
+            self.stale_radio -= 1;
+            return;
+        }
         self.radio_requested = false;
         let mut added = 0;
         for t in tracks {
@@ -623,6 +667,20 @@ impl Player {
         }
     }
 
+    /// The request for similar songs failed. Unlike an empty answer this does not mean there is nothing
+    /// to find, so autoplay stays on and asks again once another song is playing.
+    fn radio_failed(&mut self) {
+        if self.stale_radio > 0 {
+            self.stale_radio -= 1;
+            return;
+        }
+        self.radio_requested = false;
+        self.radio_failed_on = self.queue.current_id();
+        if std::mem::take(&mut self.pending_advance) {
+            self.stop();
+        }
+    }
+
     // ---------- engine events ----------
     fn on_engine(&mut self, e: EngineEvent) {
         match e {
@@ -637,6 +695,17 @@ impl Player {
                 if !self.queue.contains(id) {
                     return;
                 }
+                // Nothing is meant to be playing (stopped, cleared, paused without a loaded song, failed):
+                // sound from an old stream must not bring the player back to life.
+                if matches!(
+                    self.transport,
+                    Transport::Idle
+                        | Transport::Paused { loaded: false, .. }
+                        | Transport::Failed { .. }
+                ) {
+                    return;
+                }
+                self.skip.remove(&id);
                 let resumed_here =
                     matches!(self.transport, Transport::Loading { id: l } if l == id);
                 if self.queue.current_id() != Some(id) {
@@ -679,9 +748,24 @@ impl Player {
                 } else {
                     self.skip.insert(id);
                 }
+                // The previous song already ended and this one was the one being waited for: the engine
+                // has nothing to start, so this is a failed load.
+                if matches!(self.transport, Transport::Loading { id: l } if l == id) {
+                    self.queue.jump_to(id);
+                    self.position_ms = 0;
+                    self.on_load_failed(id, failure);
+                }
             }
             EngineEvent::LoadFailed { id, failure } => self.on_load_failed(id, failure),
             EngineEvent::UrlExpired { id } => {
+                if self.transport == (Transport::Paused { id, loaded: true }) {
+                    // Paused on a stream that died: nothing to resume. Unload it and keep the position, so
+                    // Resume loads a fresh address from here.
+                    self.effects.push(Effect::Stop);
+                    self.prefetch = None;
+                    self.transport = Transport::Paused { id, loaded: false };
+                    return;
+                }
                 let mine = matches!(
                     self.transport,
                     Transport::Playing { id: p } | Transport::Stalled { id: p } | Transport::Loading { id: p } if p == id
@@ -751,14 +835,25 @@ impl Player {
                 // Gapless: the engine continues into `next`; stay put until it is audible.
                 Some((p, true)) if p == next => {}
                 // Still preparing: nothing audible now; the engine starts it as soon as it is ready.
-                Some((p, false)) if p == next => self.transport = Transport::Loading { id: next },
+                Some((p, false)) if p == next => {
+                    self.queue.jump_to(next);
+                    self.transport = Transport::Loading { id: next };
+                }
                 // Nothing usable prepared: cold start.
                 _ => {
                     self.queue.jump_to(next);
                     self.begin_load(next, 0);
                 }
             },
-            None => self.end_of_queue(),
+            None => {
+                self.end_of_queue();
+                // Waiting for radio after the last song ended: nothing is audible, so do not show Playing.
+                if self.pending_advance {
+                    if let Some(id) = self.queue.current_id() {
+                        self.transport = Transport::Loading { id };
+                    }
+                }
+            }
         }
     }
 

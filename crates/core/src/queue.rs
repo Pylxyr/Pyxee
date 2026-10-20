@@ -165,7 +165,16 @@ impl Queue {
         id
     }
 
+    /// Undoing a clear puts the old list back over whatever was added since: once something is added,
+    /// that clear can no longer be undone.
+    fn forget_clear_undo(&mut self) {
+        if matches!(self.undo.last(), Some(Undo::Clear { .. })) {
+            self.undo.clear();
+        }
+    }
+
     pub fn add(&mut self, track: Track, origin: Origin) -> EntryId {
+        self.forget_clear_undo();
         let id = self.alloc();
         self.entries.push(Entry { id, track, origin });
         self.order.push(id);
@@ -175,6 +184,7 @@ impl Queue {
     /// Inserts right after the current track; consecutive calls keep their order
     /// (A, B, C added in turn play A, B, C).
     pub fn play_next(&mut self, track: Track) -> EntryId {
+        self.forget_clear_undo();
         let cur_pos = self.current_pos();
         let tail = self
             .play_next_tail
@@ -730,5 +740,25 @@ mod tests {
         assert_eq!(back.play_order(), q.play_order());
         assert_eq!(back.repeat(), Repeat::All);
         assert!(back.shuffle());
+    }
+
+    #[test]
+    fn adding_after_a_clear_forgets_the_clear_so_undo_cannot_overwrite_the_new_songs() {
+        let (mut queue, _) = q(&["a", "b"]);
+        queue.clear();
+        assert!(queue.can_undo());
+        queue.add(t("c"), Origin::User);
+        assert!(!queue.can_undo(), "add");
+
+        let (mut queue, _) = q(&["a", "b"]);
+        queue.clear();
+        queue.play_next(t("c"));
+        assert!(!queue.can_undo(), "play_next");
+
+        // A removal made after a clear is still undoable, and a clear followed by nothing is too.
+        let (mut queue, ids) = q(&["a", "b"]);
+        queue.remove(ids[0]);
+        queue.add(t("c"), Origin::User);
+        assert!(queue.can_undo(), "only a clear is forgotten");
     }
 }

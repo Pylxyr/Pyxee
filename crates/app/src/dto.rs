@@ -585,7 +585,7 @@ fn failure_dto(f: &Failure) -> FailureDto {
         Failure::Unavailable => FailureDto::Unavailable,
         Failure::Decode => FailureDto::Decode,
         Failure::Expired(status) => FailureDto::Expired { status: *status },
-        Failure::Other(m) => FailureDto::Other { message: m.clone() },
+        Failure::Tool(m) | Failure::Other(m) => FailureDto::Other { message: m.clone() },
     }
 }
 

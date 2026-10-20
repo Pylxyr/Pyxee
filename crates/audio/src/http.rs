@@ -10,12 +10,13 @@
 use crate::AudioError;
 use std::collections::BTreeMap;
 use std::io::{self, Read, Seek, SeekFrom};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Condvar, Mutex, MutexGuard, PoisonError};
 use std::time::{Duration, Instant};
 
 const CHUNK: u64 = 512 * 1024;
 /// Files up to this size are downloaded completely; bigger ones only around the playhead.
-const FULL_LIMIT: u64 = 256 * 1024 * 1024;
+const FULL_LIMIT: u64 = 64 * 1024 * 1024;
 /// For files above `FULL_LIMIT`: chunks kept ahead of and behind the playhead.
 const WINDOW_AHEAD: u64 = 64;
 const WINDOW_BEHIND: u64 = 4;
@@ -23,6 +24,8 @@ const WINDOW_BEHIND: u64 = 4;
 const STALL_LIMIT: Duration = Duration::from_secs(45);
 /// The longest pause between retries of a failed download.
 const RETRY_PAUSE_MAX: Duration = Duration::from_secs(3);
+/// A read waiting for data looks at its cancel flag at least this often.
+const CANCEL_CHECK: Duration = Duration::from_millis(100);
 
 #[derive(Default)]
 struct State {
@@ -52,6 +55,8 @@ pub struct HttpRangeSource {
     pos: u64,
     /// The chunk last read from, so most reads need no lock.
     current: Option<(u64, Arc<Vec<u8>>)>,
+    /// Set by whoever needs a read that is waiting for data to give up (see `chunk_for`).
+    cancel: Arc<AtomicBool>,
 }
 
 fn net(e: impl std::fmt::Display) -> AudioError {
@@ -69,6 +74,19 @@ impl std::fmt::Display for HttpStatus {
 }
 
 impl std::error::Error for HttpStatus {}
+
+/// Carried inside the `Interrupted` error of a read that was cancelled, so the decoder layer can tell it
+/// from an ordinary interruption (which it retries).
+#[derive(Debug)]
+pub(crate) struct Cancelled;
+
+impl std::fmt::Display for Cancelled {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "the read was cancelled")
+    }
+}
+
+impl std::error::Error for Cancelled {}
 
 pub(crate) fn is_expired(code: u16) -> bool {
     matches!(code, 401 | 403 | 410)
@@ -107,6 +125,9 @@ impl Fetcher {
             .set("Range", &format!("bytes={from}-{to}"))
             .call();
         match resp {
+            Ok(resp) if !answers_range(&resp, from) => Err(FetchError::Transient(
+                "server ignored the range request".into(),
+            )),
             Ok(resp) => {
                 let mut data = Vec::with_capacity(want as usize);
                 match resp.into_reader().take(want).read_to_end(&mut data) {
@@ -123,6 +144,18 @@ impl Fetcher {
             Err(e) => Err(FetchError::Transient(e.to_string())),
         }
     }
+}
+
+/// A real answer to a range request: status 206 and a `Content-Range` that starts where the request did. A server that
+/// answers 200 with the whole file (or a different part) must not have its bytes taken for the requested chunk.
+fn answers_range(resp: &ureq::Response, from: u64) -> bool {
+    resp.status() == 206
+        && resp
+            .header("Content-Range")
+            .and_then(|v| v.trim().strip_prefix("bytes "))
+            .and_then(|v| v.split('-').next())
+            .and_then(|v| v.trim().parse::<u64>().ok())
+            == Some(from)
 }
 
 /// The next chunk to download: the first missing one from the playhead forward (then any earlier gap, so the whole
@@ -196,6 +229,16 @@ impl HttpRangeSource {
 
     /// Opens `url` sending `headers` on every request, and starts downloading it in the background.
     pub fn open_with(url: &str, headers: &[(String, String)]) -> Result<Self, AudioError> {
+        Self::open_with_cancel(url, headers, Arc::new(AtomicBool::new(false)))
+    }
+
+    /// Like `open_with`, and a read that is waiting for data stops with `io::ErrorKind::Interrupted` while
+    /// `cancel` is set (the pipeline sets it when it must flush, so a stalled stream cannot hold it up).
+    pub fn open_with_cancel(
+        url: &str,
+        headers: &[(String, String)],
+        cancel: Arc<AtomicBool>,
+    ) -> Result<Self, AudioError> {
         let agent = ureq::AgentBuilder::new()
             .timeout_connect(Duration::from_secs(10))
             .timeout_read(Duration::from_secs(20))
@@ -237,6 +280,7 @@ impl HttpRangeSource {
             len: total,
             pos: 0,
             current: None,
+            cancel,
         })
     }
 
@@ -273,6 +317,9 @@ impl HttpRangeSource {
             if let Some(code) = st.fatal {
                 return Err(io::Error::other(HttpStatus(code)));
             }
+            if self.cancel.load(Ordering::SeqCst) {
+                return Err(io::Error::new(io::ErrorKind::Interrupted, Cancelled));
+            }
             if started.elapsed() >= STALL_LIMIT {
                 let why = st
                     .last_error
@@ -286,7 +333,7 @@ impl HttpRangeSource {
             let (guard, _) = self
                 .shared
                 .wake
-                .wait_timeout(st, Duration::from_millis(500))
+                .wait_timeout(st, CANCEL_CHECK)
                 .unwrap_or_else(PoisonError::into_inner);
             st = guard;
         }

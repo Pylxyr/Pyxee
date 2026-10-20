@@ -4,8 +4,8 @@
 use crate::gate::{Gate, GateConfig};
 use crate::suggest::{self, encode};
 use crate::{
-    classify_stderr, MusicSource, SearchFilter, SearchItem, SourceError, StreamInfo, StreamMeta,
-    TrackInfo, UNKNOWN_ARTIST,
+    classify_stderr, program_name, scrub, MusicSource, SearchFilter, SearchItem, SourceError,
+    StreamInfo, StreamMeta, TrackInfo, UNKNOWN_ARTIST,
 };
 use serde::Deserialize;
 use serde_json::Value;
@@ -42,6 +42,11 @@ const SEARCH_CACHE_MAX: usize = 32;
 /// After the dedicated songs page answers with bare titles, songs searches skip it for this long.
 const SONGS_PAGE_SKIP: Duration = Duration::from_secs(30 * 60);
 
+/// Browser names (the part of `PYXEE_COOKIES_FROM_BROWSER` before `+` or `:`) that may be logged.
+const KNOWN_BROWSERS: [&str; 9] = [
+    "brave", "chrome", "chromium", "edge", "firefox", "opera", "safari", "vivaldi", "whale",
+];
+
 /// Optional login cookies for yt-dlp. YouTube is far less likely to answer "sign in to confirm
 /// you're not a bot" / HTTP 429 to a logged-in session. Set one of (the file wins if both are set):
 ///
@@ -77,6 +82,7 @@ impl Cookies {
                     );
                 }
                 log::info!("yt-dlp: using the cookie file from PYXEE_COOKIES");
+                scrub::register(&file.display().to_string());
                 return Self::File(file);
             }
             // yt-dlp would create an empty file there and carry on without cookies, silently.
@@ -84,9 +90,16 @@ impl Cookies {
         }
         if let Some(spec) = browser {
             let name = spec.split(['+', ':']).next().unwrap_or_default();
-            log::info!(
-                "yt-dlp: reading cookies from the {name} browser (PYXEE_COOKIES_FROM_BROWSER)"
-            );
+            let shown = if KNOWN_BROWSERS.contains(&name.to_ascii_lowercase().as_str()) {
+                name
+            } else {
+                "an unrecognised browser name"
+            };
+            log::info!("yt-dlp: reading cookies from {shown} (PYXEE_COOKIES_FROM_BROWSER)");
+            // A bare browser name holds nothing private (and is logged above), a profile does.
+            if spec != name {
+                scrub::register(&spec);
+            }
             return Self::Browser(spec);
         }
         Self::None
@@ -249,10 +262,10 @@ impl YtDlpSource {
 
     /// One yt-dlp run, when the gate says it is this call's turn.
     fn run(&self, what: &str, args: &[String]) -> Result<String, SourceError> {
-        let all: Vec<String> = self
-            .cookies
-            .args()
-            .into_iter()
+        // `--ignore-config`: a yt-dlp.conf on this PC (or one the user's own yt-dlp reads) must not change
+        // what Pyxee asks for, such as the output format or extra network options.
+        let all: Vec<String> = std::iter::once("--ignore-config".to_string())
+            .chain(self.cookies.args())
             .chain(args.iter().cloned())
             .collect();
         self.gate
@@ -265,7 +278,7 @@ pub(crate) fn run_tool(
     args: &[String],
     timeout: Duration,
 ) -> Result<String, SourceError> {
-    let name = path.display().to_string();
+    let name = program_name(path);
     let mut cmd = Command::new(path);
     cmd.args(args)
         .stdin(Stdio::null())
@@ -277,7 +290,7 @@ pub(crate) fn run_tool(
         cmd.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
     }
     let mut child = cmd.spawn().map_err(|e| {
-        log::error!("could not start {name}: {e}");
+        log::error!("{}", scrub(&format!("could not start {name}: {e}")));
         if e.kind() == std::io::ErrorKind::NotFound {
             SourceError::ToolMissing(name.clone())
         } else {
@@ -310,7 +323,7 @@ pub(crate) fn run_tool(
             Ok(None) if start.elapsed() > timeout => {
                 let _ = child.kill();
                 let _ = child.wait();
-                log::warn!("{name} was stopped after {timeout:?}: {args:?}");
+                log::warn!("{name} was stopped after {timeout:?}");
                 // A stall means the service cannot be reached right now: transient, so the player
                 // stays on the song with a Retry instead of skipping it (the song is not the problem).
                 return Err(SourceError::Offline);
@@ -334,7 +347,7 @@ pub(crate) fn run_tool(
         log::warn!(
             "{name} exited with {status} (stdout {} bytes). stderr: {}",
             stdout.len(),
-            tail.trim()
+            scrub(tail.trim())
         );
     }
     if !status.success() && stdout.trim().is_empty() {
@@ -601,9 +614,15 @@ pub fn resolve_query(ytdlp: &Path, query: &str) -> Result<Resolved, SourceError>
     parse_dump(line)
 }
 
+/// The id after `yt:`: at most 64 of letters, digits, `_` and `-`. It goes into a URL, so nothing else is let through.
 fn video_id(key: &str) -> Result<&str, SourceError> {
     key.strip_prefix("yt:")
-        .filter(|i| !i.is_empty())
+        .filter(|i| {
+            !i.is_empty()
+                && i.len() <= 64
+                && i.bytes()
+                    .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
+        })
         .ok_or_else(|| SourceError::Failed(format!("not a YouTube key: {key}")))
 }
 
@@ -1014,10 +1033,9 @@ mod tests {
             SourceError::Unavailable(_)
         ));
         // An out-of-date yt-dlp is named as such instead of a bare traceback line.
-        assert!(matches!(
-            c("ERROR: [youtube] abc: Unable to extract player"),
-            SourceError::Failed(m) if m.contains("out of date")
-        ));
+        let broken = c("ERROR: [youtube] abc: Unable to extract player");
+        assert!(matches!(&broken, SourceError::ToolBroken(_)), "{broken:?}");
+        assert!(broken.to_string().contains("out of date"));
     }
 
     fn env(pairs: &[(&str, &str)]) -> impl Fn(&str) -> Option<String> {
@@ -1074,6 +1092,17 @@ mod tests {
         let s = YtDlpSource::new("definitely-not-installed");
         assert_eq!(s.search("   ", SearchFilter::All).unwrap(), vec![]);
         assert!(s.resolve_stream("file:/x.mp3").is_err());
+        for bad in [
+            "yt:",
+            "yt:a b&x=1",
+            "yt:abc/../x",
+            &format!("yt:{}", "a".repeat(65)),
+        ] {
+            assert!(
+                matches!(s.resolve_stream(bad), Err(SourceError::Failed(m)) if m.contains("not a YouTube key")),
+                "{bad}"
+            );
+        }
         assert!(matches!(
             s.search("x", SearchFilter::All),
             Err(SourceError::ToolMissing(_))
@@ -1310,12 +1339,14 @@ esac"#,
                 .map(str::to_string)
                 .collect();
             assert_eq!(lines.len(), 3);
-            let want = format!("--cookies {}", file.display());
+            let want = format!("--ignore-config --cookies {}", file.display());
             assert!(lines.iter().all(|l| l.starts_with(&want)), "{lines:#?}");
 
             let (script, log) = fake("nocookies", &canned());
             quick(&script).search("x", SearchFilter::All).unwrap();
-            assert!(!std::fs::read_to_string(log).unwrap().contains("cookies"));
+            let plain = std::fs::read_to_string(log).unwrap();
+            assert!(!plain.contains("cookies"));
+            assert!(plain.starts_with("--ignore-config "), "{plain}");
 
             let (script, log) = fake("browser", &canned());
             quick(&script)
@@ -1324,7 +1355,7 @@ esac"#,
                 .unwrap();
             assert!(std::fs::read_to_string(log)
                 .unwrap()
-                .starts_with("--cookies-from-browser firefox:default "));
+                .starts_with("--ignore-config --cookies-from-browser firefox:default "));
         }
 
         #[test]

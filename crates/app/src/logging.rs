@@ -155,7 +155,7 @@ impl Log for FileLogger {
         if !self.enabled(r.metadata()) {
             return;
         }
-        let message = r.args().to_string();
+        let message = pyxee_sources::scrub(&r.args().to_string());
         let key = format!("{} {} {message}", r.level(), r.target());
         let (swallowed, write) = self
             .repeats

@@ -37,7 +37,7 @@ theme for their Mica backdrop while their colours follow the app theme.
 
 Shows the current song as "Listening to Pyxee" in the Discord desktop client, through Discord's local IPC (no bot token, no OAuth, no network). Code: `crates/app/src/shell/discord.rs`, fed from `shell::on_state`.
 
-- **Setup:** create an application in the Discord Developer Portal (its name is what members see after "Listening to") and set `PYXEE_DISCORD_CLIENT_ID` to its Application ID, at run time or when building. There is no built-in ID. Without a valid one the feature is off and the log says so.
+- **Setup:** releases are built with the Discord application's ID baked in (the `PYXEE_DISCORD_CLIENT_ID` build variable, see `releasing.md`); its name is what members see after "Listening to". Users cannot change it: there is no setting or run-time variable for it. A build without a valid ID has the feature off and the log says so.
 - **Needs:** the Discord desktop app running on the same PC (the web client has no local IPC).
 - **Behaviour:** like Spotify's: "Listening to Pyxee" with the title, "by" the artist, the cover art and a progress bar when the duration is known. Pausing takes the activity down; resuming puts it back with a fresh bar. Seeks correct the bar; ordinary position ticks send nothing. While a song loads it is shown without a bar. Cleared when idle or on quit.
 - **Cover art:** the song's thumbnail is used when it is a short `https` URL (YouTube thumbnails are). Local files and anything else are skipped, and Discord shows the application's icon instead, so upload an app icon in the Developer Portal.

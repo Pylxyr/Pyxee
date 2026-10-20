@@ -44,11 +44,4 @@ export const ENV_VARS: EnvVarInfo[] = [
     placeholder: '',
     choices: ['', 'error', 'warn', 'info', 'debug', 'trace'],
   },
-  {
-    name: 'PYXEE_DISCORD_CLIENT_ID',
-    title: 'Discord application ID',
-    about: 'Shows "Listening to Pyxee" under your own Discord application name instead of the one built into the release.',
-    fill: 'Create an application at discord.com/developers/applications, open it and copy its Application ID (17 to 20 digits). Leave it empty to keep the built-in one.',
-    placeholder: '123456789012345678',
-  },
 ];

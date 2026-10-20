@@ -283,6 +283,27 @@ fn io<E: std::fmt::Display>(e: E) -> UpdateError {
     UpdateError::Io(e.to_string())
 }
 
+/// Renames `from` over `to`. Windows refuses while the old file is running or being scanned, which usually
+/// ends within a second, so a refusal is tried again a few times before it counts as a failure.
+fn rename_when_free(from: &Path, to: &Path) -> std::io::Result<()> {
+    const RETRIES: u32 = 5;
+    let mut tries = 0;
+    loop {
+        match fs::rename(from, to) {
+            Err(e) if tries < RETRIES && is_in_use(&e) => {
+                tries += 1;
+                std::thread::sleep(std::time::Duration::from_millis(400));
+            }
+            other => return other,
+        }
+    }
+}
+
+/// Access denied or a sharing violation (Windows error 32): the file is in use.
+fn is_in_use(e: &std::io::Error) -> bool {
+    e.kind() == std::io::ErrorKind::PermissionDenied || e.raw_os_error() == Some(32)
+}
+
 /// Puts `bytes` at `target` only if they are the program `expected` describes and the new program runs.
 /// `probe` starts the written file (given its temporary path) and returns what it printed, e.g. its `--version`.
 /// The file is written beside `target` and renamed over it, so an interrupted update never leaves a half-written
@@ -308,7 +329,7 @@ pub fn install_verified(
         if out.is_empty() {
             return Err(UpdateError::ProbeFailed("it printed nothing".into()));
         }
-        fs::rename(&tmp, target).map_err(|e| {
+        rename_when_free(&tmp, target).map_err(|e| {
             UpdateError::Io(format!(
                 "could not replace {} ({e}); close anything that is using it and try again",
                 target.display()

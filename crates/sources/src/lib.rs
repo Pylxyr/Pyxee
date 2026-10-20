@@ -3,8 +3,11 @@
 
 pub mod gate;
 pub mod local;
+mod scrub;
 pub mod suggest;
 pub mod ytdlp;
+
+pub use scrub::scrub;
 
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -23,6 +26,10 @@ pub enum SourceError {
     Unsupported(String),
     #[error("Unexpected response from the music service: {0}")]
     Parse(String),
+    /// yt-dlp ran but cannot read YouTube's pages (usually: out of date). Not about one song, so the
+    /// text is fixed and the detail (yt-dlp's last line) is kept only for the log.
+    #[error("yt-dlp could not read YouTube's page, so it is probably out of date: update it")]
+    ToolBroken(String),
     #[error("{0}")]
     Failed(String),
 }
@@ -136,6 +143,7 @@ impl MusicSource for CompositeSource {
 
 /// Turns yt-dlp's stderr into an error the UI can explain.
 pub fn classify_stderr(tool: &str, stderr: &str) -> SourceError {
+    let tool = program_name(std::path::Path::new(tool));
     let low = stderr.to_ascii_lowercase();
     let has = |needles: &[&str]| needles.iter().any(|n| low.contains(n));
     if has(&[
@@ -198,20 +206,28 @@ pub fn classify_stderr(tool: &str, stderr: &str) -> SourceError {
         "nsig extraction failed",
         "signature extraction failed",
     ]) {
-        SourceError::Failed(format!(
-            "{tool} could not read YouTube's page, so it is probably out of date: update it ({})",
-            last_line(stderr)
-        ))
+        SourceError::ToolBroken(last_line(stderr))
     } else {
         SourceError::Failed(format!("{tool} failed: {}", last_line(stderr)))
     }
 }
 
+/// The last line of yt-dlp's output, with cookie locations and profile folders replaced.
 fn last_line(s: &str) -> String {
-    s.lines()
-        .rev()
-        .find(|l| !l.trim().is_empty())
-        .unwrap_or("unknown error")
-        .trim()
-        .to_string()
+    scrub(
+        s.lines()
+            .rev()
+            .find(|l| !l.trim().is_empty())
+            .unwrap_or("unknown error")
+            .trim(),
+    )
+}
+
+/// Only the file name of a program, so a full path (which holds the user name) never reaches an
+/// error message or a log line.
+pub(crate) fn program_name(path: &std::path::Path) -> String {
+    path.file_name().map_or_else(
+        || "the program".to_string(),
+        |n| n.to_string_lossy().into_owned(),
+    )
 }

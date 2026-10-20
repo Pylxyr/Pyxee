@@ -2,7 +2,6 @@
 //! The file is applied once at start-up (see `main`), so a saved change is used from the next start.
 
 use crate::dto::{EnvSettingsDto, EnvVarDto};
-use crate::shell::discord::parse_client_id;
 use pyxee_shell::envfile::{self, VARS};
 use std::path::{Path, PathBuf};
 use tauri::State;
@@ -49,9 +48,6 @@ fn check(name: &str, value: &str) -> Result<(), String> {
         "PYXEE_COOKIES" if !Path::new(value).is_file() => Some("that file was not found"),
         "PYXEE_LOG" if !LOG_LEVELS.contains(&value.to_ascii_lowercase().as_str()) => {
             Some("use error, warn, info, debug or trace")
-        }
-        "PYXEE_DISCORD_CLIENT_ID" if parse_client_id(value).is_none() => {
-            Some("a Discord application ID is 17 to 20 digits")
         }
         _ => None,
     };

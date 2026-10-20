@@ -13,8 +13,9 @@ use serde::Serialize;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
-use std::time::Duration;
-use tauri::{AppHandle, State};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::{Duration, Instant};
+use tauri::{AppHandle, Emitter, State};
 use ts_rs::TS;
 
 const REPO: &str = "Pylxyr/Pyxee";
@@ -22,6 +23,10 @@ const YTDLP_BASE: &str = "https://github.com/yt-dlp/yt-dlp/releases/latest/downl
 const YTDLP_FILE: &str = "yt-dlp.exe";
 /// Nothing we download is anywhere near this; it stops a wrong URL from filling the disk.
 const MAX_DOWNLOAD: u64 = 300 * 1024 * 1024;
+/// The Tauri event that carries `UpdateProgressDto`.
+pub const UPDATE_PROGRESS_EVENT: &str = "update-progress";
+/// A download reports its progress at most this often.
+const PROGRESS_EVERY: Duration = Duration::from_millis(100);
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
@@ -47,6 +52,75 @@ pub struct YtdlpUpdateDto {
     pub current_version: Option<String>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum UpdateTarget {
+    App,
+    Ytdlp,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum UpdatePhase {
+    Downloading,
+    Verifying,
+    Testing,
+    Starting,
+}
+
+/// Where an install is: sent as the `update-progress` event. `total` is unknown when the server sends no length.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct UpdateProgressDto {
+    #[ts(type = "\"app\" | \"ytdlp\"")]
+    pub target: UpdateTarget,
+    #[ts(type = "\"downloading\" | \"verifying\" | \"testing\" | \"starting\"")]
+    pub phase: UpdatePhase,
+    #[ts(type = "number")]
+    pub received: u64,
+    #[ts(type = "number | null")]
+    pub total: Option<u64>,
+}
+
+fn emit_progress(
+    app: &AppHandle,
+    target: UpdateTarget,
+    phase: UpdatePhase,
+    received: u64,
+    total: Option<u64>,
+) {
+    let dto = UpdateProgressDto {
+        target,
+        phase,
+        received,
+        total,
+    };
+    if let Err(e) = app.emit(UPDATE_PROGRESS_EVENT, dto) {
+        log::warn!("could not send the update progress: {e}");
+    }
+}
+
+/// Only one install runs at a time (Pyxee or yt-dlp): a second one would fight over the same files.
+static INSTALLING: AtomicBool = AtomicBool::new(false);
+
+struct InstallGuard;
+
+impl InstallGuard {
+    fn acquire() -> Result<Self, String> {
+        INSTALLING
+            .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+            .map(|_| Self)
+            .map_err(|_| "An update is already being installed.".to_string())
+    }
+}
+
+impl Drop for InstallGuard {
+    fn drop(&mut self) {
+        INSTALLING.store(false, Ordering::SeqCst);
+    }
+}
+
 fn agent() -> ureq::Agent {
     ureq::AgentBuilder::new()
         .user_agent(concat!("Pyxee/", env!("CARGO_PKG_VERSION")))
@@ -55,8 +129,8 @@ fn agent() -> ureq::Agent {
         .build()
 }
 
-fn get(url: &str) -> Result<Vec<u8>, String> {
-    let resp = agent()
+fn request(url: &str) -> Result<ureq::Response, String> {
+    agent()
         .get(url)
         .set("Accept", "application/vnd.github+json, */*")
         .call()
@@ -69,12 +143,51 @@ fn get(url: &str) -> Result<Vec<u8>, String> {
             }
             ureq::Error::Status(c, _) => format!("{url} answered HTTP {c}"),
             e => format!("Could not reach {url}: {e}. Check your internet connection (and any proxy or firewall)."),
-        })?;
+        })
+}
+
+fn get(url: &str) -> Result<Vec<u8>, String> {
+    let resp = request(url)?;
     let mut bytes = Vec::new();
     resp.into_reader()
         .take(MAX_DOWNLOAD)
         .read_to_end(&mut bytes)
         .map_err(|e| format!("The download of {url} was interrupted: {e}"))?;
+    Ok(bytes)
+}
+
+/// Downloads a large file in 64 KiB steps and reports `(received, total)` at most every 100 ms and once at the end.
+/// A file above `MAX_DOWNLOAD` is an error, never a silently cut-off download.
+fn download(url: &str, on_progress: &mut dyn FnMut(u64, Option<u64>)) -> Result<Vec<u8>, String> {
+    const TOO_BIG: &str = "The download is larger than expected";
+    let resp = request(url)?;
+    let total = resp
+        .header("Content-Length")
+        .and_then(|v| v.trim().parse::<u64>().ok());
+    if total.is_some_and(|t| t > MAX_DOWNLOAD) {
+        return Err(TOO_BIG.into());
+    }
+    let mut reader = resp.into_reader();
+    let mut bytes = Vec::new();
+    let mut chunk = vec![0u8; 64 * 1024];
+    let mut last: Option<Instant> = None;
+    loop {
+        let n = reader
+            .read(&mut chunk)
+            .map_err(|e| format!("The download of {url} was interrupted: {e}"))?;
+        if n == 0 {
+            break;
+        }
+        if bytes.len() as u64 + n as u64 > MAX_DOWNLOAD {
+            return Err(TOO_BIG.into());
+        }
+        bytes.extend_from_slice(&chunk[..n]);
+        if last.is_none_or(|t| t.elapsed() >= PROGRESS_EVERY) {
+            on_progress(bytes.len() as u64, total);
+            last = Some(Instant::now());
+        }
+    }
+    on_progress(bytes.len() as u64, total);
     Ok(bytes)
 }
 
@@ -122,7 +235,7 @@ fn check_app_blocking() -> Result<AppUpdateDto, String> {
 }
 
 /// Downloads and verifies the installer; returns where it is.
-fn fetch_installer() -> Result<PathBuf, String> {
+fn fetch_installer(app: &AppHandle) -> Result<PathBuf, String> {
     if portable_dir().is_some() {
         return Err("This is a portable copy: download the new zip from the release page and unpack it over this folder (your data folder stays).".into());
     }
@@ -138,7 +251,23 @@ fn fetch_installer() -> Result<PathBuf, String> {
     let sums = text(sums_url)?;
     let expected = update::parse_sums(&sums, &installer.name)
         .ok_or_else(|| update::UpdateError::NotListed(installer.name.clone()).to_string())?;
-    let bytes = get(&installer.url)?;
+    let bytes = download(&installer.url, &mut |received, total| {
+        emit_progress(
+            app,
+            UpdateTarget::App,
+            UpdatePhase::Downloading,
+            received,
+            total,
+        );
+    })?;
+    let size = bytes.len() as u64;
+    emit_progress(
+        app,
+        UpdateTarget::App,
+        UpdatePhase::Verifying,
+        size,
+        Some(size),
+    );
     update::verify(&bytes, &expected).map_err(|e| e.to_string())?;
     let dir = std::env::temp_dir().join("pyxee-update");
     std::fs::create_dir_all(&dir)
@@ -182,9 +311,12 @@ pub async fn update_check_app() -> Result<AppUpdateDto, String> {
 /// Downloads, verifies and starts the installer, then quits so it can replace the files.
 #[tauri::command]
 pub async fn update_install_app(app: AppHandle) -> Result<(), String> {
-    let path = tauri::async_runtime::spawn_blocking(fetch_installer)
+    let _guard = InstallGuard::acquire()?;
+    let handle = app.clone();
+    let path = tauri::async_runtime::spawn_blocking(move || fetch_installer(&handle))
         .await
         .map_err(|e| e.to_string())??;
+    emit_progress(&app, UpdateTarget::App, UpdatePhase::Starting, 0, None);
     launch_installer(&path)?;
     crate::shell::quit(&app);
     Ok(())
@@ -258,14 +390,42 @@ fn check_ytdlp_blocking(dir: &Path) -> Result<YtdlpUpdateDto, String> {
     })
 }
 
-fn install_ytdlp_blocking(dir: &Path) -> Result<String, String> {
+fn install_ytdlp_blocking(app: &AppHandle, dir: &Path) -> Result<String, String> {
     let sums = text(&format!("{YTDLP_BASE}/SHA2-256SUMS"))?;
     let expected = update::parse_sums(&sums, YTDLP_FILE)
         .ok_or_else(|| update::UpdateError::NotListed(YTDLP_FILE.into()).to_string())?;
-    let bytes = get(&format!("{YTDLP_BASE}/{YTDLP_FILE}"))?;
+    let bytes = download(
+        &format!("{YTDLP_BASE}/{YTDLP_FILE}"),
+        &mut |received, total| {
+            emit_progress(
+                app,
+                UpdateTarget::Ytdlp,
+                UpdatePhase::Downloading,
+                received,
+                total,
+            );
+        },
+    )?;
+    let size = bytes.len() as u64;
+    emit_progress(
+        app,
+        UpdateTarget::Ytdlp,
+        UpdatePhase::Verifying,
+        size,
+        Some(size),
+    );
     let target = managed_ytdlp_path(dir);
-    let version = update::install_verified(&target, &bytes, &expected, version_of)
-        .map_err(|e| e.to_string())?;
+    let version = update::install_verified(&target, &bytes, &expected, |tmp| {
+        emit_progress(
+            app,
+            UpdateTarget::Ytdlp,
+            UpdatePhase::Testing,
+            size,
+            Some(size),
+        );
+        version_of(tmp)
+    })
+    .map_err(|e| e.to_string())?;
     log::info!("update: yt-dlp {version} installed at {}", target.display());
     Ok(version)
 }
@@ -281,10 +441,14 @@ pub async fn update_check_ytdlp(state: State<'_, AppState>) -> Result<YtdlpUpdat
 
 /// Installs the verified yt-dlp; returns its version. The next search uses it, no restart needed.
 #[tauri::command]
-pub async fn update_install_ytdlp(state: State<'_, AppState>) -> Result<String, String> {
+pub async fn update_install_ytdlp(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<String, String> {
     guard_env()?;
     let dir = data_dir(&state)?;
-    tauri::async_runtime::spawn_blocking(move || install_ytdlp_blocking(&dir))
+    let _guard = InstallGuard::acquire()?;
+    tauri::async_runtime::spawn_blocking(move || install_ytdlp_blocking(&app, &dir))
         .await
         .map_err(|e| e.to_string())?
 }
@@ -299,6 +463,17 @@ mod tests {
             managed_ytdlp_path(Path::new("D:/data")),
             Path::new("D:/data").join("tools").join("yt-dlp.exe")
         );
+    }
+
+    #[test]
+    fn a_second_install_is_refused_until_the_first_is_done() {
+        let first = InstallGuard::acquire().expect("nothing is installing");
+        assert_eq!(
+            InstallGuard::acquire().err().as_deref(),
+            Some("An update is already being installed.")
+        );
+        drop(first);
+        assert!(InstallGuard::acquire().is_ok());
     }
 
     #[test]

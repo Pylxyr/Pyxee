@@ -327,6 +327,80 @@ else { Add-Result 'WARN' 'tripwire' 'could not build the ffmpeg tripwire; the no
 $realFfmpeg = @(Get-Command ffmpeg.exe -All -ErrorAction SilentlyContinue | Where-Object { $_.Source -notlike "$TripDir*" })
 if ($realFfmpeg.Count -gt 0) { Add-Result 'INFO' 'system-ffmpeg' 'a real ffmpeg is installed on this PC; it is shadowed by the tripwire during this run' }
 
+# The tests added or changed by the review fixes. The full `cargo test` run asks for everything; this asks for each of
+# these by name, and fails when one did not run (renamed, removed, or its crate did not build) or did not pass. The
+# pyxee-audio and pyxee-app ones can only run on Windows: their crates need the FFmpeg libraries and WebView2.
+function Test-EditedTests {
+  $groups = @(
+    @{ Crate = 'pyxee-sources'; Names = @(
+      'the_cookie_file_path_is_replaced_in_either_slash_style_and_case',
+      'a_browser_profile_is_replaced',
+      'user_profile_folders_become_their_variable_names',
+      'the_value_of_a_cookies_argument_is_replaced',
+      'errors_are_classified_for_the_ui',
+      'a_403_or_a_5xx_from_youtube_is_transient_and_a_missing_video_is_not',
+      'empty_queries_search_nothing_and_non_youtube_keys_are_refused') },
+    @{ Crate = 'pyxee-core'; Names = @(
+      'a_prefetch_that_fails_while_the_player_waits_for_it_at_the_boundary_does_not_leave_loading_forever',
+      'removing_the_song_that_is_loading_at_the_boundary_moves_on_to_the_one_after_it',
+      'clearing_while_waiting_for_radio_ignores_the_answer_when_it_comes',
+      'pausing_at_the_end_of_the_queue_cancels_the_wait_for_radio',
+      'a_radio_answer_that_arrives_after_the_queue_was_replaced_is_ignored',
+      'a_broken_or_missing_tool_is_not_the_songs_fault_so_nothing_is_skipped',
+      'a_failed_radio_request_does_not_mark_radio_as_dry_and_ends_the_wait',
+      'sound_from_an_old_stream_does_not_revive_a_stopped_or_failed_player',
+      'an_expired_url_while_paused_unloads_the_song_and_keeps_the_position',
+      'something_the_listener_asks_for_gets_a_fresh_url_retry_budget',
+      'a_song_the_listener_plays_again_or_that_becomes_audible_is_no_longer_skipped',
+      'playing_an_empty_list_changes_nothing',
+      'adding_after_a_clear_forgets_the_clear_so_undo_cannot_overwrite_the_new_songs') },
+    @{ Crate = 'pyxee-audio'; Names = @('flush_returns_at_once_while_the_producer_waits_for_a_chunk_that_never_arrives') },
+    @{ Crate = 'pyxee-app'; Names = @(
+      'a_seek_after_pausing_and_starting_another_song_is_not_silent',
+      'a_second_install_is_refused_until_the_first_is_done',
+      'only_the_build_time_id_counts_and_nothing_means_off') }
+  )
+  foreach ($g in $groups) {
+    $r = Invoke-Logged ('edited-tests-' + $g.Crate) ('cargo test --locked -p {0} -- {1}' -f $g.Crate, ($g.Names -join ' '))
+    $txt = if (Test-Path $r.Log) { Get-Content $r.Log -Raw } else { '' }
+    foreach ($n in $g.Names) {
+      $esc = [regex]::Escape($n)
+      if ($txt -match ('(?m)^test \S*' + $esc + ' \.\.\. ok\r?$')) { Add-Result 'PASS' "edited-test-$n" 'ran and passed' }
+      elseif ($txt -match ('(?m)^test \S*' + $esc + ' \.\.\. FAILED')) { Add-Result 'FAIL' "edited-test-$n" 'FAILED'; Show-LogTail $r.Log 30 }
+      else { Add-Result 'FAIL' "edited-test-$n" 'did not run (renamed, removed, or its crate did not build): see the log' }
+    }
+  }
+}
+
+# Static facts about the review fixes F1-F10: cheap, and they run even with -SkipTests, so a later edit that undoes one of
+# them is noticed. The behaviour itself is covered by Test-EditedTests (cargo) and by the manual items below.
+function Test-ReviewFixes {
+  $read = { param([string]$rel) $p = Join-Path $Root $rel; if (Test-Path -LiteralPath $p) { Get-Content -LiteralPath $p -Raw } else { '' } }
+  $expect = { param([string]$name, [bool]$ok, [string]$detail) if ($ok) { Add-Result 'PASS' $name $detail } else { Add-Result 'FAIL' $name $detail } }
+  $ytdlp = & $read 'crates\sources\src\ytdlp.rs'
+  $http = & $read 'crates\audio\src\http.rs'
+  & $expect 'fix-f1-no-args-in-logs' ($ytdlp -notmatch '\{args:\?\}') 'the yt-dlp timeout log does not print the argument list (cookie path, browser profile)'
+  & $expect 'fix-f1-scrub-wired' ((((& $read 'crates\sources\src\lib.rs') -match 'pub use scrub::scrub') -and ((& $read 'crates\app\src\logging.rs') -match 'pyxee_sources::scrub'))) 'pyxee_sources::scrub exists and the file logger runs every message through it'
+  & $expect 'fix-f2-cancel-token' (((& $read 'crates\audio\src\pipeline.rs') -match 'pub fn cancel_token') -and ($http -match 'pub fn open_with_cancel') -and ((& $read 'crates\app\src\engine.rs') -match 'open_with_cancel')) 'the pipeline has a cancel token and the engine opens streams with it'
+  $fullLimit = $http -match 'FULL_LIMIT: u64 = 64 \* 1024 \* 1024'
+  & $expect 'fix-f10-http-hardening' ($fullLimit -and ($http -match 'server ignored the range request')) 'FULL_LIMIT is 64 MiB and a reply without 206 + a matching Content-Range is refused'
+  & $expect 'fix-f10-ignore-config' ($ytdlp -match '--ignore-config') 'every yt-dlp run starts with --ignore-config'
+  $envvars = & $read 'ui\src\lib\envvars.ts'
+  $readme = & $read 'README.md'
+  $release = & $read '.github\workflows\release.yml'
+  $discord = & $read 'crates\app\src\shell\discord.rs'
+  $envfile = & $read 'crates\shell\src\envfile.rs'
+  $f7 = ($envvars -notmatch 'DISCORD') -and ($envfile -notmatch 'DISCORD') -and ($readme -notmatch 'DISCORD_CLIENT_ID') -and ((& $read 'crates\app\src\advanced.rs') -notmatch 'DISCORD')
+  & $expect 'fix-f7-discord-id-not-user-settable' $f7 'the Discord application ID is not in Settings > Advanced, the .env loader or the README: users cannot change it'
+  & $expect 'fix-f7-discord-id-is-a-secret-in-ci' (($release -match 'secrets\.PYXEE_DISCORD_CLIENT_ID') -and ($release -notmatch 'vars\.PYXEE_DISCORD_CLIENT_ID')) 'release.yml reads the ID from a repository secret, not a variable'
+  & $expect 'fix-f7-discord-log-text' (($discord -match 'this build has no Discord application') -and ($discord -notmatch 'is not set\)')) 'the Discord log line no longer asks for a variable'
+  try {
+    $mode = (Get-Content -LiteralPath (Join-Path $Root 'crates\app\tauri.conf.json') -Raw | ConvertFrom-Json).bundle.windows.webviewInstallMode
+    & $expect 'fix-f8-webview2-bootstrapper' (($mode.type -eq 'embedBootstrapper') -and ($mode.silent -eq $false)) 'WebView2 is installed by the embedded bootstrapper, not silently (it shows its own progress)'
+  } catch { Add-Result 'FAIL' 'fix-f8-webview2-bootstrapper' "could not read crates\app\tauri.conf.json: $($_.Exception.Message)" }
+  & $expect 'fix-f8-progress-binding' ((Test-Path -LiteralPath (Join-Path $Root 'ui\src\lib\bindings\UpdateProgressDto.ts')) -and ((& $read 'crates\app\src\updater.rs') -match 'update-progress')) 'UpdateProgressDto.ts exists and the updater emits update-progress'
+}
+
 # ---------------------------------------------------------------- 1. static: ffmpeg is gone from the repo
 
 Section 'no ffmpeg process in code, build and packaging (libav is linked in-process)'
@@ -344,6 +418,7 @@ else { Add-Result 'FAIL' 'no-ffmpeg-in-code' "$($code.Count) reference(s)"; $cod
 $any = @(& git grep -n -i ffmpeg -- . ':!Cargo.lock' ':!scripts' 2>$null)
 Add-Result 'INFO' 'ffmpeg-mentions-left' "$($any.Count) line(s) mention the word (expected: the in-process libav build scripts, docs and comments, plus the fixture-provenance note)"
 $any | Select-Object -First 25 | ForEach-Object { Write-Report ("    " + $_.Substring(0, [math]::Min($_.Length, 170))) }
+Test-ReviewFixes
 
 # ---------------------------------------------------------------- 2. yt-dlp (tools flow)
 
@@ -484,6 +559,7 @@ if (-not $SkipTests) {
     }
   }
   Add-Result 'INFO' 'windows-note' 'the fake-yt-dlp tests in pyxee-sources are unix-only; the live phase "fake429" covers the same cooldown logic on this PC'
+  Test-EditedTests
 
   # Known timing-sensitive test (also flaky on the original code: 6 of 40 failures there).
   if ($FlakeRuns -gt 0) {
@@ -555,6 +631,9 @@ if ($Installer) {
   $setup = @(Get-ChildItem (Join-Path $rel 'bundle') -Recurse -Include '*.exe', '*.msi' -ErrorAction SilentlyContinue)
   foreach ($s in $setup) { Add-Result 'INFO' 'installer-file' ("{0}  {1:N1} MB" -f $s.Name, ($s.Length / 1MB)) }
   Add-TripResult 'installer-build' $before
+  # F8: the installer carries Microsoft's WebView2 bootstrapper in non-silent mode. Its progress window only shows on a PC
+  # that has no WebView2 runtime yet, which cannot be arranged from here.
+  Add-Result 'INFO' 'webview2-progress-manual' 'MANUAL: run the installer built above on a PC without the WebView2 runtime (a fresh Windows 10 VM): the Microsoft bootstrapper window must show download progress. The portable zip needs no change (the update happens in the browser).'
 
   # The portable zip: xtask itself refuses a zip without Pyxee.exe / yt-dlp.exe / portable.txt or with a data folder or
   # ffmpeg program in it; here the finished zip is opened again from the outside.
@@ -757,7 +836,13 @@ if ($Manual) {
     @('app-filters', 'Switch the search filter 6 times quickly: results show each time, no "rate limited" message?'),
     @('app-pause', 'Pause for 20 s, resume: it continues without a glitch?'),
     @('app-quality', 'Does the sound quality seem acceptable (it is ~128 kbps AAC now, was ~130-160 kbps Opus)?'),
-    @('app-opus-skip', "Optional: a song that cannot be played shows a 'skipped' notice and the next one plays (skip if you never see one)?")
+    @('app-opus-skip', "Optional: a song that cannot be played shows a 'skipped' notice and the next one plays (skip if you never see one)?"),
+    @('app-seek-after-pause', 'Play a song, pause it, start another song from the queue, then drag the progress bar: sound continues (not silent)?'),
+    @('app-stalled-stream-next', 'Play a song, cut the network (unplug or turn Wi-Fi off) and press Next 5 times: the buttons keep responding and the window never freezes (turn the network back on afterwards)?'),
+    @('app-clear-then-add', 'Clear the queue, then add a song: Undo no longer offers to bring the cleared list back over the new song?'),
+    @('app-autoplay-failure', 'Optional: with Autoplay on, let the last song play out while the network is off: a notice says Autoplay could not load similar songs, and the bar does not show Playing with nothing audible (skip if you cannot try it)?'),
+    @('app-update-progress', 'Settings > Updates: Check yt-dlp, then Update yt-dlp if one is offered (otherwise skip): a progress bar and text like "Downloading yt-dlp: 12.3 of 18.4 MB (67%)" show while it installs, then "Updated to ..."?'),
+    @('app-no-discord-id-field', 'Settings > Advanced has no Discord application ID field, and (with the Discord desktop app running and the Discord option on) "Listening to Pyxee" still shows your song in Discord?')
   )
   foreach ($it in $items) {
     $a = ''
@@ -799,6 +884,17 @@ if ($AnalyzeLog) {
     $cant = @($lines | Where-Object { $_ -match 'cannot decode this stream|seeking to .* failed|could not start|panicked|ERROR' })
     if ($cant.Count -eq 0) { Add-Result 'PASS' 'app-log-no-decode-errors' 'no decode/seek/spawn errors or panics' }
     else { Add-Result 'WARN' 'app-log-notable-lines' "$($cant.Count) notable line(s); first 15 below"; $cant | Select-Object -First 15 | ForEach-Object { Write-Report ("    " + $_.Substring(0, [math]::Min($_.Length, 220))) } }
+    # F1: nothing that names the user, the cookie file or the browser profile may reach the log. Lines written by an older
+    # version of the app can still be in the file, so a hit is a warning to look at, not proof of a bug.
+    $homeDir = [string]$env:USERPROFILE
+    if ($homeDir.Length -ge 4) {
+      $homeRe = [regex]::Escape($homeDir.TrimEnd('\', '/')).Replace('\\', '[\\/]')
+      $leak = @($lines | Where-Object { $_ -match "(?i)$homeRe" })
+      if ($leak.Count -eq 0) { Add-Result 'PASS' 'app-log-no-profile-paths' 'no line contains the user profile folder' }
+      else { Add-Result 'WARN' 'app-log-no-profile-paths' "$($leak.Count) line(s) contain the user profile folder (clear the log, use the app, check again: older lines may predate the fix)" }
+    }
+    $ckArgs = @($lines | Where-Object { $_ -match '--cookies(-from-browser)?\s+(?!<redacted>)\S' })
+    if ($ckArgs.Count -eq 0) { Add-Result 'PASS' 'app-log-no-cookie-arguments' 'no --cookies / --cookies-from-browser value in the log' } else { Add-Result 'FAIL' 'app-log-no-cookie-arguments' "$($ckArgs.Count) line(s) show a cookie file or browser profile" }
     $ck = @($lines | Where-Object { $_ -match 'cookie' } | Select-Object -Last 2)
     foreach ($c in $ck) { Write-Report ("    " + $c.Substring(0, [math]::Min($c.Length, 200))) }
   }

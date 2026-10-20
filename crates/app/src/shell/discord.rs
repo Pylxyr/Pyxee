@@ -18,8 +18,6 @@ use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
 use std::sync::Mutex;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-/// The Discord application ID (Developer Portal -> Application -> "Application ID"). There is no built-in default.
-const ENV_CLIENT_ID: &str = "PYXEE_DISCORD_CLIENT_ID";
 /// Discord shows at most 128 characters per line and rejects lines shorter than 2.
 const MAX_TEXT: usize = 128;
 /// How far the playing clock may wander from what Discord shows before the bar is corrected: a seek, a stall, or
@@ -46,20 +44,17 @@ pub fn parse_client_id(raw: &str) -> Option<String> {
     ok.then(|| id.to_owned())
 }
 
-/// The runtime environment wins over an ID baked in at build time (`PYXEE_DISCORD_CLIENT_ID=... cargo build`).
-fn resolve_client_id(
-    runtime: Option<&str>,
-    build_time: Option<&str>,
-) -> Result<Option<String>, String> {
-    let Some(raw) = runtime
-        .filter(|r| !r.trim().is_empty())
-        .or(build_time.filter(|b| !b.trim().is_empty()))
-    else {
-        return Ok(None);
-    };
-    parse_client_id(raw)
-        .map(Some)
-        .ok_or_else(|| format!("{ENV_CLIENT_ID} is not a Discord application ID (17 to 20 digits)"))
+/// The Discord application ID built into this release (`PYXEE_DISCORD_CLIENT_ID` when it was built; there is no
+/// setting or variable for users). A build without one has presence off; one with an invalid one is an error. Neither
+/// the log nor the error ever contains the ID itself.
+fn resolve_client_id(build_time: Option<&str>) -> Result<Option<String>, String> {
+    match build_time.filter(|v| !v.trim().is_empty()) {
+        None => Ok(None),
+        Some(raw) => parse_client_id(raw).map(Some).ok_or_else(|| {
+            "the Discord application ID built into this release is not valid (17 to 20 digits)"
+                .to_string()
+        }),
+    }
 }
 
 /// What Discord should show for the song.
@@ -420,19 +415,17 @@ pub struct Discord {
 /// Starts the presence thread, or returns `None` (and says why in the log) when no valid application ID is
 /// configured or the thread cannot start. Never fails the app.
 pub fn init() -> Option<Discord> {
-    let runtime = std::env::var(ENV_CLIENT_ID).ok();
-    let client_id =
-        match resolve_client_id(runtime.as_deref(), option_env!("PYXEE_DISCORD_CLIENT_ID")) {
-            Ok(Some(id)) => id,
-            Ok(None) => {
-                log::info!("discord presence: off ({ENV_CLIENT_ID} is not set)");
-                return None;
-            }
-            Err(e) => {
-                log::warn!("discord presence: off ({e})");
-                return None;
-            }
-        };
+    let client_id = match resolve_client_id(option_env!("PYXEE_DISCORD_CLIENT_ID")) {
+        Ok(Some(id)) => id,
+        Ok(None) => {
+            log::info!("discord presence: off (this build has no Discord application)");
+            return None;
+        }
+        Err(e) => {
+            log::warn!("discord presence: off ({e})");
+            return None;
+        }
+    };
     let (tx, rx) = mpsc::channel();
     let spawned = std::thread::Builder::new()
         .name("pyxee-discord".into())
@@ -508,17 +501,16 @@ mod tests {
     }
 
     #[test]
-    fn the_runtime_id_beats_the_build_time_id_and_nothing_means_off() {
-        let a = "111111111111111111";
+    fn only_the_build_time_id_counts_and_nothing_means_off() {
         let b = "222222222222222222";
-        assert_eq!(resolve_client_id(Some(a), Some(b)), Ok(Some(a.to_owned())));
-        assert_eq!(resolve_client_id(None, Some(b)), Ok(Some(b.to_owned())));
-        assert_eq!(
-            resolve_client_id(Some("  "), Some(b)),
-            Ok(Some(b.to_owned()))
+        assert_eq!(resolve_client_id(Some(b)), Ok(Some(b.to_owned())));
+        assert_eq!(resolve_client_id(Some("  ")), Ok(None));
+        assert_eq!(resolve_client_id(None), Ok(None));
+        let err = resolve_client_id(Some("not-an-id")).unwrap_err();
+        assert!(
+            !err.contains("not-an-id"),
+            "the error must not repeat the value"
         );
-        assert_eq!(resolve_client_id(None, None), Ok(None));
-        assert!(resolve_client_id(Some("not-an-id"), Some(b)).is_err());
     }
 
     #[test]

@@ -322,6 +322,30 @@ fn pause_freezes_the_position_and_resume_continues() {
 }
 
 #[test]
+fn a_seek_after_pausing_and_starting_another_song_is_not_silent() {
+    let mut r = Rig::new(TestSource::local());
+    r.cmd(Command::SetAutoplay(false));
+    r.cmd(Command::PlayTracks {
+        tracks: vec![file_track("a_44k.wav"), file_track("b_48k.wav")],
+        start: 0,
+    });
+    assert!(r.run_until(10, |r| r.snapshot().audible.is_some()));
+    r.cmd(Command::Pause);
+    r.step();
+    // Another song is started while the first one is paused, and it plays.
+    r.cmd(Command::Next);
+    let second = Some(r.entry_ids()[1]);
+    assert!(r.run_until(10, |r| r.snapshot().audible.map(|i| i.0) == second));
+    // Seeking it must not leave the pipeline paused.
+    let before = r.samples.len();
+    r.cmd(Command::Seek(500));
+    assert!(
+        r.run_until(5, |r| r.samples.len() > before + 9_600),
+        "no audio reached the device after the seek: the pipeline stayed paused"
+    );
+}
+
+#[test]
 fn seeking_restarts_at_the_offset_and_the_position_follows() {
     let mut r = Rig::new(TestSource::local());
     r.cmd(Command::SetAutoplay(false));

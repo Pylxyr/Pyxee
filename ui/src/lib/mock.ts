@@ -117,6 +117,7 @@ export class MockBackend extends MockLibrary implements Backend {
   async updateInstallApp() { this.updateCalls.push('installApp'); if (this.updateFailure) throw this.updateFailure; }
   async updateCheckYtdlp() { this.updateCalls.push('checkYtdlp'); if (this.updateFailure) throw this.updateFailure; return clone(this.ytdlpUpdate); }
   async updateInstallYtdlp() { this.updateCalls.push('installYtdlp'); if (this.updateFailure) throw this.updateFailure; this.ytdlpUpdate = { available: false, currentVersion: '2026.10.01' }; return '2026.10.01'; }
+  async onUpdateProgress() { return () => {}; }
   #noticeListeners = new Set<(m: string) => void>();
   async onNotice(cb: (m: string) => void) {
     this.#noticeListeners.add(cb);

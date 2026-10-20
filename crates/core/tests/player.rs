@@ -753,3 +753,260 @@ fn a_stale_end_event_does_not_spend_stop_after_current() {
         "still armed: {fx:?}"
     );
 }
+
+#[test]
+fn a_prefetch_that_fails_while_the_player_waits_for_it_at_the_boundary_does_not_leave_loading_forever(
+) {
+    // Permanent: the song is skipped and the next one starts.
+    let (mut p, ids, _) = started(3);
+    p.engine(E::Audible { id: ids[0] });
+    p.engine(E::Ended { id: ids[0] });
+    assert_eq!(p.snapshot().transport, Transport::Loading { id: ids[1] });
+    let fx = p.engine(E::PrefetchFailed {
+        id: ids[1],
+        failure: Failure::Unavailable,
+    });
+    assert_eq!(start_id(&fx), Some(ids[2]));
+    assert_eq!(p.snapshot().transport, Transport::Loading { id: ids[2] });
+
+    // Transient: the player stays on the song with a Retry that works.
+    let (mut p, ids, _) = started(3);
+    p.engine(E::Audible { id: ids[0] });
+    p.engine(E::Ended { id: ids[0] });
+    let fx = p.engine(E::PrefetchFailed {
+        id: ids[1],
+        failure: Failure::Offline,
+    });
+    assert!(
+        start_id(&fx).is_none(),
+        "offline must not burn through the queue"
+    );
+    assert_eq!(
+        p.snapshot().transport,
+        Transport::Failed {
+            id: ids[1],
+            failure: Failure::Offline
+        }
+    );
+    assert_eq!(p.queue().current_id(), Some(ids[1]));
+    let fx = p.command(Command::Retry);
+    assert_eq!(start_id(&fx), Some(ids[1]));
+}
+
+#[test]
+fn removing_the_song_that_is_loading_at_the_boundary_moves_on_to_the_one_after_it() {
+    let (mut p, ids, _) = started(3);
+    p.engine(E::Audible { id: ids[0] });
+    p.engine(E::Ended { id: ids[0] });
+    assert_eq!(p.snapshot().transport, Transport::Loading { id: ids[1] });
+    let fx = p.command(Command::Remove(ids[1]));
+    assert_eq!(start_id(&fx), Some(ids[2]));
+    assert_eq!(p.snapshot().transport, Transport::Loading { id: ids[2] });
+}
+
+#[test]
+fn clearing_while_waiting_for_radio_ignores_the_answer_when_it_comes() {
+    let (mut p, ids, _) = started(1);
+    p.engine(E::Audible { id: ids[0] }); // asks for radio: nothing follows
+    p.command(Command::Next); // the last song: now waiting for that radio
+    p.command(Command::Clear);
+    let fx = p.command(Command::AppendRadio(vec![tr("x")]));
+    assert!(start_id(&fx).is_none(), "{fx:?}");
+    assert!(p.queue().is_empty());
+    assert_eq!(p.snapshot().transport, Transport::Idle);
+}
+
+#[test]
+fn pausing_at_the_end_of_the_queue_cancels_the_wait_for_radio() {
+    let (mut p, ids, _) = started(1);
+    p.engine(E::Audible { id: ids[0] });
+    p.engine(E::Ended { id: ids[0] });
+    assert_eq!(
+        p.snapshot().transport,
+        Transport::Loading { id: ids[0] },
+        "nothing is audible while waiting for radio"
+    );
+    p.command(Command::Pause);
+    let fx = p.command(Command::AppendRadio(vec![tr("x")]));
+    assert!(start_id(&fx).is_none(), "{fx:?}");
+    assert_eq!(
+        p.snapshot().transport,
+        Transport::Paused {
+            id: ids[0],
+            loaded: false
+        }
+    );
+}
+
+#[test]
+fn a_radio_answer_that_arrives_after_the_queue_was_replaced_is_ignored() {
+    let (mut p, ids, _) = started(2);
+    p.engine(E::Audible { id: ids[0] }); // one song upcoming: radio is requested
+    p.command(Command::PlayTracks {
+        tracks: vec![tr("x"), tr("y")],
+        start: 0,
+    });
+    let before = p.queue().len();
+    let fx = p.command(Command::AppendRadio(vec![tr("late")]));
+    assert!(start_id(&fx).is_none(), "{fx:?}");
+    assert_eq!(p.queue().len(), before, "the old radio answer adds nothing");
+}
+
+#[test]
+fn a_broken_or_missing_tool_is_not_the_songs_fault_so_nothing_is_skipped() {
+    let tool = || Failure::Tool("yt-dlp was not found".into());
+    // Loading: the player stays on the song with a Retry, the queue does not advance.
+    let (mut p, ids, _) = started(3);
+    let fx = p.engine(E::LoadFailed {
+        id: ids[0],
+        failure: tool(),
+    });
+    assert!(start_id(&fx).is_none(), "{fx:?}");
+    assert_eq!(
+        p.snapshot().transport,
+        Transport::Failed {
+            id: ids[0],
+            failure: tool()
+        }
+    );
+    // Prefetching: the song is not marked as one to skip, so it is still the next song when this one ends.
+    let (mut p, ids, _) = started(3);
+    p.engine(E::Audible { id: ids[0] });
+    p.engine(E::PrefetchFailed {
+        id: ids[1],
+        failure: tool(),
+    });
+    let fx = p.engine(E::Ended { id: ids[0] });
+    assert_eq!(start_id(&fx), Some(ids[1]));
+}
+
+#[test]
+fn a_failed_radio_request_does_not_mark_radio_as_dry_and_ends_the_wait() {
+    let (mut p, ids, _) = started(1);
+    p.engine(E::Audible { id: ids[0] }); // asks for radio
+    let fx = p.command(Command::RadioFailed(Failure::Offline));
+    assert!(
+        !has(&fx, |e| matches!(e, Effect::NeedRadio { .. })),
+        "no immediate retry"
+    );
+    // Not dry: reaching the end of the queue asks again instead of stopping.
+    let fx = p.command(Command::Next);
+    assert!(
+        has(&fx, |e| matches!(e, Effect::NeedRadio { .. })),
+        "{fx:?}"
+    );
+    // The player was waiting for that answer; its failure ends the wait.
+    let fx = p.command(Command::RadioFailed(Failure::Offline));
+    assert!(start_id(&fx).is_none());
+    assert_eq!(p.snapshot().transport, Transport::Idle);
+}
+
+#[test]
+fn sound_from_an_old_stream_does_not_revive_a_stopped_or_failed_player() {
+    // Paused without a loaded song (a cleared queue that was brought back).
+    let (mut p, ids, _) = started(2);
+    p.engine(E::Audible { id: ids[0] });
+    p.command(Command::Undo); // nothing to undo: still playing
+    p.command(Command::Clear);
+    p.command(Command::Undo);
+    p.command(Command::Pause);
+    assert_eq!(
+        p.snapshot().transport,
+        Transport::Paused {
+            id: ids[0],
+            loaded: false
+        }
+    );
+    p.engine(E::Audible { id: ids[0] });
+    assert_eq!(
+        p.snapshot().transport,
+        Transport::Paused {
+            id: ids[0],
+            loaded: false
+        },
+        "an unloaded pause stays paused"
+    );
+    // Failed.
+    let (mut p, ids, _) = started(1);
+    p.engine(E::LoadFailed {
+        id: ids[0],
+        failure: Failure::Offline,
+    });
+    p.engine(E::Audible { id: ids[0] });
+    assert!(matches!(p.snapshot().transport, Transport::Failed { .. }));
+    // Idle.
+    let (mut p, ids, _) = started(1);
+    p.engine(E::Audible { id: ids[0] });
+    p.command(Command::Clear);
+    assert_eq!(p.snapshot().transport, Transport::Idle);
+    p.engine(E::Audible { id: ids[0] });
+    assert_eq!(p.snapshot().transport, Transport::Idle);
+}
+
+#[test]
+fn an_expired_url_while_paused_unloads_the_song_and_keeps_the_position() {
+    let (mut p, ids, _) = started(2);
+    p.engine(E::Audible { id: ids[0] });
+    p.engine(E::Position {
+        id: ids[0],
+        ms: 42_000,
+    });
+    p.command(Command::Pause);
+    let fx = p.engine(E::UrlExpired { id: ids[0] });
+    assert!(has(&fx, |e| *e == Effect::Stop), "{fx:?}");
+    assert!(start_id(&fx).is_none());
+    assert_eq!(
+        p.snapshot().transport,
+        Transport::Paused {
+            id: ids[0],
+            loaded: false
+        }
+    );
+    assert_eq!(p.snapshot().position_ms, 42_000);
+    let fx = p.command(Command::Resume);
+    assert_eq!(start_id(&fx), Some(ids[0]), "resume loads a fresh address");
+}
+
+#[test]
+fn something_the_listener_asks_for_gets_a_fresh_url_retry_budget() {
+    let (mut p, ids, _) = started(1);
+    p.engine(E::Audible { id: ids[0] });
+    assert!(start_id(&p.engine(E::UrlExpired { id: ids[0] })).is_some());
+    assert!(start_id(&p.engine(E::UrlExpired { id: ids[0] })).is_some());
+    // Both retries are spent; playing the song again by hand starts over.
+    p.command(Command::PlayEntry(ids[0]));
+    let fx = p.engine(E::UrlExpired { id: ids[0] });
+    assert!(start_id(&fx).is_some(), "{fx:?}");
+}
+
+#[test]
+fn a_song_the_listener_plays_again_or_that_becomes_audible_is_no_longer_skipped() {
+    let (mut p, ids, _) = started(3);
+    p.engine(E::Audible { id: ids[0] });
+    p.engine(E::PrefetchFailed {
+        id: ids[1],
+        failure: Failure::Unavailable,
+    });
+    // Played by hand, it is tried again; once heard, it is an ordinary song.
+    p.command(Command::PlayEntry(ids[1]));
+    p.engine(E::Audible { id: ids[1] });
+    p.command(Command::PlayEntry(ids[0]));
+    let fx = p.engine(E::Audible { id: ids[0] });
+    assert_eq!(prefetch_id(&fx), Some(ids[1]), "b is no longer skipped");
+}
+
+#[test]
+fn playing_an_empty_list_changes_nothing() {
+    let (mut p, ids, _) = started(2);
+    p.engine(E::Audible { id: ids[0] });
+    let fx = p.command(Command::PlayTracks {
+        tracks: Vec::new(),
+        start: 0,
+    });
+    assert!(
+        start_id(&fx).is_none() && !has(&fx, |e| *e == Effect::Stop),
+        "{fx:?}"
+    );
+    assert_eq!(p.queue().len(), 2);
+    assert_eq!(p.snapshot().transport, Transport::Playing { id: ids[0] });
+}

@@ -3,10 +3,13 @@
 use pyxee_audio::decode::{LibavSource, SampleSource};
 use pyxee_audio::gapless::{Event, GaplessSource, PreparedTrack};
 use pyxee_audio::http::HttpRangeSource;
+use pyxee_audio::pipeline::{Pipeline, Volume};
 use pyxee_audio::AudioError;
 use std::io::{Read, Write};
 use std::net::TcpListener;
 use std::path::{Path, PathBuf};
+use std::sync::mpsc::channel;
+use std::time::{Duration, Instant};
 
 fn fixture(name: &str) -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -339,4 +342,78 @@ fn a_server_without_range_support_is_reported_as_unusable_for_this_reader_not_as
         .err()
         .expect("must not open");
     assert!(matches!(err, AudioError::Unsupported(_)), "{err:?}");
+}
+
+/// Answers the probe (`bytes=0-0`) like a range server and then never answers anything else.
+fn serve_probe_only(total: usize) -> String {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let addr = listener.local_addr().unwrap();
+    std::thread::spawn(move || {
+        for stream in listener.incoming() {
+            let Ok(mut s) = stream else { continue };
+            std::thread::spawn(move || {
+                let mut req = Vec::new();
+                let mut b = [0u8; 1];
+                while !req.ends_with(b"\r\n\r\n") {
+                    if s.read(&mut b).unwrap_or(0) == 0 {
+                        return;
+                    }
+                    req.push(b[0]);
+                }
+                if String::from_utf8_lossy(&req).contains("bytes=0-0\r\n") {
+                    let head = format!(
+                        "HTTP/1.1 206 Partial Content\r\nContent-Range: bytes 0-0/{total}\r\nContent-Length: 1\r\nConnection: close\r\n\r\n"
+                    );
+                    let _ = s.write_all(head.as_bytes());
+                    let _ = s.write_all(&[0]);
+                } else {
+                    std::thread::sleep(Duration::from_secs(30)); // never answers
+                }
+            });
+        }
+    });
+    format!("http://{addr}/track")
+}
+
+/// A few buffers of audio, then a read that needs bytes from the network (like a decoder running into a chunk
+/// that has not arrived).
+struct WaitsForTheNetwork {
+    http: HttpRangeSource,
+    calls: usize,
+}
+
+impl SampleSource for WaitsForTheNetwork {
+    fn sample_rate(&self) -> u32 {
+        48_000
+    }
+    fn channels(&self) -> usize {
+        2
+    }
+    fn read(&mut self, out: &mut Vec<f32>) -> Result<bool, AudioError> {
+        self.calls += 1;
+        if self.calls > 3 {
+            let mut byte = [0u8; 1];
+            self.http.read(&mut byte)?;
+        }
+        out.extend(std::iter::repeat(0.1).take(24_000));
+        Ok(true)
+    }
+}
+
+#[test]
+fn flush_returns_at_once_while_the_producer_waits_for_a_chunk_that_never_arrives() {
+    let url = serve_probe_only(2 * 1024 * 1024);
+    let (tx, _rx) = channel();
+    let p = Pipeline::new(48_000, tx, Volume::default());
+    let http = HttpRangeSource::open_with_cancel(&url, &[], p.cancel_token()).unwrap();
+    p.push(PreparedTrack::new(1, Box::new(WaitsForTheNetwork { http, calls: 0 }), 48_000).unwrap());
+    // Give the producer time to run into the read that never gets its data (it holds the source lock there).
+    std::thread::sleep(Duration::from_millis(500));
+    let started = Instant::now();
+    p.flush();
+    assert!(
+        started.elapsed() < Duration::from_secs(1),
+        "flush took {:?}",
+        started.elapsed()
+    );
 }

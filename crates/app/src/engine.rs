@@ -13,6 +13,7 @@ use pyxee_audio::AudioError;
 use pyxee_core::{Command, Effect, EngineEvent, EntryId, Failure, Heard, Track, TrackDetails};
 use pyxee_sources::{MusicSource, SourceError, StreamInfo, StreamMeta, TrackInfo};
 use std::collections::{HashMap, HashSet};
+use std::sync::atomic::AtomicBool;
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -48,7 +49,7 @@ pub fn skip_reason(f: &Failure) -> String {
         }
         Failure::Offline => "you appear to be offline".into(),
         Failure::RateLimited => "the music service is limiting requests".into(),
-        Failure::Other(m) => m.clone(),
+        Failure::Tool(m) | Failure::Other(m) => m.clone(),
     }
 }
 
@@ -115,6 +116,9 @@ pub fn failure_from_source(e: &SourceError) -> Failure {
         SourceError::Offline => Failure::Offline,
         SourceError::RateLimited => Failure::RateLimited,
         SourceError::Unavailable(_) => Failure::Unavailable,
+        SourceError::ToolMissing(_) | SourceError::Parse(_) | SourceError::ToolBroken(_) => {
+            Failure::Tool(e.to_string())
+        }
         other => Failure::Other(other.to_string()),
     }
 }
@@ -290,6 +294,7 @@ impl Engine {
                 self.prefetch_req = None;
                 self.start_id = None;
                 self.held_prefetch = None;
+                self.suppress_heard = false;
                 self.pipeline.flush();
                 self.pipeline.set_paused(false);
                 self.paused = false;
@@ -321,6 +326,10 @@ impl Engine {
     fn start(&mut self, id: EntryId, track: &Track, start_ms: u64, is_seek: bool) {
         self.generation += 1;
         self.pipeline.flush();
+        if !is_seek {
+            // A new song starts playing even if the previous one was paused.
+            self.paused = false;
+        }
         self.pipeline.set_paused(self.paused && is_seek);
         self.suppress_heard = false;
         self.skip_audible_for = is_seek.then_some(id);
@@ -347,11 +356,12 @@ impl Engine {
     }
 
     fn spawn_prepare(&self, id: EntryId, key: String, start_ms: u64, purpose: Purpose) {
-        let (source, cache, rate, tx) = (
+        let (source, cache, rate, tx, cancel) = (
             Arc::clone(&self.source),
             Arc::clone(&self.cache),
             self.rate,
             self.work_tx.clone(),
+            self.pipeline.cancel_token(),
         );
         let (generation, token) = (self.generation, self.prefetch_token);
         thread::spawn(move || {
@@ -360,7 +370,11 @@ impl Engine {
                 let _ = details_tx.send(Work::Details { id, meta });
             };
             // The next song's address is not needed yet: let searches and the song being played go first.
-            let run = || prepare(&*source, &cache, rate, id, &key, start_ms, &on_meta);
+            let run = || {
+                prepare(
+                    &*source, &cache, rate, id, &key, start_ms, &cancel, &on_meta,
+                )
+            };
             let result = if purpose == Purpose::Prefetch {
                 pyxee_sources::gate::background(run)
             } else {
@@ -456,9 +470,8 @@ impl Engine {
                     }
                 }
             }
-            Work::Radio(result) => {
-                let tracks = result
-                    .unwrap_or_default()
+            Work::Radio(Ok(found)) => {
+                let tracks = found
                     .into_iter()
                     .map(|t| Track {
                         key: t.key,
@@ -469,6 +482,15 @@ impl Engine {
                     })
                     .collect();
                 self.host.command(Command::AppendRadio(tracks));
+            }
+            Work::Radio(Err(e)) => {
+                log::warn!("autoplay: could not load similar songs: {e}");
+                let failure = failure_from_source(&e);
+                self.host.notice(format!(
+                    "Autoplay couldn't load similar songs: {}. It will try again with the next song.",
+                    skip_reason(&failure)
+                ));
+                self.host.command(Command::RadioFailed(failure));
             }
         }
     }
@@ -660,6 +682,7 @@ fn resolve_cached(
 /// never be served from the cache again.
 fn remember(cache: &UrlCache, key: &str, s: &StreamInfo) {
     if let Ok(mut c) = cache.lock() {
+        c.retain(|_, (_, at)| at.elapsed() < URL_TTL);
         c.insert(key.to_string(), (s.clone(), Instant::now()));
     }
 }
@@ -673,11 +696,15 @@ fn forget(cache: &UrlCache, key: &str) {
 /// Opens a stream with the in-process libav decoder (no ffmpeg process is ever started). A format
 /// it cannot read fails here with the format named in the log, and the song is skipped: `yt-dlp` is
 /// asked only for formats the minimal build plays (see `FORMAT_SELECTOR`), so this is the safety net.
-fn open_stream(s: &StreamInfo, start_ms: u64) -> Result<Box<dyn SampleSource>, AudioError> {
+fn open_stream(
+    s: &StreamInfo,
+    start_ms: u64,
+    cancel: &Arc<AtomicBool>,
+) -> Result<Box<dyn SampleSource>, AudioError> {
     let remote = s.url.starts_with("http");
     let open = || -> Result<LibavSource, AudioError> {
         if remote {
-            let http = HttpRangeSource::open_with(&s.url, &s.headers)?;
+            let http = HttpRangeSource::open_with_cancel(&s.url, &s.headers, Arc::clone(cancel))?;
             LibavSource::open(Box::new(http))
         } else {
             LibavSource::open_path(std::path::Path::new(&s.url))
@@ -715,10 +742,11 @@ fn prepare(
     id: EntryId,
     key: &str,
     start_ms: u64,
+    cancel: &Arc<AtomicBool>,
     on_meta: &dyn Fn(StreamMeta),
 ) -> Result<PreparedTrack, Failure> {
     let build = |stream: &StreamInfo| -> Result<PreparedTrack, AudioError> {
-        PreparedTrack::new(id.0, open_stream(stream, start_ms)?, rate)
+        PreparedTrack::new(id.0, open_stream(stream, start_ms, cancel)?, rate)
     };
     let stream = resolve_cached(source, cache, key, false).map_err(|e| failure_from_source(&e))?;
     match build(&stream) {

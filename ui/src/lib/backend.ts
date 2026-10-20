@@ -7,6 +7,7 @@ import type { EnvSettingsDto } from './bindings/EnvSettingsDto';
 import type { EnvVarDto } from './bindings/EnvVarDto';
 import type { AppUpdateDto } from './bindings/AppUpdateDto';
 import type { YtdlpUpdateDto } from './bindings/YtdlpUpdateDto';
+import type { UpdateProgressDto } from './bindings/UpdateProgressDto';
 import type { LyricsDto } from './bindings/LyricsDto';
 import type { ShellSettingsDto } from './bindings/ShellSettingsDto';
 import type { SleepSettingDto } from './bindings/SleepSettingDto';
@@ -73,6 +74,8 @@ export interface Backend extends LibraryBackend {
   updateCheckYtdlp(): Promise<YtdlpUpdateDto>;
   /** Downloads, verifies and swaps in the newest yt-dlp; resolves to its version. The old one is kept if anything fails. */
   updateInstallYtdlp(): Promise<string>;
+  /** Where a Pyxee or yt-dlp install is (downloading, verifying, testing, starting); only while one runs. */
+  onUpdateProgress(cb: (p: UpdateProgressDto) => void): Promise<() => void>;
   /** Messages for the listener that are not player state (a song was skipped, a stream was cut off). */
   onNotice(cb: (message: string) => void): Promise<() => void>;
   /** Rejects with a `SearchErrorDto` (offline, rate limited, tool missing, ...). */
@@ -109,6 +112,7 @@ export function toSearchError(e: unknown): SearchErrorDto {
 export const STATE_EVENT = 'player-state';
 export const LIBRARY_EVENT = 'library-changed';
 export const NOTICE_EVENT = 'notice';
+export const UPDATE_PROGRESS_EVENT = 'update-progress';
 export const SLEEP_EVENT = 'sleep-state';
 
 /** Error text from a rejected call: Rust sends plain strings; anything else gets a generic sentence. */
@@ -136,6 +140,7 @@ export async function tauriBackend(): Promise<Backend> {
     updateInstallApp: () => invoke<void>('update_install_app'),
     updateCheckYtdlp: () => invoke<YtdlpUpdateDto>('update_check_ytdlp'),
     updateInstallYtdlp: () => invoke<string>('update_install_ytdlp'),
+    onUpdateProgress: async (cb) => listen<UpdateProgressDto>(UPDATE_PROGRESS_EVENT, (e) => cb(e.payload)),
     onNotice: async (cb) => listen<NoticeDto>(NOTICE_EVENT, (e) => cb(e.payload.message)),
     search: (query, filter) => invoke<SearchResponseDto>('search', { query, filter }),
     suggest: (prefix) => invoke<string[]>('suggest', { prefix }).catch(() => []),

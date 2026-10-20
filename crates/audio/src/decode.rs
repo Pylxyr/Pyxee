@@ -108,7 +108,14 @@ unsafe extern "C" fn read_cb(ctx: *mut c_void, buf: *mut u8, len: c_int) -> c_in
         loop {
             match c.src.read(out) {
                 Ok(n) => return Ok(n as c_int),
-                Err(e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
+                Err(e)
+                    if e.kind() == std::io::ErrorKind::Interrupted
+                        && !e
+                            .get_ref()
+                            .is_some_and(|x| x.is::<crate::http::Cancelled>()) =>
+                {
+                    continue
+                }
                 Err(e) => return Err(e),
             }
         }

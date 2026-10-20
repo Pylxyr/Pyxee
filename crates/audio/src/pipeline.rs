@@ -2,7 +2,9 @@
 //! the output device drains it through a `Consumer`, and a `HeardTracker` turns "frames the device
 //! consumed" into track-start/track-end events. Flushing is instant (skip, seek, stop).
 //!
-//! Lock order is always `source` then `inner`; the device callback only ever takes `inner`.
+//! Lock order is always `source`, then `inner` or `pending`; the device callback only ever takes `inner`. The engine
+//! thread never waits for the producer: `push` and `clear_queued` leave a note in `pending` for it to apply, and `flush`
+//! cancels a read that is waiting for the network (see `Pipeline::cancel_token`).
 
 use crate::gapless::{Event, FailKind, GaplessSource, PreparedTrack};
 use crate::CHANNELS;
@@ -95,11 +97,21 @@ struct Inner {
     gain: f32,
 }
 
+/// Something the engine thread wants done to the source, which only the producer thread may touch while it reads.
+enum Change {
+    Push(PreparedTrack),
+    ClearQueued,
+}
+
 struct Shared {
     source: Mutex<GaplessSource>,
+    /// Changes waiting for the producer (taken only briefly; never held while reading).
+    pending: Mutex<Vec<Change>>,
     inner: Mutex<Inner>,
     paused: AtomicBool,
     stop: AtomicBool,
+    /// Set while a flush (or the drop) waits for the producer: reads that are waiting for the network give up.
+    cancel: Arc<AtomicBool>,
     queued_tracks: AtomicUsize,
     underruns: AtomicU64,
     volume: Volume,
@@ -125,6 +137,7 @@ impl Pipeline {
     pub fn new(rate: u32, tx: Sender<PipeEvent>, volume: Volume) -> Self {
         let shared = Arc::new(Shared {
             source: Mutex::new(GaplessSource::new()),
+            pending: Mutex::new(Vec::new()),
             inner: Mutex::new(Inner {
                 buf: VecDeque::new(),
                 tracker: HeardTracker::new(0),
@@ -134,6 +147,7 @@ impl Pipeline {
             }),
             paused: AtomicBool::new(false),
             stop: AtomicBool::new(false),
+            cancel: Arc::new(AtomicBool::new(false)),
             queued_tracks: AtomicUsize::new(0),
             underruns: AtomicU64::new(0),
             volume,
@@ -157,20 +171,33 @@ impl Pipeline {
         self.shared.rate
     }
 
-    /// Queues a prepared track to follow whatever is already queued.
-    pub fn push(&self, t: PreparedTrack) {
-        lock(&self.shared.source).push(t);
+    /// Hand this to `HttpRangeSource::open_with_cancel`: while a flush is under way, a read of that source that is
+    /// still waiting for data stops (it would otherwise hold the source lock for as long as the stream stalls).
+    pub fn cancel_token(&self) -> Arc<AtomicBool> {
+        Arc::clone(&self.shared.cancel)
     }
 
-    /// Drops tracks queued behind the current one (e.g. a cancelled prefetch); playback continues.
+    /// Queues a prepared track to follow whatever is already queued. Does not wait for the producer, which may be
+    /// stuck reading a stalled stream: the track joins the queue as soon as it is free.
+    pub fn push(&self, t: PreparedTrack) {
+        lock(&self.shared.pending).push(Change::Push(t));
+    }
+
+    /// Drops tracks queued behind the current one (e.g. a cancelled prefetch); playback continues. Like `push`, it
+    /// takes effect when the producer next looks, and never waits for it.
     pub fn clear_queued(&self) {
-        lock(&self.shared.source).clear_queued();
+        lock(&self.shared.pending).push(Change::ClearQueued);
     }
 
     /// Drops everything queued and everything already buffered, immediately.
     pub fn flush(&self) {
+        // The producer holds the source lock while it reads, and a read can wait on a stalled stream for a
+        // long time: tell it to give up before asking for the lock.
+        self.shared.cancel.store(true, Ordering::SeqCst);
         let mut src = lock(&self.shared.source);
         *src = GaplessSource::new();
+        lock(&self.shared.pending).clear();
+        self.shared.cancel.store(false, Ordering::SeqCst);
         let mut inner = lock(&self.shared.inner);
         inner.buf.clear();
         inner.consumed = 0;
@@ -200,10 +227,23 @@ impl Pipeline {
 impl Drop for Pipeline {
     fn drop(&mut self) {
         self.shared.stop.store(true, Ordering::Relaxed);
+        self.shared.cancel.store(true, Ordering::SeqCst);
         if let Some(h) = self.producer.take() {
             let _ = h.join();
         }
     }
+}
+
+/// Applies what `push` and `clear_queued` left, in order. The caller holds the source lock.
+fn apply_pending(s: &Shared, src: &mut GaplessSource) {
+    let changes = std::mem::take(&mut *lock(&s.pending));
+    for change in changes {
+        match change {
+            Change::Push(t) => src.push(t),
+            Change::ClearQueued => src.clear_queued(),
+        }
+    }
+    s.queued_tracks.store(src.queued(), Ordering::Relaxed);
 }
 
 fn produce(s: &Shared) {
@@ -212,13 +252,27 @@ fn produce(s: &Shared) {
     while !s.stop.load(Ordering::Relaxed) {
         let free = cap.saturating_sub(lock(&s.inner).buf.len());
         if free < CHUNK_SAMPLES {
+            // Nothing to decode yet (the buffer is full, or paused), but queue changes must not wait for room.
+            if !lock(&s.pending).is_empty() {
+                if let Ok(mut src) = s.source.try_lock() {
+                    apply_pending(s, &mut src);
+                }
+            }
             thread::sleep(Duration::from_millis(5));
             continue;
         }
         let mut src = lock(&s.source);
+        apply_pending(s, &mut src);
         let n = src.fill(&mut tmp);
         let events = src.drain_events();
         s.queued_tracks.store(src.queued(), Ordering::Relaxed);
+        if s.cancel.load(Ordering::SeqCst) {
+            // A flush is waiting for the lock and throws all of this away. A track whose read it just
+            // cancelled must not be reported as failed either.
+            drop(src);
+            thread::sleep(Duration::from_millis(5));
+            continue;
+        }
         if n == 0 && events.is_empty() {
             drop(src);
             thread::sleep(Duration::from_millis(10));
