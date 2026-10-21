@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { MediaQuery } from 'svelte/reactivity';
   import { messageOf, type Backend } from '$lib/backend';
   import type { LogInfoDto } from '$lib/bindings/LogInfoDto';
   import { nav } from '$lib/nav.svelte';
@@ -15,6 +16,9 @@
   import UpdatesSection from './UpdatesSection.svelte';
 
   let { backend }: { backend: Backend | null } = $props();
+  // Same breakpoint as the app shell: on a wide window Settings is the button at the foot of the left rail, so its
+  // tab opens from the left; on a narrow one the button is in the top bar's right corner, so the tab opens from there.
+  const wide = new MediaQuery('min-width: 900px');
   let logInfo = $state<LogInfoDto | null>(null);
 
   // The log location is looked up when the sheet (which has the Diagnostics section) opens.
@@ -32,7 +36,7 @@
   }
 </script>
 
-<Sheet open={nav.themeSheetOpen} title="Settings" side="right" onclose={() => (nav.themeSheetOpen = false)}>
+<Sheet open={nav.themeSheetOpen} title="Settings" side={wide.current ? 'left' : 'right'} onclose={() => (nav.themeSheetOpen = false)}>
   <section class="settings-section" aria-label="Appearance">
     <h3 class="group-title">Appearance</h3>
     <ThemePicker />

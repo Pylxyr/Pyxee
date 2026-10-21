@@ -12,10 +12,12 @@
   import { MOTION, motionMs, motionPx } from '$lib/motion';
   import IconButton from './IconButton.svelte';
 
-  // `bottom` (the default) is a card that rises from the bottom, centred on wide windows. `right` is a tab that
-  // slides in from the right edge and takes half of the window (all of it when the window is narrow); Settings uses it.
-  let { open, title, onclose, children, side = 'bottom' }: { open: boolean; title: string; onclose: () => void; children: Snippet; side?: 'bottom' | 'right' } = $props();
+  // `bottom` (the default) is a card that rises from the bottom, centred on wide windows. `left` and `right` are tabs
+  // that slide in from that edge and take half of the window (all of it when the window is narrow); Settings uses
+  // them, on the side its button is on.
+  let { open, title, onclose, children, side = 'bottom' }: { open: boolean; title: string; onclose: () => void; children: Snippet; side?: 'bottom' | 'left' | 'right' } = $props();
   const right = $derived(side === 'right');
+  const tab = $derived(side !== 'bottom');
   let panel = $state<HTMLElement>();
   let restore: HTMLElement | null = null;
   let z = $state(100);
@@ -50,7 +52,7 @@
 </script>
 
 {#if open}
-  <div class="fixed inset-0 flex {right ? 'justify-end' : 'items-end justify-center sm:items-center'}" style="z-index:{z}" role="presentation" data-sheet {onkeydown}>
+  <div class="fixed inset-0 flex {right ? 'justify-end' : tab ? 'justify-start' : 'items-end justify-center sm:items-center'}" style="z-index:{z}" role="presentation" data-sheet {onkeydown}>
     <button class="absolute inset-0 bg-black/50" aria-label="Close" tabindex="-1" onclick={onclose} transition:fade={{ duration: motionMs(MOTION.fast) }}></button>
     <div
       bind:this={panel}
@@ -58,12 +60,14 @@
       aria-modal="true"
       aria-label={title}
       data-side={side}
-      transition:fly={right ? { x: motionPx(640), duration: motionMs(MOTION.base + 40) } : { y: motionPx(40), duration: motionMs(MOTION.base) }}
+      transition:fly={tab ? { x: motionPx(right ? 640 : -640), duration: motionMs(MOTION.base + 40) } : { y: motionPx(40), duration: motionMs(MOTION.base) }}
       class="sheet-panel bg-solid-2 backdrop-blur {right
         ? 'h-full w-1/2 max-w-full min-w-[min(26rem,100vw)] rounded-l-xl border-r-0 px-4 pb-6'
-        : 'max-h-[92dvh] w-full max-w-md rounded-t-xl p-4 pb-6 sm:rounded-xl'}"
+        : tab
+          ? 'h-full w-1/2 max-w-full min-w-[min(26rem,100vw)] rounded-r-xl border-l-0 px-4 pb-6'
+          : 'max-h-[92dvh] w-full max-w-md rounded-t-xl p-4 pb-6 sm:rounded-xl'}"
     >
-      {#if right}
+      {#if tab}
         <div class="sticky top-0 z-10 -mx-4 mb-2 flex items-center justify-between border-b border-line bg-solid-2 px-6 py-3">
           <h2 class="t-subtitle">{title}</h2>
           <IconButton icon="close" label="Close {title}" onclick={onclose} />

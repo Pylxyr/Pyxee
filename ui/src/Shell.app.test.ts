@@ -207,7 +207,7 @@ describe('Windows settings', () => {
     await waitFor(() => expect(mock.shell.discordPresence).toBe(true));
   });
 
-  it('Settings is a tab that slides in from the right, and closes with its button, Escape or a click outside', async () => {
+  it('on a narrow window Settings is a tab that slides in from the right, and closes with its button, Escape or a click outside', async () => {
     await openSettings();
     const tab = screen.getByRole('dialog', { name: 'Settings' });
     expect(tab.getAttribute('data-side')).toBe('right');
@@ -217,6 +217,16 @@ describe('Windows settings', () => {
     await fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
     await fireEvent.keyDown(await screen.findByRole('dialog', { name: 'Settings' }), { key: 'Escape' });
     await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Settings' })).toBeNull());
+  });
+
+  it('on a wide window Settings slides in from the left, beside the rail button that opens it', async () => {
+    window.matchMedia = ((q: string) => ({
+      matches: q.includes('min-width'), media: q, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {}, dispatchEvent: () => false, onchange: null,
+    })) as typeof window.matchMedia;
+    await openSettings();
+    const tab = screen.getByRole('dialog', { name: 'Settings' });
+    expect(tab.getAttribute('data-side')).toBe('left');
+    expect(tab.className).toContain('w-1/2');
   });
 
   it('a switch that could not be saved goes back and says why', async () => {
