@@ -393,9 +393,12 @@ impl SampleSource for WaitsForTheNetwork {
         self.calls += 1;
         if self.calls > 3 {
             let mut byte = [0u8; 1];
-            self.http.read(&mut byte)?;
+            // One byte is enough to block on the network. Not `read_exact`: it retries on `Interrupted`, which is how
+            // a flush cancels this read, and the test would never return.
+            let got = self.http.read(&mut byte)?;
+            assert!(got <= byte.len());
         }
-        out.extend(std::iter::repeat(0.1).take(24_000));
+        out.extend(std::iter::repeat_n(0.1, 24_000));
         Ok(true)
     }
 }

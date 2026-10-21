@@ -735,6 +735,8 @@ fn open_stream(
     Ok(Box::new(src))
 }
 
+// One job's parameters, passed straight through from its single call site; a struct would only rename them.
+#[allow(clippy::too_many_arguments)]
 fn prepare(
     source: &dyn MusicSource,
     cache: &UrlCache,
