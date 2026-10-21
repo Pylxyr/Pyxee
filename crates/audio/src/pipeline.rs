@@ -99,7 +99,7 @@ struct Inner {
 
 /// Something the engine thread wants done to the source, which only the producer thread may touch while it reads.
 enum Change {
-    Push(PreparedTrack),
+    Push(Box<PreparedTrack>),
     ClearQueued,
 }
 
@@ -180,7 +180,7 @@ impl Pipeline {
     /// Queues a prepared track to follow whatever is already queued. Does not wait for the producer, which may be
     /// stuck reading a stalled stream: the track joins the queue as soon as it is free.
     pub fn push(&self, t: PreparedTrack) {
-        lock(&self.shared.pending).push(Change::Push(t));
+        lock(&self.shared.pending).push(Change::Push(Box::new(t)));
     }
 
     /// Drops tracks queued behind the current one (e.g. a cancelled prefetch); playback continues. Like `push`, it
@@ -239,7 +239,7 @@ fn apply_pending(s: &Shared, src: &mut GaplessSource) {
     let changes = std::mem::take(&mut *lock(&s.pending));
     for change in changes {
         match change {
-            Change::Push(t) => src.push(t),
+            Change::Push(t) => src.push(*t),
             Change::ClearQueued => src.clear_queued(),
         }
     }
