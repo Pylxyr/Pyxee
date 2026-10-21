@@ -4,9 +4,15 @@
   import { snackbar } from '$lib/snackbar.svelte';
   import { normalizeHex } from '$lib/color';
   import { COLOR_FIELDS, contrastChecks, exportTheme, parseThemeText, type ColorKey, type ThemeDef } from '$lib/themes';
+  import Button from './Button.svelte';
+  import Segmented from './Segmented.svelte';
   import Sheet from './Sheet.svelte';
 
   const open = $derived(nav.themeEditorOpen);
+  const bases: { id: 'dark' | 'light'; label: string }[] = [
+    { id: 'dark', label: 'Dark base' },
+    { id: 'light', label: 'Light base' },
+  ];
 
   let draft = $state<ThemeDef>(blank());
   /** What the draft started as, for Reset. */
@@ -105,37 +111,30 @@
 
 <Sheet {open} title="Customize theme" onclose={close}>
   <div class="max-h-[70dvh] overflow-y-auto px-2" data-testid="theme-editor">
-    <label class="block text-xs text-muted">
+    <label class="setting-hint">
       Name
-      <input class="mt-1 w-full rounded-lg bg-surface px-3 py-2 text-sm text-fg" aria-label="Theme name" maxlength="40" bind:value={draft.name} />
+      <input class="field mt-1" aria-label="Theme name" maxlength="40" bind:value={draft.name} />
     </label>
 
-    <div class="mt-3 flex gap-2" role="group" aria-label="Base">
-      {#each [['dark', 'Dark base'], ['light', 'Light base']] as [id, label] (id)}
-        <button
-          class="flex-1 rounded-full px-4 py-1.5 text-sm font-medium {draft.scheme === id ? 'bg-fg text-on-fg' : 'bg-surface text-fg'}"
-          aria-pressed={draft.scheme === id}
-          onclick={() => (draft.scheme = id as 'dark' | 'light')}>{label}</button>
-      {/each}
-    </div>
-    <p class="mt-1 text-xs text-muted">The base sets form controls, scroll bars and the window frame.</p>
+    <Segmented class="mt-3" mode="toggle" items={bases} value={draft.scheme} onselect={(id) => (draft.scheme = id)} label="Base" />
+    <p class="setting-hint mt-1">The base sets form controls, scroll bars and the window frame.</p>
 
     <ul class="mt-3 space-y-2" aria-label="Colors">
       {#each COLOR_FIELDS as f (f.key)}
         <li class="flex items-center gap-3">
           <input
             type="color"
-            class="h-9 w-12 shrink-0 cursor-pointer rounded-md border border-line bg-transparent p-0.5"
+            class="h-9 w-12 shrink-0 cursor-pointer r-sm border border-line bg-transparent p-0.5"
             aria-label="{f.label} color"
             value={draft.colors[f.key]}
             oninput={(e) => { setColor(f.key, e.currentTarget.value); typed[f.key] = undefined; }}
           />
-          <span class="min-w-0 flex-1 text-sm">
+          <span class="min-w-0 flex-1">
             {f.label}
-            <span class="block truncate text-xs text-muted">{f.hint}</span>
+            <span class="setting-hint truncate">{f.hint}</span>
           </span>
           <input
-            class="w-24 rounded-lg bg-surface px-2 py-1.5 font-mono text-xs text-fg"
+            class="field field-mono !w-24"
             aria-label="{f.label} hex"
             spellcheck="false"
             value={typed[f.key] ?? draft.colors[f.key]}
@@ -147,29 +146,29 @@
     </ul>
 
     {#if checks.length > 0}
-      <ul class="mt-3 rounded-lg bg-surface px-3 py-2 text-xs" role="status" aria-label="Readability">
+      <ul class="well t-caption mt-3" role="status" aria-label="Readability">
         {#each checks as c (c.label)}
           <li>{c.label} is hard to read ({c.ratio.toFixed(1)}:1, aim for {c.min}:1 or more).</li>
         {/each}
       </ul>
     {/if}
 
-    <details class="mt-3 rounded-lg bg-surface px-3 py-2">
-      <summary class="cursor-pointer text-sm">Import a theme</summary>
-      <textarea class="mt-2 h-24 w-full rounded-lg bg-surface-2 p-2 font-mono text-xs text-fg" aria-label="Theme text" placeholder="Paste theme text here" bind:value={importText}></textarea>
-      <button class="mt-2 rounded-md border border-line bg-surface px-4 py-1.5 text-sm font-medium disabled:opacity-40" disabled={!importText.trim()} onclick={doImport}>Import</button>
+    <details class="well mt-3">
+      <summary class="cursor-pointer">Import a theme</summary>
+      <textarea class="field field-mono mt-2 h-24" aria-label="Theme text" placeholder="Paste theme text here" bind:value={importText}></textarea>
+      <Button class="mt-2" disabled={!importText.trim()} onclick={doImport}>Import</Button>
     </details>
 
-    {#if error}<p class="mt-3 text-[13px] text-accent" role="alert">{error}</p>{/if}
+    {#if error}<p class="accent-text mt-3" role="alert">{error}</p>{/if}
   </div>
 
   <div class="mt-4 flex flex-wrap gap-2 px-2">
-    <button class="rounded-md bg-fg px-4 py-1.5 text-sm font-semibold text-on-fg" onclick={save}>Save</button>
-    <button class="rounded-md border border-line bg-surface px-4 py-1.5 text-sm font-medium" onclick={close}>Cancel</button>
-    <button class="rounded-md border border-line bg-surface px-4 py-1.5 text-sm font-medium" onclick={reset}>Reset</button>
-    <button class="rounded-md border border-line bg-surface px-4 py-1.5 text-sm font-medium" onclick={copyExport}>Export</button>
+    <Button variant="primary" onclick={save}>Save</Button>
+    <Button onclick={close}>Cancel</Button>
+    <Button onclick={reset}>Reset</Button>
+    <Button onclick={copyExport}>Export</Button>
     {#if editingSaved}
-      <button class="ml-auto rounded-md border border-line bg-surface px-4 py-1.5 text-sm font-medium text-accent" onclick={remove}>Delete</button>
+      <Button class="ml-auto" onclick={remove}><span class="accent-text">Delete</span></Button>
     {/if}
   </div>
 </Sheet>

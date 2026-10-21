@@ -2,7 +2,8 @@
   import { player } from '$lib/player.svelte';
   import { relatedStore } from '$lib/related.svelte';
   import Skeleton from './Skeleton.svelte';
-  import TrackRow from './TrackRow.svelte';
+  import Button from './Button.svelte';
+  import TrackList from './TrackList.svelte';
 
   let { active }: { active: boolean } = $props();
 
@@ -19,28 +20,21 @@
 
 <div class="max-h-full overflow-y-auto px-1 py-2" data-testid="related" role="region" aria-label="Related songs">
   {#if !track}
-    <p class="px-3 py-6 text-sm text-muted">Play a song to see similar music.</p>
+    <p class="muted px-3 py-6">Play a song to see similar music.</p>
   {:else if !mine || st.kind === 'loading'}
     <div role="status" aria-label="Looking for related songs"><Skeleton rows={5} /></div>
   {:else if st.kind === 'error'}
-    <p class="mx-2 rounded-md border border-line bg-surface px-4 py-3 text-sm" role="status">
+    <p class="notice mx-2" role="status">
       Couldn't load related songs. {st.error.message}
-      <button class="ml-2 font-semibold underline" onclick={() => relatedStore.retry(track)}>Try again</button>
+      <button class="btn-link ml-2" onclick={() => relatedStore.retry(track)}>Try again</button>
     </p>
   {:else if tracks.length === 0}
-    <p class="px-3 py-6 text-sm text-muted">No related songs found for this one.</p>
+    <p class="muted px-3 py-6">No related songs found for this one.</p>
   {:else}
     <div class="flex items-center justify-between gap-3 px-3 pb-2">
-      <h2 class="text-[13px] font-semibold uppercase tracking-wider text-muted">Similar to this song</h2>
-      <button
-        class="shrink-0 rounded-md bg-accent px-3 py-1.5 text-sm font-semibold text-on-accent"
-        aria-label="Play all related songs"
-        onclick={() => player.playTracks(tracks, 0)}>Play all</button>
+      <h2 class="t-strong">Similar to this song</h2>
+      <Button variant="primary" size="sm" aria-label="Play all related songs" onclick={() => player.playTracks(tracks, 0)}>Play all</Button>
     </div>
-    <ul aria-label="Related songs">
-      {#each tracks as t, i (t.key)}
-        <TrackRow track={t} index={i} onplay={() => player.playTracks(tracks, i)} />
-      {/each}
-    </ul>
+    <TrackList label="Related songs" head={false} {tracks} onplay={(i) => player.playTracks(tracks, i)} />
   {/if}
 </div>

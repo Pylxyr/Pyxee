@@ -17,6 +17,6 @@
 
 <svelte:window {onkeydown} />
 
-<div class="flex h-dvh items-center bg-bg p-3 text-fg" data-testid="flyout">
+<div class="flex h-dvh items-center p-3 text-fg" style="background:linear-gradient(120deg, var(--stage-wash), transparent 65%), var(--bg)" data-testid="flyout">
   <Compact cover={96} onopen={() => withBackend((b) => b.flyoutOpenMain())} />
 </div>

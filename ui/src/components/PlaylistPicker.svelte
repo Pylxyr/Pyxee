@@ -3,9 +3,10 @@
   import { nav } from '$lib/nav.svelte';
   import { messageOf } from '$lib/backend';
   import { snackbar } from '$lib/snackbar.svelte';
+  import Icon from './Icon.svelte';
+  import MenuItem from './MenuItem.svelte';
   import Sheet from './Sheet.svelte';
   import Thumb from './Thumb.svelte';
-  import Icon from './Icon.svelte';
 
   const track = $derived(nav.pickTrack);
 
@@ -32,20 +33,20 @@
 </script>
 
 <Sheet open={track !== null} title="Add to playlist" onclose={() => (nav.pickTrack = null)}>
-  <button class="flex w-full items-center gap-3 rounded-lg px-3 py-3 text-left hover:bg-surface" onclick={create}>
-    <span class="flex h-10 w-10 items-center justify-center rounded-md bg-surface"><Icon name="plus" size={18} /></span>
+  <MenuItem onclick={create}>
+    <span class="flex h-10 w-10 items-center justify-center r-sm bg-surface-2"><Icon name="plus" size={18} /></span>
     New playlist…
-  </button>
+  </MenuItem>
   <ul class="max-h-72 overflow-y-auto">
     {#each library.playlists as p (p.id)}
       <li>
-        <button class="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left hover:bg-surface" onclick={() => add(p)}>
-          <Thumb src={p.thumbnail} seed={`pl:${p.id}`} size={40} />
+        <MenuItem onclick={() => add(p)}>
+          <Thumb src={p.thumbnail} seed={`pl:${p.id}`} size={40} rounded="r-sm" />
           <span class="min-w-0 flex-1">
-            <span class="block truncate text-[15px] font-semibold">{p.name}</span>
-            <span class="block text-[13px] text-muted">{p.trackCount} {p.trackCount === 1 ? 'song' : 'songs'}</span>
+            <span class="trow-title block">{p.name}</span>
+            <span class="trow-artist block">{p.trackCount} {p.trackCount === 1 ? 'song' : 'songs'}</span>
           </span>
-        </button>
+        </MenuItem>
       </li>
     {/each}
   </ul>

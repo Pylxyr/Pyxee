@@ -3,6 +3,7 @@
 
 use crate::gate::{Gate, GateConfig};
 use crate::suggest::{self, encode};
+use crate::ytmusic;
 use crate::{
     classify_stderr, program_name, scrub, MusicSource, SearchFilter, SearchItem, SourceError,
     StreamInfo, StreamMeta, TrackInfo, UNKNOWN_ARTIST,
@@ -131,6 +132,8 @@ pub struct YtDlpSource {
     search_cache: Mutex<HashMap<SearchCacheKey, SearchCacheEntry>>,
     /// Set while the dedicated songs page is known to answer with bare titles (see `search_fresh`).
     songs_page_bare_until: Mutex<Option<Instant>>,
+    /// Where songs searches ask YouTube Music for its Songs tab first (`None`: never, only yt-dlp).
+    music_endpoint: Option<String>,
 }
 
 impl YtDlpSource {
@@ -143,7 +146,20 @@ impl YtDlpSource {
             cookies: Cookies::None,
             search_cache: Mutex::new(HashMap::new()),
             songs_page_bare_until: Mutex::new(None),
+            music_endpoint: Some(ytmusic::ENDPOINT.to_string()),
         }
+    }
+
+    /// Songs searches go to yt-dlp only, never to YouTube Music directly.
+    pub fn without_music_search(mut self) -> Self {
+        self.music_endpoint = None;
+        self
+    }
+
+    /// Asks `url` instead of YouTube Music for the Songs tab (for tests).
+    pub fn with_music_endpoint(mut self, url: impl Into<String>) -> Self {
+        self.music_endpoint = Some(url.into());
+        self
     }
 
     pub fn with_timeout(mut self, timeout: Duration) -> Self {
@@ -226,14 +242,32 @@ impl YtDlpSource {
             .unwrap_or_else(PoisonError::into_inner) = Some(Instant::now() + SONGS_PAGE_SKIP);
     }
 
-    /// A search that is not in the cache. The dedicated songs page answers with bare titles (no artist, no length),
-    /// and then the ordinary video search is run as well: two runs. Once that has happened, songs searches go
-    /// straight to the video search for a while: one run, so faster and half the requests.
+    /// A search that is not in the cache. Songs are asked of YouTube Music itself first: its Songs tab lists real
+    /// songs with artist and length. Only when that fails (a rate limit excepted) or comes back empty does the
+    /// yt-dlp flow below run: the dedicated songs page answers with bare titles (no artist, no length), and then
+    /// the ordinary video search is run as well: two runs. Once that has happened, songs searches go straight to
+    /// the video search for a while: one run, so faster and half the requests.
     fn search_fresh(
         &self,
         query: &str,
         filter: SearchFilter,
     ) -> Result<Vec<SearchItem>, SourceError> {
+        if let (SearchFilter::Songs, Some(endpoint)) = (filter, &self.music_endpoint) {
+            match self.gate.run("songs search", || {
+                ytmusic::fetch_songs(endpoint, query.trim(), RESULTS)
+            }) {
+                Ok(songs) if !songs.is_empty() => {
+                    log::info!("songs search: {} songs from YouTube Music", songs.len());
+                    return Ok(songs);
+                }
+                Ok(_) => log::info!("songs search: YouTube Music listed no songs; using yt-dlp"),
+                Err(SourceError::RateLimited) => return Err(SourceError::RateLimited),
+                Err(e) => log::warn!(
+                    "songs search: YouTube Music did not answer ({}); using yt-dlp",
+                    scrub(&e.to_string())
+                ),
+            }
+        }
         let skip_songs_page = filter == SearchFilter::Songs && self.songs_page_is_bare();
         let first = if skip_songs_page {
             SearchFilter::Videos
@@ -1109,6 +1143,103 @@ mod tests {
         ));
     }
 
+    mod songs_from_youtube_music {
+        use super::*;
+        use crate::ytmusic::testserver;
+        use serde_json::json;
+
+        /// An answer with one song row, in the shape YouTube Music sends.
+        fn one_song() -> String {
+            json!({ "contents": [ { "musicShelfRenderer": { "contents": [ { "musicResponsiveListItemRenderer": {
+                "playlistItemData": { "videoId": "song0000001" },
+                "flexColumns": [
+                    { "musicResponsiveListItemFlexColumnRenderer": { "text": { "runs": [ { "text": "Neon Harbor" } ] } } },
+                    { "musicResponsiveListItemFlexColumnRenderer": { "text": { "runs": [
+                        { "text": "Lowtide", "navigationEndpoint": {} }, { "text": " \u{2022} " },
+                        { "text": "Night Shift", "navigationEndpoint": {} }, { "text": " \u{2022} " },
+                        { "text": "3:45" }
+                    ] } } }
+                ]
+            } } ] } } ] })
+            .to_string()
+        }
+
+        /// A source whose yt-dlp can never start, so reaching it shows as `ToolMissing`.
+        fn source(endpoint: &str) -> YtDlpSource {
+            YtDlpSource::new("yt-dlp-that-is-never-started")
+                .with_gate(GateConfig::NONE)
+                .with_music_endpoint(endpoint)
+        }
+
+        #[test]
+        fn a_songs_search_lists_the_songs_youtube_music_gives_without_running_yt_dlp() {
+            let (url, _) = testserver::once(200, &one_song());
+            let items = source(&url).search("neon", SearchFilter::Songs).unwrap();
+            assert_eq!(items.len(), 1);
+            let SearchItem::Track(t) = &items[0] else {
+                panic!("not a track: {items:?}")
+            };
+            assert_eq!(
+                (t.key.as_str(), t.title.as_str(), t.artist.as_str()),
+                ("yt:song0000001", "Neon Harbor", "Lowtide")
+            );
+            assert_eq!(t.duration_ms, Some(225_000));
+        }
+
+        #[test]
+        fn when_youtube_music_fails_or_lists_nothing_yt_dlp_is_used() {
+            for (status, body) in [(500, "{}"), (403, "{}"), (200, "<html>"), (200, "{}")] {
+                let (url, _) = testserver::once(status, body);
+                assert!(
+                    matches!(
+                        source(&url).search("neon", SearchFilter::Songs),
+                        Err(SourceError::ToolMissing(_))
+                    ),
+                    "{status} {body}"
+                );
+            }
+        }
+
+        #[test]
+        fn a_rate_limit_stops_the_search_instead_of_asking_yt_dlp_as_well() {
+            let (url, _) = testserver::once(429, "{}");
+            assert_eq!(
+                source(&url).search("neon", SearchFilter::Songs),
+                Err(SourceError::RateLimited)
+            );
+        }
+
+        #[test]
+        fn only_songs_searches_ask_youtube_music() {
+            for filter in [
+                SearchFilter::All,
+                SearchFilter::Videos,
+                SearchFilter::Artists,
+            ] {
+                let (url, request) = testserver::once(200, &one_song());
+                assert!(matches!(
+                    source(&url).search("neon", filter),
+                    Err(SourceError::ToolMissing(_))
+                ));
+                assert!(
+                    request.try_recv().is_err(),
+                    "{filter:?} contacted YouTube Music"
+                );
+            }
+        }
+
+        #[test]
+        fn without_music_search_songs_go_to_yt_dlp_alone() {
+            let (url, request) = testserver::once(200, &one_song());
+            let s = source(&url).without_music_search();
+            assert!(matches!(
+                s.search("neon", SearchFilter::Songs),
+                Err(SourceError::ToolMissing(_))
+            ));
+            assert!(request.try_recv().is_err());
+        }
+    }
+
     #[cfg(unix)]
     mod fake_tool {
         use super::*;
@@ -1132,7 +1263,9 @@ mod tests {
 
         /// A source with no pacing, for tests that are not about pacing.
         fn quick(script: &Path) -> YtDlpSource {
-            YtDlpSource::new(script).with_gate(GateConfig::NONE)
+            YtDlpSource::new(script)
+                .with_gate(GateConfig::NONE)
+                .without_music_search()
         }
 
         fn runs_logged(log: &Path) -> usize {

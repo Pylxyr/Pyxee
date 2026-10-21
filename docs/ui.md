@@ -16,9 +16,15 @@ handover, prefetch, radio) so the real state machine drives the UI. Demo tracks 
 
 
 ## Layout
-Wide (>= 900 px): a top bar (wordmark, four tabs, search, settings) + content + player bar. Narrow: content + player bar + bottom navigation.
-The player bar shows once a track exists; click it (or the chevron) to open Now Playing
-(Up next / Lyrics / Related).
+Three parts, two layers, as Windows 11 stacks them: a **rail** and a **stage** on the base layer (the page background, or Mica) and
+the **page** between them as the content layer, with a rounded top-left corner.
+- **Wide (>= 900 px)**: rail on the left (icons only up to 1280 px, then with names; wordmark on top, Settings at the foot),
+  page in the middle (search box on top, then the view), stage on the right (cover, title, seek, transport, like, volume,
+  a preview of Up next with **Open queue**). Before anything plays the stage says so; it never moves when the first song starts.
+- **Narrow**: page, then the dock (a one-line player with the seek line along its top edge), then the bottom bar. The search
+  box and Settings are at the top of the page.
+Click the cover or the dock to open Now Playing (Up next / Lyrics / Related). The same four destinations (`lib/destinations.ts`)
+feed the rail and the bottom bar (`Navigation.svelte`, `layout="rail" | "bar"`).
 
 ## Theming and Mica
 CSS variables on `<html>`: `data-theme` (dark/light, follows the system unless overridden) and `data-backdrop`.
@@ -36,33 +42,45 @@ using an opaque colour.
 ## Scrolling
 The window never scrolls as a whole. Now Playing (header, art, title, seek bar, controls, tabs) is fixed and only the
 Up next list scrolls; on narrow windows the art shrinks to leave room for the list. Queue, Library, Playlist and Search use
-`ScrollPage`: header pinned, body scrolls. Home and Explore scroll themselves. Layout tests assert which element scrolls.
+`ScrollPage`: header pinned, body scrolls. Home and Explore use it too. Layout tests assert which element scrolls.
 
 ## No native dialogs
 Menus are an in-page `Sheet` (focus trap, Escape, restores focus); messages are `Snackbar`s with Undo.
 
 ## Accessibility
 Real buttons, `aria-label`s on icon buttons, `aria-pressed` toggles, `role=tab`/`tabpanel`, a real `<input type=range>` for
-seeking (arrow keys work, `aria-valuetext` reads "1:23 of 3:42"), visible focus ring, reduced-motion respected for skeletons.
+seeking (arrow keys work, `aria-valuetext` reads "1:23 of 3:42"), visible focus ring, reduced motion respected everywhere
+(skeletons, the playing bars, sheets and Now Playing), controls at least 32 px.
 
 ## Keyboard (in-app)
 Space play/pause, Left/Right seek 5 s, N next, P previous, Esc close Now Playing. Ignored while typing in a text field;
 Space and arrows are left to focused buttons and sliders. Global media keys come with SMTC in milestone 6.
 
-## Identity
-Pyxee has its own identity, in structure as well as colour:
-- **Navigation** is a top bar: wordmark, four underlined tabs (Home, Explore, Library, Queue), search at the far end.
-  There is no side rail and no pill chips; filters and Library sections are underline tabs.
-- **Lists are tables.** Every song list (`TrackRow`) is one column of full-width rows: place number (a play mark on hover),
-  a small square cover, title, the artist in its own column when there is room, length, like and menu. There are no two-column
-  grids of big rows. Queue and playlists use the same rhythm with a drag handle.
-- **Section headings** (`SectionHead`) are small tracked-out capitals with a count and a hairline, not big bold titles.
-- **Home** opens with a "Pick up where you left off" panel (the last song, Resume, the liked-songs count), then "On rotation"
-  (the table) and "Recently played" as a wall of square covers with the title over the picture. "Jump back in" on Explore is
-  the same wall.
-- **Player bar** is a console: a state label (Playing / Paused / Loading / Stopped), an accent edge while playing, square
-  controls, an accent-coloured play button and the seek bar inline in the wide layout.
+## Identity: Rail, Page, Stage
+- **Navigation** is a rail (see Layout), with a small accent bar beside the chosen place. Search is the same box at the top of the
+  page at every size. Library sections and search filters are `Segmented` controls (a raised pill, accent underline).
+- **Lists are tables.** `TrackList` draws the column names (#, Title, Artist, Time) and `TrackRow` the rows: place number (a play mark
+  on hover, moving bars on the song that is playing), small cover, title, artist, length. The artist gets its own column when the
+  *list* is wide enough (a container query), whatever the window does. Row buttons (like, menu) appear on hover or focus; a
+  touch screen always shows them. Queue, Up next and playlists share `EditableRow`.
+- **The song that is playing is marked in every list** (accent title, bars), not only in the queue.
+- **Type** is one family, Segoe UI Variable, in the Windows 11 ramp (12/16, 14/20, 18/24, 20/28, 28/36, 40/52), sentence case,
+  regular and semibold. There are no tracked capitals. Times use tabular figures.
+- **Home** opens with the *hero* (what is playing, or the last song, with Resume), then "On rotation" (the table) and
+  "Recently played" as covers with the text under them (`CoverGrid`; Explore's "Jump back in" is the same).
+- **The stage** is the memorable part: a large cover, and the accent (of the theme, or of the cover with "Color from album art")
+  washing down from the top. The hero, the flyout and the mini player use the same wash.
 - Ink (blue-black with amber) is the default theme. The logo keeps its own red; the UI accent does not.
+
+## Design tokens
+`app.css` has three tiers. (1) The seven theme colours, written by `theme.apply()` as `--t-*` (and the opaque `--solid`,
+`--solid-2`, `--on-fg`). (2) Semantic tokens mixed from them: `--layer`, `--hover`, `--press`, `--selected`, `--stage-wash`,
+`--focus`, plus radii (`--r-sm/md/lg` = 4/8/12), motion (`--dur-fast` 120 ms, `--dur-base` 200 ms, `--ease`) and layout
+(`--rail-w`, `--stage-w`, `--page-pad`). (3) Component classes in `@layer components` (`.btn`, `.icon-btn`, `.segmented`,
+`.trow`, `.stage`, ...) that read tier 2 only. Components use those and a few layout utilities; a new theme needs no CSS change.
+Primitives: `Button`, `IconButton`, `Toggle` (a real checkbox drawn as a switch), `Segmented`, `PageHeader`, `SectionHead`,
+`MenuItem`, `PlayButton`, `LikeButton`, `VolumeSlider`, `PlayingMark`. Script motion goes through `lib/motion.ts`, which drops
+lengths and distances to nothing when Windows asks for less motion; CSS motion does the same with `prefers-reduced-motion`.
 
 ## Scroll bars
 One rule set in `app.css`: thin, rounded, tinted from `--fg` (so every theme and Mica work), quiet at rest, clearer when the
@@ -99,7 +117,7 @@ real window, Mica and DPI behaviour need a first run on your PC.
 
 ## WP1 notes
 
-- **Settings** (gear, top right) holds Appearance and Diagnostics. Sheets stack in the order they were opened
+- **Settings** (gear: the foot of the rail, or the top right when narrow) holds Appearance and Diagnostics. Sheets stack in the order they were opened
   (z-index 100 and up, above Now Playing at 40); the snackbar sits above them (1000).
 - **Covers** go through `lib/thumb.ts`: YouTube's 4:3 stills have black bars baked in, so small covers use `mqdefault`
   (16:9, no bars), big ones `maxresdefault` then `hq720` then `mqdefault`; Google cover URLs are resized to the displayed

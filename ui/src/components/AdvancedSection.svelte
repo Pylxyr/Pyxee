@@ -4,6 +4,7 @@
   import type { EnvSettingsDto } from '$lib/bindings/EnvSettingsDto';
   import { ENV_VARS } from '$lib/envvars';
   import { onMount } from 'svelte';
+  import Button from './Button.svelte';
 
   let { backend }: { backend: Backend } = $props();
 
@@ -39,28 +40,28 @@
     saving = false;
   }
 
-  const field = 'mt-1 w-full rounded-lg bg-surface px-3 py-2 text-sm text-fg';
+  const field = 'field mt-1';
 </script>
 
-<section class="mt-3 border-t border-line px-3 pt-3" aria-label="Advanced">
-  <h3 class="text-sm font-semibold">Advanced</h3>
-  <p class="mt-1 text-[13px] text-muted">
+<section class="settings-section px-3" aria-label="Advanced">
+  <h3 class="group-title !px-0">Advanced</h3>
+  <p class="muted mt-1">
     Settings that Pyxee also reads from environment variables. They are kept in a file called .env in Pyxee's data folder and are used the next time Pyxee starts.
   </p>
   {#if loaded?.file}
-    <p class="mt-2 select-all break-all rounded-lg bg-surface px-3 py-2 text-[12px]" data-testid="env-path">{loaded.file}</p>
+    <p class="well t-caption mt-2 select-all break-all" data-testid="env-path">{loaded.file}</p>
   {:else if loaded}
-    <p class="mt-2 text-[13px] text-accent" role="alert">Pyxee has no data folder this time, so these cannot be saved.</p>
+    <p class="accent-text mt-2" role="alert">Pyxee has no data folder this time, so these cannot be saved.</p>
   {/if}
 
   {#if loaded}
     {#each ENV_VARS as v (v.name)}
       <div class="mt-3">
-        <label class="block text-[14px] font-medium" for={`env-${v.name}`}>
-          {v.title} <span class="font-mono text-[12px] font-normal text-muted">{v.name}</span>
+        <label class="t-strong block" for={`env-${v.name}`}>
+          {v.title} <span class="field-mono muted font-normal">{v.name}</span>
         </label>
-        <p class="mt-1 text-[13px] text-muted">{v.about}</p>
-        <p class="mt-1 text-[13px] text-muted">{v.fill}</p>
+        <p class="muted mt-1">{v.about}</p>
+        <p class="muted mt-1">{v.fill}</p>
         {#if v.choices}
           <select id={`env-${v.name}`} class={field} bind:value={draft[v.name]}>
             {#each v.choices as c (c)}<option value={c}>{c === '' ? 'Default' : c}</option>{/each}
@@ -69,16 +70,16 @@
           <input id={`env-${v.name}`} class={field} placeholder={v.placeholder} spellcheck="false" autocomplete="off" bind:value={draft[v.name]} />
         {/if}
         {#if fromWindows(v.name)}
-          <p class="mt-1 text-[13px] text-muted">Windows also sets this variable, and that value is the one Pyxee uses.</p>
+          <p class="muted mt-1">Windows also sets this variable, and that value is the one Pyxee uses.</p>
         {/if}
       </div>
     {/each}
-    {#if error}<p class="mt-3 text-[13px] text-accent" role="alert">{error}</p>{/if}
+    {#if error}<p class="accent-text mt-3" role="alert">{error}</p>{/if}
     <div class="mt-3 flex items-center gap-3">
-      <button class="rounded-md bg-fg px-4 py-1.5 text-sm font-semibold text-on-fg disabled:opacity-40" disabled={!dirty || saving || !loaded.file} onclick={save}>Save</button>
-      {#if saved && !dirty}<span class="text-[13px] text-muted" role="status">Saved. Restart Pyxee to use the changes.</span>{/if}
+      <Button variant="primary" disabled={!dirty || saving || !loaded.file} onclick={save}>Save</Button>
+      {#if saved && !dirty}<span class="muted" role="status">Saved. Restart Pyxee to use the changes.</span>{/if}
     </div>
   {:else if error}
-    <p class="mt-2 text-[13px] text-accent" role="alert">{error}</p>
+    <p class="accent-text mt-2" role="alert">{error}</p>
   {/if}
 </section>

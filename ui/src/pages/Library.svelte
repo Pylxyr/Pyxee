@@ -7,12 +7,16 @@
   import { groupByDay } from '$lib/format';
   import type { HistoryItemDto } from '$lib/bindings/HistoryItemDto';
   import type { TrackDto } from '$lib/bindings/TrackDto';
+  import Button from '../components/Button.svelte';
   import EmptyState from '../components/EmptyState.svelte';
+  import Icon from '../components/Icon.svelte';
+  import PageHeader from '../components/PageHeader.svelte';
   import ScrollPage from '../components/ScrollPage.svelte';
   import SectionHead from '../components/SectionHead.svelte';
-  import Icon from '../components/Icon.svelte';
+  import Segmented from '../components/Segmented.svelte';
   import Thumb from '../components/Thumb.svelte';
   import TrackRow from '../components/TrackRow.svelte';
+  import TrackList from '../components/TrackList.svelte';
 
   const tabs: { id: LibraryTab; label: string }[] = [
     { id: 'liked', label: 'Liked songs' },
@@ -35,6 +39,7 @@
   });
 
   const days = $derived(groupByDay(history, (h) => h.playedAt, Date.now()));
+  const songs = (n: number) => `${n} ${n === 1 ? 'song' : 'songs'}`;
 
   function newPlaylist() {
     nav.namePrompt = {
@@ -66,71 +71,62 @@
 
 <ScrollPage>
   {#snippet header()}
-  <SectionHead level={1}>Library</SectionHead>
-  <div class="flex flex-wrap gap-x-5 border-b border-line" role="tablist" aria-label="Library sections">
-    {#each tabs as t (t.id)}
-      <button
-        role="tab"
-        aria-selected={nav.libraryTab === t.id}
-        class="-mb-px border-b-2 px-0.5 py-2 text-sm font-medium {nav.libraryTab === t.id ? 'border-accent text-fg' : 'border-transparent text-muted hover:text-fg'}"
-        onclick={() => (nav.libraryTab = t.id)}>{t.label}</button>
-    {/each}
-  </div>
+    <PageHeader title="Library">
+      <Segmented items={tabs} value={nav.libraryTab} onselect={(id) => (nav.libraryTab = id)} label="Library sections" />
+    </PageHeader>
   {/snippet}
 
-  {#if loadError}<p class="mt-4 text-sm text-accent" role="alert">{loadError}</p>{/if}
+  {#if loadError}<p class="accent-text mb-3" role="alert">{loadError}</p>{/if}
 
   {#if nav.libraryTab === 'liked'}
     {#if liked.length === 0}
       <EmptyState icon="heart" title="No liked songs yet" text="Tap the heart on a song and it will show up here." />
     {:else}
-      <div class="mt-4 flex gap-2">
-        <button class="rounded bg-accent px-5 py-2 text-sm font-semibold text-on-accent" onclick={() => playAll(false)}>Play all</button>
-        <button class="rounded-md border border-line bg-surface px-5 py-2 text-sm font-semibold" onclick={() => playAll(true)}>Shuffle</button>
-        <span class="ml-auto self-center text-sm text-muted">{liked.length} {liked.length === 1 ? 'song' : 'songs'}</span>
+      <div class="mb-2 flex items-center gap-2">
+        <Button variant="primary" onclick={() => playAll(false)}>Play all</Button>
+        <Button onclick={() => playAll(true)}>Shuffle</Button>
+        <span class="muted ml-auto">{songs(liked.length)}</span>
       </div>
-      <ul class="mt-2" aria-label="Liked songs">
-        {#each liked as t, i (t.key)}
-          <TrackRow track={t} index={i} onplay={() => player.playTracks(liked, i)} />
-        {/each}
-      </ul>
+      <TrackList label="Liked songs" tracks={liked} onplay={(i) => player.playTracks(liked, i)} />
     {/if}
   {:else if nav.libraryTab === 'playlists'}
-    <div class="mt-4">
-      <button class="flex items-center gap-2 rounded bg-accent px-5 py-2 text-sm font-semibold text-on-accent" onclick={newPlaylist}><Icon name="plus" size={18} />New playlist</button>
+    <div class="mb-2">
+      <Button variant="primary" onclick={newPlaylist}><Icon name="plus" size={18} />New playlist</Button>
     </div>
     {#if library.playlists.length === 0}
       <EmptyState icon="library" title="No playlists yet" text="Create one here, or choose Add to playlist on any song. You can also save your queue." />
     {:else}
-      <ul class="mt-4" aria-label="Playlists">
+      <TrackList label="Playlists" head={false}>
         {#each library.playlists as p (p.id)}
-          <li class="border-b border-line/60 hover:bg-surface-2/70">
-            <button class="flex w-full items-center gap-3 py-1.5 pl-2 text-left" onclick={() => nav.openPlaylist(p.id)}>
-              <Thumb src={p.thumbnail} seed={`pl:${p.id}`} size={40} rounded="rounded-sm" />
-              <span class="min-w-0 flex-1">
-                <span class="block truncate text-[14px] font-medium">{p.name}</span>
-                <span class="block text-[12px] text-muted">{p.trackCount} {p.trackCount === 1 ? 'song' : 'songs'}</span>
+          <li class="trow">
+            <button class="trow-main" onclick={() => nav.openPlaylist(p.id)}>
+              <span class="trow-idx" aria-hidden="true"></span>
+              <Thumb src={p.thumbnail} seed={`pl:${p.id}`} size={40} rounded="r-sm" />
+              <span class="trow-text">
+                <span class="trow-title">{p.name}</span>
+                <span class="trow-artist">{songs(p.trackCount)}</span>
               </span>
+              <span></span>
             </button>
           </li>
         {/each}
-      </ul>
+      </TrackList>
     {/if}
   {:else if nav.libraryTab === 'history'}
     {#if history.length === 0}
       <EmptyState icon="music" title="No history yet" text="Songs you listen to for a while are listed here." />
     {:else}
-      <div class="mt-4 flex items-center">
-        <span class="text-sm text-muted">{library.snapshot.historyCount} {library.snapshot.historyCount === 1 ? 'play' : 'plays'}</span>
-        <button class="ml-auto rounded-md border border-line bg-surface px-4 py-1.5 text-sm font-medium" onclick={clearHistory}>Clear history</button>
+      <div class="mb-2 flex items-center">
+        <span class="muted">{library.snapshot.historyCount} {library.snapshot.historyCount === 1 ? 'play' : 'plays'}</span>
+        <Button class="ml-auto" onclick={clearHistory}>Clear history</Button>
       </div>
-      {#each days as g (g.label)}
+      {#each days as g, gi (g.label)}
         <SectionHead>{g.label}</SectionHead>
-        <ul aria-label="Played {g.label}">
+        <TrackList label="Played {g.label}" head={gi === 0}>
           {#each g.items as h, i (`${h.playedAt}-${h.track.key}-${i}`)}
             <TrackRow track={h.track} onplay={() => player.playTracks([h.track])} />
           {/each}
-        </ul>
+        </TrackList>
       {/each}
     {/if}
   {:else}

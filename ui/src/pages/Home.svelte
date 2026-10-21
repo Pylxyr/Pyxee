@@ -4,12 +4,16 @@
   import { player } from '$lib/player.svelte';
   import type { HomeDto } from '$lib/bindings/HomeDto';
   import type { TrackDto } from '$lib/bindings/TrackDto';
+  import Button from '../components/Button.svelte';
+  import CoverGrid from '../components/CoverGrid.svelte';
   import EmptyState from '../components/EmptyState.svelte';
   import Icon from '../components/Icon.svelte';
+  import PageHeader from '../components/PageHeader.svelte';
+  import ScrollPage from '../components/ScrollPage.svelte';
   import SectionHead from '../components/SectionHead.svelte';
   import Skeleton from '../components/Skeleton.svelte';
   import Thumb from '../components/Thumb.svelte';
-  import TrackRow from '../components/TrackRow.svelte';
+  import TrackList from '../components/TrackList.svelte';
 
   let home = $state<HomeDto | null>(null);
 
@@ -49,65 +53,49 @@
   const demo = $derived(!hasLibrary && player.catalog && player.catalog.length > 0 ? player.catalog : null);
 </script>
 
-<section class="h-full overflow-y-auto px-4 pb-8 pt-5 sm:px-6">
+<ScrollPage>
+  {#snippet header()}
+    <PageHeader title="Home" />
+  {/snippet}
+
   {#if home === null}
-    <SectionHead level={1}>On rotation</SectionHead>
+    <SectionHead>On rotation</SectionHead>
     <Skeleton rows={8} />
   {:else if hasLibrary}
     {#if hero}
       {@const button = HERO_BUTTON[hero.action]}
-      <div class="flex items-center gap-5 rounded border border-line bg-surface p-4" data-testid="resume">
-        <Thumb src={hero.track.thumbnail} seed={hero.track.key} size={112} rounded="rounded-sm" />
+      <div class="hero" data-testid="resume">
+        <Thumb src={hero.track.thumbnail} seed={hero.track.key} size={120} rounded="r-md" />
         <div class="min-w-0 flex-1">
-          <p class="label">{hero.label}</p>
-          <p class="mt-1 truncate text-xl font-semibold">{hero.track.title}</p>
-          <p class="truncate text-sm text-muted">{hero.track.artist}</p>
-          <button class="mt-3 flex items-center gap-2 rounded bg-accent px-4 py-1.5 text-sm font-semibold text-on-accent" aria-label="{button.text} {hero.track.title}" onclick={() => heroClick(hero)}>
+          <p class="muted">{hero.label}</p>
+          <p class="t-title truncate">{hero.track.title}</p>
+          <p class="muted truncate">{hero.track.artist}</p>
+          <Button class="mt-3" variant="primary" aria-label="{button.text} {hero.track.title}" onclick={() => heroClick(hero)}>
             {#if button.icon}<Icon name={button.icon} size={16} fill={button.icon === 'play'} />{/if}{button.text}
-          </button>
+          </Button>
         </div>
         {#if home.likedCount > 0}
-          <button class="hidden shrink-0 self-stretch rounded border border-line px-5 text-left hover:bg-surface-2 sm:block" onclick={() => { nav.libraryTab = 'liked'; nav.go('library'); }}>
-            <span class="label block">Liked songs</span>
-            <span class="mt-1 block text-3xl font-semibold tabular-nums">{home.likedCount}</span>
-            <span class="text-[12px] text-muted">open the list</span>
+          <button class="hidden shrink-0 self-stretch r-md border border-line px-5 text-left hover:bg-surface-2 sm:block" onclick={() => { nav.libraryTab = 'liked'; nav.go('library'); }}>
+            <span class="muted block">Liked songs</span>
+            <span class="t-title nums mt-1 block">{home.likedCount}</span>
+            <span class="t-caption muted">open the list</span>
           </button>
         {/if}
       </div>
     {/if}
     {#if home.quickPicks.length > 0}
-      <SectionHead level={1} count={home.quickPicks.length}>On rotation</SectionHead>
-      <ul aria-label="Quick picks">
-        {#each home.quickPicks as t, i (t.key)}
-          <TrackRow track={t} index={i} onplay={() => player.playTracks(home!.quickPicks, i)} />
-        {/each}
-      </ul>
+      <SectionHead count={home.quickPicks.length}>On rotation</SectionHead>
+      <TrackList label="Quick picks" tracks={home.quickPicks} onplay={(i) => player.playTracks(home!.quickPicks, i)} />
     {/if}
     {#if home.recent.length > 0}
       <SectionHead count={home.recent.length}>Recently played</SectionHead>
-      <ul class="grid grid-cols-[repeat(auto-fill,minmax(112px,1fr))] gap-2 pt-2" aria-label="Recently played">
-        {#each home.recent as t, i (t.key)}
-          <li class="relative aspect-square overflow-hidden rounded-sm">
-            <button class="group block h-full w-full text-left" aria-label="Play {t.title}" onclick={() => player.playTracks(home!.recent, i)}>
-              <Thumb src={t.thumbnail} seed={t.key} size={160} fill rounded="rounded-sm" />
-              <span class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 to-transparent px-2 pb-1.5 pt-6 text-white">
-                <span class="block truncate text-[12px] font-semibold">{t.title}</span>
-                <span class="block truncate text-[11px] opacity-75">{t.artist}</span>
-              </span>
-            </button>
-          </li>
-        {/each}
-      </ul>
+      <CoverGrid label="Recently played" tracks={home.recent} onplay={(i) => player.playTracks(home!.recent, i)} />
     {/if}
   {:else if demo}
-    <SectionHead level={1} count={demo.length}>On rotation</SectionHead>
-    <p class="mb-2 text-sm text-muted">Demo tracks with simulated playback. Real picks appear here as you listen and like songs.</p>
-    <ul>
-      {#each demo as t, i (t.key)}
-        <TrackRow track={t} index={i} onplay={() => player.playTracks(demo, i)} />
-      {/each}
-    </ul>
+    <SectionHead count={demo.length}>On rotation</SectionHead>
+    <p class="muted mb-2">Demo tracks with simulated playback. Real picks appear here as you listen and like songs.</p>
+    <TrackList label="Demo tracks" tracks={demo} onplay={(i) => player.playTracks(demo, i)} />
   {:else}
     <EmptyState icon="music" title="Nothing here yet" text="Search for something to play. Songs you listen to and like will fill this page with quick picks." />
   {/if}
-</section>
+</ScrollPage>

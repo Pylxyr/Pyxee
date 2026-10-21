@@ -1,6 +1,7 @@
 <script lang="ts">
   import { nav } from '$lib/nav.svelte';
   import { messageOf } from '$lib/backend';
+  import Button from './Button.svelte';
   import Sheet from './Sheet.svelte';
 
   let name = $state('');
@@ -32,18 +33,12 @@
 </script>
 
 <Sheet open={prompt !== null} title={prompt?.title ?? ''} onclose={() => (nav.namePrompt = null)}>
-  <form class="space-y-3 px-2" onsubmit={submit}>
-    <input
-      class="h-11 w-full rounded-xl bg-surface px-4 text-[15px] outline-none"
-      aria-label="Name"
-      maxlength="100"
-      autocomplete="off"
-      bind:value={name}
-    />
-    {#if error}<p class="text-sm text-accent" role="alert">{error}</p>{/if}
+  <form class="space-y-3 px-1" onsubmit={submit}>
+    <input class="field" aria-label="Name" maxlength="100" autocomplete="off" bind:value={name} />
+    {#if error}<p class="accent-text" role="alert">{error}</p>{/if}
     <div class="flex justify-end gap-2">
-      <button type="button" class="rounded-full px-4 py-2 text-sm font-medium" onclick={() => (nav.namePrompt = null)}>Cancel</button>
-      <button class="rounded-md bg-fg px-5 py-2 text-sm font-semibold text-on-fg disabled:opacity-50" disabled={busy || !name.trim()}>{prompt?.confirm ?? 'OK'}</button>
+      <Button type="button" variant="quiet" onclick={() => (nav.namePrompt = null)}>Cancel</Button>
+      <Button type="submit" variant="primary" disabled={busy || !name.trim()}>{prompt?.confirm ?? 'OK'}</Button>
     </div>
   </form>
 </Sheet>

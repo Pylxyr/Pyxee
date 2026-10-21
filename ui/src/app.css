@@ -16,8 +16,13 @@
 }
 
 /*
- * Colours come from the active theme. `theme.apply()` writes the theme's colours onto <html> as `--t-*` variables;
- * the fallbacks here are the built-in Dark and Light themes, so the page is right before any script has run.
+ * DESIGN TOKENS, in three tiers.
+ *   1. Theme colours: the seven a theme is made of. `theme.apply()` writes them onto <html> as `--t-*` variables; the
+ *      fallbacks below are the built-in Dark and Light themes, so the page is right before any script has run.
+ *   2. Semantic tokens: what a colour is FOR (layer, hover, selected, focus). They are mixed from tier 1 at run time,
+ *      so every built-in and custom theme gets them, and Windows 11 Mica (a transparent page) keeps working.
+ *   3. Component classes (the `@layer components` section further down) read tier 2 only, never a raw colour.
+ * The sizes follow the Windows 11 type ramp and its 4 px geometry; see the notes on each group.
  */
 :root {
   color-scheme: dark;
@@ -33,6 +38,35 @@
   --solid: var(--t-solid, #12141b);
   --solid-2: var(--t-solid-2, #252a37);
   --on-fg: var(--t-on-fg, #0f0f0f);
+
+  /* Tier 2. The content layer sits on the base layer (the page background, or Mica) the way Windows 11 stacks them. */
+  --layer: var(--surface);
+  --hover: color-mix(in srgb, var(--fg) 7%, transparent);
+  --press: color-mix(in srgb, var(--fg) 11%, transparent);
+  --selected: color-mix(in srgb, var(--accent) 16%, transparent);
+  --stage-wash: color-mix(in srgb, var(--accent) 15%, transparent);
+  --focus: var(--accent);
+  --shadow-pop: 0 10px 30px rgb(0 0 0 / 0.3), 0 0 0 1px var(--line);
+  --shadow-art: 0 14px 34px rgb(0 0 0 / 0.34);
+
+  /* Type: Segoe UI Variable (optical sizes switch on by themselves), one family, sentence case, regular and semibold. */
+  --font-text: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif;
+  --font-display: 'Segoe UI Variable Display', 'Segoe UI', system-ui, sans-serif;
+
+  /* Geometry: 4 px controls, 8 px menus, 12 px for the content layer and the cover, as Windows 11 rounds them. */
+  --r-sm: 4px;
+  --r-md: 8px;
+  --r-lg: 12px;
+
+  /* Motion: 120 ms for feedback, 200 ms for changes of state, leaving a little faster than arriving. */
+  --dur-fast: 120ms;
+  --dur-base: 200ms;
+  --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+
+  /* Layout: the rail is icons only up to 1280 px; the stage is the player column. */
+  --rail-w: 64px;
+  --stage-w: 300px;
+  --page-pad: 24px;
 }
 
 :root[data-theme='light'] {
@@ -47,6 +81,10 @@
   --solid: var(--t-solid, #f4f6fa);
   --solid-2: var(--t-solid-2, #dde3ee);
   --on-fg: var(--t-on-fg, #ffffff);
+  --hover: color-mix(in srgb, var(--fg) 6%, transparent);
+  --press: color-mix(in srgb, var(--fg) 10%, transparent);
+  --shadow-pop: 0 10px 30px rgb(0 0 0 / 0.16), 0 0 0 1px var(--line);
+  --shadow-art: 0 12px 28px rgb(0 0 0 / 0.2);
 }
 
 /* Before the theme is applied (no data-theme yet) a light system gets the light fallbacks, so there is no dark flash. */
@@ -82,13 +120,28 @@
   --line: color-mix(in srgb, var(--t-fg, #000000) 10%, transparent);
 }
 
+/* Narrow windows get the 12 px margins Windows uses for its minimal navigation; roomy ones the rail's labels. */
+@media (max-width: 899px) {
+  :root {
+    --page-pad: 12px;
+  }
+}
+@media (min-width: 1280px) {
+  :root {
+    --rail-w: 216px;
+    --stage-w: 340px;
+  }
+}
+
 html,
 body {
   height: 100%;
   margin: 0;
   background: var(--bg);
   color: var(--fg);
-  font-family: var(--font-sans);
+  font-family: var(--font-text);
+  font-size: 14px;
+  line-height: 20px;
   overflow: hidden;
   -webkit-font-smoothing: antialiased;
 }
@@ -139,7 +192,7 @@ button {
   border-radius: 6px;
 }
 :focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--focus);
   outline-offset: 2px;
 }
 /* The search box shows focus on its frame (the accent border), so the field inside needs no outline of its own. The
@@ -148,23 +201,13 @@ button {
   outline: none;
 }
 
-/* The name in the top bar: the Windows UI face (Segoe UI Variable Display on Windows 11, Segoe UI before that), semibold,
-   in the plain text colour, so nothing has to be bundled and the contrast is the theme's own. */
-.wordmark {
-  font-family: 'Segoe UI Variable Display', 'Segoe UI', system-ui, sans-serif;
-  font-size: 18px;
-  font-weight: 600;
-  letter-spacing: 0.01em;
-  line-height: 1.25;
-  color: var(--fg);
-}
-
 /* Seek / volume sliders: a real <input type=range> (keyboard + screen reader friendly), styled thin. */
 input[type='range'].slider {
   -webkit-appearance: none;
   appearance: none;
   width: 100%;
-  height: 16px;
+  height: 20px;
+  margin: 0;
   background: transparent;
   cursor: pointer;
   --pct: 0%;
@@ -179,17 +222,21 @@ input[type='range'].slider.accent::-webkit-slider-runnable-track {
 }
 input[type='range'].slider::-webkit-slider-thumb {
   -webkit-appearance: none;
-  width: 12px;
-  height: 12px;
-  margin-top: -4px;
+  width: 14px;
+  height: 14px;
+  margin-top: -5px;
   border-radius: 50%;
   background: var(--fg);
   opacity: 0;
-  transition: opacity 120ms;
+  transition: opacity var(--dur-fast) var(--ease);
 }
 input[type='range'].slider:hover::-webkit-slider-thumb,
 input[type='range'].slider:focus-visible::-webkit-slider-thumb {
   opacity: 1;
+}
+input[type='range'].slider:disabled {
+  cursor: default;
+  opacity: 0.5;
 }
 
 @keyframes shimmer {
@@ -205,20 +252,15 @@ input[type='range'].slider:focus-visible::-webkit-slider-thumb {
 }
 .skeleton {
   background: var(--surface-2);
-  border-radius: 6px;
+  border-radius: var(--r-sm);
   animation: shimmer 1.4s ease-in-out infinite;
-}
-@media (prefers-reduced-motion: reduce) {
-  .skeleton {
-    animation: none;
-  }
 }
 
 /* Seek bar while the song's length is not known: not interactive, gently animated. */
 .seek-unknown {
   width: 100%;
   height: 4px;
-  margin: 6px 0;
+  margin: 8px 0;
   border-radius: 2px;
   background: repeating-linear-gradient(
     115deg,
@@ -236,17 +278,997 @@ input[type='range'].slider:focus-visible::-webkit-slider-thumb {
   );
 }
 @keyframes seek-unknown-slide {
-  to { background-position: 22px 0; }
-}
-@media (prefers-reduced-motion: reduce) {
-  .seek-unknown { animation: none; }
+  to {
+    background-position: 22px 0;
+  }
 }
 
-/* Section and column labels: small caps, tracked out, quiet. */
-.label {
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-  color: var(--muted);
+@keyframes eq {
+  0%,
+  100% {
+    transform: scaleY(0.3);
+  }
+  50% {
+    transform: scaleY(1);
+  }
+}
+
+/* Motion that is not an answer to a click stops for people who asked their system for less of it. */
+@media (prefers-reduced-motion: reduce) {
+  .skeleton,
+  .seek-unknown,
+  .eq i,
+  .spinner {
+    animation: none !important;
+  }
+  :root {
+    --dur-fast: 0ms;
+    --dur-base: 0ms;
+  }
+}
+
+/* ------------------------------------------------------------------------------------------------------------ */
+/* Component classes. They read the tokens above and nothing else, so a new theme needs no change here.            */
+/* ------------------------------------------------------------------------------------------------------------ */
+@layer components {
+  /* Type ramp (Windows 11): caption 12/16, body 14/20, lead 18/24, subtitle 20/28, title 28/36, hero 40/52. */
+  .t-caption {
+    font-size: 12px;
+    line-height: 16px;
+  }
+  .t-body {
+    font-size: 14px;
+    line-height: 20px;
+  }
+  .t-strong {
+    font-size: 14px;
+    line-height: 20px;
+    font-weight: 600;
+  }
+  .t-lead {
+    font-family: var(--font-display);
+    font-size: 18px;
+    line-height: 24px;
+    font-weight: 600;
+  }
+  .t-subtitle {
+    font-family: var(--font-display);
+    font-size: 20px;
+    line-height: 28px;
+    font-weight: 600;
+  }
+  .t-title {
+    font-family: var(--font-display);
+    font-size: 28px;
+    line-height: 36px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+  }
+  .t-hero {
+    font-family: var(--font-display);
+    font-size: 40px;
+    line-height: 52px;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+  }
+  .muted {
+    color: var(--muted);
+  }
+  .nums {
+    font-variant-numeric: tabular-nums;
+  }
+  .wordmark {
+    font-family: var(--font-display);
+    font-size: 18px;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+    line-height: 24px;
+    color: var(--fg);
+  }
+  .r-sm {
+    border-radius: var(--r-sm);
+  }
+  .r-md {
+    border-radius: var(--r-md);
+  }
+  .r-lg {
+    border-radius: var(--r-lg);
+  }
+  .r-full {
+    border-radius: 9999px;
+  }
+  /* Visually hidden, still read aloud (and still the accessible name of a button that shows only an icon). */
+  .sr-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  /* Buttons. 32 px tall, 4 px corners; the primary one carries the accent. */
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    min-height: 32px;
+    padding: 0 16px;
+    border: 1px solid var(--line);
+    border-radius: var(--r-sm);
+    background: var(--surface);
+    color: var(--fg);
+    font-size: 14px;
+    line-height: 20px;
+    white-space: nowrap;
+    transition: background-color var(--dur-fast) var(--ease), filter var(--dur-fast) var(--ease);
+  }
+  .btn:hover {
+    background: var(--surface-2);
+  }
+  .btn:active {
+    background: var(--press);
+  }
+  .btn:disabled {
+    opacity: 0.4;
+    cursor: default;
+  }
+  .btn-primary {
+    border-color: transparent;
+    background: var(--accent);
+    color: var(--on-accent);
+    font-weight: 600;
+  }
+  .btn-primary:hover {
+    background: var(--accent);
+    filter: brightness(1.08);
+  }
+  .btn-primary:active {
+    background: var(--accent);
+    filter: brightness(0.94);
+  }
+  .btn-quiet {
+    border-color: transparent;
+    background: transparent;
+  }
+  .btn-quiet:hover {
+    background: var(--hover);
+  }
+  .btn-sm {
+    min-height: 28px;
+    padding: 0 12px;
+    font-size: 13px;
+  }
+  .btn-link {
+    display: inline;
+    min-height: 0;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: inherit;
+    font-weight: 600;
+    text-decoration: underline;
+  }
+
+  /* Round or square icon buttons; 32 px is the smallest target (WCAG 2.2 asks for 24). */
+  .icon-btn {
+    position: relative;
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border-radius: var(--r-sm);
+    color: var(--muted);
+    transition: background-color var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+  }
+  .icon-btn:hover {
+    background: var(--hover);
+    color: var(--fg);
+  }
+  .icon-btn:active {
+    background: var(--press);
+  }
+  .icon-btn[aria-pressed='true'] {
+    color: var(--accent);
+  }
+  .icon-btn:disabled {
+    opacity: 0.3;
+    cursor: default;
+    background: none;
+  }
+  .icon-btn-lg {
+    width: 40px;
+    height: 40px;
+  }
+  .icon-btn-strong {
+    color: var(--fg);
+  }
+
+  /* The main play button: accent fill, a circle in the stage and a rounded square in the dock. */
+  .play-btn {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    border-radius: 9999px;
+    background: var(--accent);
+    color: var(--on-accent);
+    transition: filter var(--dur-fast) var(--ease), transform var(--dur-fast) var(--ease);
+  }
+  .play-btn:hover {
+    filter: brightness(1.08);
+  }
+  .play-btn:active {
+    transform: scale(0.95);
+  }
+  .play-btn-lg {
+    width: 56px;
+    height: 56px;
+  }
+  .play-btn-sm {
+    width: 36px;
+    height: 36px;
+  }
+  .spinner {
+    display: block;
+    width: 20px;
+    height: 20px;
+    border-radius: 9999px;
+    border: 2px solid color-mix(in srgb, var(--on-accent) 30%, transparent);
+    border-top-color: var(--on-accent);
+    animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+
+  /* Switch: a real checkbox (role and keyboard stay native), drawn as a switch. */
+  input.switch {
+    -webkit-appearance: none;
+    appearance: none;
+    position: relative;
+    flex: none;
+    width: 40px;
+    height: 20px;
+    margin: 0;
+    border: 1px solid var(--muted);
+    border-radius: 9999px;
+    background: transparent;
+    cursor: pointer;
+    transition: background-color var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease);
+  }
+  input.switch::after {
+    content: '';
+    position: absolute;
+    top: 3px;
+    left: 3px;
+    width: 12px;
+    height: 12px;
+    border-radius: 9999px;
+    background: var(--muted);
+    transition: transform var(--dur-fast) var(--ease), background-color var(--dur-fast) var(--ease);
+  }
+  input.switch:checked {
+    border-color: var(--accent);
+    background: var(--accent);
+  }
+  input.switch:checked::after {
+    background: var(--on-accent);
+    transform: translateX(20px);
+  }
+
+  /* Text fields. */
+  .field {
+    width: 100%;
+    min-height: 32px;
+    padding: 4px 12px;
+    border: 1px solid var(--line);
+    border-bottom-color: var(--muted);
+    border-radius: var(--r-sm);
+    background: var(--surface);
+    color: var(--fg);
+    font-size: 14px;
+    line-height: 20px;
+  }
+  .field:focus-visible {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: inset 0 -1px 0 var(--accent);
+  }
+  .field-mono {
+    font-family: Consolas, 'Cascadia Mono', monospace;
+    font-size: 12px;
+  }
+
+  /* Segmented control: tabs and filters. The chosen one is a raised pill, the rest are quiet text. */
+  .segmented {
+    display: inline-flex;
+    flex-wrap: wrap;
+    gap: 2px;
+    padding: 2px;
+    border-radius: var(--r-md);
+    background: var(--surface);
+    border: 1px solid var(--line);
+  }
+  .segment {
+    min-height: 28px;
+    padding: 0 12px;
+    border-radius: var(--r-sm);
+    color: var(--muted);
+    font-size: 14px;
+    line-height: 20px;
+    transition: background-color var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+  }
+  .segment:hover:not(:disabled) {
+    background: var(--hover);
+    color: var(--fg);
+  }
+  .segment[aria-selected='true'],
+  .segment[aria-pressed='true'] {
+    background: var(--surface-2);
+    color: var(--fg);
+    font-weight: 600;
+    box-shadow: inset 0 -2px 0 var(--accent);
+  }
+  .segment:disabled {
+    opacity: 0.4;
+    cursor: default;
+  }
+
+  /* Layout: the rail, the page (content layer), the stage and the dock. */
+  .shell {
+    display: flex;
+    height: 100dvh;
+    background: var(--bg);
+    color: var(--fg);
+  }
+  .shell[data-layout='narrow'] {
+    flex-direction: column;
+  }
+  .workspace {
+    display: flex;
+    flex: 1 1 0;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+  }
+  .page {
+    position: relative;
+    display: flex;
+    flex: 1 1 0;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+    background: var(--layer);
+  }
+  .shell[data-layout='wide'] .page {
+    border-top: 1px solid var(--line);
+    border-left: 1px solid var(--line);
+    border-top-left-radius: var(--r-lg);
+  }
+  .shell[data-layout='narrow'] .page {
+    border-bottom: 1px solid var(--line);
+  }
+  .page-pad {
+    padding-left: var(--page-pad);
+    padding-right: var(--page-pad);
+  }
+
+  .rail {
+    display: flex;
+    flex: none;
+    flex-direction: column;
+    gap: 4px;
+    width: var(--rail-w);
+    padding: 12px 8px;
+  }
+  .rail-brand {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    height: 40px;
+    margin-bottom: 12px;
+    padding: 0 8px;
+  }
+  .rail-list {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  .nav-item {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    width: 100%;
+    height: 40px;
+    padding: 0 12px;
+    border-radius: var(--r-md);
+    color: var(--muted);
+    text-align: left;
+    transition: background-color var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+  }
+  .nav-item:hover {
+    background: var(--hover);
+    color: var(--fg);
+  }
+  .nav-item[aria-current='page'] {
+    background: var(--selected);
+    color: var(--fg);
+    font-weight: 600;
+  }
+  /* The little accent bar Windows puts beside the chosen destination. */
+  .nav-item[aria-current='page']::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 11px;
+    width: 3px;
+    height: 18px;
+    border-radius: 2px;
+    background: var(--accent);
+  }
+  .rail-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+  @media (min-width: 1280px) {
+    .rail-label {
+      position: static;
+      width: auto;
+      height: auto;
+      overflow: visible;
+      clip: auto;
+    }
+  }
+
+  .bar-nav {
+    display: flex;
+    flex: none;
+    border-top: 1px solid var(--line);
+    background: var(--surface);
+  }
+  .bar-item {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    height: 56px;
+    color: var(--muted);
+    font-size: 12px;
+    line-height: 16px;
+    transition: color var(--dur-fast) var(--ease);
+  }
+  .bar-item[aria-current='page'] {
+    color: var(--fg);
+    font-weight: 600;
+  }
+  .bar-item[aria-current='page'] .bar-pill {
+    background: var(--selected);
+  }
+  .bar-pill {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 56px;
+    height: 28px;
+    border-radius: 9999px;
+    transition: background-color var(--dur-base) var(--ease);
+  }
+
+  .topbar {
+    position: relative;
+    z-index: 20;
+    display: flex;
+    flex: none;
+    align-items: center;
+    gap: 8px;
+    padding-top: 12px;
+    padding-bottom: 12px;
+  }
+  .search-box {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    height: 36px;
+    padding: 0 12px;
+    border: 1px solid var(--line);
+    border-bottom-color: var(--muted);
+    border-radius: var(--r-md);
+    background: var(--surface);
+    color: var(--muted);
+  }
+  .search-box:focus-within {
+    border-color: var(--accent);
+    box-shadow: inset 0 -1px 0 var(--accent);
+    color: var(--fg);
+  }
+  .popover {
+    border: 1px solid var(--line);
+    border-radius: var(--r-md);
+    box-shadow: var(--shadow-pop);
+  }
+  .suggestion {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 12px;
+    cursor: pointer;
+  }
+  .suggestion[aria-selected='true'] {
+    background: var(--hover);
+  }
+
+  /* Dock (narrow windows): the player as one strip above the bottom bar. */
+  .dock {
+    position: relative;
+    display: flex;
+    flex: none;
+    align-items: center;
+    gap: 8px;
+    height: 64px;
+    padding: 0 8px 0 12px;
+    border-top: 1px solid var(--line);
+    background: var(--surface);
+  }
+  .dock-seek {
+    position: absolute;
+    inset-inline: 0;
+    top: -10px;
+    z-index: 10;
+  }
+
+  /* Stage (wide windows): the player column. The cover is the one big thing; the accent washes down from it. */
+  .stage {
+    display: flex;
+    flex: none;
+    flex-direction: column;
+    gap: 16px;
+    width: var(--stage-w);
+    padding: 20px;
+    overflow-y: auto;
+    border-top: 1px solid var(--line);
+    border-left: 1px solid var(--line);
+    background: linear-gradient(to bottom, var(--stage-wash), transparent 55%), var(--layer);
+  }
+  .stage > * {
+    flex-shrink: 0;
+  }
+  .stage-art {
+    width: 100%;
+    aspect-ratio: 1;
+    overflow: hidden;
+    border-radius: var(--r-lg);
+    box-shadow: var(--shadow-art);
+  }
+  .stage-empty {
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    color: var(--muted);
+  }
+
+  /* Pages */
+  .page-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 16px;
+    padding-top: 8px;
+    padding-bottom: 16px;
+  }
+  .page-head-main {
+    min-width: 12rem;
+    flex: 1 1 0;
+  }
+  .page-head-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+  }
+  .page-head-below {
+    flex-basis: 100%;
+  }
+  .section-head {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin: 32px 0 8px;
+  }
+  .section-head:first-child {
+    margin-top: 0;
+  }
+  .notice {
+    padding: 12px 16px;
+    border: 1px solid var(--line);
+    border-radius: var(--r-md);
+    background: var(--surface);
+  }
+
+  /* Track lists: a table. Artist gets its own column once the list is wide enough, whatever the window does. */
+  .tracklist {
+    container-type: inline-size;
+  }
+  .tracklist-head {
+    display: grid;
+    grid-template-columns: 32px 40px minmax(0, 1fr) 48px;
+    column-gap: 12px;
+    padding: 4px 72px 4px 8px;
+    border-bottom: 1px solid var(--line);
+    color: var(--muted);
+    font-size: 12px;
+    line-height: 16px;
+  }
+  .tracklist-head > :nth-child(1) {
+    text-align: center;
+  }
+  .tracklist-head > :nth-child(2) {
+    grid-column: 3;
+  }
+  .tracklist-head .col-artist {
+    display: none;
+  }
+  .tracklist-head .col-time {
+    text-align: right;
+  }
+  .trow {
+    display: flex;
+    align-items: center;
+    border-radius: var(--r-md);
+    transition: background-color var(--dur-fast) var(--ease);
+  }
+  .trow:hover,
+  .trow:focus-within {
+    background: var(--hover);
+  }
+  .trow[data-current='true'] {
+    background: var(--selected);
+  }
+  .trow-main {
+    display: grid;
+    grid-template-columns: 32px 40px minmax(0, 1fr) 48px;
+    align-items: center;
+    column-gap: 12px;
+    flex: 1 1 0;
+    min-width: 0;
+    padding: 6px 8px;
+    text-align: left;
+  }
+  .trow-text {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
+  .trow-title,
+  .trow-artist {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .trow-title {
+    font-size: 14px;
+    line-height: 20px;
+  }
+  .trow[data-current='true'] .trow-title {
+    color: var(--accent);
+    font-weight: 600;
+  }
+  .trow-artist {
+    color: var(--muted);
+    font-size: 12px;
+    line-height: 16px;
+  }
+  .trow-time {
+    color: var(--muted);
+    font-size: 12px;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+  .trow-idx {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--muted);
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+  }
+  .trow-idx .when-hover {
+    display: none;
+    color: var(--fg);
+  }
+  .trow:hover .trow-idx .when-rest,
+  .trow:focus-within .trow-idx .when-rest {
+    display: none;
+  }
+  .trow:hover .trow-idx .when-hover,
+  .trow:focus-within .trow-idx .when-hover {
+    display: inline-flex;
+  }
+  /* Row actions appear on hover or keyboard focus; a liked heart stays. */
+  .trow-actions {
+    display: flex;
+    flex: none;
+    opacity: 0;
+    transition: opacity var(--dur-fast) var(--ease);
+  }
+  .trow:hover .trow-actions,
+  .trow:focus-within .trow-actions,
+  .trow-actions[data-liked='true'] {
+    opacity: 1;
+  }
+  /* No pointer to hover with (touch screens): the actions are always there. */
+  @media (hover: none) {
+    .trow-actions {
+      opacity: 1;
+    }
+  }
+  @container (min-width: 600px) {
+    .tracklist-head,
+    .trow-main {
+      grid-template-columns: 32px 40px minmax(0, 1.4fr) minmax(0, 1fr) 48px;
+    }
+    .tracklist-head .col-artist {
+      display: block;
+    }
+    .trow-text {
+      display: contents;
+    }
+    .trow-artist {
+      font-size: 14px;
+      line-height: 20px;
+    }
+  }
+  .row-edit {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    border-radius: var(--r-md);
+    border-top: 2px solid transparent;
+    border-bottom: 2px solid transparent;
+  }
+  .row-edit:hover,
+  .row-edit:focus-within {
+    background: var(--hover);
+  }
+  .row-edit[data-current='true'] {
+    background: var(--selected);
+  }
+  .row-edit[data-over='above'] {
+    border-top-color: var(--accent);
+  }
+  .row-edit[data-over='below'] {
+    border-bottom-color: var(--accent);
+  }
+  .row-edit[data-dragging='true'] {
+    opacity: 0.4;
+  }
+  .row-edit-main {
+    display: flex;
+    flex: 1 1 0;
+    align-items: center;
+    gap: 12px;
+    min-width: 0;
+    padding: 6px 8px 6px 0;
+    text-align: left;
+  }
+  .handle {
+    display: inline-flex;
+    align-items: center;
+    padding: 8px 4px 8px 8px;
+    color: var(--muted);
+    cursor: grab;
+    user-select: none;
+    touch-action: none;
+  }
+
+  /* Playing mark: three bars that move while the song plays and stand still when it is paused. */
+  .eq {
+    display: inline-flex;
+    align-items: flex-end;
+    gap: 2px;
+    height: 14px;
+  }
+  .eq i {
+    display: block;
+    width: 3px;
+    height: 100%;
+    border-radius: 1px;
+    background: var(--accent);
+    transform: scaleY(0.6);
+    transform-origin: bottom;
+  }
+  .eq[data-playing='true'] i {
+    animation: eq 900ms ease-in-out infinite;
+  }
+  .eq[data-playing='true'] i:nth-child(2) {
+    animation-delay: -300ms;
+  }
+  .eq[data-playing='true'] i:nth-child(3) {
+    animation-delay: -600ms;
+  }
+
+  /* Cover grid (recent songs, jump back in) */
+  .cover-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(132px, 1fr));
+    gap: 12px;
+    margin: 0;
+    padding: 4px 0 0;
+    list-style: none;
+  }
+  .cover-tile {
+    display: block;
+    width: 100%;
+    text-align: left;
+  }
+  .cover-tile .cover-art {
+    position: relative;
+    aspect-ratio: 1;
+    overflow: hidden;
+    border-radius: var(--r-md);
+  }
+  .cover-tile .cover-play {
+    position: absolute;
+    right: 8px;
+    bottom: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    border-radius: 9999px;
+    background: var(--accent);
+    color: var(--on-accent);
+    opacity: 0;
+    transform: translateY(4px);
+    transition: opacity var(--dur-fast) var(--ease), transform var(--dur-base) var(--ease);
+  }
+  .cover-tile:hover .cover-play,
+  .cover-tile:focus-visible .cover-play {
+    opacity: 1;
+    transform: none;
+  }
+
+  /* Rows in settings, menus and pickers */
+  .setting {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 12px;
+    border-radius: var(--r-md);
+    cursor: pointer;
+  }
+  .setting:hover {
+    background: var(--hover);
+  }
+  .setting-hint {
+    display: block;
+    color: var(--muted);
+    font-size: 12px;
+    line-height: 16px;
+  }
+  .menu-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    min-height: 40px;
+    padding: 6px 12px;
+    border-radius: var(--r-md);
+    text-align: left;
+  }
+  .menu-item:hover {
+    background: var(--hover);
+  }
+  .menu-item:active {
+    background: var(--press);
+  }
+  .group-title {
+    padding: 0 12px 4px;
+    font-family: var(--font-display);
+    font-size: 14px;
+    line-height: 20px;
+    font-weight: 600;
+  }
+  .settings-section {
+    padding: 16px 0;
+    border-top: 1px solid var(--line);
+  }
+  .settings-section:first-child {
+    border-top: 0;
+    padding-top: 0;
+  }
+  .well {
+    padding: 12px;
+    border-radius: var(--r-md);
+    background: var(--surface);
+  }
+  .sheet-panel {
+    position: relative;
+    overflow-y: auto;
+    border: 1px solid var(--line);
+    box-shadow: var(--shadow-pop);
+  }
+  .toast {
+    border-radius: var(--r-md);
+    box-shadow: var(--shadow-pop);
+  }
+  .theme-chip {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 12px;
+    border: 2px solid transparent;
+    border-radius: var(--r-md);
+    background: var(--surface);
+    text-align: left;
+  }
+  .theme-chip:hover {
+    background: var(--surface-2);
+  }
+  .theme-chip[aria-pressed='true'] {
+    border-color: var(--accent);
+    background: var(--surface-2);
+  }
+
+  /* Compact player (tray flyout and mini player) */
+  .compact {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-width: 0;
+    flex: 1 1 0;
+  }
+  .compact-bar {
+    height: 4px;
+    overflow: hidden;
+    border-radius: 2px;
+    background: var(--surface-2);
+  }
+  .compact-bar > div {
+    height: 100%;
+    border-radius: 2px;
+    background: var(--accent);
+  }
+}
+
+@layer components {
+  .accent-text {
+    color: var(--accent);
+    font-weight: 600;
+  }
+}
+
+@layer components {
+  /* The card at the top of Home: the accent washes in from the left, as it does down the stage. */
+  .hero {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    padding: 16px;
+    border: 1px solid var(--line);
+    border-radius: var(--r-lg);
+    background: linear-gradient(100deg, var(--stage-wash), transparent 70%), var(--surface);
+  }
 }

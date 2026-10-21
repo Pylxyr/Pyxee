@@ -2,6 +2,8 @@
   import { theme } from '$lib/theme.svelte';
   import { nav } from '$lib/nav.svelte';
   import type { ThemeDef } from '$lib/themes';
+  import Button from './Button.svelte';
+  import Toggle from './Toggle.svelte';
 
   const lights = $derived(theme.all.filter((t) => t.scheme === 'light'));
   const darks = $derived(theme.all.filter((t) => t.scheme === 'dark'));
@@ -16,25 +18,24 @@
   }
 </script>
 
-<label class="flex items-center justify-between rounded-lg px-3 py-3 hover:bg-surface">
-  <span>
-    Match system
-    <span class="block text-xs text-muted">Use one theme when Windows is light and another when it is dark.</span>
-  </span>
-  <input type="checkbox" checked={theme.settings.followSystem} onchange={(e) => theme.update({ followSystem: e.currentTarget.checked })} />
-</label>
+<Toggle
+  label="Match system"
+  hint="Use one theme when Windows is light and another when it is dark."
+  checked={theme.settings.followSystem}
+  onchange={(on) => theme.update({ followSystem: on })}
+/>
 
 {#if theme.settings.followSystem}
   <div class="grid grid-cols-2 gap-3 px-3 pb-2">
-    <label class="text-xs text-muted">
+    <label class="setting-hint">
       When light
-      <select class="mt-1 w-full rounded-lg bg-surface px-2 py-2 text-sm text-fg" aria-label="Light theme" value={theme.settings.lightId} onchange={(e) => theme.update({ lightId: e.currentTarget.value })}>
+      <select class="field mt-1" aria-label="Light theme" value={theme.settings.lightId} onchange={(e) => theme.update({ lightId: e.currentTarget.value })}>
         {#each lights as t (t.id)}<option value={t.id}>{t.name}</option>{/each}
       </select>
     </label>
-    <label class="text-xs text-muted">
+    <label class="setting-hint">
       When dark
-      <select class="mt-1 w-full rounded-lg bg-surface px-2 py-2 text-sm text-fg" aria-label="Dark theme" value={theme.settings.darkId} onchange={(e) => theme.update({ darkId: e.currentTarget.value })}>
+      <select class="field mt-1" aria-label="Dark theme" value={theme.settings.darkId} onchange={(e) => theme.update({ darkId: e.currentTarget.value })}>
         {#each darks as t (t.id)}<option value={t.id}>{t.name}</option>{/each}
       </select>
     </label>
@@ -43,24 +44,18 @@
 
 <div class="grid grid-cols-2 gap-2 px-2 py-2" role="group" aria-label="Theme">
   {#each groups as g (g.label)}
-    {#if g.items.length}<p class="col-span-2 px-1 pt-1 text-xs font-semibold uppercase tracking-wide text-muted">{g.label}</p>{/if}
+    {#if g.items.length}<p class="group-title col-span-2 !px-1 pt-2">{g.label}</p>{/if}
     {#each g.items as t (t.id)}
-    <button
-      class="flex items-center gap-2.5 rounded-xl border-2 px-3 py-2.5 text-left text-sm font-medium {active === t.id ? 'border-accent bg-surface-2' : 'border-transparent bg-surface hover:bg-surface-2'}"
-      aria-label={t.name}
-      aria-pressed={active === t.id}
-      title={t.description ?? 'Custom theme'}
-      onclick={() => theme.select(t.id)}
-    >
-      <span class="flex shrink-0 overflow-hidden rounded-full border border-line" aria-hidden="true">
-        {#each swatches(t) as c}<span class="h-5 w-3.5" style="background:{c}"></span>{/each}
-      </span>
-      <span class="min-w-0 truncate">{t.name}</span>
-    </button>
+      <button class="theme-chip" aria-label={t.name} aria-pressed={active === t.id} title={t.description ?? 'Custom theme'} onclick={() => theme.select(t.id)}>
+        <span class="flex shrink-0 overflow-hidden r-full border border-line" aria-hidden="true">
+          {#each swatches(t) as c}<span class="h-5 w-2.5" style="background:{c}"></span>{/each}
+        </span>
+        <span class="min-w-0 leading-tight">{t.name}</span>
+      </button>
     {/each}
   {/each}
 </div>
 
 <div class="flex gap-2 px-2 pb-2">
-  <button class="rounded-md bg-fg px-4 py-1.5 text-sm font-semibold text-on-fg" onclick={() => nav.openThemeEditor()}>Customize…</button>
+  <Button variant="primary" onclick={() => nav.openThemeEditor()}>Customize…</Button>
 </div>

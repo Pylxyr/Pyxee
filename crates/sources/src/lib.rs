@@ -6,6 +6,7 @@ pub mod local;
 mod scrub;
 pub mod suggest;
 pub mod ytdlp;
+pub mod ytmusic;
 
 pub use scrub::scrub;
 

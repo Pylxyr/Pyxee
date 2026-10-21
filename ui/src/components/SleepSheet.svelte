@@ -4,6 +4,8 @@
   import { sleepLabel } from '$lib/lyrics';
   import { snackbar } from '$lib/snackbar.svelte';
   import type { SleepSettingDto } from '$lib/bindings/SleepSettingDto';
+  import Button from './Button.svelte';
+  import MenuItem from './MenuItem.svelte';
   import Sheet from './Sheet.svelte';
 
   const options: { label: string; setting: SleepSettingDto }[] = [
@@ -26,18 +28,18 @@
 
 <Sheet open={nav.sleepSheetOpen} title="Sleep timer" onclose={() => (nav.sleepSheetOpen = false)}>
   {#if sleep.status}
-    <div class="mb-2 flex items-center justify-between rounded-xl bg-surface-2 px-4 py-3" role="status">
-      <span class="font-semibold" data-testid="sleep-status">{sleepLabel(sleep.status)}</span>
+    <div class="well mb-2 flex items-center justify-between" role="status">
+      <span class="t-strong" data-testid="sleep-status">{sleepLabel(sleep.status)}</span>
       <span class="flex gap-2">
         {#if sleep.status.kind === 'minutes'}
-          <button class="rounded-md border border-line bg-surface px-3 py-1 text-sm font-medium" onclick={() => sleep.extend(15)}>+15 min</button>
+          <Button size="sm" onclick={() => sleep.extend(15)}>+15 min</Button>
         {/if}
-        <button class="rounded-md bg-fg px-3 py-1 text-sm font-semibold text-on-fg" onclick={() => sleep.cancel()}>Turn off</button>
+        <Button size="sm" variant="primary" onclick={() => sleep.cancel()}>Turn off</Button>
       </span>
     </div>
   {/if}
-  <p class="px-3 pb-2 text-[13px] text-muted">Playback pauses by itself. A timer in minutes fades the volume out over its last 15 seconds.</p>
+  <p class="setting-hint px-3 pb-2">Playback pauses by itself. A timer in minutes fades the volume out over its last 15 seconds.</p>
   {#each options as o (o.label)}
-    <button class="flex w-full rounded-lg px-3 py-3 text-left hover:bg-surface" onclick={() => choose(o)}>{o.label}</button>
+    <MenuItem onclick={() => choose(o)}>{o.label}</MenuItem>
   {/each}
 </Sheet>

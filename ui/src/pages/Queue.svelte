@@ -5,13 +5,14 @@
   import { nav } from '$lib/nav.svelte';
   import { messageOf } from '$lib/backend';
   import { snackbar } from '$lib/snackbar.svelte';
-  import { formatTime } from '$lib/format';
   import { reorder } from '$lib/reorder';
-  import Icon from '../components/Icon.svelte';
-  import Thumb from '../components/Thumb.svelte';
+  import Button from '../components/Button.svelte';
+  import EditableRow from '../components/EditableRow.svelte';
   import EmptyState from '../components/EmptyState.svelte';
+  import Icon from '../components/Icon.svelte';
+  import IconButton from '../components/IconButton.svelte';
+  import PageHeader from '../components/PageHeader.svelte';
   import ScrollPage from '../components/ScrollPage.svelte';
-  import SectionHead from '../components/SectionHead.svelte';
 
   const queue = $derived(player.state.queue);
   const firstRadio = $derived(queue.find((e) => e.origin === 'radio')?.id ?? null);
@@ -42,53 +43,57 @@
     if (id === player.state.loading) return 'Loading';
     return '';
   }
+  const overOf = (id: number, i: number): 'above' | 'below' | null =>
+    drag && drag.to === i && drag.id !== id ? (drag.to < drag.from ? 'above' : 'below') : null;
 </script>
 
 <ScrollPage>
   {#snippet header()}
-  <div class="flex flex-wrap items-center gap-3">
-    <div class="min-w-48 flex-1"><SectionHead level={1} count="{queue.length} {queue.length === 1 ? 'song' : 'songs'}">Queue</SectionHead></div>
-    <button class="rounded border border-line bg-surface px-4 py-1.5 text-sm font-medium disabled:opacity-40" disabled={queue.length === 0} onclick={saveAsPlaylist}>Save as playlist</button>
-    <button class="rounded border border-line bg-surface px-4 py-1.5 text-sm font-medium disabled:opacity-40" disabled={queue.length === 0} onclick={clearQueue}>Clear queue</button>
-  </div>
+    <PageHeader title="Queue" meta="{queue.length} {queue.length === 1 ? 'song' : 'songs'}">
+      {#snippet actions()}
+        <Button disabled={queue.length === 0} onclick={saveAsPlaylist}>Save as playlist</Button>
+        <Button disabled={queue.length === 0} onclick={clearQueue}>Clear queue</Button>
+      {/snippet}
+    </PageHeader>
   {/snippet}
 
   {#if queue.length === 0}
     <EmptyState icon="queue" title="Your queue is empty" text="Search for a song and choose Play next or Add to queue." />
   {:else}
-    <ul class="mt-4" aria-label="Queue" bind:this={listEl}>
+    <ul aria-label="Queue" bind:this={listEl}>
       {#each queue as e, i (e.id)}
         {#if e.id === firstRadio}
-          <li class="label px-3 pb-1 pt-5" aria-hidden="true">Autoplay · similar songs</li>
+          <li class="t-caption muted px-3 pb-1 pt-5" aria-hidden="true">Autoplay · similar songs</li>
         {/if}
-        <li
+        <EditableRow
           data-row
-          class="group flex items-center gap-1 border-y-2 border-transparent border-b-line/60 hover:bg-surface-2/70 {drag && drag.to === i && drag.id !== e.id ? (drag.to < drag.from ? 'border-t-accent' : 'border-b-accent') : ''} {drag?.id === e.id ? 'opacity-40' : ''} {status(e.id) ? 'bg-surface-2 shadow-[inset_3px_0_0_0_var(--accent)]' : ''}"
+          track={e.track}
+          index={i}
+          status={status(e.id)}
+          current={status(e.id) !== ''}
+          over={overOf(e.id, i)}
+          dragging={drag?.id === e.id}
+          onplay={() => player.playEntry(e.id)}
         >
-          <span
-            class="cursor-grab touch-none select-none p-2 text-muted"
-            role="presentation"
-            title="Drag to reorder"
-            data-testid="drag-handle"
-            use:reorder={{
-              index: i,
-              rows,
-              onover: (to) => (drag = to === null ? null : { id: e.id, from: i, to }),
-              ondrop: (to) => move(e.id, to),
-            }}><Icon name="drag" size={18} /></span>
-          <button class="flex min-w-0 flex-1 items-center gap-3 py-2 text-left" onclick={() => player.playEntry(e.id)}>
-            <span class="w-6 shrink-0 text-center text-[12px] tabular-nums text-muted" aria-hidden="true">{i + 1}</span>
-            <Thumb src={e.track.thumbnail} seed={e.track.key} size={40} rounded="rounded-sm" />
-            <span class="min-w-0 flex-1">
-              <span class="block truncate text-[14px] font-medium">{e.track.title}</span>
-              <span class="block truncate text-[12px] {status(e.id) ? 'text-accent' : 'text-muted'}">{status(e.id) || e.track.artist}</span>
-            </span>
-            <span class="text-[13px] tabular-nums text-muted">{formatTime(e.track.durationMs)}</span>
-          </button>
-          <button class="p-1.5 text-muted hover:text-fg disabled:opacity-30" aria-label="Move {e.track.title} up" disabled={i === 0} onclick={() => move(e.id, i - 1)}><Icon name="up" size={18} /></button>
-          <button class="p-1.5 text-muted hover:text-fg disabled:opacity-30" aria-label="Move {e.track.title} down" disabled={i === queue.length - 1} onclick={() => move(e.id, i + 1)}><Icon name="down" size={18} /></button>
-          <button class="p-1.5 text-muted hover:text-fg" aria-label="Remove {e.track.title} from queue" onclick={() => removeFromQueue(e)}><Icon name="close" size={18} /></button>
-        </li>
+          {#snippet handle()}
+            <span
+              class="handle"
+              role="presentation"
+              title="Drag to reorder"
+              data-testid="drag-handle"
+              use:reorder={{
+                index: i,
+                rows,
+                onover: (to) => (drag = to === null ? null : { id: e.id, from: i, to }),
+                ondrop: (to) => move(e.id, to),
+              }}><Icon name="drag" size={18} /></span>
+          {/snippet}
+          {#snippet actions()}
+            <IconButton icon="up" iconSize={18} label="Move {e.track.title} up" disabled={i === 0} onclick={() => move(e.id, i - 1)} />
+            <IconButton icon="down" iconSize={18} label="Move {e.track.title} down" disabled={i === queue.length - 1} onclick={() => move(e.id, i + 1)} />
+            <IconButton icon="close" iconSize={18} label="Remove {e.track.title} from queue" onclick={() => removeFromQueue(e)} />
+          {/snippet}
+        </EditableRow>
       {/each}
     </ul>
   {/if}

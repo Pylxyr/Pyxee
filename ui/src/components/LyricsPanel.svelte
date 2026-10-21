@@ -37,15 +37,15 @@
   aria-label="Lyrics"
 >
   {#if !track}
-    <p class="py-6 text-sm text-muted">Play a song to see its lyrics.</p>
+    <p class="muted py-6">Play a song to see its lyrics.</p>
   {:else if loading || !lyrics}
-    <p class="py-6 text-sm text-muted" role="status">Looking for lyrics…</p>
+    <p class="muted py-6" role="status">Looking for lyrics…</p>
   {:else if lyrics.kind === 'synced'}
     <ol class="space-y-3 pb-24 pt-2">
       {#each lyrics.lines as line, i (i)}
         <li>
           <button
-            class="w-full text-left text-xl font-semibold leading-snug transition-colors {i === index ? 'text-fg' : i < index ? 'text-muted/60' : 'text-muted'}"
+            class="t-subtitle w-full text-left transition-colors {i === index ? 'text-fg' : i < index ? 'text-muted/60' : 'text-muted'}"
             data-current={i === index}
             onclick={() => player.seek(line.timeMs)}
           >{line.text || '♪'}</button>
@@ -53,16 +53,16 @@
       {/each}
     </ol>
   {:else if lyrics.kind === 'plain'}
-    <p class="whitespace-pre-wrap py-2 text-base leading-relaxed">{lyrics.text}</p>
-    <p class="mt-4 text-[13px] text-muted">These lyrics are not timed, so they do not follow the song.</p>
+    <p class="t-lead whitespace-pre-wrap py-2 !font-normal">{lyrics.text}</p>
+    <p class="t-caption muted mt-4">These lyrics are not timed, so they do not follow the song.</p>
   {:else if lyrics.kind === 'instrumental'}
-    <p class="py-6 text-sm text-muted">This one is instrumental, so there are no lyrics.</p>
+    <p class="muted py-6">This one is instrumental, so there are no lyrics.</p>
   {:else if lyrics.kind === 'notFound'}
-    <p class="py-6 text-sm text-muted">No lyrics found for this song.</p>
+    <p class="muted py-6">No lyrics found for this song.</p>
   {:else}
-    <p class="py-6 text-sm text-accent" role="alert">
+    <p class="accent-text py-6" role="alert">
       Could not get the lyrics ({lyrics.message}).
-      <button class="ml-2 font-semibold underline" onclick={() => lyricsStore.retry(track)}>Try again</button>
+      <button class="btn-link ml-2" onclick={() => lyricsStore.retry(track)}>Try again</button>
     </p>
   {/if}
 </div>

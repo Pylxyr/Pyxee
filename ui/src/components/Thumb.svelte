@@ -5,7 +5,7 @@
   import { viewport } from '$lib/viewport.svelte';
   import Icon from './Icon.svelte';
 
-  let { src, seed, size = 56, rounded = 'rounded-md', fill = false }: { src: string | null; seed: string; size?: number; rounded?: string; fill?: boolean } = $props();
+  let { src, seed, size = 56, rounded = 'r-md', fill = false }: { src: string | null; seed: string; size?: number; rounded?: string; fill?: boolean } = $props();
   // The sharpest image for this box first; a 404 (e.g. no maxresdefault) moves on to the next.
   let tried = $state(0);
   // Bumped to create a fresh <img> (a new request) when a cover is still not showing after the window changed size.

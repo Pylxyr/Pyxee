@@ -19,7 +19,7 @@
 .PARAMETER SkipLive       NOT RECOMMENDED. Skip everything that talks to YouTube. Without it the live checks always run, and
                           a live phase that could not run (no FFmpeg libraries, no yt-dlp, rate limited) is a FAIL.
 .PARAMETER SkipTools      Do not run `cargo xtask tools` (the yt-dlp download flow).
-.PARAMETER Ui             Kept for old command lines. The UI checks (npm ci / check / test / build) always run now.
+.PARAMETER Ui             Kept for old command lines. The UI checks (npm ci / check / test / build, the named tests of the UI rebuild and the UI size report) always run now; the static UI facts run even with -SkipTests.
 .PARAMETER SelfTest       Only run the redaction self-test (it also runs first in every full run) and exit.
 .PARAMETER Installer      Also build the installer and the portable zip (`cargo xtask installer` / `portable`, slow) and inspect them.
 .PARAMETER Ci            Replay the release workflow's "Build the portable zip" step the way a clean GitHub runner meets it: the
@@ -27,7 +27,7 @@
                           folder, so its one-time "Copying skeleton files" output appears), then unpack the zip and run what it
                           carries, as release.yml does. Slow (builds the app); catches bugs that only show on a clean machine.
 .PARAMETER UpdateYtdlp    Run `yt-dlp -U` first (an old yt-dlp is the most common cause of YouTube failures).
-.PARAMETER Manual         After the automatic part, ask you to confirm things in the real app (y/n).
+.PARAMETER Manual         After the automatic part, ask you to confirm things in the real app (y/n), including the UI items (each window and view, light and dark, keyboard only, narrow and wide, high DPI).
 .PARAMETER AnalyzeLog     Summarise the app's own log file (run after using the app).
 .PARAMETER FlakeRuns      Repeats of the known timing-sensitive pause test (default 10).
 .PARAMETER KeepBuild      Keep target\debug and the FFmpeg build tree (default: delete them before exiting; the small
@@ -71,7 +71,7 @@ $script:LiveBlocked = $false
 $script:LiveRequested = -not $SkipLive
 $script:Step = 0
 # Planned number of sections, shown as "Section N of M". An estimate: it is lowered if the live checks get skipped later.
-$script:StepTotal = 3 + [int](-not $SkipTests) + [int][bool]$Installer + [int][bool]$Ci + [int](-not $SkipLive) + [int][bool]$Manual + [int]([bool]$AnalyzeLog -or [bool]$Manual)
+$script:StepTotal = 4 + [int](-not $SkipTests) + [int][bool]$Installer + [int][bool]$Ci + [int](-not $SkipLive) + [int][bool]$Manual + [int]([bool]$AnalyzeLog -or [bool]$Manual)
 $script:SectionTitle = 'starting'
 $script:RunSw = [Diagnostics.Stopwatch]::StartNew()
 
@@ -401,6 +401,206 @@ function Test-ReviewFixes {
   & $expect 'fix-f8-progress-binding' ((Test-Path -LiteralPath (Join-Path $Root 'ui\src\lib\bindings\UpdateProgressDto.ts')) -and ((& $read 'crates\app\src\updater.rs') -match 'update-progress')) 'UpdateProgressDto.ts exists and the updater emits update-progress'
 }
 
+# ---------------------------------------------------------------- UI rebuild: static facts, named tests, report
+# What svelte-check and the unit tests do not see about the UI rebuild ("Rail, Page, Stage", see docs\ui.md): remote
+# resources, removed components, the windows and entry points, the test ids the tests rely on, the dependency list.
+# The before figures were measured on the commit that holds the review fixes, just before the rebuild.
+$script:UiBefore = @{ Components = 35; SvelteLines = 2528; CssLines = 252; TsLines = 2516; ClassTokens = 338; Tests = 330 }
+
+# Tests the rebuild added or changed (their vitest titles). The full `npm test` run asks for everything; this asks for
+# each of these by name and fails when one did not run (renamed or removed) or did not pass.
+$script:UiNamedTests = @(
+  @{ File = 'App.test.ts'; Names = @(
+    'uses the bottom bar when narrow, with the four destinations',
+    'wide layout puts the wordmark, the four destinations and Settings in a side rail, and the player on the right',
+    'the wide layout shows what plays on the stage: transport, a preview of Up next, and a way to play from it',
+    'marks the song that is playing in every list it appears in') },
+  @{ File = 'motion.test.ts'; Names = @(
+    'keeps the given lengths when the system does not ask for less motion',
+    'drops lengths and distances to nothing when it does',
+    'leaving is quicker than arriving') }
+)
+# 330 before; two App.test.ts tests were rewritten (same count) and 2 + 3 were added.
+$script:UiExpectedTests = 335
+
+function Get-UiSources([string[]]$Ext = @('.svelte', '.ts', '.css', '.html')) {
+  $ui = Join-Path $Root 'ui'
+  $files = @(Get-ChildItem -LiteralPath (Join-Path $ui 'src') -Recurse -File -ErrorAction SilentlyContinue | Where-Object { ($Ext -contains $_.Extension) -and ($_.Name -notmatch '\.test\.ts$') -and ($_.FullName -notmatch '\\bindings\\') })
+  $index = Join-Path $ui 'index.html'
+  if (($Ext -contains '.html') -and (Test-Path -LiteralPath $index)) { $files += Get-Item -LiteralPath $index }
+  return ,$files
+}
+
+function Get-LineCount($files) { $n = 0; foreach ($f in $files) { $n += @(Get-Content -LiteralPath $f.FullName).Count }; return $n }
+
+function Get-GzipSize([string]$path) {
+  $bytes = [IO.File]::ReadAllBytes($path)
+  $ms = New-Object IO.MemoryStream
+  $gz = New-Object IO.Compression.GZipStream($ms, [IO.Compression.CompressionLevel]::Optimal)
+  $gz.Write($bytes, 0, $bytes.Length)
+  $gz.Close()
+  return $ms.ToArray().Length
+}
+
+function Test-UiRebuild {
+  $expect = { param([string]$name, [bool]$ok, [string]$detail) if ($ok) { Add-Result 'PASS' $name $detail } else { Add-Result 'FAIL' $name $detail } }
+  $ui = Join-Path $Root 'ui'
+  $files = Get-UiSources
+  if ($files.Count -eq 0) { Add-Result 'FAIL' 'ui-sources' 'ui\src was not found'; return }
+  $text = @{}
+  foreach ($f in $files) { $text[$f.FullName] = Get-Content -LiteralPath $f.FullName -Raw }
+  $rel = { param($f) $f.FullName.Substring($Root.Length + 1) }
+  $hits = { param([string]$pattern) @($files | Where-Object { $text[$_.FullName] -match $pattern } | ForEach-Object { & $rel $_ }) }
+  $read = { param([string]$relPath) $p = Join-Path $Root $relPath; if (Test-Path -LiteralPath $p) { Get-Content -LiteralPath $p -Raw } else { '' } }
+
+  # (b1) Nothing remote: the CSP blocks remote scripts, styles, fonts and images, so one that sneaks in fails silently on the PC.
+  $remote = & $hits '(?i)@import\s+url\(|url\(\s*[''"]?https?:|<link[^>]+href=["'']?https?:|<script[^>]+src=["'']?https?:|fonts\.googleapis|fonts\.gstatic|unpkg\.com|cdn\.jsdelivr|cdnjs\.'
+  & $expect 'ui-no-remote-resources' ($remote.Count -eq 0) $(if ($remote.Count -eq 0) { 'no remote stylesheet, script, @import or font host in ui\src or index.html' } else { 'remote resource in: ' + ($remote -join ', ') })
+  $fontRef = & $hits '(?i)@font-face|\.(woff2?|ttf|otf)\b'
+  $fontFiles = @(foreach ($d in @('src', 'public')) { $p = Join-Path $ui $d; if (Test-Path -LiteralPath $p) { Get-ChildItem -LiteralPath $p -Recurse -File | Where-Object { $_.Extension -match '^\.(woff2?|ttf|otf)$' } } })
+  & $expect 'ui-system-fonts-only' (($fontRef.Count -eq 0) -and ($fontFiles.Count -eq 0)) $(if (($fontRef.Count -eq 0) -and ($fontFiles.Count -eq 0)) { 'no @font-face and no font file: the text is Segoe UI Variable from Windows' } else { 'font reference or file: ' + (($fontRef + @($fontFiles | ForEach-Object { $_.Name })) -join ', ') })
+  $css = & $read 'ui\src\app.css'
+  & $expect 'ui-font-stack' (($css -match 'Segoe UI Variable Text') -and ($css -match 'Segoe UI Variable Display') -and ($css -notmatch 'Fredoka')) 'app.css names Segoe UI Variable Text and Display with system fallbacks'
+
+  # (b2) Removed components must stay removed, in code and in docs.
+  $gone = @('DeckNav', 'PlayerBar', 'BottomNav')
+  $goneFiles = @($gone | Where-Object { Test-Path -LiteralPath (Join-Path $Root ('ui\src\components\' + $_ + '.svelte')) })
+  $goneRefs = @(& git grep -n -E '\b(DeckNav|PlayerBar|BottomNav)\b' -- ui/src docs/ui.md 2>$null)
+  & $expect 'ui-no-removed-components' (($goneFiles.Count -eq 0) -and ($goneRefs.Count -eq 0)) $(if (($goneFiles.Count -eq 0) -and ($goneRefs.Count -eq 0)) { 'DeckNav, PlayerBar and BottomNav are gone and nothing refers to them' } else { 'still there: ' + (($goneFiles + ($goneRefs | Select-Object -First 3)) -join ' | ') })
+
+  # (b3) Windows and entry points: main, mini player and tray flyout, each with its page or view.
+  $main = & $read 'ui\src\main.ts'
+  $miniRs = & $read 'crates\app\src\shell\mini.rs'
+  $flyRs = & $read 'crates\app\src\shell\flyout.rs'
+  & $expect 'ui-entry-points' (($main -match "view === 'flyout'") -and ($main -match "view === 'mini'") -and ($main -match 'Flyout') -and ($main -match 'Mini') -and ($miniRs -match 'index\.html\?view=mini') -and ($flyRs -match 'index\.html\?view=flyout')) 'main.ts picks App, Mini or Flyout from ?view=, and the Rust side opens index.html?view=mini and ?view=flyout'
+  $need = @('App.svelte', 'views\Mini.svelte', 'views\Flyout.svelte', 'views\Compact.svelte', 'views\Boot.ts', 'pages\Home.svelte', 'pages\Explore.svelte', 'pages\Library.svelte', 'pages\Playlist.svelte', 'pages\Queue.svelte', 'pages\Search.svelte', 'components\Navigation.svelte', 'components\Stage.svelte', 'components\Dock.svelte', 'components\NowPlaying.svelte', 'components\SettingsSheet.svelte', 'components\ThemeEditor.svelte', 'components\TrackMenu.svelte')
+  $missing = @($need | Where-Object { -not (Test-Path -LiteralPath (Join-Path $Root ('ui\src\' + $_))) })
+  & $expect 'ui-windows-and-views-present' ($missing.Count -eq 0) $(if ($missing.Count -eq 0) { "all $($need.Count) shell, view, page and sheet files exist" } else { 'missing: ' + ($missing -join ', ') })
+  $app = & $read 'ui\src\App.svelte'
+  $wired = @('Navigation', 'TopBar', 'Dock', 'Stage', 'NowPlaying', 'Snackbar', 'TrackMenu', 'PlaylistPicker', 'NameSheet', 'ThemeEditor', 'SleepSheet', 'SettingsSheet', 'Home', 'Explore', 'Library', 'Queue', 'Playlist', 'Search')
+  $unwired = @($wired | Where-Object { $app -notmatch ('<' + $_ + '\b') })
+  & $expect 'ui-app-wires-everything' ($unwired.Count -eq 0) $(if ($unwired.Count -eq 0) { 'App.svelte renders the rail/bar, top bar, dock, stage, Now Playing, every page and every sheet' } else { 'App.svelte does not render: ' + ($unwired -join ', ') })
+
+  # (b4) The test ids, roles and live regions that tests and assistive technology rely on must still be in the code.
+  $ids = @('player-bar', 'np-root', 'np-header', 'np-tabs', 'np-art', 'np-controls', 'np-scroll', 'page-header', 'page-scroll', 'drag-handle', 'upnext-handle', 'resume', 'compact-title', 'compact-art', 'mini', 'flyout', 'log-path', 'sleep-chip', 'sleep-status', 'lyrics', 'related')
+  $noId = @($ids | Where-Object { (& $hits ('data-testid="' + $_ + '"')).Count -eq 0 })
+  & $expect 'ui-test-ids' ($noId.Count -eq 0) $(if ($noId.Count -eq 0) { "all $($ids.Count) data-testid values the tests use are present" } else { 'missing data-testid: ' + ($noId -join ', ') })
+  $snack = & $read 'ui\src\components\Snackbar.svelte'
+  $sheet = & $read 'ui\src\components\Sheet.svelte'
+  $np = & $read 'ui\src\components\NowPlaying.svelte'
+  $scroll = & $read 'ui\src\components\ScrollPage.svelte'
+  $seek = & $read 'ui\src\components\Seek.svelte'
+  $a11y = ($snack -match 'aria-live="polite"') -and ($snack -match 'role="status"') -and ($sheet -match 'role="dialog"') -and ($sheet -match 'aria-modal="true"') -and ($sheet -match "key === 'Escape'") -and ($np -match 'role="alert"') -and ($np -match 'role="tabpanel"') -and ($scroll -match 'data-scroll[^>]*tabindex="0"') -and ($seek -match 'type="range"') -and ($seek -match 'aria-valuetext')
+  & $expect 'ui-accessibility-structure' $a11y 'snackbar is a polite live region, sheets are modal dialogs that close on Escape, failures use role=alert, tab panels and scroll areas are reachable, seek is a real range input'
+  $icon = & $read 'ui\src\components\IconButton.svelte'
+  $clickDiv = & $hits '<(div|span|li|p|section)\b[^>]*\sonclick='
+  & $expect 'ui-real-buttons' (($icon -match 'aria-label=\{label\}') -and ($clickDiv.Count -eq 0)) $(if ($clickDiv.Count -eq 0) { 'IconButton always carries an accessible name, and no div, span or li has a click handler' } else { 'click handler on a non-button in: ' + ($clickDiv -join ', ') })
+  & $expect 'ui-focus-and-motion-rules' (($css -match ':focus-visible') -and ($css -match 'prefers-reduced-motion') -and ((& $read 'ui\src\lib\motion.ts') -match 'prefers-reduced-motion')) 'a visible focus rule exists, and reduced motion is honoured in CSS (app.css) and in script (lib\motion.ts)'
+
+  # (b5) The design rules of this rebuild: tokens, no tracked capitals, no colour literals in components.
+  $tok = @('--layer', '--hover', '--press', '--selected', '--stage-wash', '--r-sm', '--r-md', '--r-lg', '--dur-fast', '--dur-base', '--ease', '--rail-w', '--stage-w', '--page-pad')
+  $noTok = @($tok | Where-Object { $css -notmatch ([regex]::Escape($_) + ':') })
+  & $expect 'ui-design-tokens' (($noTok.Count -eq 0) -and ($css -match '@layer components') -and ($css -match 'container-type:\s*inline-size')) $(if ($noTok.Count -eq 0) { "$($tok.Count) semantic tokens, a component layer and the list container query are in app.css" } else { 'app.css lacks: ' + ($noTok -join ', ') })
+  $caps = & $hits '\buppercase\b|\btracking-(wide|wider|widest)\b|text-transform:\s*uppercase'
+  & $expect 'ui-no-tracked-capitals' ($caps.Count -eq 0) $(if ($caps.Count -eq 0) { 'no uppercase or tracked-out labels (the type is sentence case)' } else { 'uppercase or tracking in: ' + ($caps -join ', ') })
+  $hex = @($files | Where-Object { ($_.Extension -eq '.svelte') -and ($_.Name -ne 'Logo.svelte') -and ($text[$_.FullName] -match '#[0-9a-fA-F]{6}\b') } | ForEach-Object { & $rel $_ })
+  & $expect 'ui-no-colour-literals' ($hex.Count -eq 0) $(if ($hex.Count -eq 0) { 'components take colours from tokens; only the logo has its own' } else { 'hex colour in: ' + ($hex -join ', ') })
+
+  # (b6) No new npm dependencies: package-lock.json cannot be regenerated by the rebuild, so `npm ci` must keep working.
+  try {
+    $pkg = (& $read 'ui\package.json') | ConvertFrom-Json
+    $deps = @($pkg.dependencies.PSObject.Properties.Name | Sort-Object)
+    $dev = @($pkg.devDependencies.PSObject.Properties.Name | Sort-Object)
+    $wantDeps = @('@tauri-apps/api')
+    $wantDev = @('@sveltejs/vite-plugin-svelte', '@tailwindcss/vite', '@tauri-apps/cli', '@testing-library/svelte', '@types/node', 'jsdom', 'svelte', 'svelte-check', 'tailwindcss', 'typescript', 'vite', 'vitest')
+    $extra = @($deps + $dev | Where-Object { ($wantDeps + $wantDev) -notcontains $_ })
+    & $expect 'ui-no-new-dependencies' ($extra.Count -eq 0) $(if ($extra.Count -eq 0) { 'ui\package.json has the same packages as before the rebuild' } else { 'new package(s): ' + ($extra -join ', ') + ' (package-lock.json would be out of date)' })
+  } catch { Add-Result 'FAIL' 'ui-no-new-dependencies' "could not read ui\package.json: $($_.Exception.Message)" }
+
+  # (a) Every test the rebuild added or changed is still in the test files under its title.
+  foreach ($g in $script:UiNamedTests) {
+    $tf = Get-ChildItem -LiteralPath (Join-Path $ui 'src') -Recurse -File -Filter $g.File -ErrorAction SilentlyContinue | Select-Object -First 1
+    $src = if ($tf) { Get-Content -LiteralPath $tf.FullName -Raw } else { '' }
+    foreach ($n in $g.Names) {
+      $slug = ($n -replace '[^A-Za-z0-9]+', '-').Trim('-').ToLower()
+      if ($slug.Length -gt 60) { $slug = $slug.Substring(0, 60) }
+      & $expect ('ui-test-defined-' + $slug) ($src.Contains("'" + $n + "'")) ($g.File + ': ' + $n)
+    }
+  }
+
+  # (c, static part) Size of the UI source before and after.
+  $sv = @($files | Where-Object { $_.Extension -eq '.svelte' })
+  $cssFiles = @($files | Where-Object { $_.Extension -eq '.css' })
+  $tsFiles = @($files | Where-Object { $_.Extension -eq '.ts' })
+  $svLines = Get-LineCount $sv
+  Add-Result 'INFO' 'ui-components' ("{0} components (.svelte files), before the rebuild {1}: {2}" -f $sv.Count, $script:UiBefore.Components, $(if ($sv.Count -gt $script:UiBefore.Components) { 'smaller and more focused pieces' } else { 'not split further' }))
+  Add-Result 'INFO' 'ui-lines' ("Svelte {0} lines (before {1}), app.css {2} (before {3}), TypeScript without tests {4} (before {5}); the design now lives in app.css tokens and classes instead of in markup" -f $svLines, $script:UiBefore.SvelteLines, (Get-LineCount $cssFiles), $script:UiBefore.CssLines, (Get-LineCount $tsFiles), $script:UiBefore.TsLines)
+  $tokens = @{}
+  foreach ($f in $sv) { foreach ($m in [regex]::Matches($text[$f.FullName], 'class="([^"]*)"')) { foreach ($t in ($m.Groups[1].Value -split '[\s{}]+')) { if ($t -and ($t -notmatch '^[''$?:]')) { $tokens[$t] = 1 } } } }
+  Add-Result 'INFO' 'ui-class-vocabulary' ("{0} distinct class names in the markup (before {1}); fewer one-off utilities, more shared classes" -f $tokens.Count, $script:UiBefore.ClassTokens)
+  $big = @($sv | ForEach-Object { [pscustomobject]@{ Name = $_.Name; Lines = @(Get-Content -LiteralPath $_.FullName).Count } } | Sort-Object Lines -Descending | Select-Object -First 3)
+  Add-Result 'INFO' 'ui-largest-components' (($big | ForEach-Object { '{0} {1} lines' -f $_.Name, $_.Lines }) -join ', ')
+  $huge = @($big | Where-Object { $_.Lines -gt 250 })
+  if ($huge.Count -gt 0) { Add-Result 'WARN' 'ui-component-size' ('over 250 lines, consider splitting: ' + (($huge | ForEach-Object { $_.Name }) -join ', ')) }
+}
+
+# (a) The named tests, looked up in vitest's JSON report so a renamed, removed or failing one is named in the report.
+function Test-UiNamedTests {
+  $json = Join-Path $LogDir 'ui-named-tests.json'
+  $names = @($script:UiNamedTests | ForEach-Object { $_.File })
+  $r = Invoke-Logged 'ui-named-tests' ('npm test --prefix ui -- --reporter=json --outputFile="{0}" {1}' -f $json, ($names -join ' '))
+  $all = @()
+  if (Test-Path -LiteralPath $json) {
+    try {
+      $data = Get-Content -LiteralPath $json -Raw | ConvertFrom-Json
+      foreach ($tr in $data.testResults) { foreach ($a in $tr.assertionResults) { $all += [pscustomobject]@{ File = (Split-Path $tr.name -Leaf); Title = $a.title; Status = $a.status } } }
+    } catch { Add-Result 'FAIL' 'ui-named-tests' "could not read vitest's JSON report: $($_.Exception.Message)"; return }
+  } else { Add-Result 'FAIL' 'ui-named-tests' 'vitest wrote no JSON report: see the log'; Show-LogTail $r.Log 20; return }
+  foreach ($g in $script:UiNamedTests) {
+    foreach ($n in $g.Names) {
+      $m = @($all | Where-Object { ($_.File -eq $g.File) -and ($_.Title -eq $n) })
+      if ($m.Count -eq 0) { Add-Result 'FAIL' "ui-test-$($g.File)" "did not run (renamed or removed): $n" }
+      elseif ($m[0].Status -eq 'passed') { Add-Result 'PASS' "ui-test-$($g.File)" "ran and passed: $n" }
+      else { Add-Result 'FAIL' "ui-test-$($g.File)" "$($m[0].Status): $n" }
+    }
+  }
+}
+
+# (c) Size of what the UI build produced; compared with the previous run's figures when there are any.
+function Add-UiBundleReport {
+  $assets = Join-Path $Root 'ui\dist\assets'
+  if (-not (Test-Path -LiteralPath $assets)) { Add-Result 'WARN' 'ui-bundle' 'ui\dist\assets does not exist (the UI build did not run)'; return }
+  $now = @{}
+  foreach ($kind in @(@('js', '*.js'), @('css', '*.css'))) {
+    $fs = @(Get-ChildItem -LiteralPath $assets -Recurse -File -Filter $kind[1])
+    $raw = 0; $gz = 0
+    foreach ($f in $fs) { $raw += $f.Length; $gz += (Get-GzipSize $f.FullName) }
+    $now[$kind[0] + 'Raw'] = $raw; $now[$kind[0] + 'Gzip'] = $gz; $now[$kind[0] + 'Files'] = $fs.Count
+    Add-Result 'INFO' ('ui-bundle-' + $kind[0]) ('{0} file(s), {1:N1} KB, {2:N1} KB gzipped' -f $fs.Count, ($raw / 1KB), ($gz / 1KB))
+  }
+  $other = @(Get-ChildItem -LiteralPath (Join-Path $Root 'ui\dist') -Recurse -File | Where-Object { $_.Extension -notin @('.js', '.css', '.html') })
+  Add-Result 'INFO' 'ui-bundle-other-files' ("{0} other file(s) in ui\dist ({1:N1} KB): fonts and images the build copied, expected none but the logo and icons" -f $other.Count, ((($other | Measure-Object Length -Sum).Sum) / 1KB))
+  if ($now.cssRaw -gt (200 * 1KB)) { Add-Result 'WARN' 'ui-bundle-css-size' ('the stylesheet is {0:N0} KB: check for utilities or a library that should not be there' -f ($now.cssRaw / 1KB)) }
+  $last = Join-Path $OutDir 'ui-bundle-last.json'
+  if (Test-Path -LiteralPath $last) {
+    try {
+      $prev = Get-Content -LiteralPath $last -Raw | ConvertFrom-Json
+      Add-Result 'INFO' 'ui-bundle-vs-previous-run' ('JS {0:+0.0;-0.0;0.0} KB gzipped, CSS {1:+0.0;-0.0;0.0} KB gzipped compared with the previous run ({2})' -f (($now.jsGzip - $prev.jsGzip) / 1KB), (($now.cssGzip - $prev.cssGzip) / 1KB), $prev.when)
+    } catch { Add-Result 'INFO' 'ui-bundle-vs-previous-run' 'the previous figures could not be read' }
+  } else { Add-Result 'INFO' 'ui-bundle-vs-previous-run' 'no earlier run to compare with (run this script on the commit before the rebuild to get a baseline)' }
+  try { ([pscustomobject]@{ when = (Get-Date -Format 'yyyy-MM-dd HH:mm'); jsGzip = $now.jsGzip; cssGzip = $now.cssGzip; jsRaw = $now.jsRaw; cssRaw = $now.cssRaw } | ConvertTo-Json) | Set-Content -LiteralPath $last -Encoding UTF8 } catch { }
+}
+
+# The number of tests vitest ran, against what the rebuild should have left (330 before, +5).
+function Add-UiTestCount([string]$logFile) {
+  $txt = if (Test-Path -LiteralPath $logFile) { Get-Content -LiteralPath $logFile -Raw } else { '' }
+  $m = [regex]::Match($txt, '(?m)^\s*Tests\s+(?:(\d+) failed \| )?(\d+) passed(?: \| (\d+) skipped)? \((\d+)\)')
+  if (-not $m.Success) { Add-Result 'WARN' 'ui-test-count' 'could not read the test count from the vitest log'; return }
+  $total = [int]$m.Groups[4].Value
+  if ($total -eq $script:UiExpectedTests) { Add-Result 'PASS' 'ui-test-count' "$total tests ($($script:UiBefore.Tests) before + $($script:UiExpectedTests - $script:UiBefore.Tests) added by the rebuild)" }
+  else { Add-Result 'WARN' 'ui-test-count' "$total tests ran, the rebuild should leave $($script:UiExpectedTests) ($($script:UiBefore.Tests) before + $($script:UiExpectedTests - $script:UiBefore.Tests)); a test was removed or added since" }
+}
+
 # ---------------------------------------------------------------- 1. static: ffmpeg is gone from the repo
 
 Section 'no ffmpeg process in code, build and packaging (libav is linked in-process)'
@@ -419,6 +619,11 @@ $any = @(& git grep -n -i ffmpeg -- . ':!Cargo.lock' ':!scripts' 2>$null)
 Add-Result 'INFO' 'ffmpeg-mentions-left' "$($any.Count) line(s) mention the word (expected: the in-process libav build scripts, docs and comments, plus the fixture-provenance note)"
 $any | Select-Object -First 25 | ForEach-Object { Write-Report ("    " + $_.Substring(0, [math]::Min($_.Length, 170))) }
 Test-ReviewFixes
+
+# ---------------------------------------------------------------- 1b. static: the UI rebuild
+
+Section 'UI rebuild: static facts the compiler and the tests do not see'
+Test-UiRebuild
 
 # ---------------------------------------------------------------- 2. yt-dlp (tools flow)
 
@@ -491,10 +696,12 @@ function Invoke-UiSteps([bool]$full) {
     foreach ($s in @(@('ui-check', 'npm run check --prefix ui'), @('ui-test', 'npm test --prefix ui'))) {
       $r = Invoke-Logged $s[0] $s[1]
       if ($r.Code -eq 0) { Add-Result 'PASS' $s[0] "$($r.Seconds)s" } else { Add-Result 'FAIL' $s[0] "exit $($r.Code)"; Show-LogTail $r.Log 25 }
+      if ($s[0] -eq 'ui-test') { Add-UiTestCount $r.Log }
     }
+    Test-UiNamedTests
   }
   $r = Invoke-Logged 'ui-build' 'npm run build --prefix ui'
-  if ($r.Code -eq 0) { Add-Result 'PASS' 'ui-build' "$($r.Seconds)s" } else { Add-Result 'FAIL' 'ui-build' "exit $($r.Code)"; Show-LogTail $r.Log 25 }
+  if ($r.Code -eq 0) { Add-Result 'PASS' 'ui-build' "$($r.Seconds)s"; Add-UiBundleReport } else { Add-Result 'FAIL' 'ui-build' "exit $($r.Code)"; Show-LogTail $r.Log 25 }
 }
 
 if (-not $SkipTests) {
@@ -825,7 +1032,7 @@ if (-not $SkipLive) {
 # ---------------------------------------------------------------- 6. manual checks in the real app
 
 if ($Manual) {
-  Section 'Manual checks in the real app (about 10 minutes)'
+  Section 'Manual checks in the real app (about 25 minutes)'
   Write-Report 'Start the app in another window (see docs/development.md, Run)   (wait for it to open). Answer each question: y = yes/works, n = no, s = skip.'
   $items = @(
     @('app-search', "Search '$Query1' on the Songs filter: results appear within ~10 s?"),
@@ -842,7 +1049,24 @@ if ($Manual) {
     @('app-clear-then-add', 'Clear the queue, then add a song: Undo no longer offers to bring the cleared list back over the new song?'),
     @('app-autoplay-failure', 'Optional: with Autoplay on, let the last song play out while the network is off: a notice says Autoplay could not load similar songs, and the bar does not show Playing with nothing audible (skip if you cannot try it)?'),
     @('app-update-progress', 'Settings > Updates: Check yt-dlp, then Update yt-dlp if one is offered (otherwise skip): a progress bar and text like "Downloading yt-dlp: 12.3 of 18.4 MB (67%)" show while it installs, then "Updated to ..."?'),
-    @('app-no-discord-id-field', 'Settings > Advanced has no Discord application ID field, and (with the Discord desktop app running and the Discord option on) "Listening to Pyxee" still shows your song in Discord?')
+    @('app-no-discord-id-field', 'Settings > Advanced has no Discord application ID field, and (with the Discord desktop app running and the Discord option on) "Listening to Pyxee" still shows your song in Discord?'),
+    @('ui-wide', 'UI: maximise the window (1280 px or wider). Is there a rail on the left with the icons AND their names, the search box on top of the page, the player (cover, controls, Up next) on the right, and nothing cut off or overlapping?'),
+    @('ui-medium', 'UI: make the window about 1000 px wide. Does the rail show icons only (a tooltip on each), does the player stay on the right, and is the song list still easy to read?'),
+    @('ui-narrow', 'UI: make the window about 400 px wide. Are the rail and the player column gone, a one-line player (dock) above the bottom bar, Settings at the top right, and does tapping the dock open Now Playing?'),
+    @('ui-smallest', 'UI: make the window as small as it goes (360 x 560). Is there no sideways scroll bar and nothing important cut off, on Home and on a song list?'),
+    @('ui-views', 'UI: open Home, Explore, Library (all four tabs), Queue, a playlist and a search. Does every view keep its title at the top while the list scrolls, and do the column names (#, Title, Artist, Time) line up with the rows?'),
+    @('ui-playing-mark', 'UI: play a song and look at every list it is in. Does its row show moving bars and an accent-coloured title, and do the bars stand still when you pause?'),
+    @('ui-stage', 'UI: in the wide layout, do the player on the right (seek, previous / play / next, like, volume) and its Up next preview work, does clicking an Up next song play it, and does Open queue open the Queue?'),
+    @('ui-now-playing', 'UI: open Now Playing (click the cover). At a normal window height do the cover, title, seek bar and buttons fit without scrolling, do the Up next / Lyrics / Related tabs work, and does Close take you back?'),
+    @('ui-dark-light', 'UI: in Settings > Appearance switch between a dark and a light theme (and try Match system). Is all text readable, the chosen place in the rail, the playing row, the buttons and the switches all clearly visible in both?'),
+    @('ui-mica', 'UI: on Windows 11 does the backdrop show through the rail and the page edge, while menus, sheets, the search suggestions and Now Playing are NOT see-through (on Windows 10: everything solid)?'),
+    @('ui-custom-theme', 'UI: Settings > Customize: create a theme, save it, then delete it. Does the whole app (rail, page, player, sheets) follow its colours while it is selected?'),
+    @('ui-settings', 'UI: in Settings, does every switch work with the mouse and with Space, can you tell on from off by the position of the knob and not only by colour, and do all five sections show?'),
+    @('ui-keyboard-only', 'UI: using only the keyboard, can you reach the rail, the search box, a song row (its like and menu buttons appear when focused), the player buttons and open a sheet (focus stays inside, Esc closes it and focus comes back), with a visible focus ring at every stop? Do Space, arrows, N and P still work?'),
+    @('ui-mini-flyout', 'UI: do the mini player and the tray flyout show cover, title, thin progress line and previous / play / next without cutting anything off, and do their buttons work?'),
+    @('ui-high-dpi', 'UI: at 150% and at 200% display scaling (Settings > System > Display), is the text sharp, are the thin lines and icons crisp, and is nothing blurry or cut off?'),
+    @('ui-reduced-motion', 'UI: turn off Windows Settings > Accessibility > Visual effects > Animation effects. Do sheets and Now Playing now appear without sliding, and do the playing bars stand still?'),
+    @('ui-system-font', 'UI: does the text look like Windows 11 system text (Segoe UI Variable) everywhere, with no serif fallback and no empty boxes where an icon should be?')
   )
   foreach ($it in $items) {
     $a = ''

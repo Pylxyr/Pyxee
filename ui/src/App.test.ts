@@ -66,22 +66,50 @@ describe('App shell', () => {
     expect(screen.queryByTestId('player-bar')).toBeNull();
   });
 
-  it('uses the bottom bar when narrow and the top tabs when wide, with the same destinations', async () => {
+  it('uses the bottom bar when narrow, with the four destinations', async () => {
     await openApp();
     const narrow = screen.getAllByRole('navigation', { name: 'Main' });
     expect(narrow).toHaveLength(1);
-    expect(narrow[0]!.className).toContain('border-t');
-    expect(narrow[0]!.textContent).toMatch(/Home.*Explore.*Library/);
+    expect(narrow[0]!.getAttribute('data-layout')).toBe('bar');
+    expect(narrow[0]!.textContent).toMatch(/Home.*Explore.*Library.*Queue/);
+    // Settings lives in the top bar when there is no rail.
+    expect(screen.getByRole('button', { name: 'Settings' })).toBeTruthy();
   });
 
-  it('wide layout puts the wordmark and the four destinations in tabs along the top', async () => {
+  it('wide layout puts the wordmark, the four destinations and Settings in a side rail, and the player on the right', async () => {
     setWide(true);
     await openApp();
-    const tabs = screen.getByRole('navigation', { name: 'Main' });
-    expect(tabs.className).not.toContain('border-t');
-    expect(tabs.closest('header, div')?.className).toContain('border-b');
-    expect(tabs.textContent).toMatch(/Pyxee.*Home.*Explore.*Library.*Queue/);
-    expect(screen.queryByRole('navigation', { name: 'Main' })?.querySelector('[aria-current="page"]')?.textContent).toContain('Home');
+    const rail = screen.getByRole('navigation', { name: 'Main' });
+    expect(rail.getAttribute('data-layout')).toBe('rail');
+    expect(rail.textContent).toMatch(/Pyxee.*Home.*Explore.*Library.*Queue/);
+    expect(rail.querySelector('[aria-current="page"]')?.textContent).toContain('Home');
+    expect(within(rail).getByRole('button', { name: 'Settings' })).toBeTruthy();
+    expect(screen.getAllByRole('navigation', { name: 'Main' })).toHaveLength(1);
+    expect(screen.getByRole('complementary', { name: 'Player' })).toBeTruthy();
+  });
+
+  it('the wide layout shows what plays on the stage: transport, a preview of Up next, and a way to play from it', async () => {
+    setWide(true);
+    await openApp();
+    await fireEvent.click(await screen.findByRole('button', { name: /^Neon Harbor/ }));
+    const stage = await screen.findByTestId('player-bar');
+    expect(within(stage).getByRole('button', { name: 'Previous' })).toBeTruthy();
+    expect(within(stage).getByRole('slider', { name: 'Seek' })).toBeTruthy();
+    expect(within(stage).getByText('Up next')).toBeTruthy();
+    await fireEvent.click(within(stage).getByRole('button', { name: /^Paper Planes/ }));
+    await waitFor(() => expect(player.shown?.track.title).toBe('Paper Planes'));
+    await fireEvent.click(within(stage).getByRole('button', { name: 'Open queue' }));
+    expect(nav.route).toBe('queue');
+  });
+
+  it('marks the song that is playing in every list it appears in', async () => {
+    await openApp();
+    const row = await screen.findByRole('button', { name: /^Neon Harbor/ });
+    expect(row.closest('li')!.getAttribute('data-current')).toBe('false');
+    await fireEvent.click(row);
+    await waitFor(() => expect(row.closest('li')!.getAttribute('data-current')).toBe('true'));
+    const other = screen.getByRole('button', { name: /^Paper Planes/ });
+    expect(other.closest('li')!.getAttribute('data-current')).toBe('false');
   });
 
   it('navigates between Home, Explore and Library', async () => {
