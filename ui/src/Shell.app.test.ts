@@ -10,6 +10,7 @@ import { theme } from '$lib/theme.svelte';
 import { lyricsStore } from '$lib/lyrics.svelte';
 import { sleep } from '$lib/sleep.svelte';
 import { shellSettings } from '$lib/shell.svelte';
+import { updates } from '$lib/updates.svelte';
 
 let mock: MockBackend;
 vi.mock('$lib/backend', async (orig) => ({
@@ -37,6 +38,7 @@ beforeEach(() => {
   nav.tab = 'upnext';
   lyricsStore.state = { kind: 'idle' };
   sleep.status = null;
+  updates.reset();
   shellSettings.settings = { closeToTray: false, startWithWindows: false, toastOnChange: false, trayControls: false, flyoutOnClick: true, discordPresence: true };
   shellSettings.error = null;
   theme.settings = { followSystem: true, themeId: 'dark', lightId: 'light', darkId: 'dark', dynamicColor: false, custom: [] };
@@ -302,24 +304,24 @@ describe('Updates settings', () => {
   });
 
   it('offers the install only for a newer release that can be verified, and installs through the backend', async () => {
-    mock.appUpdate = { current: '0.1.0', latest: '0.2.0', available: true, notesUrl: 'https://example.test/r', installable: true, portable: false };
     const section = await openUpdates();
+    mock.appUpdate = { current: '0.1.0', latest: '0.2.0', available: true, notesUrl: 'https://example.test/r', notes: '', installable: true, portable: false };
     await fireEvent.click(within(section).getByRole('button', { name: 'Check for updates' }));
     await fireEvent.click(await within(section).findByRole('button', { name: 'Download and install 0.2.0' }));
-    await waitFor(() => expect(mock.updateCalls).toEqual(['checkApp', 'installApp']));
+    await waitFor(() => expect(mock.updateCalls.filter((c) => c !== 'checkApp')).toEqual(['installApp']));
   });
 
   it('a release without an installer and checksums points to its page instead of offering the install', async () => {
-    mock.appUpdate = { current: '0.1.0', latest: '0.2.0', available: true, notesUrl: 'https://example.test/r', installable: false, portable: false };
     const section = await openUpdates();
+    mock.appUpdate = { current: '0.1.0', latest: '0.2.0', available: true, notesUrl: 'https://example.test/r', notes: '', installable: false, portable: false };
     await fireEvent.click(within(section).getByRole('button', { name: 'Check for updates' }));
     await waitFor(() => expect(within(section).getByText(/https:\/\/example.test\/r/)).toBeTruthy());
     expect(within(section).queryByRole('button', { name: /Download and install/ })).toBeNull();
   });
 
   it('a portable copy is told to download the zip, never offered the installer', async () => {
-    mock.appUpdate = { current: '0.1.0', latest: '0.2.0', available: true, notesUrl: 'https://example.test/r', installable: false, portable: true };
     const section = await openUpdates();
+    mock.appUpdate = { current: '0.1.0', latest: '0.2.0', available: true, notesUrl: 'https://example.test/r', notes: '', installable: false, portable: true };
     await fireEvent.click(within(section).getByRole('button', { name: 'Check for updates' }));
     expect((await within(section).findByTestId('portable-update')).textContent).toContain('portable copy');
     expect(within(section).queryByRole('button', { name: /Download and install/ })).toBeNull();
@@ -351,5 +353,96 @@ describe('Updates settings', () => {
     expect(await within(section).findByText(/does not match its published checksum/)).toBeTruthy();
     expect(within(section).getByRole('button', { name: 'Update yt-dlp' })).toBeTruthy();
   });
+
+  const NEWER = { current: '0.1.0', latest: '0.2.0', available: true, notesUrl: 'https://example.test/r', notes: "## What's new\n- Faster search\n- **Fixed** a skip bug", installable: true, portable: false };
+
+  it('shows the changelog at once when the start-up check finds a newer version', async () => {
+    mock.appUpdate = NEWER;
+    render(App);
+    const dialog = await screen.findByRole('dialog', { name: "What's new" });
+    expect(within(dialog).getByTestId('changelog-version').textContent).toContain('0.2.0');
+    expect(within(dialog).getByText('Faster search')).toBeTruthy();
+    expect(within(dialog).getByText('Fixed a skip bug')).toBeTruthy();
+    expect(mock.updateCalls).toEqual(['checkApp']);
+  });
+
+  it('stays quiet at start-up when Pyxee is up to date or the check fails', async () => {
+    render(App);
+    await waitFor(() => expect(mock.updateCalls).toEqual(['checkApp']));
+    expect(screen.queryByRole('dialog', { name: "What's new" })).toBeNull();
+    expect(updates.error).toBeNull();
+  });
+
+  it('a failed start-up check shows no error', async () => {
+    mock.updateFailure = 'offline';
+    render(App);
+    await waitFor(() => expect(mock.updateCalls).toEqual(['checkApp']));
+    await waitFor(() => expect(updates.phase).toBe('idle'));
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(screen.queryByRole('dialog', { name: "What's new" })).toBeNull();
+  });
+
+  it('shows the changelog when "Check for updates" finds a newer version, and "Later" closes it', async () => {
+    const section = await openUpdates();
+    mock.appUpdate = NEWER;
+    await fireEvent.click(within(section).getByRole('button', { name: 'Check for updates' }));
+    const dialog = await screen.findByRole('dialog', { name: "What's new" });
+    expect(within(dialog).getByText('Faster search')).toBeTruthy();
+    await fireEvent.click(within(dialog).getByRole('button', { name: 'Later' }));
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: "What's new" })).toBeNull());
+    // It can be read again from the Updates section.
+    await fireEvent.click(within(section).getByRole('button', { name: "What's new" }));
+    expect(await screen.findByRole('dialog', { name: "What's new" })).toBeTruthy();
+  });
+
+  it('installs from the changelog through the backend', async () => {
+    mock.appUpdate = NEWER;
+    render(App);
+    const dialog = await screen.findByRole('dialog', { name: "What's new" });
+    await fireEvent.click(within(dialog).getByRole('button', { name: 'Download and install 0.2.0' }));
+    await waitFor(() => expect(mock.updateCalls).toContain('installApp'));
+  });
+
+  it('says so when the release has no written changelog', async () => {
+    mock.appUpdate = { ...NEWER, notes: '' };
+    render(App);
+    const dialog = await screen.findByRole('dialog', { name: "What's new" });
+    expect(within(dialog).getByText('This release has no written changelog.')).toBeTruthy();
+  });
+
+  it('does not open a changelog when the check finds nothing newer', async () => {
+    const section = await openUpdates();
+    await fireEvent.click(within(section).getByRole('button', { name: 'Check for updates' }));
+    await waitFor(() => expect(within(section).getByTestId('app-update-status').textContent).toContain('latest version'));
+    expect(screen.queryByRole('dialog', { name: "What's new" })).toBeNull();
+  });
 });
 
+describe('Advanced settings', () => {
+  async function openSettings() {
+    render(App);
+    await waitFor(() => expect(player.ready && library.ready).toBe(true));
+    await fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
+    return screen.findByRole('region', { name: 'Advanced' });
+  }
+
+  it('is closed by default: no settings are shown and nothing is read', async () => {
+    const section = await openSettings();
+    const toggle = within(section).getByRole('button', { name: 'Advanced' });
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+    expect(within(section).queryByTestId('env-path')).toBeNull();
+    expect(within(section).queryByRole('button', { name: 'Save' })).toBeNull();
+  });
+
+  it('opens and closes with its arrow button', async () => {
+    const section = await openSettings();
+    const toggle = within(section).getByRole('button', { name: 'Advanced' });
+    await fireEvent.click(toggle);
+    expect(toggle.getAttribute('aria-expanded')).toBe('true');
+    expect((await within(section).findByTestId('env-path')).textContent).toContain('.env');
+    expect(within(section).getByRole('button', { name: 'Save' })).toBeTruthy();
+    await fireEvent.click(toggle);
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+    expect(within(section).queryByTestId('env-path')).toBeNull();
+  });
+});

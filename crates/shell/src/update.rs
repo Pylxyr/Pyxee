@@ -131,6 +131,8 @@ pub struct Release {
     pub version: Version,
     pub tag: String,
     pub page_url: String,
+    /// The release description (Markdown), shown as the changelog. Empty when the release has none.
+    pub notes: String,
     pub installer: Option<Asset>,
     pub sums_url: Option<String>,
 }
@@ -145,6 +147,9 @@ pub struct Asset {
 struct RawRelease {
     tag_name: String,
     html_url: String,
+    // GitHub sends `null` for a release without a description.
+    #[serde(default)]
+    body: Option<String>,
     #[serde(default)]
     draft: bool,
     #[serde(default)]
@@ -206,10 +211,24 @@ pub fn newest_release(
             version,
             tag: r.tag_name,
             page_url: r.html_url,
+            notes: clip_notes(r.body.unwrap_or_default()),
             sums_url,
         });
     }
     Ok(best)
+}
+
+/// A changelog longer than this is cut (at a character boundary): it only has to be readable in a panel, and the
+/// full text is one click away on the release page.
+const MAX_NOTES_CHARS: usize = 20_000;
+
+fn clip_notes(body: String) -> String {
+    let body = body.replace("\r\n", "\n");
+    let body = body.trim();
+    match body.char_indices().nth(MAX_NOTES_CHARS) {
+        Some((cut, _)) => format!("{}…", body[..cut].trim_end()),
+        None => body.to_string(),
+    }
 }
 
 impl Release {
@@ -428,6 +447,36 @@ mod tests {
         .unwrap();
         assert!(r.installer.is_none() && r.sums_url.is_none());
         assert_eq!(r.page_url, "https://x/p");
+    }
+
+    #[test]
+    fn the_release_description_becomes_the_changelog() {
+        let r = newest_release(
+            r###"[{"tag_name":"v1.0.0","html_url":"https://x/p","body":"## New\r\n- one\r\n- two\r\n\r\n","assets":[]}]"###,
+            false,
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(r.notes, "## New\n- one\n- two");
+    }
+
+    #[test]
+    fn a_release_without_a_description_has_empty_notes() {
+        for body in [r#""body":null,"#, ""] {
+            let json = format!(
+                r#"[{{"tag_name":"v1.0.0","html_url":"https://x/p",{body}"assets":[]}}]"#
+            );
+            let r = newest_release(&json, false).unwrap().unwrap();
+            assert_eq!(r.notes, "");
+        }
+    }
+
+    #[test]
+    fn a_very_long_changelog_is_cut_on_a_character_boundary() {
+        let long = "é".repeat(MAX_NOTES_CHARS + 50);
+        let clipped = clip_notes(long);
+        assert_eq!(clipped.chars().count(), MAX_NOTES_CHARS + 1);
+        assert!(clipped.ends_with('…'));
     }
 
     const SUMS: &str =

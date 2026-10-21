@@ -109,7 +109,7 @@ export class MockBackend extends MockLibrary implements Backend {
     return this.#envState();
   }
   /** What the update checks answer; set `updateFailure` to make any update call reject. */
-  appUpdate: AppUpdateDto = { current: '0.1.0', latest: '0.1.0', available: false, notesUrl: 'https://example.test/releases', installable: true, portable: false };
+  appUpdate: AppUpdateDto = { current: '0.1.0', latest: '0.1.0', available: false, notesUrl: 'https://example.test/releases', notes: '', installable: true, portable: false };
   ytdlpUpdate: YtdlpUpdateDto = { available: false, currentVersion: '2026.01.01' };
   updateFailure: string | null = null;
   updateCalls: string[] = [];

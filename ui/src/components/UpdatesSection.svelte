@@ -1,25 +1,21 @@
 <script lang="ts">
   import type { Backend } from '$lib/backend';
   import { messageOf } from '$lib/backend';
-  import type { AppUpdateDto } from '$lib/bindings/AppUpdateDto';
   import type { UpdateProgressDto } from '$lib/bindings/UpdateProgressDto';
   import type { YtdlpUpdateDto } from '$lib/bindings/YtdlpUpdateDto';
+  import { updates } from '$lib/updates.svelte';
   import { onMount } from 'svelte';
   import Button from './Button.svelte';
 
   let { backend }: { backend: Backend } = $props();
 
   type Phase = 'idle' | 'checking' | 'installing';
-  let appPhase = $state<Phase>('idle');
-  let app = $state<AppUpdateDto | null>(null);
-  let appError = $state<string | null>(null);
 
   let toolPhase = $state<Phase>('idle');
   let tool = $state<YtdlpUpdateDto | null>(null);
   let toolInstalled = $state<string | null>(null);
   let toolError = $state<string | null>(null);
 
-  let appProgress = $state<UpdateProgressDto | null>(null);
   let toolProgress = $state<UpdateProgressDto | null>(null);
 
   onMount(() => {
@@ -27,8 +23,7 @@
     let gone = false;
     backend
       .onUpdateProgress((p) => {
-        if (p.target === 'app') appProgress = p;
-        else toolProgress = p;
+        if (p.target !== 'app') toolProgress = p; // the app's own download is followed by the update store
       })
       .then((f) => (gone ? f() : (off = f)));
     return () => {
@@ -45,31 +40,6 @@
     if (p.phase === 'starting') return 'Starting the installer…';
     if (p.total) return `Downloading ${what}: ${mb(p.received)} of ${mb(p.total)} MB (${Math.min(100, Math.floor((p.received / p.total) * 100))}%)`;
     return `Downloading ${what}: ${mb(p.received)} MB`;
-  }
-
-  async function checkApp() {
-    appPhase = 'checking';
-    appError = null;
-    try {
-      app = await backend.updateCheckApp();
-    } catch (e) {
-      app = null;
-      appError = messageOf(e);
-    }
-    appPhase = 'idle';
-  }
-
-  async function installApp() {
-    appPhase = 'installing';
-    appError = null;
-    appProgress = null;
-    try {
-      await backend.updateInstallApp(); // starts the installer and closes Pyxee
-    } catch (e) {
-      appError = messageOf(e);
-    }
-    appPhase = 'idle';
-    appProgress = null;
   }
 
   async function checkTool() {
@@ -107,32 +77,35 @@
   <div class="well mt-2">
     <p class="t-strong">Pyxee</p>
     <p class="muted mt-1" role="status" data-testid="app-update-status">
-      {#if appPhase === 'checking'}Checking for a newer version…
-      {:else if appPhase === 'installing'}Downloading and checking the installer. Pyxee closes when it starts.
-      {:else if app && app.available}Version {app.latest} is available (you have {app.current}).
-      {:else if app}You have the latest version ({app.current}).
+      {#if updates.phase === 'checking'}Checking for a newer version…
+      {:else if updates.phase === 'installing'}Downloading and checking the installer. Pyxee closes when it starts.
+      {:else if updates.info && updates.info.available}Version {updates.info.latest} is available (you have {updates.info.current}).
+      {:else if updates.info}You have the latest version ({updates.info.current}).
       {:else}Looks at the GitHub releases. The installer's SHA-256 is checked before it runs; it is not code-signed yet, so Windows SmartScreen may ask.{/if}
     </p>
-    {#if appPhase === 'installing' && appProgress}
+    {#if updates.phase === 'installing' && updates.progress}
       <div role="status" aria-live="polite" data-testid="app-update-progress">
-        {#if appProgress.phase === 'downloading' && appProgress.total}
-          <progress class="mt-2 w-full" value={appProgress.received} max={appProgress.total}></progress>
+        {#if updates.progress.phase === 'downloading' && updates.progress.total}
+          <progress class="mt-2 w-full" value={updates.progress.received} max={updates.progress.total}></progress>
         {:else}
           <progress class="mt-2 w-full"></progress>
         {/if}
-        <p class="muted mt-1">{progressText(appProgress, app?.latest ?? 'Pyxee')}</p>
+        <p class="muted mt-1">{progressText(updates.progress, updates.info?.latest ?? 'Pyxee')}</p>
       </div>
     {/if}
-    {#if app?.available && app.portable}
-      <p class="t-caption muted mt-1 break-all" data-testid="portable-update">This is a portable copy. Download the new zip from {app.notesUrl} and unpack it over this folder; your data folder stays.</p>
-    {:else if app?.available && !app.installable}
-      <p class="t-caption muted mt-1 break-all">This release has no installer with a checksum list attached. Download it from {app.notesUrl}</p>
+    {#if updates.info?.available && updates.info.portable}
+      <p class="t-caption muted mt-1 break-all" data-testid="portable-update">This is a portable copy. Download the new zip from {updates.info.notesUrl} and unpack it over this folder; your data folder stays.</p>
+    {:else if updates.info?.available && !updates.info.installable}
+      <p class="t-caption muted mt-1 break-all">This release has no installer with a checksum list attached. Download it from {updates.info.notesUrl}</p>
     {/if}
-    {#if appError}<p class="accent-text mt-1" role="alert">{appError}</p>{/if}
+    {#if updates.error}<p class="accent-text mt-1" role="alert">{updates.error}</p>{/if}
     <div class="mt-2 flex flex-wrap gap-2">
-      <Button size="sm" disabled={appPhase !== 'idle'} onclick={checkApp}>Check for updates</Button>
-      {#if app?.available && app.installable}
-        <Button size="sm" variant="primary" disabled={appPhase !== 'idle'} onclick={installApp}>Download and install {app.latest}</Button>
+      <Button size="sm" disabled={updates.phase !== 'idle'} onclick={() => updates.check(backend)}>Check for updates</Button>
+      {#if updates.info?.available}
+        <Button size="sm" disabled={updates.phase === 'installing'} onclick={() => updates.openChangelog()}>What's new</Button>
+        {#if updates.info.installable}
+          <Button size="sm" variant="primary" disabled={updates.phase !== 'idle'} onclick={() => updates.install(backend)}>Download and install {updates.info.latest}</Button>
+        {/if}
       {/if}
     </div>
   </div>

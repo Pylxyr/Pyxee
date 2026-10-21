@@ -37,6 +37,8 @@ pub struct AppUpdateDto {
     pub available: bool,
     // The release page, always present so there is something to open even when it cannot be installed in place.
     pub notes_url: String,
+    // The release description (Markdown), shown as the changelog when an update is found. Empty when there is none.
+    pub notes: String,
     // True when the release carries an installer and a checksum list, so "Install" can verify it, and this copy is an
     // installed one (a portable copy is replaced by downloading the new zip, never by running an installer).
     pub installable: bool,
@@ -219,6 +221,7 @@ fn check_app_blocking() -> Result<AppUpdateDto, String> {
             available: update::is_newer(&current, &r.tag),
             latest: r.version_text(),
             notes_url: r.page_url.clone(),
+            notes: r.notes.clone(),
             installable: !portable && r.installer.is_some() && r.sums_url.is_some(),
             portable,
             current,
@@ -227,6 +230,7 @@ fn check_app_blocking() -> Result<AppUpdateDto, String> {
             latest: current.clone(),
             available: false,
             notes_url: format!("https://github.com/{REPO}/releases"),
+            notes: String::new(),
             installable: false,
             portable,
             current,
@@ -483,11 +487,13 @@ mod tests {
             latest: "0.2.0".into(),
             available: true,
             notes_url: "u".into(),
+            notes: "- a fix".into(),
             installable: false,
             portable: true,
         })
         .unwrap();
         assert_eq!(v["notesUrl"], "u");
+        assert_eq!(v["notes"], "- a fix");
         assert_eq!(v["installable"], false);
         assert_eq!(v["portable"], true);
     }

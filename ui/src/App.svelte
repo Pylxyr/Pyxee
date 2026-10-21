@@ -15,6 +15,7 @@
   import { relatedStore } from '$lib/related.svelte';
   import { sleep } from '$lib/sleep.svelte';
   import { shellSettings } from '$lib/shell.svelte';
+  import { updates } from '$lib/updates.svelte';
   import Navigation from './components/Navigation.svelte';
   import TopBar from './components/TopBar.svelte';
   import Dock from './components/Dock.svelte';
@@ -27,6 +28,7 @@
   import ThemeEditor from './components/ThemeEditor.svelte';
   import PlaylistPicker from './components/PlaylistPicker.svelte';
   import SleepSheet from './components/SleepSheet.svelte';
+  import ChangelogSheet from './components/ChangelogSheet.svelte';
   import Home from './pages/Home.svelte';
   import Explore from './pages/Explore.svelte';
   import Library from './pages/Library.svelte';
@@ -50,6 +52,8 @@
       relatedStore.init(backend);
       void sleep.init(backend);
       void shellSettings.init(backend);
+      // Look for a newer Pyxee once, now; the changelog opens by itself if there is one.
+      void updates.init(backend).catch(() => {}).then(() => updates.checkAtStartup(backend));
       await player.init(backend);
       theme.backdrop = (await backend.windowInfo()).backdrop;
     })();
@@ -130,3 +134,4 @@
 <ThemeEditor />
 <SleepSheet />
 <SettingsSheet backend={backendRef} />
+<ChangelogSheet backend={backendRef} />
