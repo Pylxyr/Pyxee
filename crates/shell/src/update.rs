@@ -463,9 +463,8 @@ mod tests {
     #[test]
     fn a_release_without_a_description_has_empty_notes() {
         for body in [r#""body":null,"#, ""] {
-            let json = format!(
-                r#"[{{"tag_name":"v1.0.0","html_url":"https://x/p",{body}"assets":[]}}]"#
-            );
+            let json =
+                format!(r#"[{{"tag_name":"v1.0.0","html_url":"https://x/p",{body}"assets":[]}}]"#);
             let r = newest_release(&json, false).unwrap().unwrap();
             assert_eq!(r.notes, "");
         }
