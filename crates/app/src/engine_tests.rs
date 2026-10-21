@@ -889,7 +889,9 @@ fn seeking_after_a_gapless_advance_stays_on_the_song_that_is_playing() {
     });
     let ids = r.entry_ids();
     assert!(r.run_until(20, |r| r.snapshot().audible.map(|i| i.0) == Some(ids[1])));
-    r.run_for(300);
+    // The test device runs at DEVICE_SPEED times real time and B is only 2 s long: keep every wait short enough
+    // that B is still playing (100 ms of wall clock is 0.6 s of audio at 6x).
+    r.run_for(100);
     assert!(
         (dominant_hz(&r.samples[r.samples.len() - 9600..]) - 660.0).abs() < 50.0,
         "B is playing before the seek"
@@ -897,7 +899,7 @@ fn seeking_after_a_gapless_advance_stays_on_the_song_that_is_playing() {
 
     let at = r.samples.len();
     r.cmd(Command::Seek(0));
-    r.run_for(800);
+    r.run_for(100);
     let hz = dominant_hz(&r.samples[at + 2 * 960..at + 2 * 960 + 9600]);
     assert!(
         (hz - 660.0).abs() < 50.0,
