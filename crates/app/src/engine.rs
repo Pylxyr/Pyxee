@@ -370,11 +370,12 @@ impl Engine {
                 let _ = details_tx.send(Work::Details { id, meta });
             };
             // The next song's address is not needed yet: let searches and the song being played go first.
-            let run = || {
-                prepare(
-                    &*source, &cache, rate, id, &key, start_ms, &cancel, &on_meta,
-                )
+            let job = PrepareJob {
+                id,
+                key: &key,
+                start_ms,
             };
+            let run = || prepare(&*source, &cache, rate, &job, &cancel, &on_meta);
             let result = if purpose == Purpose::Prefetch {
                 pyxee_sources::gate::background(run)
             } else {
@@ -735,18 +736,22 @@ fn open_stream(
     Ok(Box::new(src))
 }
 
-// One job's parameters, passed straight through from its single call site; a struct would only rename them.
-#[allow(clippy::too_many_arguments)]
+/// What one `prepare` is for: which queue entry, which song, and where in it to begin.
+struct PrepareJob<'a> {
+    id: EntryId,
+    key: &'a str,
+    start_ms: u64,
+}
+
 fn prepare(
     source: &dyn MusicSource,
     cache: &UrlCache,
     rate: u32,
-    id: EntryId,
-    key: &str,
-    start_ms: u64,
+    job: &PrepareJob,
     cancel: &Arc<AtomicBool>,
     on_meta: &dyn Fn(StreamMeta),
 ) -> Result<PreparedTrack, Failure> {
+    let PrepareJob { id, key, start_ms } = *job;
     let build = |stream: &StreamInfo| -> Result<PreparedTrack, AudioError> {
         PreparedTrack::new(id.0, open_stream(stream, start_ms, cancel)?, rate)
     };
