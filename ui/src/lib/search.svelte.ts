@@ -10,7 +10,8 @@ export type SearchStatus = 'idle' | 'loading' | 'ready' | 'error';
 const DEFAULT_FILTERS: FilterInfoDto[] = (['all', 'songs', 'videos', 'albums', 'artists', 'playlists'] as const).map(
   (filter) => ({ filter, supported: true }),
 );
-export const SUGGEST_DELAY_MS = 150;
+/** Wait for a pause in typing this long before asking for suggestions (fewer requests while typing). */
+export const SUGGEST_DELAY_MS = 300;
 export const FILTER_KEY = 'pyxee.searchFilter';
 /** Songs unless the user picked something else last time. */
 export const DEFAULT_FILTER: SearchFilterDto = 'songs';

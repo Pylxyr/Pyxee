@@ -2,7 +2,7 @@
 //! and turns failures into errors the UI can explain.
 
 use crate::gate::{Gate, GateConfig};
-use crate::suggest::{self, encode};
+use crate::suggest::{encode, Suggester};
 use crate::ytmusic;
 use crate::{
     classify_stderr, program_name, scrub, ExploreShelf, MusicSource, SearchFilter, SearchItem,
@@ -127,6 +127,8 @@ pub struct YtDlpSource {
     preferred: Option<PathBuf>,
     timeout: Duration,
     gate: Gate,
+    /// Search-box suggestions: cached, and paused after a rate limit (they are not yt-dlp runs, so not the gate's).
+    suggester: Suggester,
     cookies: Cookies,
     /// Recent search answers, keyed by lower-cased query and filter.
     search_cache: Mutex<HashMap<SearchCacheKey, SearchCacheEntry>>,
@@ -145,6 +147,7 @@ impl YtDlpSource {
             preferred: None,
             timeout: Duration::from_secs(40),
             gate: Gate::new(GateConfig::DEFAULT),
+            suggester: Suggester::new(),
             cookies: Cookies::None,
             search_cache: Mutex::new(HashMap::new()),
             songs_page_bare_until: Mutex::new(None),
@@ -739,7 +742,7 @@ impl MusicSource for YtDlpSource {
     }
 
     fn suggest(&self, prefix: &str) -> Result<Vec<String>, SourceError> {
-        suggest::fetch(prefix)
+        self.suggester.get(prefix)
     }
 
     fn supported_filters(&self) -> Vec<SearchFilter> {
@@ -1422,6 +1425,7 @@ esac"#,
             let gate = GateConfig {
                 min_gap: Duration::ZERO,
                 cooldown: Duration::from_secs(60),
+                max_cooldown: Duration::ZERO,
             };
             let s = YtDlpSource::new(&limited).with_gate(gate);
             assert_eq!(
@@ -1453,6 +1457,7 @@ esac"#,
             let gate = GateConfig {
                 min_gap: Duration::ZERO,
                 cooldown: Duration::from_millis(60),
+                max_cooldown: Duration::ZERO,
             };
             let s = YtDlpSource::new(&flaky).with_gate(gate);
             assert_eq!(

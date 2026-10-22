@@ -96,8 +96,13 @@ several yt-dlp processes at once, each making several requests of its own.
 - one yt-dlp run at a time; a 1 s quiet gap after each run ends; the line is ordered by urgency (`gate::Priority`): searches and the song being played go before background work (shelves, similar songs, the next song's address), newest first within each kind, with the pacing itself unchanged;
 - a search is answered from a 10-minute session cache when the same query and filter are asked again (no run), and after the songs page has answered with bare titles once, Songs searches skip it for 30 minutes (one run instead of two);
 - after a rate-limit answer (HTTP 429, HTTP 403 from YouTube, "too many requests", "Sign in to confirm you're not a bot"), new runs are refused at once with
-  `SourceError::RateLimited` for 2 minutes, including callers already waiting, so there is no retry storm. The player
-  already treats `RateLimited` as transient (it stops with a Retry; a failed prefetch is not retried);
+  `SourceError::RateLimited` for 2 minutes, including callers already waiting, so there is no retry storm. If the next
+  run after that is rate limited again, the cooldown doubles (2, 4, 8, 16, then 30 minutes at most: `GateConfig::max_cooldown`),
+  and a run that succeeds starts it over. The player already treats `RateLimited` as transient (it stops with a Retry; a
+  failed prefetch is not retried);
+- search-box suggestions are not yt-dlp runs (a different Google endpoint), so they have their own small guard in
+  `suggest::Suggester`: the search box waits 300 ms after the last keystroke, a prefix already asked is answered from
+  memory for 10 minutes, and after a rate-limit answer nothing is asked for 1 minute (doubling, up to 15);
 - the newest waiter goes first: the engine never cancels the worker of a song you skipped, so without this the song you
   landed on would wait behind every stale resolve (those still run afterwards).
 Log lines: `yt-dlp <op> waited ...` (waits over 250 ms), `yt-dlp was rate limited: new runs are refused for ...`, `yt-dlp

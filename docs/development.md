@@ -34,7 +34,7 @@ The same variables can be set in **Settings** > **Advanced**, which saves them t
 | `PYXEE_LOG` | `error`, `warn`, `info` (default), `debug`, `trace`. |
 | `PYXEE_DISCORD_CLIENT_ID` | Build time only: the Discord application ID (17 to 20 digits) baked into the build, which turns on Rich Presence ("Listening to Pyxee" with the current song). Unset: the feature is off. Not read at run time. See `shell.md`. |
 
-yt-dlp is also paced by the app (one run at a time, 1 s apart, 2 minutes of refusals after a rate limit); see `engine.md`.
+yt-dlp is also paced by the app (one run at a time, 1 s apart, 2 minutes of refusals after a rate limit, doubling each time it repeats, up to 30 minutes); see `engine.md`.
 
 ### yt-dlp and a JavaScript runtime (recommended, not required)
 Recent yt-dlp prints a warning that YouTube extraction without an external JavaScript runtime is deprecated, and some

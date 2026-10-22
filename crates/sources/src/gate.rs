@@ -10,6 +10,9 @@
 //!   `SourceError::RateLimited` (the player already treats that as transient: it shows "rate
 //!   limited" with a Retry instead of skipping songs, and a failed prefetch is not retried). This
 //!   is what stops a retry storm: queued callers are refused too, they do not each hit the server.
+//!   The cooldown **doubles** each time the next run after one is rate limited again (up to
+//!   `max_cooldown`), and starts over from `cooldown` after a run that succeeds. A flagged IP is
+//!   therefore probed less and less often instead of every two minutes for as long as it lasts.
 //! * **Newest waiter first.** The engine never cancels a worker for a song the listener has
 //!   already skipped, it only discards the result. Serving the newest request first means the
 //!   song they landed on is resolved before the stale ones, instead of behind all of them.
@@ -30,18 +33,23 @@ pub struct GateConfig {
     pub min_gap: Duration,
     /// How long new runs are refused after a rate-limit answer. Zero disables the cooldown.
     pub cooldown: Duration,
+    /// The longest a cooldown may grow to when rate limits keep coming back. At or below `cooldown`: it never grows.
+    pub max_cooldown: Duration,
 }
 
 impl GateConfig {
-    /// What the app uses: 1 s between runs, 2 minutes of refusals after a rate limit.
+    /// What the app uses: 1 s between runs, 2 minutes of refusals after a rate limit, doubling each time it happens
+    /// again in a row (2, 4, 8, 16 minutes) up to 30 minutes.
     pub const DEFAULT: Self = Self {
         min_gap: Duration::from_secs(1),
         cooldown: Duration::from_secs(120),
+        max_cooldown: Duration::from_secs(30 * 60),
     };
     /// No pacing at all (still one run at a time). For tests that are not about pacing.
     pub const NONE: Self = Self {
         min_gap: Duration::ZERO,
         cooldown: Duration::ZERO,
+        max_cooldown: Duration::ZERO,
     };
 }
 
@@ -81,6 +89,24 @@ fn current_priority() -> Priority {
     CURRENT.with(std::cell::Cell::get)
 }
 
+/// How long to stay quiet after the `strikes`-th rate limit in a row (0 for the first): `base`, then twice that, and so
+/// on, never more than `max` (and never less than `base`). Shared with the search suggestions' own back-off.
+pub(crate) fn escalate(base: Duration, max: Duration, strikes: u32) -> Duration {
+    base.saturating_mul(1u32 << strikes.min(16))
+        .min(max.max(base))
+}
+
+/// How one gated run ended, as far as the pacing cares.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Outcome {
+    /// It worked: a cooldown that was growing starts over.
+    Succeeded,
+    /// YouTube said slow down: a cooldown starts (or grows).
+    RateLimited,
+    /// Any other error (offline, song unavailable, ...): says nothing about whether the limit has lifted.
+    Failed,
+}
+
 #[derive(Default)]
 struct State {
     /// A run (or a caller about to start one) owns the slot.
@@ -94,6 +120,8 @@ struct State {
     /// Earliest start of the next run: the previous run's end plus `min_gap`.
     quiet_until: Option<Instant>,
     cooldown_until: Option<Instant>,
+    /// Rate limits in a row, with no successful run between them. Sets how long the next cooldown is.
+    strikes: u32,
 }
 
 impl State {
@@ -110,11 +138,21 @@ impl State {
             .map_or(Duration::ZERO, |t| t.saturating_duration_since(now))
     }
 
-    /// A run ended: record the gap (and the cooldown after a rate limit).
-    fn finished(&mut self, now: Instant, cfg: GateConfig, rate_limited: bool) {
+    /// A run ended: record the gap (and the cooldown after a rate limit, returning how long it is).
+    fn finished(&mut self, now: Instant, cfg: GateConfig, outcome: Outcome) -> Option<Duration> {
         self.quiet_until = Some(now + cfg.min_gap);
-        if rate_limited && !cfg.cooldown.is_zero() {
-            self.cooldown_until = Some(now + cfg.cooldown);
+        match outcome {
+            Outcome::RateLimited if !cfg.cooldown.is_zero() => {
+                let pause = escalate(cfg.cooldown, cfg.max_cooldown, self.strikes);
+                self.strikes = self.strikes.saturating_add(1);
+                self.cooldown_until = Some(now + pause);
+                Some(pause)
+            }
+            Outcome::Succeeded => {
+                self.strikes = 0;
+                None
+            }
+            _ => None,
         }
     }
 
@@ -149,17 +187,17 @@ pub struct Gate {
 /// Held while a run is in progress; dropping it ends the run.
 struct Permit<'a> {
     gate: &'a Gate,
-    rate_limited: bool,
+    outcome: Outcome,
 }
 
 impl Drop for Permit<'_> {
     fn drop(&mut self) {
         let mut st = self.gate.lock();
-        st.finished(Instant::now(), self.gate.cfg, self.rate_limited);
-        if self.rate_limited && !self.gate.cfg.cooldown.is_zero() {
+        let cooldown = st.finished(Instant::now(), self.gate.cfg, self.outcome);
+        if let Some(pause) = cooldown {
             log::warn!(
-                "yt-dlp was rate limited: new runs are refused for {:?}",
-                self.gate.cfg.cooldown
+                "yt-dlp was rate limited ({} in a row): new runs are refused for {pause:?}",
+                st.strikes
             );
         }
         self.gate.release(st);
@@ -202,7 +240,11 @@ impl Gate {
     ) -> Result<T, SourceError> {
         let mut permit = self.enter(what)?;
         let out = f();
-        permit.rate_limited = matches!(out, Err(SourceError::RateLimited));
+        permit.outcome = match &out {
+            Ok(_) => Outcome::Succeeded,
+            Err(SourceError::RateLimited) => Outcome::RateLimited,
+            Err(_) => Outcome::Failed,
+        };
         out
     }
 
@@ -244,7 +286,8 @@ impl Gate {
         }
         Ok(Permit {
             gate: self,
-            rate_limited: false,
+            // Until `run` knows better (a run that panics counts as failed).
+            outcome: Outcome::Failed,
         })
     }
 
@@ -265,6 +308,7 @@ mod tests {
         GateConfig {
             min_gap: Duration::from_millis(gap_ms),
             cooldown: Duration::from_millis(cooldown_ms),
+            max_cooldown: Duration::ZERO, // never grows: these tests are about the base cooldown
         }
     }
 
@@ -276,7 +320,7 @@ mod tests {
         let c = cfg(1_000, 120_000);
         let mut st = State::default();
         assert_eq!(st.cooling(t0), None);
-        st.finished(t0, c, true);
+        st.finished(t0, c, Outcome::RateLimited);
         assert_eq!(
             st.cooling(t0 + Duration::from_secs(30)),
             Some(Duration::from_secs(90))
@@ -289,7 +333,7 @@ mod tests {
     fn an_ordinary_run_leaves_only_the_short_gap() {
         let t0 = Instant::now();
         let mut st = State::default();
-        st.finished(t0, cfg(1_000, 120_000), false);
+        st.finished(t0, cfg(1_000, 120_000), Outcome::Succeeded);
         assert_eq!(st.cooling(t0), None, "no cooldown without a rate limit");
         assert_eq!(st.pause(t0), Duration::from_secs(1));
         assert_eq!(
@@ -303,8 +347,80 @@ mod tests {
     fn a_zero_cooldown_means_no_cooldown() {
         let t0 = Instant::now();
         let mut st = State::default();
-        st.finished(t0, GateConfig::NONE, true);
+        st.finished(t0, GateConfig::NONE, Outcome::RateLimited);
         assert_eq!(st.cooling(t0), None);
+    }
+
+    #[test]
+    fn escalation_doubles_up_to_the_cap_and_never_goes_below_the_base() {
+        let (base, max) = (Duration::from_secs(120), Duration::from_secs(1_800));
+        let steps: Vec<u64> = (0..7).map(|n| escalate(base, max, n).as_secs()).collect();
+        assert_eq!(steps, [120, 240, 480, 960, 1_800, 1_800, 1_800]);
+        assert_eq!(escalate(base, max, u32::MAX), max, "no overflow");
+        assert_eq!(
+            escalate(base, Duration::ZERO, 5),
+            base,
+            "a cap below the base means no growth"
+        );
+    }
+
+    #[test]
+    fn rate_limits_in_a_row_lengthen_the_cooldown() {
+        let t0 = Instant::now();
+        let c = GateConfig {
+            max_cooldown: Duration::from_secs(480),
+            ..cfg(0, 120_000)
+        };
+        let mut st = State::default();
+        let mut pauses = Vec::new();
+        for _ in 0..5 {
+            pauses.push(st.finished(t0, c, Outcome::RateLimited).unwrap().as_secs());
+        }
+        assert_eq!(pauses, [120, 240, 480, 480, 480]);
+        assert_eq!(st.cooling(t0), Some(Duration::from_secs(480)));
+    }
+
+    #[test]
+    fn a_successful_run_starts_the_cooldown_over_but_other_errors_do_not() {
+        let t0 = Instant::now();
+        let c = GateConfig {
+            max_cooldown: Duration::from_secs(1_800),
+            ..cfg(0, 120_000)
+        };
+        let mut st = State::default();
+        st.finished(t0, c, Outcome::RateLimited);
+        st.finished(t0, c, Outcome::RateLimited);
+        assert_eq!(st.strikes, 2);
+        assert_eq!(st.finished(t0, c, Outcome::Failed), None);
+        assert_eq!(st.strikes, 2, "being offline says nothing about the limit");
+        assert_eq!(st.finished(t0, c, Outcome::Succeeded), None);
+        assert_eq!(st.strikes, 0);
+        let again = st.finished(t0, c, Outcome::RateLimited);
+        assert_eq!(again, Some(Duration::from_secs(120)));
+    }
+
+    #[test]
+    fn the_gate_itself_lengthens_the_cooldown_after_a_second_rate_limit() {
+        let gate = Gate::new(GateConfig {
+            max_cooldown: Duration::from_millis(400),
+            ..cfg(0, 50)
+        });
+        let limited = || gate.run::<()>("x", || Err(SourceError::RateLimited));
+        assert_eq!(limited(), Err(SourceError::RateLimited));
+        assert_eq!(gate.lock().strikes, 1);
+        thread::sleep(Duration::from_millis(70)); // the first cooldown (50 ms) is over
+        assert_eq!(limited(), Err(SourceError::RateLimited)); // a real run, limited again
+        assert_eq!(gate.lock().strikes, 2);
+        thread::sleep(Duration::from_millis(70)); // 70 ms is not enough any more: the cooldown is 100 ms
+        assert_eq!(
+            gate.run("late", || Ok(())),
+            Err(SourceError::RateLimited),
+            "refused without running"
+        );
+        assert_eq!(gate.lock().strikes, 2, "a refusal is not another strike");
+        thread::sleep(Duration::from_millis(60));
+        assert_eq!(gate.run("recovered", || Ok(1)), Ok(1));
+        assert_eq!(gate.lock().strikes, 0);
     }
 
     #[test]
