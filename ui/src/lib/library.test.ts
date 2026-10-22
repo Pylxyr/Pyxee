@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { groupByDay } from './format';
 import { LibraryStore } from './library.svelte';
 import { MockBackend } from './mock';
@@ -24,6 +24,25 @@ describe('LibraryStore', () => {
     const id = await b.playlistCreate('Mix', [t('a')]);
     expect(lib.playlists.map((p) => p.id)).toEqual([id]);
     expect(lib.revision).toBeGreaterThan(1);
+  });
+
+  it('asks for the library again when the page wakes up, not while it is hidden', async () => {
+    const b = new MockBackend();
+    let reads = 0;
+    const read = b.getLibrary.bind(b);
+    b.getLibrary = async () => (reads++, read());
+    const lib = new LibraryStore();
+    await lib.init(b);
+    expect(reads).toBe(1);
+    const visibility = (hidden: boolean) => {
+      Object.defineProperty(document, 'hidden', { configurable: true, get: () => hidden });
+      document.dispatchEvent(new Event('visibilitychange'));
+    };
+    visibility(true);
+    await Promise.resolve();
+    expect(reads).toBe(1);
+    visibility(false);
+    await vi.waitFor(() => expect(reads).toBe(2));
   });
 
   it('toggleLike likes, then unlikes', async () => {

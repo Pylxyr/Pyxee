@@ -45,6 +45,7 @@ fn build(app: &AppHandle) -> tauri::Result<WebviewWindow> {
 
 fn show(app: &AppHandle, w: &WebviewWindow) {
     place(app, w);
+    super::webview_power::set_active(w, true);
     let _ = w.show();
     let _ = w.set_focus();
 }
@@ -142,5 +143,6 @@ pub fn hide(app: &AppHandle) {
     flush(app);
     if let Some(w) = app.get_webview_window(LABEL) {
         let _ = w.hide();
+        super::webview_power::set_active(&w, false);
     }
 }

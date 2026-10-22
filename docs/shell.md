@@ -30,6 +30,8 @@ The goal was a compact player in the taskbar notification area, left of the "sho
 
 Logic: `pyxee_shell::tray_controls` (glyph, tooltip, 120-character cut) and the settings; glue: `shell/tray_buttons.rs`, `shell/tray.rs`.
 
+* **A hidden window's page sleeps.** Hiding a window (close to tray, the flyout, the mini player) or minimizing the main one does not tell WebView2, which then keeps painting and holding memory for a page nobody sees (steady CPU and GPU use under "WebView2 Manager" in Task Manager). `shell/webview_power.rs` marks the page hidden, asks WebView2 for its low-memory level and suspends it, and undoes that when the window is shown, restored or focused. Music is unaffected (Rust plays it). A sleeping page can miss pushed state, so the player and library stores read it again when the page becomes visible (`visibilitychange`).
+
 Known limits: the window theme command only drives the main window, so the flyout and mini player follow the Windows
 theme for their Mica backdrop while their colours follow the app theme.
 

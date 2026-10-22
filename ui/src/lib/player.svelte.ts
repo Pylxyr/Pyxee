@@ -31,6 +31,10 @@ export class PlayerStore {
   catalog = $state<TrackDto[] | null>(null);
   #backend: Backend | null = null;
   #unlisten: (() => void) | null = null;
+  /** The window may have been asleep (hidden in the tray) while pushes went by: ask again when it wakes. */
+  #wake = () => {
+    if (!document.hidden) void this.resync();
+  };
 
   /** What the user sees as the current track: audible, else loading, else the restored selection. */
   shown = $derived(this.entry(this.state.audible) ?? this.entry(this.state.loading) ?? this.entry(this.state.current));
@@ -48,9 +52,23 @@ export class PlayerStore {
     this.#unlisten?.();
     this.#backend = backend;
     this.#unlisten = await backend.onState((s) => (this.state = s));
+    if (typeof document !== 'undefined') {
+      document.removeEventListener('visibilitychange', this.#wake);
+      document.addEventListener('visibilitychange', this.#wake);
+    }
     this.state = await backend.getState();
     this.ready = true;
     this.catalog = await backend.devCatalog().catch(() => []);
+  }
+
+  /** Takes the backend's state again (what is shown stays if it cannot be read). */
+  async resync() {
+    try {
+      const s = await this.#backend?.getState();
+      if (s) this.state = s;
+    } catch {
+      /* keep what is shown; the next push replaces it */
+    }
   }
 
   dispatch(command: CommandDto): Promise<void> {

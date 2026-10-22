@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { Backend } from './backend';
 import type { CommandDto } from './bindings/CommandDto';
 import type { PlayerStateDto } from './bindings/PlayerStateDto';
@@ -32,7 +32,49 @@ const entry = (id: number, key = `k${id}`) => ({
   track: { key, title: `Title ${id}`, artist: 'Artist', durationMs: 30_000, thumbnail: null },
 });
 
+/** Pretends the window is hidden (tray) or shown, and tells the page, like the browser does. */
+function setHidden(hidden: boolean) {
+  Object.defineProperty(document, 'hidden', { configurable: true, get: () => hidden });
+  document.dispatchEvent(new Event('visibilitychange'));
+}
+
 describe('PlayerStore', () => {
+  it('takes the backend state again when the page wakes up, and not while it is hidden', async () => {
+    let current: PlayerStateDto = EMPTY_STATE;
+    let reads = 0;
+    const backend: Backend = {
+      ...stub().backend,
+      getState: async () => (reads++, current),
+    };
+    const p = new PlayerStore();
+    await p.init(backend);
+    expect(reads).toBe(1);
+    current = { ...EMPTY_STATE, shuffle: true };
+    setHidden(true);
+    await Promise.resolve();
+    expect(reads, 'hiding asks nothing').toBe(1);
+    expect(p.state.shuffle).toBe(false);
+    setHidden(false);
+    await vi.waitFor(() => expect(p.state.shuffle).toBe(true));
+    expect(reads).toBe(2);
+  });
+
+  it('keeps what it shows when the state cannot be read on waking', async () => {
+    let fail = false;
+    const backend: Backend = {
+      ...stub().backend,
+      getState: async () => {
+        if (fail) throw new Error('not now');
+        return { ...EMPTY_STATE, shuffle: true };
+      },
+    };
+    const p = new PlayerStore();
+    await p.init(backend);
+    fail = true;
+    await p.resync();
+    expect(p.state.shuffle).toBe(true);
+  });
+
   it('loads state and the demo catalog on init', async () => {
     const p = new PlayerStore();
     expect(p.ready).toBe(false);

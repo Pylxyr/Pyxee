@@ -12,6 +12,7 @@ mod power;
 mod sleep;
 mod tray;
 mod tray_buttons;
+mod webview_power;
 #[cfg(all(windows, feature = "win-extras"))]
 mod winextras;
 
@@ -146,6 +147,8 @@ pub fn init(app: &AppHandle, args: &[String]) {
     if let Some(w) = app.get_webview_window(MAIN) {
         if hide_to_tray {
             log::info!("started by Windows at sign-in: staying in the tray");
+            let _ = w.hide();
+            webview_power::set_active(&w, false);
         } else {
             let _ = w.show();
         }
@@ -235,6 +238,7 @@ pub fn command(app: &AppHandle, c: Command) {
 
 pub fn show_main(app: &AppHandle) {
     if let Some(w) = app.get_webview_window(MAIN) {
+        webview_power::set_active(&w, true);
         let _ = w.unminimize();
         let _ = w.show();
         let _ = w.set_focus();
@@ -265,13 +269,28 @@ pub fn on_window_event(window: &tauri::Window, event: &tauri::WindowEvent) {
             if to_tray && !shell.quitting.load(Ordering::Relaxed) {
                 api.prevent_close();
                 let _ = window.hide();
+                if let Some(w) = app.get_webview_window(MAIN) {
+                    webview_power::set_active(&w, false);
+                }
             } else {
                 quit(app);
+            }
+        }
+        // Minimized or restored: a minimized window is as invisible as one in the tray. (Hidden stays asleep.)
+        (MAIN, tauri::WindowEvent::Resized(_)) => {
+            let active =
+                window.is_visible().unwrap_or(true) && !window.is_minimized().unwrap_or(false);
+            if let Some(w) = app.get_webview_window(MAIN) {
+                webview_power::set_active(&w, active);
             }
         }
         (MAIN, tauri::WindowEvent::Focused(true)) => {
             if let Ok(mut g) = app.state::<ShellState>().toasts.lock() {
                 g.window_focused();
+            }
+            // A window that has focus is on screen: whichever way it got there, its page must be awake.
+            if let Some(w) = app.get_webview_window(MAIN) {
+                webview_power::set_active(&w, true);
             }
         }
         (flyout::LABEL, tauri::WindowEvent::Focused(false)) => flyout::hide(app),

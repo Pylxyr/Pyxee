@@ -42,6 +42,7 @@ pub fn hide(app: &AppHandle) {
     if let Some(w) = app.get_webview_window(LABEL) {
         if w.is_visible().unwrap_or(false) {
             let _ = w.hide();
+            super::webview_power::set_active(&w, false);
             if let Ok(mut t) = app.state::<ShellState>().flyout_hidden_at.lock() {
                 *t = Some(Instant::now());
             }
@@ -118,6 +119,7 @@ fn show(app: &AppHandle, icon: tauri::Rect) -> tauri::Result<()> {
     let (x, y) = flyout_position(icon_rect, &plain, px, (MARGIN * scale).round() as i32);
     w.set_size(PhysicalSize::new(px.0 as u32, px.1 as u32))?;
     w.set_position(PhysicalPosition::new(x, y))?;
+    super::webview_power::set_active(&w, true);
     w.show()?;
     w.set_focus()?;
     Ok(())

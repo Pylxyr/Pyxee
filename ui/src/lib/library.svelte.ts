@@ -12,6 +12,10 @@ export class LibraryStore {
   ready = $state(false);
   #backend: Backend | null = null;
   #unlisten: (() => void) | null = null;
+  /** The window may have been asleep (hidden in the tray) while pushes went by: ask again when it wakes. */
+  #wake = () => {
+    if (!document.hidden) void this.resync();
+  };
 
   likedSet = $derived(new Set(this.snapshot.likedKeys));
   playlists = $derived<PlaylistSummaryDto[]>(this.snapshot.playlists);
@@ -21,8 +25,22 @@ export class LibraryStore {
     this.#unlisten?.();
     this.#backend = backend;
     this.#unlisten = await backend.onLibrary((s) => (this.snapshot = s));
+    if (typeof document !== 'undefined') {
+      document.removeEventListener('visibilitychange', this.#wake);
+      document.addEventListener('visibilitychange', this.#wake);
+    }
     this.snapshot = await backend.getLibrary();
     this.ready = true;
+  }
+
+  /** Takes the library summary again (what is shown stays if it cannot be read). */
+  async resync() {
+    try {
+      const s = await this.#backend?.getLibrary();
+      if (s) this.snapshot = s;
+    } catch {
+      /* keep what is shown; the next push replaces it */
+    }
   }
 
   /** For detail views that load their own data (liked songs, a playlist, history). */
