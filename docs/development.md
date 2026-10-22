@@ -107,4 +107,4 @@ any attempt), and runs live YouTube checks of the real search / resolve / decode
 that first in every run). The default run is the full one: formatting, clippy, every test (with `--locked`), the UI checks and the live YouTube checks; a live check that
 cannot run (no FFmpeg libraries, rate limited) is a failure, not a skip, and any FAIL gives a non-zero exit code. Options: `-Installer` (also builds and inspects the installer and the portable zip), `-Ci` (replays the release workflow's portable step the way a clean runner meets it, including MSYS2's first-ever login),
 `-UpdateYtdlp`, `-SelfTest` (only the redaction test), and, not recommended, `-SkipTests` / `-SkipLive` (a run with either does not prove the build), `-CookieFile <cookies.txt>`, `-CookieBrowser firefox`, `-Manual` (answer y/n for things to try in the
-app) and `-AnalyzeLog` (summarise the app's own log). Details: the comment block at the top of `scripts\check-windows.ps1`.
+app) and `-AnalyzeLog` (summarise the app's own log). Details: the comment block at the top of `scripts\check-windows.ps1`. To measure idle CPU, GPU and memory while Pyxee is hidden, see `docs/measuring.md`.

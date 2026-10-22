@@ -15,7 +15,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, State};
 use ts_rs::TS;
 
 const REPO: &str = "Pylxyr/Pyxee";
@@ -98,7 +98,7 @@ fn emit_progress(
         received,
         total,
     };
-    if let Err(e) = app.emit(UPDATE_PROGRESS_EVENT, dto) {
+    if let Err(e) = crate::shell::emit_noted(app, UPDATE_PROGRESS_EVENT, dto) {
         log::warn!("could not send the update progress: {e}");
     }
 }

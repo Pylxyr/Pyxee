@@ -14,7 +14,7 @@ use std::sync::mpsc::{channel, Receiver, RecvTimeoutError, Sender};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
-use tauri::{AppHandle, Emitter, Manager};
+use tauri::{AppHandle, Manager};
 
 const SAVE_EVERY: Duration = Duration::from_secs(5);
 
@@ -86,7 +86,8 @@ impl Host for AppHost {
     }
     fn notice(&self, message: String) {
         log::info!("notice shown to the listener: {message}");
-        if let Err(e) = self.app.emit(
+        if let Err(e) = crate::shell::emit_noted(
+            &self.app,
             crate::state::NOTICE_EVENT,
             crate::dto::NoticeDto { message },
         ) {

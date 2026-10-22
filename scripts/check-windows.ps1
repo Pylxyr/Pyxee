@@ -401,6 +401,20 @@ function Test-ReviewFixes {
   & $expect 'fix-f8-progress-binding' ((Test-Path -LiteralPath (Join-Path $Root 'ui\src\lib\bindings\UpdateProgressDto.ts')) -and ((& $read 'crates\app\src\updater.rs') -match 'update-progress')) 'UpdateProgressDto.ts exists and the updater emits update-progress'
 }
 
+# Static facts about the page power diagnostics (webview_power.rs): wiring the Linux tests cannot see, because it only
+# compiles on Windows. The behaviour is covered by the manual items (the log lines) and by docs\measuring.md.
+function Test-WebviewPower {
+  $read = { param([string]$rel) $p = Join-Path $Root $rel; if (Test-Path -LiteralPath $p) { Get-Content -LiteralPath $p -Raw } else { '' } }
+  $expect = { param([string]$name, [bool]$ok, [string]$detail) if ($ok) { Add-Result 'PASS' $name $detail } else { Add-Result 'FAIL' $name $detail } }
+  $power = & $read 'crates\app\src\shell\webview_power.rs'
+  & $expect 'power-issuspended-logged' (($power -match 'IsSuspended\(&mut flag\)') -and ($power -match 'IsSuspended = \{\} after TrySuspend')) 'IsSuspended is read and logged right after every TrySuspend'
+  & $expect 'power-recheck-delay' (($power -match 'RECHECK_DELAY: Duration = Duration::from_secs\(5\)') -and ($power -match 'still asleep after') -and ($power -match 'awake again')) 'a one-off check runs 5 s after a page is put to sleep and logs whether it stayed asleep'
+  & $expect 'power-recheck-cancelled-by-newer-request' (($power -match 'fn is_current') -and ($power -match 'next_generation\(window\.label\(\)\)')) 'a sleep or wake request cancels the pending check of an older one'
+  $noted = ((& $read 'crates\app\src\runner.rs') -match 'emit_noted') -and ((& $read 'crates\app\src\shell\power.rs') -match 'emit_noted') -and ((& $read 'crates\app\src\updater.rs') -match 'emit_noted')
+  & $expect 'power-wake-sources-noted' $noted 'events sent to every window (notice, update progress) are noted as possible wake sources'
+  & $expect 'power-measuring-doc' (Test-Path -LiteralPath (Join-Path $Root 'docs\measuring.md')) 'docs\measuring.md describes how to measure the four states'
+}
+
 # ---------------------------------------------------------------- UI rebuild: static facts, named tests, report
 # What svelte-check and the unit tests do not see about the UI rebuild ("Rail, Page, Stage", see docs\ui.md): remote
 # resources, removed components, the windows and entry points, the test ids the tests rely on, the dependency list.
@@ -619,6 +633,7 @@ $any = @(& git grep -n -i ffmpeg -- . ':!Cargo.lock' ':!scripts' 2>$null)
 Add-Result 'INFO' 'ffmpeg-mentions-left' "$($any.Count) line(s) mention the word (expected: the in-process libav build scripts, docs and comments, plus the fixture-provenance note)"
 $any | Select-Object -First 25 | ForEach-Object { Write-Report ("    " + $_.Substring(0, [math]::Min($_.Length, 170))) }
 Test-ReviewFixes
+Test-WebviewPower
 
 # ---------------------------------------------------------------- 1b. static: the UI rebuild
 
@@ -1066,6 +1081,8 @@ if ($Manual) {
     @('ui-mini-flyout', 'UI: do the mini player and the tray flyout show cover, title, thin progress line and previous / play / next without cutting anything off, and do their buttons work?'),
     @('ui-high-dpi', 'UI: at 150% and at 200% display scaling (Settings > System > Display), is the text sharp, are the thin lines and icons crisp, and is nothing blurry or cut off?'),
     @('ui-reduced-motion', 'UI: turn off Windows Settings > Accessibility > Visual effects > Animation effects. Do sheets and Now Playing now appear without sliding, and do the playing bars stand still?'),
+    @('power-log-hidden', 'Power: start the app with PYXEE_LOG=debug, play a song, close the window to the tray, wait 10 s, reopen it. Does the log have, for main, a line ending in asleep (or a warning that WebView2 declined), a line IsSuspended = ... after TrySuspend, and 5 s later still asleep (or a warning awake again with what was sent)? Is the music uninterrupted and the window correct on reopening?'),
+    @('power-log-mini-flyout', 'Power: with the same logging, open and hide the mini player and the tray flyout. Do mini and flyout each log the same lines, and do they reopen showing the current song and state?'),
     @('ui-system-font', 'UI: does the text look like Windows 11 system text (Segoe UI Variable) everywhere, with no serif fallback and no empty boxes where an icon should be?')
   )
   foreach ($it in $items) {

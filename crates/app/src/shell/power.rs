@@ -9,7 +9,7 @@ use pyxee_shell::power::{
 };
 use std::net::UdpSocket;
 use std::time::Duration;
-use tauri::{AppHandle, Emitter, Manager};
+use tauri::{AppHandle, Manager};
 
 const POLL: Duration = Duration::from_secs(2);
 /// A gap this much longer than the poll interval means the machine was asleep (or frozen).
@@ -85,7 +85,8 @@ fn handle(app: &AppHandle, trigger: Trigger) {
         match action {
             Action::Retry => publish(app, |p| p.command(Command::Retry)),
             Action::Notice(message) => {
-                let _ = app.emit(
+                let _ = super::emit_noted(
+                    app,
                     crate::state::NOTICE_EVENT,
                     crate::dto::NoticeDto {
                         message: message.to_string(),
