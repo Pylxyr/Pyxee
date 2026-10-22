@@ -1,3 +1,4 @@
+import type { AlbumDto } from './bindings/AlbumDto';
 import type { HistoryItemDto } from './bindings/HistoryItemDto';
 import type { TrackDto } from './bindings/TrackDto';
 
@@ -7,17 +8,15 @@ export interface Seed {
   reason: 'liked' | 'played';
 }
 
-/** Quick searches in a tone of voice. Each one opens an ordinary search, so nothing here needs its own backend. */
-export const MOODS: { id: string; label: string; query: string }[] = [
-  { id: 'focus', label: 'Focus', query: 'focus instrumental' },
-  { id: 'chill', label: 'Chill', query: 'chill vibes' },
-  { id: 'workout', label: 'Workout', query: 'workout energy' },
-  { id: 'late', label: 'Late night', query: 'late night drive' },
-  { id: 'morning', label: 'Slow morning', query: 'acoustic morning' },
-  { id: 'throwback', label: 'Throwback', query: '2000s hits' },
-  { id: 'rain', label: 'Rainy day', query: 'rainy day mellow' },
-  { id: 'party', label: 'Party', query: 'party dance' },
-];
+/**
+ * What to search for to find an album or single on YouTube Music's Explore page. Pyxee has no album page, so a cover
+ * opens an ordinary songs search for it: the release's own songs come first.
+ */
+export function albumQuery(album: AlbumDto): string {
+  const title = album.title.trim();
+  const artist = album.artist.trim();
+  return artist && artist !== 'Unknown artist' ? `${title} ${artist}` : title;
+}
 
 const norm = (s: string) => s.trim().toLowerCase();
 

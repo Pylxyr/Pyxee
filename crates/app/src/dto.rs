@@ -2,7 +2,7 @@
 //! (`cargo test -p pyxee-app` writes them to `ui/src/lib/bindings`), so the two sides cannot drift.
 
 use pyxee_core::{Command, EntryId, Failure, Origin, Player, Repeat, Track, Transport};
-use pyxee_sources::{SearchFilter, SearchItem, SourceError};
+use pyxee_sources::{AlbumInfo, ExploreShelf, SearchFilter, SearchItem, SourceError};
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
@@ -352,6 +352,62 @@ impl From<&SearchItem> for SearchItemDto {
                 key: key.clone(),
                 name: name.clone(),
                 thumbnail: thumbnail.clone(),
+            },
+        }
+    }
+}
+
+/// An album or single on an Explore shelf.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct AlbumDto {
+    pub id: String,
+    pub title: String,
+    pub artist: String,
+    pub thumbnail: Option<String>,
+}
+
+impl From<&AlbumInfo> for AlbumDto {
+    fn from(a: &AlbumInfo) -> Self {
+        Self {
+            id: a.id.clone(),
+            title: a.title.clone(),
+            artist: a.artist.clone(),
+            thumbnail: a.thumbnail.clone(),
+        }
+    }
+}
+
+/// One row of YouTube Music's Explore page: songs to play, or albums to look up.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+#[ts(export)]
+pub enum ExploreShelfDto {
+    Songs {
+        id: String,
+        title: String,
+        tracks: Vec<TrackDto>,
+    },
+    Albums {
+        id: String,
+        title: String,
+        albums: Vec<AlbumDto>,
+    },
+}
+
+impl From<&ExploreShelf> for ExploreShelfDto {
+    fn from(s: &ExploreShelf) -> Self {
+        match s {
+            ExploreShelf::Songs { id, title, tracks } => ExploreShelfDto::Songs {
+                id: id.clone(),
+                title: title.clone(),
+                tracks: tracks.iter().map(TrackDto::from).collect(),
+            },
+            ExploreShelf::Albums { id, title, albums } => ExploreShelfDto::Albums {
+                id: id.clone(),
+                title: title.clone(),
+                albums: albums.iter().map(AlbumDto::from).collect(),
             },
         }
     }
@@ -729,6 +785,37 @@ mod tests {
             serde_json::to_value(SearchItemDto::from(&a)).unwrap()["type"],
             "artist"
         );
+    }
+
+    #[test]
+    fn explore_shelves_say_what_they_hold() {
+        let songs = ExploreShelf::Songs {
+            id: "explore-1".into(),
+            title: "Trending".into(),
+            tracks: vec![pyxee_sources::TrackInfo {
+                key: "yt:abc".into(),
+                title: "T".into(),
+                artist: "A".into(),
+                duration_ms: None,
+                thumbnail: None,
+            }],
+        };
+        let v = serde_json::to_value(ExploreShelfDto::from(&songs)).unwrap();
+        assert_eq!(v["kind"], "songs");
+        assert_eq!(v["tracks"][0]["key"], "yt:abc");
+        let albums = ExploreShelf::Albums {
+            id: "explore-2".into(),
+            title: "New albums & singles".into(),
+            albums: vec![AlbumInfo {
+                id: "MPREb_x".into(),
+                title: "Night Shift".into(),
+                artist: "Lowtide".into(),
+                thumbnail: None,
+            }],
+        };
+        let v = serde_json::to_value(ExploreShelfDto::from(&albums)).unwrap();
+        assert_eq!(v["kind"], "albums");
+        assert_eq!(v["albums"][0]["title"], "Night Shift");
     }
 
     #[test]

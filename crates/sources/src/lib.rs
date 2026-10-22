@@ -72,6 +72,31 @@ pub enum SearchItem {
     },
 }
 
+/// An album or single on an Explore shelf. There is no album page in Pyxee yet, so this is only what a cover tile needs.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct AlbumInfo {
+    /// YouTube Music's id for the release (`MPREb_...`).
+    pub id: String,
+    pub title: String,
+    pub artist: String,
+    pub thumbnail: Option<String>,
+}
+
+/// One row of YouTube Music's Explore page, as a shelf of songs or of albums.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum ExploreShelf {
+    Songs {
+        id: String,
+        title: String,
+        tracks: Vec<TrackInfo>,
+    },
+    Albums {
+        id: String,
+        title: String,
+        albums: Vec<AlbumInfo>,
+    },
+}
+
 /// What search shows when it does not know the artist (same text as `pyxee_core::UNKNOWN_ARTIST`).
 pub const UNKNOWN_ARTIST: &str = "Unknown artist";
 
@@ -108,6 +133,11 @@ pub trait MusicSource: Send + Sync {
     fn suggest(&self, prefix: &str) -> Result<Vec<String>, SourceError>;
     /// Filters this source can really serve (the UI disables the rest).
     fn supported_filters(&self) -> Vec<SearchFilter>;
+    /// The shelves of YouTube Music's Explore page (trending songs, new releases...). Sources without such a page
+    /// say so with `Unsupported`.
+    fn explore(&self) -> Result<Vec<ExploreShelf>, SourceError> {
+        Err(SourceError::Unsupported("Explore".into()))
+    }
 }
 
 /// Routes by key prefix: `yt:` to yt-dlp, `file:` to local files. Search and suggestions go to yt-dlp.
@@ -139,6 +169,9 @@ impl MusicSource for CompositeSource {
     }
     fn supported_filters(&self) -> Vec<SearchFilter> {
         self.remote.supported_filters()
+    }
+    fn explore(&self) -> Result<Vec<ExploreShelf>, SourceError> {
+        self.remote.explore()
     }
 }
 

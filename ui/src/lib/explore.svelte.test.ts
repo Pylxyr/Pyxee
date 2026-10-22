@@ -64,4 +64,41 @@ describe('ExploreStore', () => {
     expect(s.shelves).toHaveLength(1);
     expect(s.shelves[0]!.status).toBe('ready');
   });
+  it("YouTube Music's own shelves load first, under its titles, and refresh asks again", async () => {
+    const m = backendWith([], []);
+    const s = new ExploreStore();
+    expect(s.browseStatus).toBe('idle');
+    await s.ensure(m as Backend);
+    expect(s.browseStatus).toBe('ready');
+    expect(s.browse.map((x) => [x.kind, x.title])).toEqual([
+      ['songs', 'Trending'],
+      ['albums', 'New albums & singles'],
+    ]);
+    await s.ensure(m as Backend);
+    expect(m.exploreCalls).toBe(1);
+    await s.refresh();
+    expect(m.exploreCalls).toBe(2);
+  });
+
+  it('a failed Explore page says why and still lets the personal shelves load', async () => {
+    const m = backendWith([DEMO_TRACKS[0]!], []);
+    m.exploreFailure = { kind: 'other', message: 'YouTube Music explore failed (HTTP 400)' };
+    const s = new ExploreStore();
+    await s.load(m as Backend);
+    expect(s.browseStatus).toBe('error');
+    expect(s.browseError).toBe('YouTube Music explore failed (HTTP 400)');
+    expect(s.browse).toEqual([]);
+    expect(s.shelves.map((x) => x.status)).toEqual(['ready']);
+  });
+
+  it('offline or rate limited on the Explore page skips the personal shelves instead of asking again', async () => {
+    const m = backendWith([DEMO_TRACKS[0]!], [DEMO_TRACKS[1]!]);
+    m.exploreFailure = { kind: 'rateLimited', message: 'The music service is limiting requests right now.' };
+    const s = new ExploreStore();
+    await s.load(m as Backend);
+    expect(s.browseStatus).toBe('error');
+    expect(s.shelves.map((x) => x.status)).toEqual(['error', 'error']);
+    expect(s.shelves[0]!.error).toBe('The music service is limiting requests right now.');
+    expect(m.relatedCalls).toHaveLength(0);
+  });
 });

@@ -10,6 +10,7 @@ import type { ShellSettingsDto } from './bindings/ShellSettingsDto';
 import type { SleepSettingDto } from './bindings/SleepSettingDto';
 import type { SleepStateDto } from './bindings/SleepStateDto';
 import type { SleepStatusDto } from './bindings/SleepStatusDto';
+import type { ExploreShelfDto } from './bindings/ExploreShelfDto';
 import type { FilterInfoDto } from './bindings/FilterInfoDto';
 import type { SearchFilterDto } from './bindings/SearchFilterDto';
 import type { SearchItemDto } from './bindings/SearchItemDto';
@@ -215,6 +216,27 @@ export class MockBackend extends MockLibrary implements Backend {
     this.relatedCalls.push(key);
     if (this.relatedFailure) throw this.relatedFailure;
     return DEMO_TRACKS.filter((t) => t.key !== key).slice(0, count);
+  }
+  /** Set to make `exploreGet` reject, e.g. `{ kind: 'offline', message: '...' }`. */
+  exploreFailure: unknown = null;
+  exploreCalls = 0;
+  /** What `exploreGet` answers; the default is a songs shelf and an albums shelf, like YouTube Music's Explore page. */
+  exploreShelves: ExploreShelfDto[] = [
+    { kind: 'songs', id: 'explore-1', title: 'Trending', tracks: DEMO_TRACKS.slice(0, 4) },
+    {
+      kind: 'albums',
+      id: 'explore-2',
+      title: 'New albums & singles',
+      albums: [
+        { id: 'MPREb_demo1', title: 'Night Shift', artist: 'Lowtide', thumbnail: null },
+        { id: 'MPREb_demo2', title: 'Tidal', artist: 'Kestrel Hall', thumbnail: null },
+      ],
+    },
+  ];
+  async exploreGet(): Promise<ExploreShelfDto[]> {
+    this.exploreCalls++;
+    if (this.exploreFailure) throw this.exploreFailure;
+    return clone(this.exploreShelves);
   }
   async suggest(prefix: string) {
     const p = prefix.trim().toLowerCase();

@@ -5,8 +5,8 @@ use crate::gate::{Gate, GateConfig};
 use crate::suggest::{self, encode};
 use crate::ytmusic;
 use crate::{
-    classify_stderr, program_name, scrub, MusicSource, SearchFilter, SearchItem, SourceError,
-    StreamInfo, StreamMeta, TrackInfo, UNKNOWN_ARTIST,
+    classify_stderr, program_name, scrub, ExploreShelf, MusicSource, SearchFilter, SearchItem,
+    SourceError, StreamInfo, StreamMeta, TrackInfo, UNKNOWN_ARTIST,
 };
 use serde::Deserialize;
 use serde_json::Value;
@@ -134,6 +134,8 @@ pub struct YtDlpSource {
     songs_page_bare_until: Mutex<Option<Instant>>,
     /// Where songs searches ask YouTube Music for its Songs tab first (`None`: never, only yt-dlp).
     music_endpoint: Option<String>,
+    /// Where Explore asks YouTube Music for its Explore page (`None`: Explore is unsupported).
+    browse_endpoint: Option<String>,
 }
 
 impl YtDlpSource {
@@ -147,12 +149,20 @@ impl YtDlpSource {
             search_cache: Mutex::new(HashMap::new()),
             songs_page_bare_until: Mutex::new(None),
             music_endpoint: Some(ytmusic::ENDPOINT.to_string()),
+            browse_endpoint: Some(ytmusic::BROWSE_ENDPOINT.to_string()),
         }
     }
 
-    /// Songs searches go to yt-dlp only, never to YouTube Music directly.
+    /// Songs searches go to yt-dlp only, never to YouTube Music directly, and there is no Explore page.
     pub fn without_music_search(mut self) -> Self {
         self.music_endpoint = None;
+        self.browse_endpoint = None;
+        self
+    }
+
+    /// Asks `url` instead of YouTube Music for its Explore page (for tests).
+    pub fn with_browse_endpoint(mut self, url: impl Into<String>) -> Self {
+        self.browse_endpoint = Some(url.into());
         self
     }
 
@@ -736,6 +746,19 @@ impl MusicSource for YtDlpSource {
         use SearchFilter::{All, Artists, Playlists, Songs, Videos};
         vec![All, Songs, Videos, Artists, Playlists]
     }
+
+    /// YouTube Music's Explore page, asked directly (no yt-dlp run). Gated like every other request, so a rate
+    /// limit here pauses searches too.
+    fn explore(&self) -> Result<Vec<ExploreShelf>, SourceError> {
+        let Some(endpoint) = &self.browse_endpoint else {
+            return Err(SourceError::Unsupported("Explore".into()));
+        };
+        let shelves = self
+            .gate
+            .run("explore", || ytmusic::fetch_explore(endpoint))?;
+        log::info!("explore: {} shelves from YouTube Music", shelves.len());
+        Ok(shelves)
+    }
 }
 
 #[cfg(test)]
@@ -1226,6 +1249,23 @@ mod tests {
                     "{filter:?} contacted YouTube Music"
                 );
             }
+        }
+
+        #[test]
+        fn explore_asks_youtube_music_directly_and_needs_music_search_on() {
+            let page = r#"{"contents":{"singleColumnBrowseResultsRenderer":{"tabs":[{"tabRenderer":{"content":{"sectionListRenderer":{"contents":[
+              {"musicCarouselShelfRenderer":{"header":{"musicCarouselShelfBasicHeaderRenderer":{"title":{"runs":[{"text":"Trending"}]}}},
+               "contents":[{"musicResponsiveListItemRenderer":{"flexColumns":[
+                 {"musicResponsiveListItemFlexColumnRenderer":{"text":{"runs":[{"text":"Neon Harbor","navigationEndpoint":{"watchEndpoint":{"videoId":"abc12345678"}}}]}}},
+                 {"musicResponsiveListItemFlexColumnRenderer":{"text":{"runs":[{"text":"Lowtide","navigationEndpoint":{"browseEndpoint":{"browseId":"UC1"}}}]}}}]}}]}}
+            ]}}}}]}}}"#;
+            let (url, request) = testserver::once(200, page);
+            let s = source("http://127.0.0.1:9/unused").with_browse_endpoint(&url);
+            let shelves = s.explore().unwrap();
+            assert_eq!(shelves.len(), 1);
+            assert!(request.try_recv().is_ok() || request.recv().is_ok());
+            let off = source(&url).without_music_search();
+            assert!(matches!(off.explore(), Err(SourceError::Unsupported(_))));
         }
 
         #[test]

@@ -174,6 +174,7 @@ fn main() {
             commands::search,
             commands::suggest,
             commands::related_get,
+            commands::explore_get,
             updater::update_check_app,
             updater::update_install_app,
             updater::update_check_ytdlp,

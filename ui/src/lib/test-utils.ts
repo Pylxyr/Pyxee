@@ -20,6 +20,7 @@ export const noLibrary: LibraryBackend = {
   historyRestore: async () => {},
   homeGet: async () => ({ quickPicks: [], recent: [], likedCount: 0 }),
   relatedGet: async () => [],
+  exploreGet: async () => [],
 };
 
 /** Diagnostics methods for test backends that do not care about them. */

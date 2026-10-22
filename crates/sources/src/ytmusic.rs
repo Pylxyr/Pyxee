@@ -6,13 +6,24 @@
 //! carry the artist, album and length.
 //!
 //! Nothing here is required: any failure but a rate limit makes the caller fall back to the yt-dlp flow.
+//!
+//! The same website request, pointed at its `browse` endpoint, also gives the Explore page: trending songs, new
+//! albums and singles, new music videos. The shapes read here follow what the website sends (and what the
+//! open-source `ytmusicapi` reads from it). Every piece is optional, so a shelf the website reshapes is left out
+//! rather than failing the page.
 
-use crate::{SearchItem, SourceError, TrackInfo, UNKNOWN_ARTIST};
+use crate::{AlbumInfo, ExploreShelf, SearchItem, SourceError, TrackInfo, UNKNOWN_ARTIST};
 use serde_json::{json, Value};
 use std::collections::HashSet;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 pub const ENDPOINT: &str = "https://music.youtube.com/youtubei/v1/search?prettyPrint=false";
+/// The website's request for a page (Explore here).
+pub const BROWSE_ENDPOINT: &str = "https://music.youtube.com/youtubei/v1/browse?prettyPrint=false";
+/// The page behind the website's Explore tab.
+const EXPLORE_PAGE: &str = "FEmusic_explore";
+/// Shelves longer than this are cut: a row on a page, not a catalogue.
+const SHELF_MAX: usize = 20;
 
 /// The website's own filter value for its "Songs" tab.
 const SONGS_PARAMS: &str = "EgWKAQIIAWoMEA4QChADEAQQCRAF";
@@ -43,27 +54,35 @@ fn civil_from_days(days: i64) -> (i64, i64, i64) {
     (yoe + era * 400 + i64::from(m <= 2), m, d)
 }
 
+fn context(now: SystemTime) -> Value {
+    json!({
+        "client": {
+            "clientName": "WEB_REMIX",
+            "clientVersion": client_version(now),
+            "hl": "en",
+        }
+    })
+}
+
 pub fn request_body(query: &str, now: SystemTime) -> String {
     json!({
-        "context": {
-            "client": {
-                "clientName": "WEB_REMIX",
-                "clientVersion": client_version(now),
-                "hl": "en",
-            }
-        },
+        "context": context(now),
         "query": query,
         "params": SONGS_PARAMS,
     })
     .to_string()
 }
 
-/// Asks YouTube Music for the songs matching `query`: at most `limit`, best match first.
-pub fn fetch_songs(
-    endpoint: &str,
-    query: &str,
-    limit: usize,
-) -> Result<Vec<SearchItem>, SourceError> {
+pub fn explore_body(now: SystemTime) -> String {
+    json!({
+        "context": context(now),
+        "browseId": EXPLORE_PAGE,
+    })
+    .to_string()
+}
+
+/// One POST to the website's own API, answered with the body text. `what` names the request in an error.
+fn post(endpoint: &str, body: &str, what: &str) -> Result<String, SourceError> {
     let agent = ureq::AgentBuilder::new()
         .timeout(TIMEOUT)
         .user_agent(USER_AGENT)
@@ -74,24 +93,37 @@ pub fn fetch_songs(
         .set("Origin", "https://music.youtube.com")
         // The consent cookie the website sets once its banner is answered; without it some regions get a page.
         .set("Cookie", "SOCS=CAI")
-        .send_string(&request_body(query, SystemTime::now()));
-    let body = match answer {
+        .send_string(body);
+    match answer {
         Ok(r) => r
             .into_string()
-            .map_err(|e| SourceError::Failed(e.to_string()))?,
+            .map_err(|e| SourceError::Failed(e.to_string())),
         // Only a real "slow down" is allowed to stop the other ways of searching; a 403 here may be this
         // endpoint alone.
-        Err(ureq::Error::Status(429, _)) => return Err(SourceError::RateLimited),
-        Err(ureq::Error::Status(c, _)) => {
-            return Err(SourceError::Failed(format!(
-                "YouTube Music search failed (HTTP {c})"
-            )))
-        }
-        Err(_) => return Err(SourceError::Offline),
-    };
+        Err(ureq::Error::Status(429, _)) => Err(SourceError::RateLimited),
+        Err(ureq::Error::Status(c, _)) => Err(SourceError::Failed(format!(
+            "YouTube Music {what} failed (HTTP {c})"
+        ))),
+        Err(_) => Err(SourceError::Offline),
+    }
+}
+
+/// Asks YouTube Music for the songs matching `query`: at most `limit`, best match first.
+pub fn fetch_songs(
+    endpoint: &str,
+    query: &str,
+    limit: usize,
+) -> Result<Vec<SearchItem>, SourceError> {
+    let body = post(endpoint, &request_body(query, SystemTime::now()), "search")?;
     let mut items = parse_songs(&body)?;
     items.truncate(limit);
     Ok(items)
+}
+
+/// Asks YouTube Music for its Explore page.
+pub fn fetch_explore(endpoint: &str) -> Result<Vec<ExploreShelf>, SourceError> {
+    let body = post(endpoint, &explore_body(SystemTime::now()), "explore")?;
+    parse_explore(&body)
 }
 
 /// The song rows of a YouTube Music search answer, in the order it lists them.
@@ -183,15 +215,173 @@ fn clock_ms(text: &str) -> Option<u64> {
     (secs > 0).then_some(secs * 1000)
 }
 
-fn song_from_row(row: &Value) -> Option<TrackInfo> {
-    let id = row.pointer("/playlistItemData/videoId")?.as_str()?;
-    // The id goes into a URL later, so nothing but a plain video id is let through.
-    if id.is_empty()
-        || id.len() > 64
-        || !id
+// ------------------------------------------------------------------ Explore
+
+const EXPLORE_SECTIONS: &str = "/contents/singleColumnBrowseResultsRenderer/tabs/0/tabRenderer/content/sectionListRenderer/contents";
+
+/// The shelves of the Explore page, top to bottom, under the website's own titles.
+///
+/// A shelf is recognised by what it holds, not by where it sits or what it is called: rows that play a song (Trending,
+/// Top songs) and cards that play a music video make a shelf of songs; cards that open an album or single make a shelf
+/// of albums. Anything else (the Moods and genres buttons, podcast episodes) is not shown, and neither is a shelf with
+/// nothing usable in it.
+pub fn parse_explore(body: &str) -> Result<Vec<ExploreShelf>, SourceError> {
+    let v: Value = serde_json::from_str(body).map_err(|e| SourceError::Parse(e.to_string()))?;
+    let sections = v
+        .pointer(EXPLORE_SECTIONS)
+        .and_then(Value::as_array)
+        .ok_or_else(|| SourceError::Parse("the Explore page has an unexpected layout".into()))?;
+    let mut out = Vec::new();
+    for (i, section) in sections.iter().enumerate() {
+        let Some(shelf) = section.get("musicCarouselShelfRenderer") else {
+            continue;
+        };
+        let Some(title) = shelf
+            .pointer("/header/musicCarouselShelfBasicHeaderRenderer/title/runs/0/text")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|t| !t.is_empty())
+        else {
+            continue;
+        };
+        let Some(items) = shelf.get("contents").and_then(Value::as_array) else {
+            continue;
+        };
+        let mut tracks: Vec<TrackInfo> = Vec::new();
+        let mut albums: Vec<AlbumInfo> = Vec::new();
+        for item in items {
+            let track = if let Some(row) = item.get("musicResponsiveListItemRenderer") {
+                song_from_row(row)
+            } else if let Some(card) = item.get("musicTwoRowItemRenderer") {
+                if let Some(video) = video_from_card(card) {
+                    Some(video)
+                } else {
+                    albums.extend(
+                        album_from_card(card).filter(|a| !albums.iter().any(|x| x.id == a.id)),
+                    );
+                    None
+                }
+            } else {
+                None
+            };
+            if let Some(t) = track {
+                if !tracks.iter().any(|x| x.key == t.key) {
+                    tracks.push(t);
+                }
+            }
+        }
+        let id = format!("explore-{i}");
+        let title = title.to_string();
+        if !tracks.is_empty() {
+            tracks.truncate(SHELF_MAX);
+            out.push(ExploreShelf::Songs { id, title, tracks });
+        } else if !albums.is_empty() {
+            albums.truncate(SHELF_MAX);
+            out.push(ExploreShelf::Albums { id, title, albums });
+        }
+    }
+    Ok(out)
+}
+
+fn runs_in<'a>(card: &'a Value, pointer: &str) -> &'a [Value] {
+    card.pointer(pointer)
+        .and_then(Value::as_array)
+        .map_or(&[], Vec::as_slice)
+}
+
+fn card_title(card: &Value) -> Option<&str> {
+    card.pointer("/title/runs/0/text")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|t| !t.is_empty())
+}
+
+/// A music video card: its title links to the video, its subtitle reads `Artist • 46M views`.
+fn video_from_card(card: &Value) -> Option<TrackInfo> {
+    let id = card
+        .pointer("/title/runs/0/navigationEndpoint/watchEndpoint/videoId")
+        .and_then(Value::as_str)
+        .and_then(plain_video_id)?;
+    let title = card_title(card)?;
+    let details = segments(runs_in(card, "/subtitle/runs"));
+    let artist = details
+        .iter()
+        .find(|(_, linked)| *linked)
+        .or_else(|| {
+            details
+                .iter()
+                .find(|(t, _)| !t.trim_end().ends_with("views") && !t.trim_end().ends_with("view"))
+        })
+        .map_or_else(|| UNKNOWN_ARTIST.to_string(), |(t, _)| t.trim().to_string());
+    Some(TrackInfo {
+        key: format!("yt:{id}"),
+        title: title.to_string(),
+        artist,
+        duration_ms: None,
+        thumbnail: best_cover(
+            card.pointer("/thumbnailRenderer/musicThumbnailRenderer/thumbnail/thumbnails"),
+        ),
+    })
+}
+
+/// An album or single card: its title links to the release, its subtitle reads `Single • Artist` or `Album • Artist`.
+fn album_from_card(card: &Value) -> Option<AlbumInfo> {
+    let id = card
+        .pointer("/title/runs/0/navigationEndpoint/browseEndpoint/browseId")
+        .and_then(Value::as_str)
+        .filter(|id| id.starts_with("MPRE") && id.len() <= 64)?;
+    let title = card_title(card)?;
+    let details = segments(runs_in(card, "/subtitle/runs"));
+    let artist = details
+        .iter()
+        .find(|(_, linked)| *linked)
+        .or_else(|| details.get(1))
+        .map_or_else(|| UNKNOWN_ARTIST.to_string(), |(t, _)| t.trim().to_string());
+    Some(AlbumInfo {
+        id: id.to_string(),
+        title: title.to_string(),
+        artist,
+        thumbnail: best_cover(
+            card.pointer("/thumbnailRenderer/musicThumbnailRenderer/thumbnail/thumbnails"),
+        ),
+    })
+}
+
+/// A plain video id: it goes into a URL later, so nothing else is let through.
+fn plain_video_id(id: &str) -> Option<&str> {
+    (!id.is_empty()
+        && id.len() <= 64
+        && id
             .bytes()
-            .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
-    {
+            .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-'))
+    .then_some(id)
+}
+
+/// Where a list row keeps the song it plays. Search rows say it in `playlistItemData`; rows on a page (Explore) link
+/// their title to the song or carry it on the cover's play button.
+fn row_video_id(row: &Value) -> Option<&str> {
+    [
+        "/playlistItemData/videoId",
+        "/flexColumns/0/musicResponsiveListItemFlexColumnRenderer/text/runs/0/navigationEndpoint/watchEndpoint/videoId",
+        "/overlay/musicItemThumbnailOverlayRenderer/content/musicPlayButtonRenderer/playNavigationEndpoint/watchEndpoint/videoId",
+    ]
+    .iter()
+    .find_map(|p| row.pointer(p).and_then(Value::as_str))
+    .and_then(plain_video_id)
+}
+
+const PODCAST_EPISODE: &str = "MUSIC_VIDEO_TYPE_PODCAST_EPISODE";
+
+/// Podcast episodes sit among the songs on some pages; they are not music.
+fn is_podcast_episode(row: &Value) -> bool {
+    row.pointer("/overlay/musicItemThumbnailOverlayRenderer/content/musicPlayButtonRenderer/playNavigationEndpoint/watchEndpoint/watchEndpointMusicSupportedConfigs/watchEndpointMusicConfig/musicVideoType")
+        .and_then(Value::as_str)
+        == Some(PODCAST_EPISODE)
+}
+
+fn song_from_row(row: &Value) -> Option<TrackInfo> {
+    let id = row_video_id(row)?;
+    if is_podcast_episode(row) {
         return None;
     }
     let columns = row.get("flexColumns")?.as_array()?;
@@ -227,7 +417,11 @@ fn song_from_row(row: &Value) -> Option<TrackInfo> {
 
 /// The largest cover offered, asked for at a size that does not look soft in a list.
 fn thumbnail_of(row: &Value) -> Option<String> {
-    row.pointer("/thumbnail/musicThumbnailRenderer/thumbnail/thumbnails")?
+    best_cover(row.pointer("/thumbnail/musicThumbnailRenderer/thumbnail/thumbnails"))
+}
+
+fn best_cover(thumbnails: Option<&Value>) -> Option<String> {
+    thumbnails?
         .as_array()?
         .iter()
         .filter_map(|t| {
@@ -567,5 +761,282 @@ mod tests {
             format!("http://{}/", l.local_addr().unwrap())
         };
         assert_eq!(fetch_songs(&gone, "x", 5), Err(SourceError::Offline));
+    }
+
+    // ------------------------------------------------------------- Explore
+
+    fn carousel(title: &str, items: Vec<Value>) -> Value {
+        json!({ "musicCarouselShelfRenderer": {
+            "header": { "musicCarouselShelfBasicHeaderRenderer": { "title": { "runs": [
+                { "text": title, "navigationEndpoint": { "browseEndpoint": { "browseId": "VLOLAK5uy_x" } } }
+            ] } } },
+            "contents": items
+        } })
+    }
+
+    fn explore_answer(sections: Vec<Value>) -> String {
+        json!({ "contents": { "singleColumnBrowseResultsRenderer": { "tabs": [ { "tabRenderer": { "content": {
+            "sectionListRenderer": { "contents": sections }
+        } } } ] } } })
+        .to_string()
+    }
+
+    /// A row as the Explore page lists it: no `playlistItemData`, the title links to the song.
+    fn page_row(id: &str, title: &str, artist: &str, views: &str) -> Value {
+        json!({ "musicResponsiveListItemRenderer": {
+            "flexColumns": [
+                { "musicResponsiveListItemFlexColumnRenderer": { "text": { "runs": [
+                    { "text": title, "navigationEndpoint": { "watchEndpoint": { "videoId": id } } }
+                ] } } },
+                { "musicResponsiveListItemFlexColumnRenderer": { "text": { "runs": [
+                    link_run(artist), text_run(" • "), text_run(views)
+                ] } } },
+            ],
+            "thumbnail": { "musicThumbnailRenderer": { "thumbnail": { "thumbnails": [
+                { "url": "https://lh3.googleusercontent.com/t=w120-h120-l90-rj", "width": 120 },
+            ] } } },
+        } })
+    }
+
+    fn album_card(browse_id: &str, title: &str, subtitle: Vec<Value>) -> Value {
+        json!({ "musicTwoRowItemRenderer": {
+            "title": { "runs": [
+                { "text": title, "navigationEndpoint": { "browseEndpoint": { "browseId": browse_id } } }
+            ] },
+            "subtitle": { "runs": subtitle },
+            "thumbnailRenderer": { "musicThumbnailRenderer": { "thumbnail": { "thumbnails": [
+                { "url": "https://lh3.googleusercontent.com/a=w226-h226-l90-rj", "width": 226 },
+            ] } } },
+        } })
+    }
+
+    fn video_card(id: &str, title: &str, subtitle: Vec<Value>) -> Value {
+        json!({ "musicTwoRowItemRenderer": {
+            "title": { "runs": [
+                { "text": title, "navigationEndpoint": { "watchEndpoint": { "videoId": id } } }
+            ] },
+            "subtitle": { "runs": subtitle },
+            "thumbnailRenderer": { "musicThumbnailRenderer": { "thumbnail": { "thumbnails": [
+                { "url": "https://i.ytimg.com/vi/abc/hq720.jpg", "width": 480 },
+            ] } } },
+        } })
+    }
+
+    #[test]
+    fn explore_gives_songs_albums_and_videos_shelves_under_the_websites_titles() {
+        let body = explore_answer(vec![
+            carousel(
+                "New albums & singles",
+                vec![
+                    album_card(
+                        "MPREb_one",
+                        "Night Shift",
+                        vec![text_run("Single"), text_run(" • "), link_run("Lowtide")],
+                    ),
+                    album_card(
+                        "MPREb_one",
+                        "Night Shift (again)",
+                        vec![text_run("Single"), text_run(" • "), link_run("Lowtide")],
+                    ),
+                    album_card(
+                        "MPREb_two",
+                        "Tidal",
+                        vec![
+                            text_run("Album"),
+                            text_run(" • "),
+                            link_run("Ana"),
+                            text_run(" & "),
+                            link_run("Ben"),
+                        ],
+                    ),
+                ],
+            ),
+            carousel(
+                "Trending",
+                vec![
+                    page_row("trend000001", "Neon Harbor", "Lowtide", "108M views"),
+                    page_row("trend000002", "Slow Orbit", "Kite", "2.1M views"),
+                ],
+            ),
+            carousel(
+                "New music videos",
+                vec![video_card(
+                    "video000001",
+                    "Paper Planes (Official Video)",
+                    vec![link_run("Kite"), text_run(" • "), text_run("46M views")],
+                )],
+            ),
+        ]);
+        let shelves = parse_explore(&body).unwrap();
+        assert_eq!(shelves.len(), 3);
+        match &shelves[0] {
+            ExploreShelf::Albums { title, albums, .. } => {
+                assert_eq!(title, "New albums & singles");
+                assert_eq!(albums.len(), 2);
+                assert_eq!(albums[0].title, "Night Shift");
+                assert_eq!(albums[0].artist, "Lowtide");
+                assert_eq!(albums[0].id, "MPREb_one");
+                assert_eq!(
+                    albums[0].thumbnail.as_deref(),
+                    Some("https://lh3.googleusercontent.com/a=w544-h544-l90-rj")
+                );
+                assert_eq!(albums[1].artist, "Ana & Ben");
+            }
+            other => panic!("not an albums shelf: {other:?}"),
+        }
+        match &shelves[1] {
+            ExploreShelf::Songs { title, tracks, .. } => {
+                assert_eq!(title, "Trending");
+                assert_eq!(tracks[0].key, "yt:trend000001");
+                assert_eq!(tracks[0].title, "Neon Harbor");
+                assert_eq!(tracks[0].artist, "Lowtide");
+                assert_eq!(tracks[0].duration_ms, None);
+                assert!(tracks[0]
+                    .thumbnail
+                    .as_deref()
+                    .unwrap()
+                    .contains("w544-h544"));
+            }
+            other => panic!("not a songs shelf: {other:?}"),
+        }
+        match &shelves[2] {
+            ExploreShelf::Songs { title, tracks, .. } => {
+                assert_eq!(title, "New music videos");
+                assert_eq!(tracks[0].key, "yt:video000001");
+                assert_eq!(tracks[0].artist, "Kite", "the views are not the artist");
+            }
+            other => panic!("not a songs shelf: {other:?}"),
+        }
+        let ids: HashSet<String> = shelves
+            .iter()
+            .map(|s| match s {
+                ExploreShelf::Songs { id, .. } | ExploreShelf::Albums { id, .. } => id.clone(),
+            })
+            .collect();
+        assert_eq!(ids.len(), 3, "every shelf has its own id");
+    }
+
+    #[test]
+    fn explore_leaves_out_moods_podcasts_and_shelves_with_nothing_usable() {
+        let podcast = json!({ "musicResponsiveListItemRenderer": {
+            "flexColumns": [
+                { "musicResponsiveListItemFlexColumnRenderer": { "text": { "runs": [
+                    { "text": "Episode 1", "navigationEndpoint": { "watchEndpoint": { "videoId": "pod00000001" } } }
+                ] } } },
+            ],
+            "overlay": { "musicItemThumbnailOverlayRenderer": { "content": { "musicPlayButtonRenderer": {
+                "playNavigationEndpoint": { "watchEndpoint": { "videoId": "pod00000001", "watchEndpointMusicSupportedConfigs": {
+                    "watchEndpointMusicConfig": { "musicVideoType": "MUSIC_VIDEO_TYPE_PODCAST_EPISODE" }
+                } } }
+            } } } },
+        } });
+        let body = explore_answer(vec![
+            carousel(
+                "Moods & genres",
+                vec![
+                    json!({ "musicNavigationButtonRenderer": { "buttonText": { "runs": [ { "text": "Chill" } ] } } }),
+                ],
+            ),
+            carousel(
+                "Top episodes",
+                vec![
+                    json!({ "musicMultiRowListItemRenderer": { "title": { "runs": [ { "text": "Ep" } ] } } }),
+                ],
+            ),
+            carousel("Mixed", vec![podcast]),
+            carousel("Empty", vec![]),
+            json!({ "musicShelfRenderer": { "contents": [] } }),
+            json!({ "musicCarouselShelfRenderer": { "contents": [ page_row("noheader0001", "No title", "A", "1 views") ] } }),
+            carousel(
+                "Bad ids",
+                vec![
+                    page_row("bad id/..", "Bad", "A", "1 views"),
+                    album_card("UCnotanalbum", "Not an album", vec![link_run("A")]),
+                ],
+            ),
+        ]);
+        assert!(parse_explore(&body).unwrap().is_empty());
+    }
+
+    #[test]
+    fn explore_repeats_are_dropped_and_long_shelves_are_cut() {
+        let rows: Vec<Value> = (0..30)
+            .map(|i| page_row(&format!("id{i:09}"), &format!("Song {i}"), "A", "1 views"))
+            .chain([page_row("id000000000", "Song 0 again", "A", "1 views")])
+            .collect();
+        let shelves = parse_explore(&explore_answer(vec![carousel("Trending", rows)])).unwrap();
+        let ExploreShelf::Songs { tracks, .. } = &shelves[0] else {
+            panic!("not songs")
+        };
+        assert_eq!(tracks.len(), SHELF_MAX);
+        assert_eq!(tracks[0].title, "Song 0");
+    }
+
+    #[test]
+    fn an_explore_answer_in_an_unexpected_shape_is_a_parse_error_but_an_empty_page_is_not() {
+        assert!(matches!(
+            parse_explore("<html>"),
+            Err(SourceError::Parse(_))
+        ));
+        assert!(matches!(parse_explore("{}"), Err(SourceError::Parse(_))));
+        assert_eq!(parse_explore(&explore_answer(vec![])).unwrap(), vec![]);
+    }
+
+    #[test]
+    fn the_explore_request_asks_for_the_explore_page() {
+        let body: Value = serde_json::from_str(&explore_body(UNIX_EPOCH)).unwrap();
+        assert_eq!(body["browseId"], "FEmusic_explore");
+        assert_eq!(body["context"]["client"]["clientName"], "WEB_REMIX");
+        assert!(body.get("query").is_none());
+    }
+
+    #[test]
+    fn fetching_explore_posts_the_page_and_tells_http_failures_apart() {
+        let answer = explore_answer(vec![carousel(
+            "Trending",
+            vec![page_row(
+                "trend000001",
+                "Neon Harbor",
+                "Lowtide",
+                "1M views",
+            )],
+        )]);
+        let (url, request) = testserver::once(200, &answer);
+        let shelves = fetch_explore(&url).unwrap();
+        assert_eq!(shelves.len(), 1);
+        let sent = request.recv_timeout(Duration::from_secs(5)).unwrap();
+        assert!(sent.starts_with("POST "), "{sent}");
+        assert!(sent.contains("FEmusic_explore"), "{sent}");
+        assert!(sent.to_lowercase().contains("socs=cai"), "{sent}");
+
+        let (url, _) = testserver::once(429, "{}");
+        assert_eq!(fetch_explore(&url), Err(SourceError::RateLimited));
+        let (url, _) = testserver::once(500, "{}");
+        assert!(matches!(fetch_explore(&url), Err(SourceError::Failed(_))));
+        let (url, _) = testserver::once(200, "<html>");
+        assert!(matches!(fetch_explore(&url), Err(SourceError::Parse(_))));
+    }
+
+    #[test]
+    fn a_song_on_a_page_is_found_by_its_title_link_or_its_play_button() {
+        let by_button = json!({ "musicResponsiveListItemRenderer": {
+            "flexColumns": [
+                { "musicResponsiveListItemFlexColumnRenderer": { "text": { "runs": [ text_run("Button") ] } } },
+                { "musicResponsiveListItemFlexColumnRenderer": { "text": { "runs": [ link_run("A") ] } } },
+            ],
+            "overlay": { "musicItemThumbnailOverlayRenderer": { "content": { "musicPlayButtonRenderer": {
+                "playNavigationEndpoint": { "watchEndpoint": { "videoId": "button00001" } }
+            } } } },
+        } });
+        let body = explore_answer(vec![carousel(
+            "Trending",
+            vec![by_button, page_row("link0000001", "Link", "B", "1 views")],
+        )]);
+        let shelves = parse_explore(&body).unwrap();
+        let ExploreShelf::Songs { tracks, .. } = &shelves[0] else {
+            panic!("not songs")
+        };
+        let keys: Vec<&str> = tracks.iter().map(|t| t.key.as_str()).collect();
+        assert_eq!(keys, ["yt:button00001", "yt:link0000001"]);
     }
 }

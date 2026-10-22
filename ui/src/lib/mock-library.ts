@@ -1,3 +1,4 @@
+import type { ExploreShelfDto } from './bindings/ExploreShelfDto';
 import type { AddResultDto } from './bindings/AddResultDto';
 import type { HistoryItemDto } from './bindings/HistoryItemDto';
 import type { HomeDto } from './bindings/HomeDto';
@@ -159,6 +160,8 @@ export class MockLibrary implements LibraryBackend {
 
   /** Related songs: the demo backend overrides this; the bare library mock knows no catalogue. */
   async relatedGet(_key: string, _count: number): Promise<TrackDto[]> { return []; }
+  /** YouTube Music's Explore shelves: the demo backend overrides this. */
+  async exploreGet(): Promise<ExploreShelfDto[]> { return []; }
   async homeGet(): Promise<HomeDto> {
     const counts = new Map<string, { track: TrackDto; plays: number }>();
     for (const h of this.#history) {

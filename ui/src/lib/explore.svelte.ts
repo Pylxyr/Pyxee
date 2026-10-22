@@ -1,5 +1,6 @@
 import type { Backend } from './backend';
 import { toSearchError } from './backend';
+import type { ExploreShelfDto } from './bindings/ExploreShelfDto';
 import type { HistoryItemDto } from './bindings/HistoryItemDto';
 import type { TrackDto } from './bindings/TrackDto';
 import { freshTracks, jumpBackIn, pickSeeds, shelfTitle } from './explore';
@@ -19,13 +20,18 @@ export const SHELF_SIZE = 12;
 const STOP_ON = new Set(['offline', 'rateLimited', 'toolMissing']);
 
 /**
- * Explore: "jump back in" from history, plus one shelf of similar songs per seed (likes first, then recent plays).
- * Shelves load one after another (yt-dlp is paced to one run at a time anyway) and an answer for an older load is dropped.
+ * Explore: YouTube Music's own Explore shelves (trending songs, new albums and singles, new music videos), "jump back
+ * in" from history, and one shelf of similar songs per seed (likes first, then recent plays).
+ * Requests go one after another (they share one pacing gate with search) and an answer for an older load is dropped.
  */
 export class ExploreStore {
   status = $state<'idle' | 'loading' | 'ready'>('idle');
   jump = $state<TrackDto[]>([]);
   shelves = $state<Shelf[]>([]);
+  /** YouTube Music's Explore page, shelf by shelf, under its own titles. */
+  browse = $state<ExploreShelfDto[]>([]);
+  browseStatus = $state<'idle' | 'loading' | 'ready' | 'error'>('idle');
+  browseError = $state<string | null>(null);
   /** True once there was nothing to build shelves from. */
   noSeeds = $state(false);
   #seq = 0;
@@ -44,6 +50,7 @@ export class ExploreStore {
     this.#backend = backend;
     const seq = ++this.#seq;
     this.status = 'loading';
+    this.browseStatus = 'loading';
     const [liked, history] = await Promise.all([
       backend.likedGet().catch((): TrackDto[] => []),
       backend.historyGet(60).catch((): HistoryItemDto[] => []),
@@ -60,10 +67,27 @@ export class ExploreStore {
       tracks: [],
       error: null,
     }));
+    this.browse = [];
+    this.browseError = null;
+    this.browseStatus = 'loading';
     this.status = 'ready';
 
-    const seen = new Set<string>(seeds.map((s) => s.track.key));
+    // YouTube Music's own shelves first: they are the top of the page.
     let blocked: string | null = null;
+    try {
+      const page = await backend.exploreGet();
+      if (seq !== this.#seq) return;
+      this.browse = page;
+      this.browseStatus = 'ready';
+    } catch (e) {
+      if (seq !== this.#seq) return;
+      const err = toSearchError(e);
+      this.browseStatus = 'error';
+      this.browseError = err.message;
+      if (STOP_ON.has(err.kind)) blocked = err.message;
+    }
+
+    const seen = new Set<string>(seeds.map((s) => s.track.key));
     for (const shelf of this.shelves) {
       if (seq !== this.#seq) return;
       if (blocked) {

@@ -1,5 +1,6 @@
 import type { CommandDto } from './bindings/CommandDto';
 import type { AddResultDto } from './bindings/AddResultDto';
+import type { ExploreShelfDto } from './bindings/ExploreShelfDto';
 import type { FilterInfoDto } from './bindings/FilterInfoDto';
 import type { HistoryItemDto } from './bindings/HistoryItemDto';
 import type { LogInfoDto } from './bindings/LogInfoDto';
@@ -46,6 +47,8 @@ export interface LibraryBackend {
   homeGet(): Promise<HomeDto>;
   /** Songs similar to `key` (for Explore). Rejects with a `SearchErrorDto` like `search` does. */
   relatedGet(key: string, count: number): Promise<TrackDto[]>;
+  /** The shelves of YouTube Music's Explore page (trending songs, new releases...). Rejects with a `SearchErrorDto` like `search` does. */
+  exploreGet(): Promise<ExploreShelfDto[]>;
 }
 
 /** Everything the UI needs from Rust. Implemented by Tauri at runtime and by a mock in the browser and in tests. */
@@ -163,6 +166,7 @@ export async function tauriBackend(): Promise<Backend> {
     historyRestore: (items) => invoke<void>('history_restore', { items }),
     homeGet: () => invoke<HomeDto>('home_get'),
     relatedGet: (key, count) => invoke<TrackDto[]>('related_get', { key, count }),
+    exploreGet: () => invoke<ExploreShelfDto[]>('explore_get'),
     devCatalog: () => invoke<TrackDto[]>('dev_catalog'),
     lyricsGet: (t) =>
       invoke<LyricsDto>('lyrics_get', { key: t.key, title: t.title, artist: t.artist, durationMs: t.durationMs }).catch(

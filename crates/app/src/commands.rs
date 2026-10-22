@@ -1,5 +1,5 @@
 use crate::dto::{
-    state_dto, AddResultDto, CommandDto, FilterInfoDto, HistoryItemDto, HomeDto,
+    state_dto, AddResultDto, CommandDto, ExploreShelfDto, FilterInfoDto, HistoryItemDto, HomeDto,
     LibrarySnapshotDto, LogInfoDto, PlayerStateDto, PlaylistDto, PlaylistSnapshotDto,
     RemovedEntryDto, SearchErrorDto, SearchFilterDto, SearchItemDto, SearchResponseDto, TrackDto,
     WindowInfoDto,
@@ -90,6 +90,25 @@ pub async fn related_get(
         message: e.to_string(),
     })?
     .map(|tracks| tracks.iter().map(TrackDto::from).collect())
+    .map_err(|e| SearchErrorDto::from(&e))
+}
+
+/// The shelves of YouTube Music's Explore page (trending songs, new releases...). Like `related_get` it runs on a worker
+/// thread at background priority and rejects with a typed error the UI can branch on.
+#[tauri::command]
+pub async fn explore_get(
+    state: State<'_, AppState>,
+) -> Result<Vec<ExploreShelfDto>, SearchErrorDto> {
+    let source = std::sync::Arc::clone(&state.source);
+    tauri::async_runtime::spawn_blocking(move || {
+        pyxee_sources::gate::background(|| source.explore())
+    })
+    .await
+    .map_err(|e| SearchErrorDto {
+        kind: crate::dto::SearchErrorKind::Other,
+        message: e.to_string(),
+    })?
+    .map(|shelves| shelves.iter().map(ExploreShelfDto::from).collect())
     .map_err(|e| SearchErrorDto::from(&e))
 }
 

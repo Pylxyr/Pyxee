@@ -122,17 +122,22 @@ describe('App shell', () => {
     expect(screen.getByRole('heading', { name: 'On rotation' })).toBeTruthy();
   });
 
-  it('Explore offers moods that open a search, and shelves built from what you like', async () => {
+  it("Explore shows YouTube Music's shelves and shelves built from what you like, and no moods", async () => {
     explore.status = 'idle';
+    explore.browseStatus = 'idle';
     mock.likedGet = async () => [DEMO_TRACKS[0]!];
     await openApp();
     await fireEvent.click(screen.getByRole('button', { name: /Explore/ }));
+    expect(await screen.findByRole('heading', { name: 'Trending' })).toBeTruthy();
+    expect(await screen.findByRole('list', { name: 'Trending' })).toBeTruthy();
+    expect(await screen.findByRole('heading', { name: 'New albums & singles' })).toBeTruthy();
     expect(await screen.findByRole('heading', { name: `Because you liked ${DEMO_TRACKS[0]!.title}` })).toBeTruthy();
     expect(await screen.findByRole('list', { name: `Because you liked ${DEMO_TRACKS[0]!.title}` })).toBeTruthy();
-    expect(screen.queryByText(/Explore is not built yet/)).toBeNull();
-    await fireEvent.click(screen.getByRole('button', { name: 'Search Focus' }));
+    expect(screen.queryByRole('list', { name: 'Moods' })).toBeNull();
+    expect(screen.queryByText(/Start from a mood/)).toBeNull();
+    await fireEvent.click(screen.getByRole('button', { name: 'Search for Night Shift by Lowtide' }));
     await waitFor(() => expect(nav.route).toBe('search'));
-    expect(search.query).toBe('focus instrumental');
+    expect(search.query).toBe('Night Shift Lowtide');
   });
 
   it('searching opens the results page with the query', async () => {

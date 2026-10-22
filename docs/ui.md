@@ -88,10 +88,15 @@ pointer is over a list, accent while dragged. Scroll areas that are not a form c
 list, Explore) carry `data-scroll tabindex="0"` so the keyboard can scroll them. `design-contract.test.ts` guards both.
 
 ## Explore
-Moods (quick searches), "Jump back in" (recent plays) and a shelf of similar songs per seed (likes first, then recent plays,
-one per artist). The shelves come from the `related_get` command (`MusicSource::related`, a YouTube mix), load one after
-another because yt-dlp is paced, stop early on offline / rate-limited / tool-missing, and are cached for the session
-(Refresh asks again). Logic: `lib/explore.ts` (pure), `lib/explore.svelte.ts`, `pages/Explore.svelte`.
+YouTube Music's own Explore page first, shelf by shelf under its own titles: songs as covers (Trending, Top songs,
+New music videos, each with **Play all**) and albums and singles as covers ("New albums & singles"; Pyxee has no album page,
+so a cover opens a songs search for the release). They come from the `explore_get` command (`MusicSource::explore`, one
+request to the website's `browse` endpoint, no yt-dlp run); a shelf is recognised by what it holds, so the Moods and
+genres buttons and podcast episodes are simply not shown. Then "Jump back in" (recent plays) and a shelf of similar songs
+per seed (likes first, then recent plays, one per artist), which come from `related_get` (`MusicSource::related`, a YouTube
+mix). Everything loads one request after another, stops early on offline / rate-limited / tool-missing, and is cached for
+the session (Refresh asks again). If the Explore page itself fails the page says why and the personal shelves still load.
+Logic: `lib/explore.ts` (pure), `lib/explore.svelte.ts`, `pages/Explore.svelte`; Rust: `crates/sources/src/ytmusic.rs`.
 
 ## Now Playing > Related
 Songs similar to the one being shown, from the same `related_get` command as Explore (`MusicSource::related`, 20 songs).
