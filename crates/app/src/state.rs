@@ -8,7 +8,7 @@ use pyxee_sources::MusicSource;
 use std::path::PathBuf;
 use std::sync::mpsc::Sender;
 use std::sync::{Arc, Mutex};
-use tauri::{AppHandle, Emitter, Manager};
+use tauri::{AppHandle, Manager};
 
 pub const STATE_EVENT: &str = "player-state";
 pub const LIBRARY_EVENT: &str = "library-changed";
@@ -66,7 +66,7 @@ pub fn publish(app: &AppHandle, f: impl FnOnce(&mut Player) -> Vec<Effect>) {
         state.save_session();
     }
     crate::shell::on_state(app, &dto);
-    if let Err(e) = app.emit(STATE_EVENT, dto) {
+    if let Err(e) = crate::shell::emit_awake(app, STATE_EVENT, dto) {
         log::warn!("could not emit state: {e}");
     }
 }
@@ -104,7 +104,7 @@ pub fn emit_library(app: &AppHandle) {
     };
     match snapshot {
         Ok(s) => {
-            if let Err(e) = app.emit(LIBRARY_EVENT, s) {
+            if let Err(e) = crate::shell::emit_awake(app, LIBRARY_EVENT, s) {
                 log::warn!("could not emit library state: {e}");
             }
         }

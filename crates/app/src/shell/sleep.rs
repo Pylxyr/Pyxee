@@ -7,7 +7,7 @@ use pyxee_core::Command;
 use pyxee_shell::sleep::SleepSetting;
 use std::sync::atomic::Ordering;
 use std::time::Duration;
-use tauri::{AppHandle, Emitter, Manager};
+use tauri::{AppHandle, Manager};
 
 pub const SLEEP_EVENT: &str = "sleep-state";
 
@@ -46,7 +46,8 @@ pub fn emit_status(app: &AppHandle) {
         .ok()
         .and_then(|t| t.status(now_ms().max(0) as u64))
         .map(SleepStatusDto::from);
-    if let Err(e) = app.emit(SLEEP_EVENT, SleepStateDto { status }) {
+    let payload = SleepStateDto { status };
+    if let Err(e) = super::emit_awake(app, SLEEP_EVENT, payload) {
         log::warn!("could not send the sleep timer state: {e}");
     }
 }

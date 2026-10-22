@@ -15,10 +15,15 @@
 //! pushed to a sleeping page may be missed, so the UI asks for it again when the page wakes (`visibilitychange`, see
 //! `ui/src/lib/player.svelte.ts`).
 //!
-//! Only WebView2 (Windows) needs this; elsewhere `set_active` only keeps its bookkeeping.
+//! A sleeping page is also not sent events: [`emit_awake`] skips the windows that are asleep, so the one-second
+//! position and sleep-timer pushes do not run script in (and so wake) a page nobody can see. The UI listens per
+//! window (`ui/src/lib/backend.ts`) because Tauri delivers to "any"-target listeners whatever the filter says.
+//!
+//! Only WebView2 (Windows) needs this; elsewhere `set_active` only keeps its bookkeeping and `emit_awake` sends to all.
 
+use serde::Serialize;
 use std::sync::{Mutex, PoisonError};
-use tauri::WebviewWindow;
+use tauri::{AppHandle, Emitter, EventTarget, WebviewWindow};
 
 /// Labels of the windows whose page was put to sleep.
 static ASLEEP: Mutex<Vec<String>> = Mutex::new(Vec::new());
@@ -36,6 +41,31 @@ fn note(label: &str, active: bool) -> bool {
         asleep.push(label.to_string());
     }
     true
+}
+
+/// Whether the page of the window labelled `label` is asleep. Always false off Windows, where nothing is put to sleep.
+pub fn is_asleep(label: &str) -> bool {
+    cfg!(windows)
+        && ASLEEP
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .iter()
+            .any(|l| l == label)
+}
+
+/// Like `app.emit`, but windows whose page is asleep are skipped (they read the state again when they wake).
+pub fn emit_awake<S: Serialize + Clone>(
+    app: &AppHandle,
+    event: &str,
+    payload: S,
+) -> tauri::Result<()> {
+    app.emit_filter(event, payload, |target| match target {
+        EventTarget::Window { label }
+        | EventTarget::Webview { label }
+        | EventTarget::WebviewWindow { label }
+        | EventTarget::AnyLabel { label } => !is_asleep(label),
+        _ => true,
+    })
 }
 
 /// Wakes (`true`) or sleeps (`false`) the page of `window`. Safe to call as often as you like.
@@ -101,12 +131,20 @@ mod imp {
                 let _ = v19.SetMemoryUsageTargetLevel(COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW);
             }
             if let Some(v3) = core.as_ref().and_then(|c| c.cast::<ICoreWebView2_3>().ok()) {
-                let label = label.to_string();
-                let done = TrySuspendCompletedHandler::create(Box::new(move |_, _| {
-                    log::debug!("{label} page: asleep");
+                let label_owned = label.to_string();
+                let done = TrySuspendCompletedHandler::create(Box::new(move |result, suspended| {
+                    let label = &label_owned;
+                    // WebView2 may refuse (see its "Sleeping Tabs" conditions); say so instead of claiming it slept.
+                    match result {
+                        Ok(()) if suspended => log::debug!("{label} page: asleep"),
+                        Ok(()) => log::warn!("{label} page: WebView2 declined to suspend it"),
+                        Err(e) => log::warn!("{label} page: could not be suspended: {e}"),
+                    }
                     Ok(())
                 }));
-                let _ = v3.TrySuspend(&done);
+                if let Err(e) = v3.TrySuspend(&done) {
+                    log::warn!("could not ask WebView2 to suspend the {label} page: {e}");
+                }
             }
         }
     }
@@ -134,6 +172,16 @@ mod tests {
         assert!(!note("t-awake", false), "asleep already");
         assert!(note("t-awake", true), "first wake");
         assert!(!note("t-awake", true));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn is_asleep_follows_the_bookkeeping() {
+        assert!(!is_asleep("t-asleep"));
+        assert!(note("t-asleep", false));
+        assert!(is_asleep("t-asleep"));
+        assert!(note("t-asleep", true));
+        assert!(!is_asleep("t-asleep"));
     }
 
     #[test]

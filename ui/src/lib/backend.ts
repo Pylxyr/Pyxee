@@ -127,7 +127,10 @@ export function messageOf(e: unknown): string {
 
 export async function tauriBackend(): Promise<Backend> {
   const { invoke } = await import('@tauri-apps/api/core');
-  const { listen } = await import('@tauri-apps/api/event');
+  const { getCurrentWebviewWindow } = await import('@tauri-apps/api/webviewWindow');
+  // Listen as this window, not as "any": Rust skips the windows whose page is asleep, but only for window listeners.
+  const here = getCurrentWebviewWindow();
+  const listen = <T>(event: string, cb: (e: { payload: T }) => void) => here.listen<T>(event, cb);
   return {
     getState: () => invoke<PlayerStateDto>('get_state'),
     dispatch: (command) => invoke<void>('dispatch', { command }),
