@@ -26,6 +26,19 @@ the **page** between them as the content layer, with a rounded top-left corner.
 Click the cover or the dock to open Now Playing (Up next / Lyrics / Related). The same four destinations (`lib/destinations.ts`)
 feed the rail and the bottom bar (`Navigation.svelte`, `layout="rail" | "bar"`).
 
+**No native title bar (by default).** The main window is created without a frame (`decorations: false` in `tauri.conf.json`, with a shadow, so
+Windows still draws the rounded corners and the resize edges). `TitleBar.svelte` is a 32 px strip above the shell: the empty part
+is a drag region (a double click maximizes), and the three buttons call the window through `lib/windowControls.ts`
+(`minimize`, `toggleMaximize`, `close`; the last goes through the normal close request, so close-to-tray still applies). The name
+shows in the bar only in the narrow layout; the rail shows it otherwise. The bar exists only inside the app (`hasOwnWindow()`), not
+in a browser. Sheets and Now Playing start below it (`--titlebar-h`), so its buttons stay usable. The mini player and the flyout are
+frameless as before.
+
+Settings > Windows > **Borderless window** (`borderless` in `shell.json`, on by default) can give the window the standard Windows frame
+back; Rust applies it with `set_decorations` at start-up and whenever the setting is saved (`shell::sync_window_frame`), and the page
+then does not draw its bar. **F11** switches full screen (`setFullscreen` in `lib/windowControls.ts`); in full screen there is no bar
+and no frame, and the page follows the window's state through its resize events.
+
 ## Theming and Mica
 CSS variables on `<html>`: `data-theme` (dark/light, follows the system unless overridden) and `data-backdrop`.
 On Windows 11 the app asks for Mica (`window-vibrancy`); if that succeeds the backend reports `mica` and the page

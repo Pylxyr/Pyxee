@@ -36,6 +36,10 @@ describe('actionForKey', () => {
   it('ignores shortcuts combined with modifiers', () => {
     expect(actionForKey({ key: 'n', ctrlKey: true }, ctx)).toBeNull();
   });
+  it('F11 switches full screen, with or without a track', () => {
+    expect(actionForKey({ key: 'F11' }, ctx)).toEqual({ kind: 'fullscreen' });
+    expect(actionForKey({ key: 'F11' }, { ...ctx, hasTrack: false })).toEqual({ kind: 'fullscreen' });
+  });
   it('escape closes Now Playing only when it is open', () => {
     expect(cmd('Escape')).toBeNull();
     expect(cmd('Escape', undefined, { ...ctx, nowPlayingOpen: true })).toEqual({ kind: 'close' });

@@ -16,6 +16,8 @@
   import { sleep } from '$lib/sleep.svelte';
   import { shellSettings } from '$lib/shell.svelte';
   import { updates } from '$lib/updates.svelte';
+  import { hasOwnWindow, tauriWindowControls, type WindowControls } from '$lib/windowControls';
+  import TitleBar from './components/TitleBar.svelte';
   import Navigation from './components/Navigation.svelte';
   import TopBar from './components/TopBar.svelte';
   import Dock from './components/Dock.svelte';
@@ -40,8 +42,14 @@
   const wide = new MediaQuery('min-width: 900px');
 
   let backendRef = $state.raw<Backend | null>(null);
+  // The main window has no native frame, so the page draws the title bar. Null in a browser, where there is no window to control.
+  let controls = $state.raw<WindowControls | null>(null);
+  let fullscreen = $state(false);
+  // Pyxee's own title bar shows unless the user chose the Windows frame, or the window is full screen (no bar at all then).
+  const showTitleBar = $derived(controls != null && shellSettings.settings.borderless && !fullscreen);
 
   onMount(() => {
+    if (hasOwnWindow()) void tauriWindowControls().then((c) => (controls = c)).catch(() => {});
     (async () => {
       const backend = await createBackend();
       backendRef = backend;
@@ -70,6 +78,26 @@
     if (player.ready) void backendRef?.setWindowTheme(wanted);
   });
 
+  // Overlays start below the title bar, not over it, so its buttons stay usable.
+  $effect(() => {
+    document.documentElement.toggleAttribute('data-titlebar', showTitleBar);
+  });
+
+  // Full screen comes and goes with F11 or Windows itself; follow the window rather than assume.
+  $effect(() => {
+    const c = controls;
+    if (!c) return;
+    let live = true;
+    let unlisten: (() => void) | null = null;
+    const sync = () => void c.isFullscreen().then((f) => live && (fullscreen = f)).catch(() => {});
+    sync();
+    c.onResized(sync).then((off) => (live ? (unlisten = off) : off())).catch(() => {});
+    return () => {
+      live = false;
+      unlisten?.();
+    };
+  });
+
   // Keep <html> in sync with theme, backdrop and accent.
   $effect(() => theme.apply(document.documentElement));
 
@@ -93,6 +121,13 @@
       hasTrack: player.shown != null,
     });
     if (!a) return;
+    if (a.kind === 'fullscreen') {
+      // In a browser F11 is the browser's own.
+      if (!controls) return;
+      e.preventDefault();
+      void controls.setFullscreen(!fullscreen).catch(() => {});
+      return;
+    }
     e.preventDefault();
     if (a.kind === 'close') nav.closeNowPlaying();
     else player.dispatch(a.command);
@@ -101,6 +136,8 @@
 
 <svelte:window {onkeydown} />
 
+<div class="frame">
+{#if controls && showTitleBar}<TitleBar {controls} showBrand={!wide.current} />{/if}
 <div class="shell" data-layout={wide.current ? 'wide' : 'narrow'}>
   {#if wide.current}<Navigation layout="rail" />{/if}
   <div class="workspace">
@@ -124,6 +161,7 @@
     {/if}
   </div>
   {#if wide.current}<Stage />{/if}
+</div>
 </div>
 
 <NowPlaying />

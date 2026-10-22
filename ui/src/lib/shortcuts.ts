@@ -1,6 +1,6 @@
 import type { CommandDto } from './bindings/CommandDto';
 
-export type KeyAction = { kind: 'command'; command: CommandDto } | { kind: 'close' } | null;
+export type KeyAction = { kind: 'command'; command: CommandDto } | { kind: 'close' } | { kind: 'fullscreen' } | null;
 
 export interface KeyContext {
   positionMs: number;
@@ -33,6 +33,7 @@ function isControl(t: EventTarget | null | undefined): boolean {
 /** Maps an in-app key press to what should happen. Global media keys are handled by the OS integration later. */
 export function actionForKey(e: KeyLike, ctx: KeyContext): KeyAction {
   if (e.ctrlKey || e.altKey || e.metaKey) return null;
+  if (e.key === 'F11') return { kind: 'fullscreen' }; // works while typing too
   if (e.key === 'Escape') return ctx.nowPlayingOpen ? { kind: 'close' } : null;
   if (isTyping(e.target) || !ctx.hasTrack) return null;
   switch (e.key) {

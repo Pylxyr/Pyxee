@@ -37,7 +37,7 @@
 {#if nav.nowPlayingOpen && entry}
   <div
     class="fixed inset-0 z-40 flex flex-col overflow-hidden"
-    style="background:color-mix(in srgb, var(--accent) 14%, var(--solid))"
+    style="top:var(--titlebar-h, 0px);background:color-mix(in srgb, var(--accent) 14%, var(--solid))"
     data-testid="np-root"
     role="region"
     aria-label="Now Playing"

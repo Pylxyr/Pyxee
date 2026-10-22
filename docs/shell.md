@@ -45,4 +45,8 @@ Shows the current song as "Listening to Pyxee" in the Discord desktop client, th
 - **Cover art:** the song's thumbnail is used when it is a short `https` URL (YouTube thumbnails are). Local files and anything else are skipped, and Discord shows the application's icon instead, so upload an app icon in the Developer Portal.
 - **Failures:** if Discord is not running or the pipe drops, playback is unaffected. Reconnects back off from 2 to 30 seconds, and only while something is waiting to be shown.
 - **Switch:** Settings > Windows > "Show what I'm playing on Discord" (`discordPresence` in `shell.json`). On by default, so a build with an application ID shows presence as before. Turning it off clears the presence at once and stops the Discord thread; turning it on starts it again, and the next position tick publishes the current song. With no application ID configured the switch has no effect.
+
+## Window frame
+
+The main window has no Windows title bar by default: Pyxee draws its own (see `docs/ui.md`). Settings > Windows > "Borderless window" (`borderless` in `shell.json`, on by default; an older file without it counts as on) switches back to the standard frame. `tauri.conf.json` creates the window without a frame, so `sync_window_frame` only has to change it when the saved choice is the Windows frame: it runs in `shell::init` (before the window is shown) and from `shell_set`, calls `set_decorations`, and asks for the Mica backdrop again after a change.
 - **Limits:** no album name (Pyxee has none to send) and no buttons. Only the Quit path clears the presence on exit.

@@ -355,6 +355,7 @@ function Test-EditedTests {
       'playing_an_empty_list_changes_nothing',
       'adding_after_a_clear_forgets_the_clear_so_undo_cannot_overwrite_the_new_songs') },
     @{ Crate = 'pyxee-audio'; Names = @('flush_returns_at_once_while_the_producer_waits_for_a_chunk_that_never_arrives') },
+    @{ Crate = 'pyxee-shell'; Names = @('borderless_is_on_by_default_also_for_a_file_from_before_it_existed') },
     @{ Crate = 'pyxee-app'; Names = @(
       'a_seek_after_pausing_and_starting_another_song_is_not_silent',
       'a_second_install_is_refused_until_the_first_is_done',
@@ -415,6 +416,26 @@ function Test-WebviewPower {
   & $expect 'power-measuring-doc' (Test-Path -LiteralPath (Join-Path $Root 'docs\measuring.md')) 'docs\measuring.md describes how to measure the four states'
 }
 
+# Static facts about the main window having no native frame: the config and permissions the custom title bar needs.
+# The behaviour itself (dragging, resizing, maximizing, close to tray) is in the manual items.
+function Test-FramelessWindow {
+  $read = { param([string]$rel) $p = Join-Path $Root $rel; if (Test-Path -LiteralPath $p) { Get-Content -LiteralPath $p -Raw } else { '' } }
+  $expect = { param([string]$name, [bool]$ok, [string]$detail) if ($ok) { Add-Result 'PASS' $name $detail } else { Add-Result 'FAIL' $name $detail } }
+  try {
+    $main = @((Get-Content -LiteralPath (Join-Path $Root 'crates\app\tauri.conf.json') -Raw | ConvertFrom-Json).app.windows) | Where-Object { $_.label -eq 'main' } | Select-Object -First 1
+    & $expect 'frame-main-window-config' (($null -ne $main) -and ($main.decorations -eq $false) -and ($main.shadow -eq $true) -and ($main.transparent -eq $true)) 'the main window is created without a native frame, with a shadow, and transparent for Mica'
+  } catch { Add-Result 'FAIL' 'frame-main-window-config' "could not read crates\app\tauri.conf.json: $($_.Exception.Message)" }
+  $cap = & $read 'crates\app\capabilities\default.json'
+  & $expect 'frame-permissions' (($cap -match 'core:window:allow-minimize') -and ($cap -match 'core:window:allow-toggle-maximize') -and ($cap -match 'core:window:allow-close') -and ($cap -match 'core:window:allow-start-dragging')) 'the page may minimize, maximize, close and drag the main window'
+  $bar = & $read 'ui\src\components\TitleBar.svelte'
+  & $expect 'frame-title-bar-drag-region' (($bar -match 'data-tauri-drag-region') -and ($bar -match 'aria-label="Minimize"') -and ($bar -match 'Maximize') -and ($bar -match 'aria-label="Close"')) 'the title bar is a drag region with minimize, maximize/restore and close buttons'
+  $shell = & $read 'crates\app\src\shell\mod.rs'
+  & $expect 'frame-setting-applied' (($shell -match 'pub fn sync_window_frame') -and ($shell -match 'set_decorations\(!borderless\)') -and ($shell -match '(?s)sync_discord\(app\);\s*sync_window_frame\(app\);') -and ((& $read 'crates\app\src\shell\commands.rs') -match 'sync_window_frame\(&app\)')) 'the saved window frame is applied at start-up (before the window is shown) and whenever the setting is saved'
+  & $expect 'frame-fullscreen' (($cap -match 'core:window:allow-set-fullscreen') -and ((& $read 'ui\src\lib\shortcuts.ts') -match 'F11') -and ((& $read 'ui\src\App.svelte') -match 'setFullscreen')) 'F11 switches full screen, and the page may do that to the main window'
+  $app = & $read 'ui\src\App.svelte'
+  & $expect 'frame-title-bar-in-app' (($app -match 'TitleBar') -and ($app -match 'data-titlebar')) 'the main page draws the title bar and tells the overlays to start below it'
+}
+
 # ---------------------------------------------------------------- UI rebuild: static facts, named tests, report
 # What svelte-check and the unit tests do not see about the UI rebuild ("Rail, Page, Stage", see docs\ui.md): remote
 # resources, removed components, the windows and entry points, the test ids the tests rely on, the dependency list.
@@ -435,7 +456,7 @@ $script:UiNamedTests = @(
     'leaving is quicker than arriving') }
 )
 # 330 before; two App.test.ts tests were rewritten (same count) and 2 + 3 were added.
-$script:UiExpectedTests = 335
+$script:UiExpectedTests = 362
 
 function Get-UiSources([string[]]$Ext = @('.svelte', '.ts', '.css', '.html')) {
   $ui = Join-Path $Root 'ui'
@@ -634,6 +655,7 @@ Add-Result 'INFO' 'ffmpeg-mentions-left' "$($any.Count) line(s) mention the word
 $any | Select-Object -First 25 | ForEach-Object { Write-Report ("    " + $_.Substring(0, [math]::Min($_.Length, 170))) }
 Test-ReviewFixes
 Test-WebviewPower
+Test-FramelessWindow
 
 # ---------------------------------------------------------------- 1b. static: the UI rebuild
 
@@ -1083,6 +1105,12 @@ if ($Manual) {
     @('ui-reduced-motion', 'UI: turn off Windows Settings > Accessibility > Visual effects > Animation effects. Do sheets and Now Playing now appear without sliding, and do the playing bars stand still?'),
     @('power-log-hidden', 'Power: start the app with PYXEE_LOG=debug, play a song, close the window to the tray, wait 10 s, reopen it. Does the log have, for main, a line ending in asleep (or a warning that WebView2 declined), a line IsSuspended = ... after TrySuspend, and 5 s later still asleep (or a warning awake again with what was sent)? Is the music uninterrupted and the window correct on reopening?'),
     @('power-log-mini-flyout', 'Power: with the same logging, open and hide the mini player and the tray flyout. Do mini and flyout each log the same lines, and do they reopen showing the current song and state?'),
+    @('frame-drag-resize', 'Borderless: is there no Windows title bar on the main window, only Pyxee''s slim bar with the three buttons at the top right? Can you drag the window by the empty part of the bar, double-click it to maximize and restore, and resize it from every edge and corner (the mouse pointer changes at the edges)?'),
+    @('frame-buttons-tray', 'Borderless: do Minimize, Maximize/Restore and Close work, and does the middle icon switch between maximize and restore (also after Win+Up and Win+Down)? With "Keep playing in the tray" on, does Close hide the window and the music keep playing; does reopening from the tray show the bar again?'),
+    @('frame-maximized-fill', 'Borderless: a maximized window fills the screen above the taskbar (nothing hidden under it, no gap, no controls cut off at the top or right). Does Mica show through as before and the corners look right when not maximized?'),
+    @('frame-overlays', 'Borderless: with Settings, a sheet or Now Playing open, the title bar and its buttons stay visible and usable, and nothing in the sheet or Now Playing is hidden under the bar. Do the mini player and the tray flyout look and behave as before?'),
+    @('frame-setting', 'Borderless: Settings > Windows > "Borderless window" switched off gives the main window the normal Windows title bar at once (Mica still shows, the content is not cut off, Pyxee''s own bar is gone); switched on again takes it away. Does the choice survive closing and starting Pyxee, also when it starts hidden in the tray and is opened from there?'),
+    @('frame-fullscreen', 'Full screen: F11 fills the whole screen with no title bar (Pyxee''s or Windows'') and covers the taskbar; F11 again brings the window and its bar back as they were (maximized or not). Music keeps playing, and Now Playing and Settings still open.'),
     @('ui-system-font', 'UI: does the text look like Windows 11 system text (Segoe UI Variable) everywhere, with no serif fallback and no empty boxes where an icon should be?')
   )
   foreach ($it in $items) {

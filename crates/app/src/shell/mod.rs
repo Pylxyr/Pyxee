@@ -142,6 +142,7 @@ pub fn init(app: &AppHandle, args: &[String]) {
         *m = media::init(app);
     }
     sync_discord(app);
+    sync_window_frame(app);
     sync_autostart(app);
     #[cfg(all(windows, feature = "win-extras"))]
     winextras::init(app);
@@ -155,6 +156,33 @@ pub fn init(app: &AppHandle, args: &[String]) {
         }
     }
     run_actions(app, &cli.actions);
+}
+
+/// Gives the main window the frame the setting asks for: none (the page draws its own title bar) or the standard
+/// Windows one. Does nothing when it already has it. Safe to call at any time.
+pub fn sync_window_frame(app: &AppHandle) {
+    let borderless = app
+        .state::<ShellState>()
+        .settings
+        .lock()
+        .is_ok_and(|s| s.borderless);
+    let Some(w) = app.get_webview_window(MAIN) else {
+        return;
+    };
+    if w.is_decorated().ok() == Some(!borderless) {
+        return;
+    }
+    match w.set_decorations(!borderless) {
+        // Changing the frame can drop the system backdrop; asking for it again is harmless.
+        Ok(()) => {
+            let _ = crate::window::apply_backdrop(&w);
+            log::debug!(
+                "main window frame: {}",
+                if borderless { "none" } else { "Windows" }
+            );
+        }
+        Err(e) => log::warn!("could not change the main window frame: {e}"),
+    }
 }
 
 /// Makes Discord Rich Presence match the saved setting: starts it when it is on (and an application ID is

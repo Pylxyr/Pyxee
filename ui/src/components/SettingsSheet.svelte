@@ -61,6 +61,12 @@
       checked={shellSettings.settings.discordPresence}
       onchange={(on) => shellSettings.update({ discordPresence: on })}
     />
+    <Toggle
+      label="Borderless window"
+      hint="Pyxee draws its own slim title bar instead of the Windows one. Press F11 for full screen."
+      checked={shellSettings.settings.borderless}
+      onchange={(on) => shellSettings.update({ borderless: on })}
+    />
     {#if shellSettings.error}<p class="accent-text px-3" role="alert">Could not save that setting ({shellSettings.error}).</p>{/if}
     <button class="menu-item justify-between" onclick={() => { nav.themeSheetOpen = false; nav.sleepSheetOpen = true; }}>
       <span>Sleep timer</span><span class="muted">{sleepLabel(sleep.status)}</span>

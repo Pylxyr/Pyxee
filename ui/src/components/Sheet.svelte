@@ -52,7 +52,7 @@
 </script>
 
 {#if open}
-  <div class="fixed inset-0 flex {right ? 'justify-end' : tab ? 'justify-start' : 'items-end justify-center sm:items-center'}" style="z-index:{z}" role="presentation" data-sheet {onkeydown}>
+  <div class="fixed inset-0 flex {right ? 'justify-end' : tab ? 'justify-start' : 'items-end justify-center sm:items-center'}" style="top:var(--titlebar-h, 0px);z-index:{z}" role="presentation" data-sheet {onkeydown}>
     <button class="absolute inset-0 bg-black/50" aria-label="Close" tabindex="-1" onclick={onclose} transition:fade={{ duration: motionMs(MOTION.fast) }}></button>
     <div
       bind:this={panel}

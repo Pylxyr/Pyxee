@@ -626,9 +626,61 @@ input[type='range'].slider:disabled {
   }
 
   /* Layout: the rail, the page (content layer), the stage and the dock. */
+  /* The main window has no native title bar: `.titlebar` (a slim bar with the drag area and the window buttons) sits above the shell. */
+  .frame {
+    display: flex;
+    flex-direction: column;
+    height: 100dvh;
+  }
+  :root[data-titlebar] {
+    --titlebar-h: 32px;
+  }
+  .titlebar {
+    display: flex;
+    flex: none;
+    align-items: center;
+    justify-content: space-between;
+    height: var(--titlebar-h, 32px);
+    background: var(--bg);
+    color: var(--muted);
+    user-select: none;
+  }
+  .titlebar-brand {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding-left: 12px;
+    font-size: 12px;
+  }
+  .titlebar-buttons {
+    display: flex;
+    height: 100%;
+  }
+  .caption-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 46px;
+    height: 100%;
+    color: var(--fg);
+    transition: background-color var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+  }
+  .caption-btn:hover {
+    background: var(--hover);
+  }
+  .caption-btn:active {
+    background: var(--press);
+  }
+  /* Windows' own red for the close button: it must read as "close" whatever accent the theme has. */
+  .caption-close:hover,
+  .caption-close:active {
+    background: #c42b1c;
+    color: #ffffff;
+  }
   .shell {
     display: flex;
-    height: 100dvh;
+    flex: 1 1 0;
+    min-height: 0;
     background: var(--bg);
     color: var(--fg);
   }

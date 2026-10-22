@@ -1,11 +1,15 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Main, flyout and mini player windows: core events and commands, notifications and start-with-Windows.",
+  "description": "Main, flyout and mini player windows: core events and commands, the main window's own minimize, maximize, close and full-screen controls, notifications and start-with-Windows.",
   "windows": ["main", "flyout", "mini"],
   "permissions": [
     "core:default",
     "core:window:allow-start-dragging",
+    "core:window:allow-minimize",
+    "core:window:allow-toggle-maximize",
+    "core:window:allow-close",
+    "core:window:allow-set-fullscreen",
     "notification:default",
     "autostart:allow-enable",
     "autostart:allow-disable",

@@ -23,6 +23,9 @@ pub struct ShellSettings {
     /// Discord Rich Presence ("Listening to Pyxee"). Only does anything when the build has a Discord application
     /// ID baked in (`PYXEE_DISCORD_CLIENT_ID` at build time); on by default, so such a build behaves as before.
     pub discord_presence: bool,
+    /// The main window has no Windows title bar: Pyxee draws its own slim bar (on by default). Off gives the
+    /// window the standard Windows frame.
+    pub borderless: bool,
     /// Where the mini player was last left (physical pixels).
     pub mini_bounds: Option<Rect>,
 }
@@ -36,6 +39,7 @@ impl Default for ShellSettings {
             tray_controls: false,
             flyout_on_click: true,
             discord_presence: true,
+            borderless: true,
             mini_bounds: None,
         }
     }
@@ -154,6 +158,20 @@ mod tests {
         };
         save(&p, &s).unwrap();
         assert!(!load(&p).settings.discord_presence);
+    }
+
+    #[test]
+    fn borderless_is_on_by_default_also_for_a_file_from_before_it_existed() {
+        assert!(ShellSettings::default().borderless);
+        let p = dir("borderless").join("shell.json");
+        std::fs::write(&p, r#"{"closeToTray":true}"#).unwrap();
+        assert!(load(&p).settings.borderless);
+        let s = ShellSettings {
+            borderless: false,
+            ..Default::default()
+        };
+        save(&p, &s).unwrap();
+        assert!(!load(&p).settings.borderless);
     }
 
     #[test]

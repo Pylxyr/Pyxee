@@ -39,7 +39,7 @@ beforeEach(() => {
   lyricsStore.state = { kind: 'idle' };
   sleep.status = null;
   updates.reset();
-  shellSettings.settings = { closeToTray: false, startWithWindows: false, toastOnChange: false, trayControls: false, flyoutOnClick: true, discordPresence: true };
+  shellSettings.settings = { closeToTray: false, startWithWindows: false, toastOnChange: false, trayControls: false, flyoutOnClick: true, discordPresence: true, borderless: true };
   shellSettings.error = null;
   theme.settings = { followSystem: true, themeId: 'dark', lightId: 'light', darkId: 'dark', dynamicColor: false, custom: [] };
   for (const s of [...snackbar.items]) snackbar.dismiss(s.id);
@@ -181,7 +181,7 @@ describe('Windows settings', () => {
     await waitFor(() => expect(mock.shell.closeToTray).toBe(true));
     await fireEvent.click(within(section).getByLabelText(/Start Pyxee when I sign in/));
     await fireEvent.click(within(section).getByLabelText(/notification when the song changes/));
-    await waitFor(() => expect(mock.shell).toEqual({ closeToTray: true, startWithWindows: true, toastOnChange: true, trayControls: false, flyoutOnClick: true, discordPresence: true }));
+    await waitFor(() => expect(mock.shell).toEqual({ closeToTray: true, startWithWindows: true, toastOnChange: true, trayControls: false, flyoutOnClick: true, discordPresence: true, borderless: true }));
   });
 
   it('the notification area switches say what they do and save through the backend', async () => {
@@ -205,6 +205,16 @@ describe('Windows settings', () => {
     await waitFor(() => expect(mock.shell.discordPresence).toBe(false));
     await fireEvent.click(discord);
     await waitFor(() => expect(mock.shell.discordPresence).toBe(true));
+  });
+
+  it('the Borderless window switch is on by default and saves through the backend', async () => {
+    const section = await openSettings();
+    const borderless = within(section).getByLabelText(/Borderless window/i);
+    expect((borderless as HTMLInputElement).checked).toBe(true);
+    await fireEvent.click(borderless);
+    await waitFor(() => expect(mock.shell.borderless).toBe(false));
+    await fireEvent.click(borderless);
+    await waitFor(() => expect(mock.shell.borderless).toBe(true));
   });
 
   it('on a narrow window Settings is a tab that slides in from the right, and closes with its button, Escape or a click outside', async () => {
