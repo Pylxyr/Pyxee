@@ -3,10 +3,8 @@
 A music player for Windows 10 (22H2) and Windows 11. Search for songs, queue them up, keep the ones you love, and let
 them play gapless. Pyxee plays music found online and audio files on your PC.
 
-Pyxee is an independent hobby project. It is **not affiliated with, endorsed by or sponsored by YouTube or Google.**
-
-**Terms of Service.** Pyxee finds and plays music from YouTube using the open-source tool yt-dlp. Using YouTube this way may
-conflict with YouTube's Terms of Service. Pyxee is for personal use, and how you use it is your responsibility.
+Pyxee is a hobby project and is not affiliated with YouTube or Google. It finds music on YouTube using the open-source
+tool yt-dlp.
 
 ## Install
 1. Go to the [Releases page](https://github.com/Pylxyr/Pyxee/releases) and download `Pyxee_x.y.z_x64-setup.exe` from the newest release.
@@ -61,18 +59,16 @@ variable you set in Windows itself wins over the file. An empty field means the 
 | `PYXEE_YTMUSIC_DIRECT` | Whether songs search and the Explore page ask YouTube Music directly (on by default). See the note below. | `0` turns it off: songs are then searched with yt-dlp only and there is no Explore page. Leave it empty or `1` to keep it on. |
 | `PYXEE_LOG` | How much Pyxee writes to its log file. | `error`, `warn`, `info` (the default), `debug` or `trace`. Use `debug` when you report a problem with a song. |
 
-**About asking YouTube Music directly.** With `PYXEE_YTMUSIC_DIRECT` on, Pyxee sends the same requests the YouTube Music website sends for its Songs tab and Explore page. That is an undocumented interface, not an official API, and using it may conflict with YouTube's Terms of Service. It can also stop working whenever YouTube changes it. Set `PYXEE_YTMUSIC_DIRECT=0` to use yt-dlp only.
+**About asking YouTube Music directly.** With `PYXEE_YTMUSIC_DIRECT` on, Pyxee sends the same requests the YouTube Music website sends for its Songs tab and Explore page. That is an undocumented interface, not an official API, so it can stop working whenever YouTube changes it. Set `PYXEE_YTMUSIC_DIRECT=0` to use yt-dlp only.
 
 Variables used only for building and testing Pyxee are in [docs/development.md](docs/development.md).
 
 ## For developers
 Building from source, tests and releases: see [docs/development.md](docs/development.md).
 
-## Licences
-Pyxee is MIT licensed (see `LICENSE`). It uses FFmpeg libraries under the LGPLv2.1 and bundles yt-dlp as a separate program;
-yt-dlp's Windows build is a GPLv3+ combined work. The full notices are included in the installer and attached to every
-release, together with the material for relinking FFmpeg. Pyxee is for personal use.
+## Licence
+Pyxee is MIT licensed (see `LICENSE`). It uses FFmpeg libraries under the LGPLv2.1 and bundles yt-dlp as a separate program
+(its Windows build is GPLv3+). The full notices ship with the installer and every release.
 
-## Takedown requests and contact
-If you represent a rights holder, YouTube or Google and want something in Pyxee changed or removed, or you have any other
-concern, please [open an issue](https://github.com/Pylxyr/Pyxee/issues). Security problems: see [SECURITY.md](SECURITY.md).
+## Contact
+Questions and bugs: [open an issue](https://github.com/Pylxyr/Pyxee/issues). Security problems: see [SECURITY.md](SECURITY.md).
