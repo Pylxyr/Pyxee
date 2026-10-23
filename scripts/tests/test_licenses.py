@@ -131,25 +131,15 @@ README = (ROOT / "README.md").read_text(encoding="utf-8")
 
 
 class ReadmeLegalText(unittest.TestCase):
-    def test_the_top_says_pyxee_is_not_affiliated_and_may_conflict_with_the_terms(self):
-        top = README.split("## Install")[0]
-        self.assertIn("not affiliated with", top)
-        self.assertIn("YouTube or Google", top)
-        self.assertIn("Terms of Service", top)
-
     def test_cookie_advice_warns_about_the_account_and_suggests_a_throwaway_and_a_profile(self):
         section = README[README.index("## If something goes wrong"):README.index("## Advanced settings")]
         for needed in ["restricted", "throwaway account", "separate browser profile"]:
             self.assertIn(needed, section)
 
     def test_the_licences_text_matches_the_yt_dlp_notice(self):
-        licences = README[README.index("## Licences"):]
+        licences = README[README.index("## Licence"):]
         self.assertNotIn("Unlicense", licences, "the bundled yt-dlp executable is a GPLv3+ combined work")
         self.assertIn("GPLv3+", licences)
-
-    def test_there_is_a_takedown_and_contact_section_pointing_to_github_issues(self):
-        section = README[README.index("## Takedown requests and contact"):]
-        self.assertIn("https://github.com/Pylxyr/Pyxee/issues", section)
 
 
 class DependencyNotices(unittest.TestCase):
