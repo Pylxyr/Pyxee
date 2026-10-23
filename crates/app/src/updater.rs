@@ -313,6 +313,10 @@ impl update::SignatureChecker for WindowsSignatures {
         cmd.args(["-NoProfile", "-NonInteractive", "-Command"])
             .arg(update::signature_script(SIGNATURE_PATH_VAR))
             .env(SIGNATURE_PATH_VAR, file)
+            // Windows PowerShell must use its own modules. A PSModulePath inherited from PowerShell 7 (as on CI
+            // runners, or from a developer's shell) makes it load an incompatible Security module, so
+            // `Get-AuthenticodeSignature` yields nothing and the status comes back empty.
+            .env_remove("PSModulePath")
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
