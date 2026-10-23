@@ -535,10 +535,10 @@ mod tests {
     #[test]
     fn a_plain_file_has_no_signature_according_to_windows() {
         use pyxee_shell::update::{Signature, SignatureChecker};
-        let file = std::env::temp_dir().join(format!("pyxee-unsigned-{}.exe", std::process::id()));
-        std::fs::write(&file, b"MZ not a real program").unwrap();
+        // A real program that nobody has signed: the test binary itself. (A made-up file with an .exe name is not
+        // "unsigned" to Windows but unreadable, which it reports as `UnknownError`.)
+        let file = std::env::current_exe().unwrap();
         let got = WindowsSignatures.signature(&file);
-        let _ = std::fs::remove_file(&file);
         assert_eq!(got, Ok(Signature::Unsigned));
     }
 
