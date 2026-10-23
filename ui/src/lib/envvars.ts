@@ -46,7 +46,7 @@ export const ENV_VARS: EnvVarInfo[] = [
   {
     name: 'PYXEE_YTMUSIC_DIRECT',
     title: 'Ask YouTube Music directly',
-    about: 'Songs search and the Explore page ask YouTube Music\'s own, undocumented interface. That may go against YouTube\'s Terms of Service. Turn it off to search with yt-dlp only; there is then no Explore page.',
+    about: 'Songs search and the Explore page ask YouTube Music\'s own, undocumented interface that can stop working whenever YouTube changes it. Turn it off to search with yt-dlp only; there is then no Explore page.',
     fill: 'Type 0 to turn it off. Leave it empty (or 1) to keep it on.',
     placeholder: '0',
   },
