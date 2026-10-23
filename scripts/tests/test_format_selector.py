@@ -1,4 +1,4 @@
-"""The yt-dlp format selector the app sends must be accepted by the real yt-dlp, and must pick Opus, then AAC-LC.
+"""The yt-dlp format selector the app sends must be accepted by the real yt-dlp, and must pick Opus, then AAC-LC, then only what libav can decode.
 
 A bad selector (it once shipped as `audio_channels<=2?`; yt-dlp wants `<=?2`) makes yt-dlp die with a SyntaxError on
 every play, before any network call, and no Rust test can see that. This reads FORMAT_SELECTOR out of the Rust source
@@ -84,8 +84,37 @@ class FormatSelector(unittest.TestCase):
         self.assertEqual(self.pick([fmt("140", channels=None)]), ["140"])
 
     def test_nothing_playable_selects_nothing(self):
+        # AC-3 and E-AC-3 are not built into libav here; HE-AAC and surround are excluded; none may be picked.
         self.assertEqual(self.pick([fmt("258", channels=6), fmt("139", acodec="mp4a.40.5"),
-                                    fmt("vorbis", ext="webm", acodec="vorbis")]), [])
+                                    fmt("ac3", ext="m4a", acodec="ac-3"), fmt("eac3", ext="m4a", acodec="ec-3"),
+                                    fmt("wma", ext="wma", acodec="wmav2"), fmt("sorenson", ext="flv", acodec="mp3")]), [])
+
+    def test_the_catch_all_takes_other_decodable_codecs_in_decodable_containers(self):
+        for codec, ext in [("vorbis", "webm"), ("vorbis", "ogg"), ("opus", "ogg"), ("opus", "opus"), ("flac", "flac"),
+                           ("mp3", "mp3"), ("alac", "m4a"), ("opus", "mka")]:
+            with self.subTest(codec=codec, ext=ext):
+                self.assertEqual(self.pick([fmt("x", ext=ext, acodec=codec, abr=96)]), ["x"])
+
+    def test_the_catch_all_is_still_plain_https_and_stereo(self):
+        self.assertEqual(self.pick([fmt("v", ext="webm", acodec="vorbis", protocol="m3u8_native")]), [])
+        self.assertEqual(self.pick([fmt("v", ext="ogg", acodec="vorbis", protocol="http_dash_segments")]), [])
+        self.assertEqual(self.pick([fmt("v", ext="webm", acodec="vorbis", channels=6)]), [])
+        self.assertEqual(self.pick([fmt("v", ext="webm", acodec="vorbis", channels=None)]), ["v"])
+
+    def test_the_catch_all_never_beats_opus_or_aac_lc(self):
+        formats = [fmt("flac", ext="flac", acodec="flac", abr=900), fmt("v", ext="webm", acodec="vorbis", abr=200),
+                   fmt("140", abr=129)]
+        self.assertEqual(self.pick(formats), ["140"])
+        formats.append(fmt("251", ext="webm", acodec="opus", abr=160))
+        self.assertEqual(self.pick(formats), ["251"])
+
+    def test_the_selector_is_one_plain_literal_the_release_workflow_can_extract(self):
+        text = SOURCE.read_text(encoding="utf-8")
+        # Same pattern as release.yml: no escapes, no concatenation, no double quotes inside.
+        match = re.search(r'FORMAT_SELECTOR: &str =\s*"([^"]+)"\s*;', text)
+        self.assertIsNotNone(match)
+        self.assertNotIn("\\", match.group(1))
+        self.assertNotIn("\n", match.group(1))
 
 
 if __name__ == "__main__":

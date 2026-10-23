@@ -314,7 +314,7 @@ Write-Report ("rustc     : {0}" -f (Get-FirstLine 'rustc --version'))
 Write-Report ("cargo     : {0}" -f (Get-FirstLine 'cargo --version'))
 Write-Report ("node      : {0}" -f (Get-FirstLine 'node --version'))
 Write-Report ("cookies   : {0}" -f $cookieKind)
-$envset = @('PYXEE_YTDLP', 'PYXEE_COOKIES', 'PYXEE_COOKIES_FROM_BROWSER', 'PYXEE_LOG', 'CARGO_TARGET_DIR') | ForEach-Object { $v = [Environment]::GetEnvironmentVariable($_); if ($v) { "$_=set" } }
+$envset = @('PYXEE_YTDLP', 'PYXEE_JS_RUNTIME', 'PYXEE_COOKIES', 'PYXEE_COOKIES_FROM_BROWSER', 'PYXEE_LOG', 'CARGO_TARGET_DIR') | ForEach-Object { $v = [Environment]::GetEnvironmentVariable($_); if ($v) { "$_=set" } }
 Write-Report ("env       : {0}" -f $(if ($envset) { $envset -join ', ' } else { '(none of the PYXEE_* / CARGO_TARGET_DIR variables are set)' }))
 Write-Report ("options   : SkipTests=$SkipTests SkipLive=$SkipLive SkipTools=$SkipTools Ui=$true Installer=$Installer Ci=$Ci Manual=$Manual AnalyzeLog=$AnalyzeLog")
 
@@ -675,30 +675,42 @@ if (-not $SkipTools) {
 } else { Add-Result 'INFO' 'cargo-xtask-tools' 'skipped (-SkipTools)' }
 
 # yt-dlp wants an external JavaScript runtime for YouTube (its EJS solver scripts are bundled in yt-dlp.exe, so only the
-# runtime is missing). It enables Deno 2.x on PATH by itself; any other runtime is switched on with --js-runtimes in
-# a yt-dlp config file. Pyxee itself never needs or starts one, so this is a WARN with the fix, never a FAIL.
+# runtime is missing). Pyxee starts yt-dlp with --ignore-config, so a --js-runtimes line in a yt-dlp config file is never
+# read by Pyxee and does not count here. What counts is what Pyxee passes itself: PYXEE_JS_RUNTIME if set, otherwise
+# deno, then node, found on PATH (crates/sources/src/jsruntime.rs). Pyxee never starts a runtime itself, so a missing one
+# is a WARN with the fix, never a FAIL.
 function Test-JsRuntime {
   $script:JsRuntimeWarned = $false
+  $override = $env:PYXEE_JS_RUNTIME
+  if ($override -and $override.Trim()) {
+    $o = $override.Trim()
+    if ($o -match '^(none|off)$') { Add-Result 'INFO' 'ytdlp-js-runtime' 'PYXEE_JS_RUNTIME=none: Pyxee passes no --js-runtimes (yt-dlp decides)'; return }
+    $name = ($o -split ':', 2)[0].Trim().ToLowerInvariant()
+    $path = if ($o.Contains(':')) { ($o -split ':', 2)[1].Trim() } else { '' }
+    if (@('deno', 'node', 'quickjs', 'bun') -notcontains $name) {
+      Add-Result 'WARN' 'ytdlp-js-runtime' "PYXEE_JS_RUNTIME=$o is not understood (use deno, node, quickjs or bun, optionally :path, or none); Pyxee ignores it and looks on PATH"
+    } elseif ($path -and -not (Test-Path -LiteralPath $path)) {
+      Add-Result 'WARN' 'ytdlp-js-runtime' "PYXEE_JS_RUNTIME points to a path that does not exist ($path); Pyxee ignores it and looks on PATH"
+    } else {
+      Add-Result 'PASS' 'ytdlp-js-runtime' "PYXEE_JS_RUNTIME=$name is passed to yt-dlp as --js-runtimes"; return
+    }
+  }
   $deno = Get-Command deno -ErrorAction SilentlyContinue
   if ($deno) {
     $v = Get-FirstLine 'deno --version'
     if ($v -match 'deno\s+(\d+)\.') {
-      if ([int]$Matches[1] -ge 2) { Add-Result 'PASS' 'ytdlp-js-runtime' "$v on PATH (yt-dlp uses it automatically)"; return }
+      if ([int]$Matches[1] -ge 2) { Add-Result 'PASS' 'ytdlp-js-runtime' "$v on PATH (Pyxee passes --js-runtimes deno)"; return }
       Add-Result 'WARN' 'ytdlp-js-runtime' "$v is too old: yt-dlp needs Deno 2.0 or newer (winget upgrade DenoLand.Deno)"
       $script:JsRuntimeWarned = $true
       return
     }
   }
-  $configs = @(
-    (Join-Path $env:APPDATA 'yt-dlp\config'), (Join-Path $env:APPDATA 'yt-dlp\config.txt'),
-    (Join-Path $env:USERPROFILE 'yt-dlp.conf'), (Join-Path (Split-Path -Parent $YtdlpPath) 'yt-dlp.conf')
-  )
-  $hit = @($configs | Where-Object { $_ -and (Test-Path $_) -and (Select-String -Path $_ -Pattern '^\s*--js-runtimes\b' -Quiet) })
-  if ($hit.Count -gt 0) { Add-Result 'PASS' 'ytdlp-js-runtime' "--js-runtimes is set in $(Split-Path -Leaf $hit[0]) (the yt-dlp config file)"; return }
+  if (Have 'node') {
+    Add-Result 'PASS' 'ytdlp-js-runtime' "$(Get-FirstLine 'node --version') on PATH (Pyxee passes --js-runtimes node; no Deno found)"
+    return
+  }
   $script:JsRuntimeWarned = $true
-  $nodeOk = Have 'node'
-  $alt = if ($nodeOk) { ' Or, since Node is installed: put the line "--js-runtimes node" in %APPDATA%\yt-dlp\config.' } else { '' }
-  Add-Result 'WARN' 'ytdlp-js-runtime' ('no JavaScript runtime for yt-dlp. YouTube extraction without one is deprecated by yt-dlp (some formats may vanish later); Pyxee works for now. Fix: winget install DenoLand.Deno, then open a new terminal.' + $alt + ' See README, "yt-dlp and a JavaScript runtime".')
+  Add-Result 'WARN' 'ytdlp-js-runtime' 'no JavaScript runtime for yt-dlp. YouTube extraction without one is deprecated by yt-dlp (some formats may vanish later); Pyxee works for now. Fix: winget install DenoLand.Deno (or install Node), then open a new terminal and restart Pyxee. A --js-runtimes line in a yt-dlp config file does not help: Pyxee runs yt-dlp with --ignore-config. See README, "yt-dlp and a JavaScript runtime".'
 }
 
 function Find-Ytdlp {

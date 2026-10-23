@@ -18,6 +18,35 @@ use std::collections::HashSet;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 pub const ENDPOINT: &str = "https://music.youtube.com/youtubei/v1/search?prettyPrint=false";
+/// The setting (environment variable or `.env` line) that turns the direct requests of this module off.
+pub const ENV_VAR: &str = "PYXEE_YTMUSIC_DIRECT";
+
+/// Reads the on/off switch: `1`, `on`, `true` or `yes` is on, `0`, `off`, `false` or `no` is off (any case).
+pub fn parse_switch(value: &str) -> Result<bool, String> {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "1" | "on" | "true" | "yes" => Ok(true),
+        "0" | "off" | "false" | "no" => Ok(false),
+        other => Err(format!("use 0 or 1 (or off or on), not \"{other}\"")),
+    }
+}
+
+/// Whether Pyxee may make the direct requests of this module (songs search and Explore). On unless the setting
+/// says off; an empty or unreadable value keeps the default, which is on.
+pub fn direct_requests_allowed(setting: Option<&str>) -> bool {
+    match setting.map(str::trim).filter(|v| !v.is_empty()) {
+        None => true,
+        Some(v) => parse_switch(v).unwrap_or_else(|e| {
+            log::warn!("{ENV_VAR}: {e}; leaving the direct YouTube Music requests on");
+            true
+        }),
+    }
+}
+
+/// [`direct_requests_allowed`] for the environment.
+pub fn direct_requests_allowed_from_env() -> bool {
+    direct_requests_allowed(std::env::var(ENV_VAR).ok().as_deref())
+}
+
 /// The website's request for a page (Explore here).
 pub const BROWSE_ENDPOINT: &str = "https://music.youtube.com/youtubei/v1/browse?prettyPrint=false";
 /// The page behind the website's Explore tab.
@@ -1038,5 +1067,25 @@ mod tests {
         };
         let keys: Vec<&str> = tracks.iter().map(|t| t.key.as_str()).collect();
         assert_eq!(keys, ["yt:button00001", "yt:link0000001"]);
+    }
+
+    #[test]
+    fn the_direct_requests_switch_is_on_unless_it_says_off() {
+        for on in [
+            None,
+            Some(""),
+            Some("  "),
+            Some("1"),
+            Some("ON"),
+            Some("true"),
+            Some("yes"),
+            Some("maybe"),
+        ] {
+            assert!(direct_requests_allowed(on), "{on:?}");
+        }
+        for off in ["0", "off", "OFF", "false", " No "] {
+            assert!(!direct_requests_allowed(Some(off)), "{off}");
+        }
+        assert!(parse_switch("maybe").is_err());
     }
 }

@@ -37,6 +37,20 @@ export const ENV_VARS: EnvVarInfo[] = [
     placeholder: 'C:\\Tools\\yt-dlp.exe',
   },
   {
+    name: 'PYXEE_JS_RUNTIME',
+    title: 'JavaScript runtime',
+    about: 'YouTube needs a JavaScript runtime for yt-dlp. Pyxee tells yt-dlp to use Deno or, if there is none, Node, whichever it finds on your PATH. Set this to choose another one.',
+    fill: 'deno, node, quickjs or bun, optionally followed by a colon and the full path (node:C:\\Tools\\node.exe). Type none to pass nothing and let yt-dlp decide. Leave it empty to use what is on your PATH.',
+    placeholder: 'node',
+  },
+  {
+    name: 'PYXEE_YTMUSIC_DIRECT',
+    title: 'Ask YouTube Music directly',
+    about: 'Songs search and the Explore page ask YouTube Music\'s own, undocumented interface. That may go against YouTube\'s Terms of Service. Turn it off to search with yt-dlp only; there is then no Explore page.',
+    fill: 'Type 0 to turn it off. Leave it empty (or 1) to keep it on.',
+    placeholder: '0',
+  },
+  {
     name: 'PYXEE_LOG',
     title: 'Log detail',
     about: 'How much Pyxee writes to its log file.',

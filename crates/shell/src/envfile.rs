@@ -5,10 +5,12 @@
 use std::path::Path;
 
 /// The variables Settings > Advanced shows, in display order. Only these are read from the file.
-pub const VARS: [&str; 4] = [
+pub const VARS: [&str; 6] = [
     "PYXEE_COOKIES",
     "PYXEE_COOKIES_FROM_BROWSER",
     "PYXEE_YTDLP",
+    "PYXEE_JS_RUNTIME",
+    "PYXEE_YTMUSIC_DIRECT",
     "PYXEE_LOG",
 ];
 

@@ -2,8 +2,9 @@
 //! newer, which file, does the checksum match, replace safely) lives in `pyxee_shell::update` and is tested there.
 //!
 //! * Pyxee: looks at the GitHub releases (see docs/releasing.md), downloads the installer, checks it against the
-//!   release's `SHA256SUMS.txt`, starts it and quits so the installer can replace the files. The installers are not
-//!   code-signed yet, so Windows SmartScreen will still ask; checking the SHA-256 is what this adds.
+//!   release's `SHA256SUMS.txt`, starts it and quits so the installer can replace the files. When this copy of Pyxee
+//!   is itself validly code-signed, the installer must also be validly signed by the same signer subject (see
+//!   `update::check_publisher`); an unsigned copy keeps the checksum-only check, so it can still update.
 //! * yt-dlp: checks its published SHA-256 list, downloads, verifies, runs `--version` on the new file and only then
 //!   puts it in the data folder, where `YtDlpSource` prefers it over the installed copy.
 
@@ -282,11 +283,78 @@ fn fetch_installer(app: &AppHandle) -> Result<PathBuf, String> {
         .ok_or("The installer has no usable file name.")?;
     let path = dir.join(name);
     std::fs::write(&path, &bytes).map_err(|e| format!("Could not save the installer: {e}"))?;
+    // The checksum above proves the file is the one the release lists; this proves, for a signed copy of Pyxee,
+    // that it comes from the same publisher.
+    gate_installer(&path)?;
     log::info!(
         "update: {} downloaded and verified ({expected})",
         path.display()
     );
     Ok(path)
+}
+
+/// The environment variable that carries the file name to the signature script (see `update::signature_script`).
+const SIGNATURE_PATH_VAR: &str = "PYXEE_SIGCHECK_PATH";
+
+/// Reads Authenticode signatures with Windows' own verification (`Get-AuthenticodeSignature`, which uses
+/// WinVerifyTrust). Windows PowerShell is started from the system folder, hidden, with the file name passed through
+/// the environment.
+struct WindowsSignatures;
+
+impl update::SignatureChecker for WindowsSignatures {
+    fn signature(&self, file: &Path) -> Result<update::Signature, String> {
+        if !cfg!(windows) {
+            // Pyxee is a Windows program; a development build elsewhere has no Authenticode to compare.
+            return Ok(update::Signature::Unsigned);
+        }
+        let root = std::env::var_os("SystemRoot").ok_or("SystemRoot is not set")?;
+        let powershell = Path::new(&root).join(r"System32\WindowsPowerShell\v1.0\powershell.exe");
+        let mut cmd = Command::new(powershell);
+        cmd.args(["-NoProfile", "-NonInteractive", "-Command"])
+            .arg(update::signature_script(SIGNATURE_PATH_VAR))
+            .env(SIGNATURE_PATH_VAR, file)
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            cmd.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
+        }
+        let out = cmd
+            .output()
+            .map_err(|e| format!("could not start PowerShell: {e}"))?;
+        Ok(update::parse_signature_output(&String::from_utf8_lossy(
+            &out.stdout,
+        )))
+    }
+}
+
+/// The publisher gate for a downloaded installer: see `update::check_publisher`. A refused installer is deleted.
+fn gate_installer(path: &Path) -> Result<(), String> {
+    let running = match std::env::current_exe() {
+        Ok(p) => p,
+        Err(e) => {
+            log::warn!("update: could not find the running program to compare signers ({e}); the checksum alone was checked");
+            return Ok(());
+        }
+    };
+    match update::gate_installer_file(&WindowsSignatures, &running, path) {
+        Ok(update::PublisherCheck::Matched { subject }) => {
+            log::info!(
+                "update: the installer is signed by the same signer as this copy ({subject})"
+            );
+            Ok(())
+        }
+        Ok(update::PublisherCheck::NotRequired) => {
+            log::info!("update: this copy is not signed, so only the checksum was checked");
+            Ok(())
+        }
+        Err(e) => {
+            log::warn!("update: installer refused: {e}");
+            Err(e.to_string())
+        }
+    }
 }
 
 fn launch_installer(path: &Path) -> Result<(), String> {
@@ -459,6 +527,17 @@ pub async fn update_install_ytdlp(
 
 #[cfg(test)]
 mod tests {
+    #[cfg(windows)]
+    #[test]
+    fn a_plain_file_has_no_signature_according_to_windows() {
+        use pyxee_shell::update::{Signature, SignatureChecker};
+        let file = std::env::temp_dir().join(format!("pyxee-unsigned-{}.exe", std::process::id()));
+        std::fs::write(&file, b"MZ not a real program").unwrap();
+        let got = WindowsSignatures.signature(&file);
+        let _ = std::fs::remove_file(&file);
+        assert_eq!(got, Ok(Signature::Unsigned));
+    }
+
     use super::*;
 
     #[test]

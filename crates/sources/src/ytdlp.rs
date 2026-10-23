@@ -2,6 +2,7 @@
 //! and turns failures into errors the UI can explain.
 
 use crate::gate::{Gate, GateConfig};
+use crate::jsruntime::JsRuntime;
 use crate::suggest::{encode, Suggester};
 use crate::ytmusic;
 use crate::{
@@ -22,20 +23,24 @@ use std::time::{Duration, Instant};
 ///
 /// First choice is Opus in WebM, YouTube's best quality per bitrate (itag 251, ~130-160 kbps). The
 /// fallback is AAC-LC in M4A (itag 140, ~128 kbps; 141, ~256 kbps, with Premium cookies), for videos
-/// that offer no Opus. Each filter excludes something that would fail to play or to seek:
+/// that offer no Opus. The last alternative is anything else the build can decode, in a container it can read
+/// (Opus, Vorbis, FLAC, MP3 or ALAC in WebM, Ogg, Matroska, FLAC, MP3 or M4A), so a video whose only streams are
+/// those is not skipped. Each filter excludes something that would fail to play or to seek:
 ///
 /// * `acodec=opus` + `ext=webm`: the Opus stream YouTube serves. `acodec^=mp4a.40.2` is AAC-LC only:
 ///   HE-AAC (`mp4a.40.5`, itag 139) is not in the build's allowlist.
+/// * the last alternative's `~=` filters are regular expressions over yt-dlp's `acodec` and `ext`; they list only
+///   what docs/engine.md says libav is built to decode. Nothing outside that list may be added.
 /// * `audio_channels<=?2`: no 5.1 (itags 256/258, 338). The `?` keeps formats that do not report a
 ///   channel count. It must sit right after the operator: yt-dlp rejects `<=2?` with "Invalid filter
 ///   specification" and then plays nothing at all.
 /// * `protocol=https`: one plain file the range reader can fetch, not an HLS playlist or DASH
 ///   manifest (`http_dash_segments`).
 ///
-/// If neither matches, yt-dlp reports "Requested format is not available", which becomes a clear
+/// If none matches, yt-dlp reports "Requested format is not available", which becomes a clear
 /// "no audio stream this player can decode" error instead of falling back to a codec we cannot play.
 pub const FORMAT_SELECTOR: &str =
-    "bestaudio[ext=webm][acodec=opus][protocol=https][audio_channels<=?2]/bestaudio[ext=m4a][acodec^=mp4a.40.2][protocol=https][audio_channels<=?2]";
+    "bestaudio[ext=webm][acodec=opus][protocol=https][audio_channels<=?2]/bestaudio[ext=m4a][acodec^=mp4a.40.2][protocol=https][audio_channels<=?2]/bestaudio[acodec~='^(opus|vorbis|flac|mp3|alac)$'][ext~='^(webm|ogg|opus|mka|flac|mp3|m4a)$'][protocol=https][audio_channels<=?2]";
 const RESULTS: usize = 20;
 /// How long a search answer is reused for the same query and filter (no request at all in that time).
 const SEARCH_CACHE_TTL: Duration = Duration::from_secs(10 * 60);
@@ -130,6 +135,8 @@ pub struct YtDlpSource {
     /// Search-box suggestions: cached, and paused after a rate limit (they are not yt-dlp runs, so not the gate's).
     suggester: Suggester,
     cookies: Cookies,
+    /// What `--js-runtimes` gets (nothing by default; the app sets it from `PATH` and `PYXEE_JS_RUNTIME`).
+    js_runtime: JsRuntime,
     /// Recent search answers, keyed by lower-cased query and filter.
     search_cache: Mutex<HashMap<SearchCacheKey, SearchCacheEntry>>,
     /// Set while the dedicated songs page is known to answer with bare titles (see `search_fresh`).
@@ -149,6 +156,7 @@ impl YtDlpSource {
             gate: Gate::new(GateConfig::DEFAULT),
             suggester: Suggester::new(),
             cookies: Cookies::None,
+            js_runtime: JsRuntime::Off,
             search_cache: Mutex::new(HashMap::new()),
             songs_page_bare_until: Mutex::new(None),
             music_endpoint: Some(ytmusic::ENDPOINT.to_string()),
@@ -202,6 +210,12 @@ impl YtDlpSource {
 
     pub fn with_cookies(mut self, cookies: Cookies) -> Self {
         self.cookies = cookies;
+        self
+    }
+
+    /// The JavaScript runtime yt-dlp is told about (see [`JsRuntime`]).
+    pub fn with_js_runtime(mut self, js_runtime: JsRuntime) -> Self {
+        self.js_runtime = js_runtime;
         self
     }
 
@@ -310,8 +324,10 @@ impl YtDlpSource {
     /// One yt-dlp run, when the gate says it is this call's turn.
     fn run(&self, what: &str, args: &[String]) -> Result<String, SourceError> {
         // `--ignore-config`: a yt-dlp.conf on this PC (or one the user's own yt-dlp reads) must not change
-        // what Pyxee asks for, such as the output format or extra network options.
+        // what Pyxee asks for, such as the output format or extra network options. It also means a `--js-runtimes`
+        // line in that file is never read, so the runtime is passed here (see `jsruntime`).
         let all: Vec<String> = std::iter::once("--ignore-config".to_string())
+            .chain(self.js_runtime.args())
             .chain(self.cookies.args())
             .chain(args.iter().cloned())
             .collect();
@@ -997,8 +1013,8 @@ mod tests {
 
     #[test]
     fn the_format_selector_asks_only_for_what_the_built_in_decoder_can_play() {
-        // Opus first, AAC-LC second, nothing else: see FORMAT_SELECTOR.
-        for banned in ["vorbis", "ba/", "mp4a.40.5"] {
+        // Opus first, AAC-LC second, then only codecs and containers libav is built for: see FORMAT_SELECTOR.
+        for banned in ["ba/", "mp4a.40.5", "ac-3", "ec-3", "wma", "dts", "truehd"] {
             assert!(
                 !FORMAT_SELECTOR.contains(banned),
                 "{banned} in {FORMAT_SELECTOR}"
@@ -1007,13 +1023,36 @@ mod tests {
         let alternatives: Vec<&str> = FORMAT_SELECTOR.split('/').collect();
         assert_eq!(
             alternatives.len(),
-            2,
-            "exactly Opus then AAC-LC, no fallback to a format that cannot be played"
+            3,
+            "Opus, AAC-LC, then the decodable catch-all; no fallback to a format that cannot be played"
         );
         for alt in &alternatives {
             assert!(
                 alt.starts_with("bestaudio["),
                 "no bare `best`/`bestaudio` fallback that could pick an unplayable format: {alt}"
+            );
+        }
+        // The catch-all lists exactly the decoders and containers in docs/engine.md "In-process libav".
+        let list = |filter: &str| -> Vec<&str> {
+            let start = alternatives[2].find(filter).expect(filter) + filter.len();
+            let rest = &alternatives[2][start..];
+            rest[..rest.find(")$'").expect("closing")]
+                .split('|')
+                .collect()
+        };
+        assert_eq!(
+            list("[acodec~='^("),
+            ["opus", "vorbis", "flac", "mp3", "alac"]
+        );
+        assert_eq!(
+            list("[ext~='^("),
+            ["webm", "ogg", "opus", "mka", "flac", "mp3", "m4a"]
+        );
+        for n in ["protocol=https", "audio_channels<=?2"] {
+            assert!(
+                alternatives[2].contains(n),
+                "{n} missing from {}",
+                alternatives[2]
             );
         }
         for (alt, needed) in [
@@ -1059,6 +1098,11 @@ mod tests {
         );
         assert!(
             matches!(&e, SourceError::Failed(m) if m.contains("no audio stream this player can decode")),
+            "{e:?}"
+        );
+        // It points at the existing updater (Settings > Updates > Update yt-dlp), nothing new.
+        assert!(
+            matches!(&e, SourceError::Failed(m) if m.contains("Settings > Updates") && m.contains("Update yt-dlp")),
             "{e:?}"
         );
     }
@@ -1269,6 +1313,45 @@ mod tests {
             assert!(request.try_recv().is_ok() || request.recv().is_ok());
             let off = source(&url).without_music_search();
             assert!(matches!(off.explore(), Err(SourceError::Unsupported(_))));
+        }
+
+        #[test]
+        fn with_the_switch_off_no_search_and_no_explore_makes_a_youtube_music_request() {
+            // PYXEE_YTMUSIC_DIRECT=0 ends in `without_music_search()`. Both servers would answer if asked.
+            let (search_url, search_request) = testserver::once(200, &one_song());
+            let (browse_url, browse_request) = testserver::once(200, "{}");
+            let s = source(&search_url)
+                .with_browse_endpoint(&browse_url)
+                .without_music_search();
+            for filter in [
+                SearchFilter::All,
+                SearchFilter::Songs,
+                SearchFilter::Videos,
+                SearchFilter::Albums,
+                SearchFilter::Artists,
+                SearchFilter::Playlists,
+            ] {
+                let _ = s.search("neon", filter);
+            }
+            assert!(matches!(s.explore(), Err(SourceError::Unsupported(_))));
+            let wait = Duration::from_millis(300);
+            assert!(
+                search_request.recv_timeout(wait).is_err(),
+                "a search request was made"
+            );
+            assert!(
+                browse_request.recv_timeout(wait).is_err(),
+                "an Explore request was made"
+            );
+        }
+
+        #[test]
+        fn with_the_switch_on_a_songs_search_still_asks_youtube_music() {
+            let (url, request) = testserver::once(200, &one_song());
+            let s = source(&url);
+            let found = s.search("neon", SearchFilter::Songs).unwrap();
+            assert!(!found.is_empty());
+            assert!(request.recv_timeout(Duration::from_secs(2)).is_ok());
         }
 
         #[test]
@@ -1534,6 +1617,44 @@ esac"#,
             assert!(std::fs::read_to_string(log)
                 .unwrap()
                 .starts_with("--ignore-config --cookies-from-browser firefox:default "));
+        }
+
+        #[test]
+        fn the_js_runtime_follows_ignore_config_and_comes_before_cookies() {
+            let run = |name: &str, rt: JsRuntime, cookies: Cookies| {
+                let (script, log) = fake(name, &canned());
+                quick(&script)
+                    .with_js_runtime(rt)
+                    .with_cookies(cookies)
+                    .search("x", SearchFilter::All)
+                    .unwrap();
+                std::fs::read_to_string(log).unwrap()
+            };
+            let deno = run("jsdeno", JsRuntime::On("deno".into()), Cookies::None);
+            assert!(
+                deno.starts_with("--ignore-config --js-runtimes deno "),
+                "{deno}"
+            );
+            let node = run("jsnode", JsRuntime::On("node".into()), Cookies::None);
+            assert!(
+                node.starts_with("--ignore-config --js-runtimes node "),
+                "{node}"
+            );
+            let over = run(
+                "jsover",
+                JsRuntime::On("node:/opt/node/bin".into()),
+                Cookies::Browser("firefox".into()),
+            );
+            assert!(
+                over.starts_with("--ignore-config --js-runtimes node:/opt/node/bin --cookies-from-browser firefox "),
+                "{over}"
+            );
+            let none = run("jsnone", JsRuntime::Off, Cookies::None);
+            assert!(none.starts_with("--ignore-config "), "{none}");
+            assert!(
+                !none.contains("js-runtimes"),
+                "no runtime found: nothing is added, {none}"
+            );
         }
 
         #[test]

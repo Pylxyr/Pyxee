@@ -29,6 +29,7 @@ The same variables can be set in **Settings** > **Advanced**, which saves them t
 | Variable | Effect |
 |---|---|
 | `PYXEE_YTDLP` | Path to `yt-dlp`. |
+| `PYXEE_JS_RUNTIME` | The JavaScript runtime passed to yt-dlp as `--js-runtimes`: `deno`, `node`, `quickjs` or `bun`, optionally `runtime:path` (a binary or its folder), or `none` to pass nothing. Unset: Deno, then Node, from `PATH`. |
 | `PYXEE_COOKIES` | Path to a Netscape-format `cookies.txt`. A logged-in session is much less likely to get HTTP 429 or "sign in to confirm you're not a bot". yt-dlp may rewrite this file. A path that is not an existing file is ignored (with a warning). |
 | `PYXEE_COOKIES_FROM_BROWSER` | yt-dlp's `BROWSER[+KEYRING][:PROFILE][::CONTAINER]`, e.g. `firefox`. Ignored if `PYXEE_COOKIES` is usable. Chromium browsers on Windows often lock their cookie store; an exported `cookies.txt` is more reliable. |
 | `PYXEE_LOG` | `error`, `warn`, `info` (default), `debug`, `trace`. |
@@ -45,9 +46,11 @@ scripts (EJS), so only a runtime is missing. Either of these silences the warnin
 
 * **Deno 2.x on `PATH`** (the one yt-dlp enables by default): `winget install DenoLand.Deno`, then open a new terminal (and
   sign out/in, or restart the app launcher, for the installed app to see the new `PATH`).
-* **Node, which developers here already have**: create `%APPDATA%\yt-dlp\config` containing the line `--js-runtimes node`
-  (or `--js-runtimes deno:C:\path\to\deno.exe` for a Deno that is not on `PATH`). yt-dlp reads this file for every run,
-  including the ones Pyxee starts. Needs a recent yt-dlp (`cargo xtask tools --update`); an old one rejects the option.
+* **Node, which developers here already have**: nothing to configure. Pyxee starts yt-dlp with `--ignore-config`, so a
+  `--js-runtimes` line in `%APPDATA%\yt-dlp\config` is **not** read by Pyxee's runs. Instead Pyxee looks for `deno`, then
+  `node`, on `PATH` when it starts and passes `--js-runtimes deno` or `--js-runtimes node` itself (nothing is added when it
+  finds neither). To choose another runtime or a path, set `PYXEE_JS_RUNTIME` (below). Needs a recent yt-dlp
+  (`cargo xtask tools --update`); an old one rejects the option. Pyxee does not run the runtime to check its version.
 
 `scripts\check-windows.cmd` reports which of these it found (`ytdlp-js-runtime`).
 
@@ -92,6 +95,15 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
 ```
 `cargo test -p pyxee-app` regenerates the TypeScript types in `ui/src/lib/bindings` from the Rust types.
+
+## Dependency checks
+CI has a `deny` job (`deny.toml`, cargo-deny) and an `npm audit --omit=dev` step. Run them locally with `cargo deny --locked check` and `npm audit --omit=dev --prefix ui`.
+
+* **Licences, bans, sources: blocking.** Every licence in the shipped Windows build is on the allow-list in `deny.toml`, each with the reason; a new licence fails the job until someone reads it and adds it there (and to `about.toml`).
+* **Advisories: not blocking** (`continue-on-error`), because the baseline is not clean and fixing it means upgrading dependencies. Baseline on 2026-10-22 (cargo-deny 0.20.2, RustSec database of that day): `rustls` 0.23.45 (RUSTSEC-2026-0346, -0347, -0348, -0349), `rustls-webpki` (RUSTSEC-2026-0382), `webpki-roots` (RUSTSEC-2026-0381), `rustls-pemfile` (RUSTSEC-2025-0134, unmaintained), `zip` 2.4.2 (RUSTSEC-2026-0367, -0368, -0369), `ringbuf` 0.4.8 (RUSTSEC-2026-0293). Nothing has been judged harmless here; the next dependency update should clear them, after which the advisories step can become blocking.
+* **npm audit: informational.** Zero vulnerabilities in the runtime dependencies on 2026-10-22.
+
+**Notices.** `crates/app/licenses/THIRD_PARTY_DEPENDENCIES.txt` (licence notices of every shipped Rust crate and npm package) is generated, never edited: `python scripts/gen_dependency_notices.py` (needs `cargo install cargo-about --locked --version 0.9.2` and `npm ci --prefix ui`; add `--check` to diff without writing). It records the hashes of `Cargo.lock` and `ui/package-lock.json`; `scripts/tests/test_licenses.py` fails when either lock file changed without regenerating it, so run the script whenever dependencies change and commit the result.
 
 ## Layout
 `crates/core` queue + state machine (no I/O) · `crates/audio` decode, resample, gapless, output · `crates/sources` yt-dlp, local ·

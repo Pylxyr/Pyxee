@@ -20,8 +20,10 @@ mod updater;
 mod window;
 
 use pyxee_core::Player;
+use pyxee_sources::jsruntime::JsRuntime;
 use pyxee_sources::local::LocalSource;
 use pyxee_sources::ytdlp::{Cookies, YtDlpSource, FORMAT_SELECTOR};
+use pyxee_sources::ytmusic;
 use pyxee_sources::{CompositeSource, MusicSource};
 use state::AppState;
 use std::sync::mpsc;
@@ -61,6 +63,17 @@ fn with_updated_ytdlp(source: YtDlpSource, data_dir: Option<&std::path::Path>) -
             source.with_preferred(updater::managed_ytdlp_path(dir))
         }
         _ => source,
+    }
+}
+
+/// `PYXEE_YTMUSIC_DIRECT=0` keeps Pyxee from asking YouTube Music's own API (songs search, Explore): songs searches then
+/// use the yt-dlp flow and there is no Explore page. On (the default) changes nothing.
+fn with_music_search_setting(source: YtDlpSource, direct_allowed: bool) -> YtDlpSource {
+    if direct_allowed {
+        source
+    } else {
+        log::info!("YouTube Music direct requests are off (PYXEE_YTMUSIC_DIRECT)");
+        source.without_music_search()
     }
 }
 
@@ -133,8 +146,12 @@ fn main() {
             log::info!("yt-dlp audio format preference: {FORMAT_SELECTOR}");
             let source: Arc<dyn MusicSource> = Arc::new(CompositeSource {
                 remote: with_updated_ytdlp(
-                    YtDlpSource::new(tools::locate("yt-dlp", "PYXEE_YTDLP"))
-                        .with_cookies(Cookies::from_env()),
+                    with_music_search_setting(
+                        YtDlpSource::new(tools::locate("yt-dlp", "PYXEE_YTDLP"))
+                            .with_cookies(Cookies::from_env())
+                            .with_js_runtime(JsRuntime::from_env()),
+                        ytmusic::direct_requests_allowed_from_env(),
+                    ),
                     data_dir.as_deref(),
                 ),
                 local: LocalSource,

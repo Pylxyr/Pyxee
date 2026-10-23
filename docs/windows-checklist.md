@@ -67,7 +67,7 @@ the situation changes, for example the source stops being public, get a review).
   change the FFmpeg pin, update that file in the same commit.**
 - [ ] *auto:* `crates/app/licenses/FFmpeg-LGPL-2.1.txt` is the full licence text (copy `COPYING.LGPLv2.1` from the pinned FFmpeg
   commit; check it again if the FFmpeg licence ever moves to a newer version), the installer bundles `licenses/*`, and the release
-  uploads both `THIRD_PARTY_NOTICES.txt` and `FFmpeg-LGPL-2.1.txt`.
+  uploads both `THIRD_PARTY_NOTICES.txt` and `FFmpeg-LGPL-2.1.txt` (and the kit below).
 - [ ] The **Installed layout works** step passed. It also fails if `FFmpeg-LGPL-2.1.txt` is missing from the installed app, or if
   an ffmpeg program or a libav DLL is there (libav is linked in statically; a DLL would mean the build became shared).
 - [ ] The release page has `THIRD_PARTY_NOTICES.txt` and `FFmpeg-LGPL-2.1.txt` next to the installers. Open the notices: the FFmpeg
@@ -76,4 +76,11 @@ the situation changes, for example the source stops being public, get a review).
   repository, list it in `THIRD_PARTY.txt`, and keep the build reproducible from `scripts/build-ffmpeg.sh`.
 - [ ] The users' right to replace FFmpeg holds: the repository is public (MIT) and `cargo xtask ffmpeg` + a normal build relinks
   Pyxee with a different FFmpeg. If the source is ever closed, ship the object files (or switch to a shared FFmpeg) before releasing.
+- [ ] *auto:* the release carries the **FFmpeg build kit**, `Pyxee_<version>_ffmpeg-build-kit.zip` (`cargo xtask ffmpeg-kit`, run by the
+  **Build the FFmpeg build kit** step): the exact static libraries and headers linked into that release, the unmodified FFmpeg source at the
+  pinned commit, `build-ffmpeg.sh` and a README with the relink steps. Open the zip on the release page and check that the README names the
+  right tag and commit, `prefix/lib` has the four libraries, and `ffmpeg-source/` has the `.tar.gz`. The relink procedure (also in
+  `THIRD_PARTY.txt`): get Pyxee's source for the tag, put your own libraries in a folder laid out like `prefix/` (or run `cargo xtask ffmpeg`
+  after changing the source), set `PYXEE_FFMPEG_DIR` to it, run `cargo xtask installer`. If you change the FFmpeg pin or the configure options,
+  nothing else needs editing: the kit reads the pin from `scripts/build-ffmpeg.sh`.
 - [ ] "This software uses libraries from the FFmpeg project under the LGPLv2.1" is still in `THIRD_PARTY.txt` and the README's licence section.

@@ -30,8 +30,11 @@ Gapless order and zero silence, skip, pause (clock and audio freeze), seek, unpl
 track with Retry, radio continues after the queue ends, repeat-one loops seamlessly, and the expired-URL recovery against a
 local HTTP server that starts returning 403 mid-song.
 
-## NOT verified yet: needs your PC (please run these and paste the output)
-Nothing in the sandbox can reach YouTube or a sound card, so these shapes come from what I know of yt-dlp, not from live output:
+## Historical snapshot: what was not verified when this was written
+This section is a snapshot from early development, when the sandbox the engine was written in could not reach YouTube or a
+sound card. It is not kept up to date and does not say what has been verified since. For live checks on a Windows PC run
+`scripts\check-windows.cmd` (see `scripts/check-windows.ps1` for what it checks), and `docs/windows-checklist.md` for what
+only a person can judge. As written then, these shapes came from what was known of yt-dlp, not from live output:
 - `spike search "lowtide" --filter all|songs|videos|artists|playlists` and `spike related yt:<id>`: do the results parse?
   Does the Songs search URL (see `search_target`) work in your yt-dlp? Does the `list=RD<id>` mix return tracks?
   If yt-dlp needs a JavaScript runtime for YouTube it will say so on stderr.
@@ -128,10 +131,14 @@ decoders and demuxers only, for the formats below, no network protocols (HTTP st
 libavformat through read/seek callbacks), no filters, devices or programs.
 - Decoders: Opus, AAC (LC), MP3, FLAC, Vorbis, ALAC, PCM. Containers: WebM/Matroska, MP4/M4A, Ogg, MP3, FLAC, WAV, ADTS, AIFF.
 - `FORMAT_SELECTOR` in `ytdlp.rs` asks for `bestaudio[ext=webm][acodec=opus][protocol=https][audio_channels<=?2]`, then
-  `bestaudio[ext=m4a][acodec^=mp4a.40.2][protocol=https][audio_channels<=?2]`. `mp4a.40.2` = AAC-LC (HE-AAC, itag 139, is not
-  built in); `audio_channels<=?2` keeps stereo (the `?` must follow the operator); `protocol=https` = one plain file for
-  range requests, not an HLS/DASH manifest. There is no third alternative on purpose: if YouTube offers neither, the song
-  is skipped with "YouTube offered no audio stream this player can decode".
+  `bestaudio[ext=m4a][acodec^=mp4a.40.2][protocol=https][audio_channels<=?2]`, then one catch-all alternative restricted to
+  what is built in: `acodec` in opus, vorbis, flac, mp3 or alac, `ext` in webm, ogg, opus, mka, flac, mp3 or m4a (regular
+  expressions with `~=`), still `protocol=https` and stereo or less. `mp4a.40.2` = AAC-LC (HE-AAC, itag 139, is not
+  built in, so the catch-all never matches it); `audio_channels<=?2` keeps stereo (the `?` must follow the operator);
+  `protocol=https` = one plain file for range requests, not an HLS/DASH manifest. Never add a codec or container that is
+  not in the lists above. If YouTube offers nothing that matches, the song is skipped with "YouTube offered no audio
+  stream this player can decode", which now also says to try Settings > Updates > Update yt-dlp (an old yt-dlp is a
+  common cause); nothing is fetched to say so. The string must stay one plain literal (release.yml extracts it with a regex).
 - Gapless: libav applies the container's encoder delay and padding, so Opus (Ogg and WebM) joins to the exact sample count.
   AAC in M4A is not fully trimmed by libav (plain files keep tail padding; YouTube-style fragmented files declare none), so
   quiet edges (max 2112 frames) are still trimmed for AAC only, on top of whatever libav did.

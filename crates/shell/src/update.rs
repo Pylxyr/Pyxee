@@ -26,6 +26,12 @@ pub enum UpdateError {
     Io(String),
     #[error("The release information could not be read: {0}")]
     BadRelease(String),
+    #[error("This copy of Pyxee is signed by {expected}, but the installer is not validly signed ({found}); nothing was installed.")]
+    InstallerNotSigned { expected: String, found: String },
+    #[error("This copy of Pyxee is signed by {expected}, but the installer is signed by {got}; nothing was installed.")]
+    PublisherMismatch { expected: String, got: String },
+    #[error("The installer's signature could not be checked ({0}); nothing was installed.")]
+    SignatureCheck(String),
 }
 
 // ------------------------------------------------------------------ versions
@@ -362,6 +368,120 @@ pub fn install_verified(
     result
 }
 
+// ------------------------------------------------------------------ publisher check
+
+/// What the platform says about the Authenticode signature of a file.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Signature {
+    /// No signature at all.
+    Unsigned,
+    /// A signature that does not verify (altered file, untrusted or expired chain, ...); the text says why.
+    Invalid(String),
+    /// A signature that verifies, by the certificate with this subject (its distinguished name).
+    Valid { subject: String },
+}
+
+/// Reads signatures. A trait so the decision below is tested without Windows; the app implements it with the
+/// system's own verification (see `crates/app/src/updater.rs`).
+pub trait SignatureChecker {
+    fn signature(&self, file: &Path) -> Result<Signature, String>;
+}
+
+/// What the publisher check decided.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PublisherCheck {
+    /// The running program is not validly signed, so there is no publisher to compare with: the checksum alone
+    /// decides, exactly as before signing existed.
+    NotRequired,
+    /// The running program is validly signed and the installer is validly signed by the same subject.
+    Matched { subject: String },
+}
+
+fn same_subject(a: &str, b: &str) -> bool {
+    let norm = |s: &str| {
+        s.split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ")
+            .to_lowercase()
+    };
+    norm(a) == norm(b)
+}
+
+/// The extra gate after the checksum: when the running Pyxee has a valid signature, the installer must have one too,
+/// by the same signer subject. A running copy that is unsigned (or whose signature cannot be read) keeps the
+/// checksum-only path, so people on unsigned releases can still update. Never changes the checksum rules.
+pub fn check_publisher(
+    checker: &dyn SignatureChecker,
+    running: &Path,
+    installer: &Path,
+) -> Result<PublisherCheck, UpdateError> {
+    let expected = match checker.signature(running) {
+        Ok(Signature::Valid { subject }) => subject,
+        Ok(_) | Err(_) => return Ok(PublisherCheck::NotRequired),
+    };
+    match checker.signature(installer) {
+        Ok(Signature::Valid { subject }) if same_subject(&subject, &expected) => {
+            Ok(PublisherCheck::Matched { subject })
+        }
+        Ok(Signature::Valid { subject }) => Err(UpdateError::PublisherMismatch {
+            expected,
+            got: subject,
+        }),
+        Ok(Signature::Unsigned) => Err(UpdateError::InstallerNotSigned {
+            expected,
+            found: "it has no signature".into(),
+        }),
+        Ok(Signature::Invalid(why)) => Err(UpdateError::InstallerNotSigned {
+            expected,
+            found: why,
+        }),
+        Err(e) => Err(UpdateError::SignatureCheck(e)),
+    }
+}
+
+/// [`check_publisher`] for a downloaded installer on disk: when it fails, the file is deleted so it cannot be run by
+/// accident.
+pub fn gate_installer_file(
+    checker: &dyn SignatureChecker,
+    running: &Path,
+    installer: &Path,
+) -> Result<PublisherCheck, UpdateError> {
+    let result = check_publisher(checker, running, installer);
+    if result.is_err() {
+        let _ = fs::remove_file(installer);
+    }
+    result
+}
+
+/// The script that reports a file's signature. The path travels in the environment variable `path_var`, never inside
+/// the script text, so no file name can change what runs. Output: `STATUS=<status>` and, when there is a signer,
+/// `SUBJECT=<certificate subject>`.
+pub fn signature_script(path_var: &str) -> String {
+    format!(
+        "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; \
+         $s = Get-AuthenticodeSignature -LiteralPath $env:{path_var}; \
+         [Console]::Out.WriteLine('STATUS=' + $s.Status); \
+         if ($s.SignerCertificate) {{ [Console]::Out.WriteLine('SUBJECT=' + $s.SignerCertificate.Subject) }}"
+    )
+}
+
+/// Reads the output of [`signature_script`]. Only the status `Valid` with a subject counts as signed.
+pub fn parse_signature_output(out: &str) -> Signature {
+    let field = |name: &str| {
+        out.lines()
+            .find_map(|l| l.trim().strip_prefix(name))
+            .map(|v| v.trim().to_string())
+    };
+    match (field("STATUS="), field("SUBJECT=")) {
+        (Some(status), Some(subject)) if status == "Valid" && !subject.is_empty() => {
+            Signature::Valid { subject }
+        }
+        (Some(status), _) if status == "NotSigned" => Signature::Unsigned,
+        (Some(status), _) => Signature::Invalid(format!("Windows reports: {status}")),
+        (None, _) => Signature::Invalid("Windows gave no answer".into()),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -601,5 +721,185 @@ mod tests {
             "silence is a failure too"
         );
         assert_eq!(fs::read(&target).unwrap(), b"MZ old");
+    }
+
+    // ------------------------------------------------------------ publisher check
+
+    use std::collections::HashMap;
+
+    struct Fake(HashMap<PathBuf, Result<Signature, String>>);
+    impl SignatureChecker for Fake {
+        fn signature(&self, file: &Path) -> Result<Signature, String> {
+            self.0.get(file).cloned().unwrap_or(Err("not known".into()))
+        }
+    }
+
+    fn valid(subject: &str) -> Result<Signature, String> {
+        Ok(Signature::Valid {
+            subject: subject.into(),
+        })
+    }
+
+    fn checker(running: Result<Signature, String>, installer: Result<Signature, String>) -> Fake {
+        Fake(HashMap::from([
+            (PathBuf::from("Pyxee.exe"), running),
+            (PathBuf::from("setup.exe"), installer),
+        ]))
+    }
+
+    fn gate(c: &Fake) -> Result<PublisherCheck, UpdateError> {
+        check_publisher(c, Path::new("Pyxee.exe"), Path::new("setup.exe"))
+    }
+
+    const ME: &str = "CN=Pylxyr, O=Pylxyr, C=TW";
+
+    #[test]
+    fn a_signed_copy_accepts_an_installer_from_the_same_signer() {
+        assert_eq!(
+            gate(&checker(valid(ME), valid(ME))),
+            Ok(PublisherCheck::Matched { subject: ME.into() })
+        );
+        // Case and spacing of the subject text do not make a different signer.
+        assert!(matches!(
+            gate(&checker(valid(ME), valid("cn=pylxyr,   o=PYLXYR, c=tw"))),
+            Ok(PublisherCheck::Matched { .. })
+        ));
+    }
+
+    #[test]
+    fn a_signed_copy_refuses_an_installer_from_another_signer() {
+        let err = gate(&checker(valid(ME), valid("CN=Somebody Else, C=US"))).unwrap_err();
+        assert_eq!(
+            err,
+            UpdateError::PublisherMismatch {
+                expected: ME.into(),
+                got: "CN=Somebody Else, C=US".into()
+            }
+        );
+        assert!(err.to_string().contains("nothing was installed"));
+    }
+
+    #[test]
+    fn a_signed_copy_refuses_an_unsigned_or_broken_installer() {
+        assert!(matches!(
+            gate(&checker(valid(ME), Ok(Signature::Unsigned))),
+            Err(UpdateError::InstallerNotSigned { .. })
+        ));
+        assert!(matches!(
+            gate(&checker(
+                valid(ME),
+                Ok(Signature::Invalid("HashMismatch".into()))
+            )),
+            Err(UpdateError::InstallerNotSigned { .. })
+        ));
+        assert!(matches!(
+            gate(&checker(valid(ME), Err("powershell did not start".into()))),
+            Err(UpdateError::SignatureCheck(_))
+        ));
+    }
+
+    #[test]
+    fn an_unsigned_copy_keeps_the_checksum_only_path_whatever_the_installer_says() {
+        for installer in [
+            valid(ME),
+            valid("CN=Somebody Else"),
+            Ok(Signature::Unsigned),
+            Ok(Signature::Invalid("x".into())),
+        ] {
+            assert_eq!(
+                gate(&checker(Ok(Signature::Unsigned), installer)),
+                Ok(PublisherCheck::NotRequired)
+            );
+        }
+    }
+
+    #[test]
+    fn a_running_copy_whose_signature_cannot_be_read_is_treated_as_unsigned() {
+        assert_eq!(
+            gate(&checker(Err("no".into()), valid(ME))),
+            Ok(PublisherCheck::NotRequired)
+        );
+        assert_eq!(
+            gate(&checker(
+                Ok(Signature::Invalid("NotTrusted".into())),
+                Ok(Signature::Unsigned)
+            )),
+            Ok(PublisherCheck::NotRequired)
+        );
+    }
+
+    #[test]
+    fn a_refused_installer_file_is_deleted_and_an_accepted_one_is_kept() {
+        let dir = std::env::temp_dir().join(format!("pyxee-gate-{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        let installer = dir.join("setup.exe");
+        let c = Fake(HashMap::from([
+            (PathBuf::from("Pyxee.exe"), valid(ME)),
+            (installer.clone(), valid("CN=Other")),
+        ]));
+        fs::write(&installer, b"x").unwrap();
+        assert!(gate_installer_file(&c, Path::new("Pyxee.exe"), &installer).is_err());
+        assert!(
+            !installer.exists(),
+            "a refused installer must not stay on disk"
+        );
+        let ok = Fake(HashMap::from([
+            (PathBuf::from("Pyxee.exe"), valid(ME)),
+            (installer.clone(), valid(ME)),
+        ]));
+        fs::write(&installer, b"x").unwrap();
+        assert!(gate_installer_file(&ok, Path::new("Pyxee.exe"), &installer).is_ok());
+        assert!(installer.exists());
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn powershell_output_is_read_strictly() {
+        assert_eq!(
+            parse_signature_output("STATUS=Valid\r\nSUBJECT=CN=Pylxyr, O=Pylxyr\r\n"),
+            Signature::Valid {
+                subject: "CN=Pylxyr, O=Pylxyr".into()
+            }
+        );
+        assert_eq!(
+            parse_signature_output("STATUS=NotSigned\n"),
+            Signature::Unsigned
+        );
+        for bad in [
+            "STATUS=HashMismatch\nSUBJECT=CN=X",
+            "STATUS=NotTrusted",
+            "STATUS=UnknownError",
+        ] {
+            assert!(
+                matches!(parse_signature_output(bad), Signature::Invalid(_)),
+                "{bad}"
+            );
+        }
+        assert!(
+            matches!(
+                parse_signature_output("STATUS=Valid\n"),
+                Signature::Invalid(_)
+            ),
+            "valid without a signer"
+        );
+        assert!(matches!(parse_signature_output(""), Signature::Invalid(_)));
+        assert!(
+            matches!(
+                parse_signature_output("SUBJECT=CN=X"),
+                Signature::Invalid(_)
+            ),
+            "no status is never valid"
+        );
+    }
+
+    #[test]
+    fn the_signature_script_takes_the_path_from_the_environment_only() {
+        let script = signature_script("PYXEE_SIGCHECK_PATH");
+        assert!(script.contains("-LiteralPath $env:PYXEE_SIGCHECK_PATH"));
+        assert!(script.contains("Get-AuthenticodeSignature"));
+        assert!(
+            !script.contains('\n'),
+            "one line, so it survives the command line"
+        );
     }
 }
