@@ -477,7 +477,9 @@ pub fn parse_signature_output(out: &str) -> Signature {
             Signature::Valid { subject }
         }
         (Some(status), _) if status == "NotSigned" => Signature::Unsigned,
-        (Some(status), _) if status.is_empty() => Signature::Invalid("Windows gave no answer".into()),
+        (Some(status), _) if status.is_empty() => {
+            Signature::Invalid("Windows gave no answer".into())
+        }
         (Some(status), _) => Signature::Invalid(format!("Windows reports: {status}")),
         (None, _) => Signature::Invalid("Windows gave no answer".into()),
     }
