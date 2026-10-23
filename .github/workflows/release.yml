@@ -25,6 +25,24 @@ on:
         required: false
         type: boolean
         default: false
+    # Only these secrets reach this workflow when cut-release.yml calls it (no `secrets: inherit`). All optional, as
+    # they are for a tag push or a manual run: an unset one is empty and the matching step is skipped or unsigned.
+    secrets:
+      PYXEE_DISCORD_CLIENT_ID:
+        description: "Discord application ID built into the exe (Rich Presence); unset means presence off"
+        required: false
+      WINDOWS_CERT_PFX_BASE64:
+        description: "Base64 of the code-signing .pfx; unset means an unsigned build"
+        required: false
+      WINDOWS_CERT_PASSWORD:
+        description: "Password of that .pfx"
+        required: false
+      ANTHROPIC_API_KEY:
+        description: "Key for the AI release notes; unset means notes without AI"
+        required: false
+      AI_API_KEY:
+        description: "Key for the AI release notes (other provider); unset means notes without AI"
+        required: false
 
 concurrency:
   group: release-${{ github.ref }}
@@ -187,6 +205,14 @@ jobs:
           if (-not (Test-Path (Join-Path $root.FullName "portable.txt"))) { throw "portable.txt is missing" }
           & (Join-Path $root.FullName "yt-dlp.exe") --version
           if ($LASTEXITCODE -ne 0) { throw "the portable yt-dlp does not run" }
+      # LGPL relinking material for the statically linked FFmpeg: the exact libraries and headers that were linked, the
+      # unmodified FFmpeg source at the pinned commit, the build script and the relink steps (see xtask/src/kit.rs).
+      - name: Build the FFmpeg build kit
+        shell: pwsh
+        run: |
+          cargo xtask ffmpeg-kit
+          if ($LASTEXITCODE -ne 0) { throw "cargo xtask ffmpeg-kit failed ($LASTEXITCODE)" }
+          if (-not (Get-ChildItem "target/kit/*_ffmpeg-build-kit.zip")) { throw "the FFmpeg build kit was not built" }
       # Install the built installer for real, silently, and run what it installed. This proves the installed layout
       # (the app with yt-dlp next to it, and no ffmpeg) is what the app expects.
       - name: Installed layout works
@@ -204,6 +230,9 @@ jobs:
           $ffBinary = @(Get-ChildItem $dir -Recurse -File -ErrorAction SilentlyContinue | Where-Object { $_.Name -match '^(ffmpeg|ffprobe|ffplay)\.exe$|^(avcodec|avformat|avutil|swresample)(-\d+)?\.dll$' })
           if ($ffBinary.Count -gt 0) { throw "an ffmpeg program or libav DLL is in the installed app, but libav is linked in statically: $($ffBinary.Name -join ', ')" }
           if (-not (Get-ChildItem $dir -Recurse -Filter "FFmpeg-LGPL-2.1.txt" -ErrorAction SilentlyContinue)) { throw "the installed app does not carry FFmpeg-LGPL-2.1.txt (the LGPL text must ship with it)" }
+          foreach ($lic in "GPL-3.0.txt", "yt-dlp-THIRD_PARTY_LICENSES.txt", "THIRD_PARTY_DEPENDENCIES.txt") {
+            if (-not (Get-ChildItem $dir -Recurse -Filter $lic -ErrorAction SilentlyContinue)) { throw "the installed app does not carry $lic (yt-dlp.exe is a GPLv3+ combined work)" }
+          }
           & (Join-Path $dir "yt-dlp.exe") --version
           if ($LASTEXITCODE -ne 0) { throw "The installed yt-dlp does not run" }
       - name: Collect release files
@@ -213,6 +242,7 @@ jobs:
           $files = @(Get-ChildItem "target/release/bundle/nsis/*-setup.exe")
           if ($env:VERSION -notmatch '-') { $files += @(Get-ChildItem "target/release/bundle/msi/*.msi") }
           $files += @(Get-ChildItem "target/portable/*_x64-portable.zip")
+          $files += @(Get-ChildItem "target/kit/*_ffmpeg-build-kit.zip") # LGPL relinking material (THIRD_PARTY_NOTICES.txt)
           if ($files.Count -eq 0) { throw "No installers were built" }
           foreach ($f in $files) {
             if ($f.Name -notlike "*$($env:VERSION)*") { throw "$($f.Name) does not carry version $($env:VERSION)" }
@@ -220,6 +250,10 @@ jobs:
           }
           Copy-Item crates/app/licenses/THIRD_PARTY.txt release/THIRD_PARTY_NOTICES.txt
           Copy-Item crates/app/licenses/FFmpeg-LGPL-2.1.txt release/FFmpeg-LGPL-2.1.txt
+          # yt-dlp.exe is a GPLv3+ combined work: its licence texts go next to the notices (fetched and hash-checked by `cargo xtask tools`).
+          Copy-Item crates/app/licenses/GPL-3.0.txt release/GPL-3.0.txt
+          Copy-Item crates/app/licenses/THIRD_PARTY_DEPENDENCIES.txt release/THIRD_PARTY_DEPENDENCIES.txt
+          Copy-Item crates/app/licenses/yt-dlp-THIRD_PARTY_LICENSES.txt release/yt-dlp-THIRD_PARTY_LICENSES.txt
           Get-ChildItem release | ForEach-Object { "{0}: {1:N1} MB" -f $_.Name, ($_.Length / 1MB) }
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:

@@ -109,7 +109,13 @@ jobs:
     with:
       tag: ${{ needs.prepare.outputs.tag }}
       skip_checks: true # CI just passed above
-    secrets: inherit
+    # Exactly the secrets release.yml declares under on.workflow_call.secrets, nothing else.
+    secrets:
+      PYXEE_DISCORD_CLIENT_ID: ${{ secrets.PYXEE_DISCORD_CLIENT_ID }}
+      WINDOWS_CERT_PFX_BASE64: ${{ secrets.WINDOWS_CERT_PFX_BASE64 }}
+      WINDOWS_CERT_PASSWORD: ${{ secrets.WINDOWS_CERT_PASSWORD }}
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      AI_API_KEY: ${{ secrets.AI_API_KEY }}
 
   # The last word on whether this worked. A skipped or failed release job must never look like success: this job
   # checks that a published (non-draft) release exists for the tag, and says what to do when it does not.
