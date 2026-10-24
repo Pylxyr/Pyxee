@@ -308,14 +308,34 @@ fn dump_msvc_env(vcvars: &Path) -> Res<String> {
     }
 }
 
+/// The commit a git checkout is at.
+fn git_head(src: &Path) -> Res<String> {
+    let out = Command::new("git")
+        .arg("-C")
+        .arg(src)
+        .args(["rev-parse", "HEAD"])
+        .output()
+        .map_err(|e| format!("could not run git: {e}"))?;
+    Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
+}
+
 /// The FFmpeg source at the pinned commit as a `.tar.gz`, from the checkout `build-ffmpeg.sh` made if it is still there,
-/// otherwise from a fresh shallow clone. Refuses a checkout that is not exactly the pinned commit.
+/// otherwise from a fresh shallow clone. A leftover clone in `target/kit` (a CI cache can bring one back from before
+/// the pin moved) is deleted and cloned again; a checkout that is still not exactly the pinned commit is refused.
 fn ffmpeg_source_archive(root: &Path, prefix: &Path, pin: &kit::Pin) -> Res<Vec<u8>> {
     let built = PathBuf::from(format!("{}.build/src", prefix.display()));
     let src = if built.join(".git").exists() {
         built
     } else {
         let dir = root.join("target/kit/ffmpeg-src");
+        if dir.join(".git").exists() && git_head(&dir)? != pin.commit {
+            println!(
+                "the FFmpeg source in {} is not at the pinned commit; fetching it again",
+                dir.display()
+            );
+            std::fs::remove_dir_all(&dir)
+                .map_err(|e| format!("cannot delete {}: {e}", dir.display()))?;
+        }
         if !dir.join(".git").exists() {
             run(
                 Command::new("git")
@@ -326,13 +346,7 @@ fn ffmpeg_source_archive(root: &Path, prefix: &Path, pin: &kit::Pin) -> Res<Vec<
         }
         dir
     };
-    let head = Command::new("git")
-        .arg("-C")
-        .arg(&src)
-        .args(["rev-parse", "HEAD"])
-        .output()
-        .map_err(|e| format!("could not run git: {e}"))?;
-    let head = String::from_utf8_lossy(&head.stdout).trim().to_string();
+    let head = git_head(&src)?;
     if head != pin.commit {
         return Err(format!(
             "the FFmpeg source in {} is at {head}, not the pinned {}; delete it and retry",
@@ -878,6 +892,65 @@ fn portable() -> Res<()> {
 
 #[cfg(test)]
 mod tests {
+    fn git(dir: &Path, args: &[&str]) -> String {
+        let out = Command::new("git")
+            .arg("-C")
+            .arg(dir)
+            .args(["-c", "user.name=t", "-c", "user.email=t@t"])
+            .args(args)
+            .output()
+            .expect("git runs");
+        assert!(
+            out.status.success(),
+            "git {args:?}: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        String::from_utf8_lossy(&out.stdout).trim().to_string()
+    }
+
+    #[test]
+    fn a_leftover_ffmpeg_clone_at_another_commit_is_replaced_not_refused() {
+        let base = std::env::temp_dir().join(format!("pyxee-xtask-src-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let origin = base.join("origin");
+        std::fs::create_dir_all(&origin).unwrap();
+        git(&origin, &["init", "-q", "-b", "main"]);
+        std::fs::write(origin.join("a.txt"), "one").unwrap();
+        git(&origin, &["add", "."]);
+        git(&origin, &["commit", "-q", "-m", "one"]);
+        let old = git(&origin, &["rev-parse", "HEAD"]);
+        std::fs::write(origin.join("a.txt"), "two").unwrap();
+        git(&origin, &["commit", "-q", "-am", "two"]);
+        git(&origin, &["tag", "v2"]);
+        let pinned = git(&origin, &["rev-parse", "HEAD"]);
+        let url = origin.to_string_lossy().replace('\\', "/");
+        let pin = kit::Pin {
+            tag: "v2".into(),
+            commit: pinned.clone(),
+            url,
+        };
+        let root = base.join("root");
+        // A cached clone from before the pin moved: the first commit.
+        let stale = root.join("target/kit/ffmpeg-src");
+        std::fs::create_dir_all(&root.join("target/kit")).unwrap();
+        git(
+            &base,
+            &[
+                "clone",
+                "-q",
+                origin.to_str().unwrap(),
+                stale.to_str().unwrap(),
+            ],
+        );
+        git(&stale, &["checkout", "-q", &old]);
+        assert_ne!(git_head(&stale).unwrap(), pinned);
+        let prefix = root.join("target/ffmpeg/x");
+        let tgz = ffmpeg_source_archive(&root, &prefix, &pin).expect("stale clone is replaced");
+        assert!(!tgz.is_empty());
+        assert_eq!(git_head(&stale).unwrap(), pinned);
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
     use super::*;
 
     const SUMS: &str = "AAAA1111  yt-dlp\nbbbb2222  yt-dlp.exe\ncccc3333 *tool-win64.zip\n\ndddd4444  tool-win64-shared.zip\n";
