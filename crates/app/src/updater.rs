@@ -24,6 +24,8 @@ const YTDLP_BASE: &str = "https://github.com/yt-dlp/yt-dlp/releases/latest/downl
 const YTDLP_FILE: &str = "yt-dlp.exe";
 /// Nothing we download is anywhere near this; it stops a wrong URL from filling the disk.
 const MAX_DOWNLOAD: u64 = 300 * 1024 * 1024;
+/// The release list and the checksum lists are small; anything bigger is a wrong answer, not a file to keep in memory.
+const MAX_TEXT: u64 = 2 * 1024 * 1024;
 /// The Tauri event that carries `UpdateProgressDto`.
 pub const UPDATE_PROGRESS_EVENT: &str = "update-progress";
 /// A download reports its progress at most this often.
@@ -126,13 +128,26 @@ impl Drop for InstallGuard {
 
 fn agent() -> ureq::Agent {
     ureq::AgentBuilder::new()
+        .https_only(true)
         .user_agent(concat!("Pyxee/", env!("CARGO_PKG_VERSION")))
         .timeout_connect(Duration::from_secs(20))
         .timeout_read(Duration::from_secs(120))
         .build()
 }
 
+/// Updates are only ever fetched over https (the agent also refuses a redirect to plain http).
+fn require_https(url: &str) -> Result<(), String> {
+    if url.to_ascii_lowercase().starts_with("https://") {
+        Ok(())
+    } else {
+        Err(format!(
+            "Refusing to download from an insecure address: {url}"
+        ))
+    }
+}
+
 fn request(url: &str) -> Result<ureq::Response, String> {
+    require_https(url)?;
     agent()
         .get(url)
         .set("Accept", "application/vnd.github+json, */*")
@@ -149,14 +164,22 @@ fn request(url: &str) -> Result<ureq::Response, String> {
         })
 }
 
-fn get(url: &str) -> Result<Vec<u8>, String> {
-    let resp = request(url)?;
+/// Reads at most `limit` bytes; more than that is an error, never a silently cut-off answer.
+fn read_limited(reader: impl Read, limit: u64, what: &str) -> Result<Vec<u8>, String> {
     let mut bytes = Vec::new();
-    resp.into_reader()
-        .take(MAX_DOWNLOAD)
+    reader
+        .take(limit + 1)
         .read_to_end(&mut bytes)
-        .map_err(|e| format!("The download of {url} was interrupted: {e}"))?;
+        .map_err(|e| format!("The download of {what} was interrupted: {e}"))?;
+    if bytes.len() as u64 > limit {
+        return Err(format!("{what} is larger than expected."));
+    }
     Ok(bytes)
+}
+
+fn get(url: &str, limit: u64) -> Result<Vec<u8>, String> {
+    let resp = request(url)?;
+    read_limited(resp.into_reader(), limit, url)
 }
 
 /// Downloads a large file in 64 KiB steps and reports `(received, total)` at most every 100 ms and once at the end.
@@ -195,7 +218,7 @@ fn download(url: &str, on_progress: &mut dyn FnMut(u64, Option<u64>)) -> Result<
 }
 
 fn text(url: &str) -> Result<String, String> {
-    Ok(String::from_utf8_lossy(&get(url)?).into_owned())
+    Ok(String::from_utf8_lossy(&get(url, MAX_TEXT)?).into_owned())
 }
 
 // ------------------------------------------------------------------ Pyxee
@@ -239,8 +262,8 @@ fn check_app_blocking() -> Result<AppUpdateDto, String> {
     })
 }
 
-/// Downloads and verifies the installer; returns where it is.
-fn fetch_installer(app: &AppHandle) -> Result<PathBuf, String> {
+/// Downloads and verifies the installer; returns where it is and the checksum it was verified against.
+fn fetch_installer(app: &AppHandle) -> Result<(PathBuf, String), String> {
     if portable_dir().is_some() {
         return Err("This is a portable copy: download the new zip from the release page and unpack it over this folder (your data folder stays).".into());
     }
@@ -290,7 +313,7 @@ fn fetch_installer(app: &AppHandle) -> Result<PathBuf, String> {
         "update: {} downloaded and verified ({expected})",
         path.display()
     );
-    Ok(path)
+    Ok((path, expected))
 }
 
 /// The environment variable that carries the file name to the signature script (see `update::signature_script`).
@@ -361,7 +384,16 @@ fn gate_installer(path: &Path) -> Result<(), String> {
     }
 }
 
-fn launch_installer(path: &Path) -> Result<(), String> {
+/// Hashes the installer again right before it is started. It sits in the temp folder, which other programs of this
+/// user can write to, so what was checked after the download is not necessarily what is on disk now.
+fn recheck_installer(path: &Path, expected: &str) -> Result<(), String> {
+    let bytes = std::fs::read(path)
+        .map_err(|e| format!("Could not read the installer again before starting it: {e}"))?;
+    update::verify(&bytes, expected).map_err(|e| e.to_string())
+}
+
+fn launch_installer(path: &Path, expected: &str) -> Result<(), String> {
+    recheck_installer(path, expected)?;
     let msi = path
         .extension()
         .is_some_and(|e| e.eq_ignore_ascii_case("msi"));
@@ -389,11 +421,12 @@ pub async fn update_check_app() -> Result<AppUpdateDto, String> {
 pub async fn update_install_app(app: AppHandle) -> Result<(), String> {
     let _guard = InstallGuard::acquire()?;
     let handle = app.clone();
-    let path = tauri::async_runtime::spawn_blocking(move || fetch_installer(&handle))
+    let fetched = tauri::async_runtime::spawn_blocking(move || fetch_installer(&handle))
         .await
         .map_err(|e| e.to_string())??;
+    let (path, expected) = fetched;
     emit_progress(&app, UpdateTarget::App, UpdatePhase::Starting, 0, None);
-    launch_installer(&path)?;
+    launch_installer(&path, &expected)?;
     crate::shell::quit(&app);
     Ok(())
 }
@@ -543,6 +576,37 @@ mod tests {
     }
 
     use super::*;
+
+    #[test]
+    fn only_https_addresses_are_fetched() {
+        assert!(require_https("https://github.com/x").is_ok());
+        assert!(require_https("HTTPS://github.com/x").is_ok());
+        assert!(require_https("http://github.com/x").is_err());
+        assert!(require_https("file:///c:/x").is_err());
+        assert!(require_https("https:/x").is_err());
+        assert!(require_https("").is_err());
+    }
+
+    #[test]
+    fn an_answer_over_the_limit_is_an_error_not_a_cut_off_file() {
+        let data = [7u8; 11];
+        assert_eq!(read_limited(&data[..], 11, "x").unwrap().len(), 11);
+        assert!(read_limited(&data[..], 10, "x").is_err());
+    }
+
+    #[test]
+    fn the_installer_is_hashed_again_before_it_is_started() {
+        let name = format!("pyxee-recheck-{}", std::process::id());
+        let dir = std::env::temp_dir().join(name);
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("setup.exe");
+        std::fs::write(&file, b"MZ original").unwrap();
+        let good = update::sha256_hex(b"MZ original");
+        assert!(recheck_installer(&file, &good).is_ok());
+        std::fs::write(&file, b"MZ swapped").unwrap();
+        assert!(recheck_installer(&file, &good).is_err());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     #[test]
     fn the_updated_yt_dlp_lives_in_a_tools_folder_of_the_data_folder() {
