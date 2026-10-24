@@ -6,7 +6,7 @@ license.workspace = true
 
 [dependencies]
 pyxee-core = { path = "../core" }
-rusqlite = { version = "0.37", features = ["bundled"] }
+rusqlite = { version = "0.40", features = ["bundled"] }
 thiserror = "2"
 
 [lints]
