@@ -3,7 +3,6 @@
 //! (libav), so yt-dlp is the only helper program. `cargo xtask portable` makes the portable zip; both it and the
 //! installer are code-signed when a certificate is configured (see `release.rs`).
 
-mod kit;
 mod release;
 
 use release::{
@@ -15,8 +14,8 @@ use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-/// The yt-dlp release that is bundled into installers and the portable zip. Bump it with `YTDLP_SHA256` and the
-/// licence pins below, and update crates/app/licenses/THIRD_PARTY.txt (docs/releasing.md has the procedure).
+/// The yt-dlp release that is bundled into installers and the portable zip. Bump it together with `YTDLP_SHA256`
+/// (docs/releasing.md has the procedure).
 const YTDLP_VERSION: &str = "2026.10.21";
 /// SHA-256 of that release's `yt-dlp.exe` (from its published SHA2-256SUMS). `cargo xtask tools` refuses any other bytes.
 const YTDLP_SHA256: &str = "33121d192d706e62f684a06f80918e3f3a8ba52ac3a65213b6951c39c7d9f555";
@@ -25,31 +24,6 @@ const YTDLP_SHA256: &str = "33121d192d706e62f684a06f80918e3f3a8ba52ac3a65213b695
 /// pulls the latest release at run time, which is how users get a yt-dlp that keeps up with YouTube.
 fn ytdlp_base() -> String {
     format!("https://github.com/yt-dlp/yt-dlp/releases/download/{YTDLP_VERSION}")
-}
-/// yt-dlp's Windows PyInstaller executable includes GPLv3+ code, so the GPL text and upstream's list of bundled
-/// licences ship with it. `(file in crates/app/licenses/, url, sha256 of the LF-normalised text)`. The hashes pin what
-/// was read from upstream for `YTDLP_VERSION`; a mismatch stops the build.
-pub fn ytdlp_license_files() -> Vec<(&'static str, String, &'static str)> {
-    vec![
-        (
-            "yt-dlp-THIRD_PARTY_LICENSES.txt",
-            format!("https://raw.githubusercontent.com/yt-dlp/yt-dlp/{YTDLP_VERSION}/THIRD_PARTY_LICENSES.txt"),
-            "472aefe951c7db35e1657c1d13fd337140511ed6f2b329205105ad441c5a02b7",
-        ),
-        (
-            // The verbatim FSF text of the GPL v3, read from COPYING.GPLv3 at the FFmpeg commit pinned in
-            // scripts/build-ffmpeg.sh (a fixed commit, so the bytes cannot change under us).
-            "GPL-3.0.txt",
-            "https://raw.githubusercontent.com/FFmpeg/FFmpeg/1041abdc962f4cc4f394aa8de9dc5236c0c3b9e7/COPYING.GPLv3".to_string(),
-            "8ceb4b9ee5adedde47b31e975c1d90c73ad27b6b165a1dcd80c7c545eb65b903",
-        ),
-    ]
-}
-
-/// Hash of a licence text with Windows line endings folded to `\n`, so a checkout with autocrlf still matches.
-pub fn license_sha256(bytes: &[u8]) -> String {
-    let text = String::from_utf8_lossy(bytes).replace("\r\n", "\n");
-    sha256_hex(text.as_bytes())
 }
 /// Tauri finds sidecars by `<name>-<target triple>.exe`.
 const TRIPLE: &str = "x86_64-pc-windows-msvc";
@@ -61,12 +35,11 @@ fn main() {
     let result = match args.first().map(String::as_str) {
         Some("tools") => tools(&args[1..]),
         Some("ffmpeg") => ffmpeg(),
-        Some("ffmpeg-kit") => ffmpeg_kit(),
         Some("installer") => installer(),
         Some("portable") => portable(),
         Some("sign-file") => sign_file(&args[1..]),
         Some("signing-config") => signing_config(),
-        _ => Err("usage:\n  cargo xtask tools [--update] [--dir <folder>]   download the pinned yt-dlp (--update: download it again)\n  cargo xtask ffmpeg                              build the minimal static FFmpeg (once per FFmpeg change)\n  cargo xtask ffmpeg-kit                          write the FFmpeg build kit zip (LGPL relinking material) to target/kit\n  cargo xtask installer                           build the Windows installer (signed when a certificate is configured)\n  cargo xtask portable                            build the portable zip (signed program when a certificate is configured)\n  cargo xtask signing-config                      print the tauri bundle config to use (CI builds the installer with it)\n  cargo xtask sign-file <file>                    sign one file with the configured certificate (used by tauri build)".into()),
+        _ => Err("usage:\n  cargo xtask tools [--update] [--dir <folder>]   download the pinned yt-dlp (--update: download it again)\n  cargo xtask ffmpeg                              build the minimal static FFmpeg (once per FFmpeg change)\n  cargo xtask installer                           build the Windows installer (signed when a certificate is configured)\n  cargo xtask portable                            build the portable zip (signed program when a certificate is configured)\n  cargo xtask signing-config                      print the tauri bundle config to use (CI builds the installer with it)\n  cargo xtask sign-file <file>                    sign one file with the configured certificate (used by tauri build)".into()),
     };
     if let Err(e) = result {
         eprintln!("\nerror: {e}");
@@ -308,135 +281,6 @@ fn dump_msvc_env(vcvars: &Path) -> Res<String> {
     }
 }
 
-/// The commit a git checkout is at. Looks only at the checkout's own `.git`: a folder that has none (or a broken one)
-/// reads as "no commit" instead of reporting the commit of whatever repository it happens to sit inside.
-fn git_head(src: &Path) -> Res<String> {
-    let out = Command::new("git")
-        .arg("--git-dir")
-        .arg(src.join(".git"))
-        .args(["rev-parse", "HEAD"])
-        .output()
-        .map_err(|e| format!("could not run git: {e}"))?;
-    Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
-}
-
-/// The FFmpeg source at the pinned commit as a `.tar.gz`, from the checkout `build-ffmpeg.sh` made if it is still there,
-/// otherwise from a fresh shallow clone. A leftover clone in `target/kit` (a CI cache can bring one back from before
-/// the pin moved) is deleted and cloned again; a checkout that is still not exactly the pinned commit is refused.
-fn ffmpeg_source_archive(root: &Path, prefix: &Path, pin: &kit::Pin) -> Res<Vec<u8>> {
-    let built = PathBuf::from(format!("{}.build/src", prefix.display()));
-    let src = if built.join(".git").exists() {
-        built
-    } else {
-        let dir = root.join("target/kit/ffmpeg-src");
-        if dir.join(".git").exists() && git_head(&dir)? != pin.commit {
-            println!(
-                "the FFmpeg source in {} is not at the pinned commit; fetching it again",
-                dir.display()
-            );
-            std::fs::remove_dir_all(&dir)
-                .map_err(|e| format!("cannot delete {}: {e}", dir.display()))?;
-        }
-        if !dir.join(".git").exists() {
-            run(
-                Command::new("git")
-                    .args(["clone", "--depth", "1", "--branch", &pin.tag, &pin.url])
-                    .arg(&dir),
-                "git clone of the pinned FFmpeg",
-            )?;
-        }
-        dir
-    };
-    let head = git_head(&src)?;
-    if head != pin.commit {
-        return Err(format!(
-            "the FFmpeg source in {} is at {head}, not the pinned {}; delete it and retry",
-            src.display(),
-            pin.commit
-        ));
-    }
-    let out = Command::new("git")
-        .arg("-C")
-        .arg(&src)
-        .args(["archive", "--format=tar.gz"])
-        .arg(format!("--prefix=FFmpeg-{}/", pin.commit))
-        .arg("HEAD")
-        .output()
-        .map_err(|e| format!("could not run git archive: {e}"))?;
-    if !out.status.success() || out.stdout.is_empty() {
-        return Err(format!(
-            "git archive failed: {}",
-            String::from_utf8_lossy(&out.stderr)
-        ));
-    }
-    Ok(out.stdout)
-}
-
-/// Writes `target/kit/Pyxee_<version>_ffmpeg-build-kit.zip`: the exact static libraries and headers linked into this
-/// build, the unmodified FFmpeg source, the build script and a README with the relink steps (see `kit.rs`). Run it
-/// after `cargo xtask ffmpeg` (the installer build does that).
-fn ffmpeg_kit() -> Res<()> {
-    let root = workspace_root();
-    let prefix = ffmpeg_prefix(&root)?;
-    let read =
-        |rel: &str| std::fs::read(root.join(rel)).map_err(|e| format!("cannot read {rel}: {e}"));
-    let script = read("scripts/build-ffmpeg.sh")?;
-    let pin = kit::pin(&String::from_utf8_lossy(&script))?;
-    let version = env!("CARGO_PKG_VERSION");
-    let prefix_files = kit::prefix_files(&prefix)?;
-    println!(
-        "FFmpeg {} ({}): {} files from {}",
-        pin.tag,
-        pin.commit,
-        prefix_files.len(),
-        prefix.display()
-    );
-    let mut files: Vec<(String, Vec<u8>)> = vec![
-        ("README.txt".into(), kit::readme(version, &pin).into_bytes()),
-        (
-            "FFmpeg-LGPL-2.1.txt".into(),
-            read("crates/app/licenses/FFmpeg-LGPL-2.1.txt")?,
-        ),
-        (
-            format!("ffmpeg-source/{}", kit::source_archive_name(&pin)),
-            ffmpeg_source_archive(&root, &prefix, &pin)?,
-        ),
-        ("build-inputs/build-ffmpeg.sh".into(), script),
-        (
-            "build-inputs/ffmpeg-action.yml".into(),
-            read(".github/actions/ffmpeg/action.yml")?,
-        ),
-    ];
-    let mut prefix_names = Vec::new();
-    for (name, path) in &prefix_files {
-        let bytes =
-            std::fs::read(path).map_err(|e| format!("cannot read {}: {e}", path.display()))?;
-        files.push((format!("prefix/{name}"), bytes));
-        prefix_names.push(name.clone());
-    }
-    let out_dir = root.join("target/kit");
-    std::fs::create_dir_all(&out_dir)
-        .map_err(|e| format!("cannot create {}: {e}", out_dir.display()))?;
-    let zip = out_dir.join(kit::kit_zip_name(version));
-    let top = kit::kit_folder_name(version);
-    release::write_zip(&zip, &top, &files)?;
-    // The zip must hold exactly what the README promises.
-    let got = release::zip_names(&zip)?;
-    for want in kit::kit_names(&prefix_names, &pin) {
-        if !got.iter().any(|g| g == &format!("{top}/{want}")) {
-            return Err(format!("{top}/{want} is missing from the kit zip"));
-        }
-    }
-    println!(
-        "Wrote {} ({} MB)",
-        zip.display(),
-        std::fs::metadata(&zip)
-            .map(|m| m.len() / 1_000_000)
-            .unwrap_or(0)
-    );
-    Ok(())
-}
-
 /// Builds the minimal static FFmpeg with `scripts/build-ffmpeg.sh` (skipped when it is current).
 /// Windows: needs MSYS2 (`make`, `nasm`, `diffutils`) and the MSVC tools. When `cl` is not on PATH (a plain shell,
 /// a CI step) the Visual Studio environment is imported with vswhere + `vcvars64.bat` for the build only.
@@ -497,28 +341,6 @@ fn get(url: &str) -> Res<Vec<u8>> {
     Ok(bytes)
 }
 
-/// Makes sure crates/app/licenses/ holds the pinned yt-dlp licence files: keeps a file that already matches its pin,
-/// otherwise downloads it and refuses anything that does not.
-fn ensure_licenses(dir: &Path) -> Res<()> {
-    for (name, url, sha) in ytdlp_license_files() {
-        let path = dir.join(name);
-        if std::fs::read(&path).is_ok_and(|b| license_sha256(&b) == sha) {
-            println!("{name}: present, matches its pin");
-            continue;
-        }
-        println!("{name}: downloading {url}");
-        let bytes = get(&url)?;
-        let got = license_sha256(&bytes);
-        if got != sha {
-            return Err(format!(
-                "{name} from {url} does not match its pinned SHA-256 {sha} (got {got})"
-            ));
-        }
-        write_atomic(&path, &bytes)?;
-    }
-    Ok(())
-}
-
 fn mb(bytes: &[u8]) -> String {
     format!("{:.1} MB", bytes.len() as f64 / 1_048_576.0)
 }
@@ -571,9 +393,6 @@ fn tools(args: &[String]) -> Res<()> {
         write_atomic(&ytdlp, &bytes)?;
         println!("yt-dlp: installed {}", ytdlp.display());
     }
-
-    // yt-dlp.exe includes GPLv3+ code: its licence texts are fetched (and pinned) next to the Pyxee notices.
-    ensure_licenses(&workspace_root().join("crates/app/licenses"))?;
 
     println!("\nDone. The app finds it automatically in development; the installer bundles it.");
     println!("Licenses: yt-dlp.exe is a GPLv3+ combined work (a separate program, not linked); the FFmpeg libraries are LGPL v2.1+ (see crates/app/licenses/).");
@@ -893,77 +712,6 @@ fn portable() -> Res<()> {
 
 #[cfg(test)]
 mod tests {
-    fn git(dir: &Path, args: &[&str]) -> String {
-        let out = Command::new("git")
-            .arg("-C")
-            .arg(dir)
-            .args(["-c", "user.name=t", "-c", "user.email=t@t"])
-            .args(args)
-            .output()
-            .expect("git runs");
-        assert!(
-            out.status.success(),
-            "git {args:?}: {}",
-            String::from_utf8_lossy(&out.stderr)
-        );
-        String::from_utf8_lossy(&out.stdout).trim().to_string()
-    }
-
-    #[test]
-    fn a_leftover_ffmpeg_clone_at_another_commit_is_replaced_not_refused() {
-        let base = std::env::temp_dir().join(format!("pyxee-xtask-src-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&base);
-        let origin = base.join("origin");
-        std::fs::create_dir_all(&origin).unwrap();
-        git(&origin, &["init", "-q", "-b", "main"]);
-        std::fs::write(origin.join("a.txt"), "one").unwrap();
-        git(&origin, &["add", "."]);
-        git(&origin, &["commit", "-q", "-m", "one"]);
-        let old = git(&origin, &["rev-parse", "HEAD"]);
-        std::fs::write(origin.join("a.txt"), "two").unwrap();
-        git(&origin, &["commit", "-q", "-am", "two"]);
-        git(&origin, &["tag", "v2"]);
-        let pinned = git(&origin, &["rev-parse", "HEAD"]);
-        let url = origin.to_string_lossy().replace('\\', "/");
-        let pin = kit::Pin {
-            tag: "v2".into(),
-            commit: pinned.clone(),
-            url,
-        };
-        let root = base.join("root");
-        // A cached clone from before the pin moved: the first commit.
-        let stale = root.join("target/kit/ffmpeg-src");
-        std::fs::create_dir_all(root.join("target/kit")).unwrap();
-        git(
-            &base,
-            &[
-                "clone",
-                "-q",
-                origin.to_str().unwrap(),
-                stale.to_str().unwrap(),
-            ],
-        );
-        git(&stale, &["checkout", "-q", &old]);
-        assert_ne!(git_head(&stale).unwrap(), pinned);
-        let prefix = root.join("target/ffmpeg/x");
-        let tgz = ffmpeg_source_archive(&root, &prefix, &pin).expect("stale clone is replaced");
-        assert!(!tgz.is_empty());
-        assert_eq!(git_head(&stale).unwrap(), pinned);
-
-        // A folder with a broken `.git`, inside a repository of its own (the CI checkout): it must not be read as that
-        // repository's commit, and it is replaced too.
-        git(&root, &["init", "-q", "-b", "main"]);
-        std::fs::write(root.join("f.txt"), "x").unwrap();
-        git(&root, &["add", "f.txt"]);
-        git(&root, &["commit", "-q", "-m", "workspace"]);
-        std::fs::remove_dir_all(&stale).unwrap();
-        std::fs::create_dir_all(stale.join(".git")).unwrap();
-        assert_eq!(git_head(&stale).unwrap(), "");
-        ffmpeg_source_archive(&root, &prefix, &pin).expect("broken clone is replaced");
-        assert_eq!(git_head(&stale).unwrap(), pinned);
-        let _ = std::fs::remove_dir_all(&base);
-    }
-
     use super::*;
 
     const SUMS: &str = "AAAA1111  yt-dlp\nbbbb2222  yt-dlp.exe\ncccc3333 *tool-win64.zip\n\ndddd4444  tool-win64-shared.zip\n";
@@ -990,31 +738,6 @@ mod tests {
     }
 
     #[test]
-    fn the_shipped_yt_dlp_licence_files_match_their_pins() {
-        let dir = workspace_root().join("crates/app/licenses");
-        for (name, url, sha) in ytdlp_license_files() {
-            let bytes =
-                std::fs::read(dir.join(name)).unwrap_or_else(|e| panic!("{name} is missing: {e}"));
-            assert_eq!(
-                license_sha256(&bytes),
-                sha,
-                "{name} differs from its pin; run `cargo xtask tools`"
-            );
-            assert!(
-                url.starts_with("https://raw.githubusercontent.com/"),
-                "{url}"
-            );
-            assert_eq!(sha.len(), 64);
-        }
-    }
-
-    #[test]
-    fn the_licence_pin_follows_the_pinned_yt_dlp_version() {
-        let (_, url, _) = &ytdlp_license_files()[0];
-        assert!(url.contains(YTDLP_VERSION), "{url}");
-    }
-
-    #[test]
     fn yt_dlp_is_pinned_to_one_release_never_latest() {
         assert!(
             ytdlp_base().ends_with(&format!("/download/{YTDLP_VERSION}")),
@@ -1035,11 +758,6 @@ mod tests {
                 .all(|c| matches!(c, '0'..='9' | 'a'..='f')),
             "lower-case hex"
         );
-    }
-
-    #[test]
-    fn licence_hashes_ignore_windows_line_endings() {
-        assert_eq!(license_sha256(b"a\r\nb\r\n"), license_sha256(b"a\nb\n"));
     }
 
     #[test]

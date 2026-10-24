@@ -10,7 +10,7 @@ That is all. The workflow then:
 1. runs the full CI on `main` (UI check/tests/build, `cargo fmt`, clippy, tests, generated bindings, the release scripts' own tests). If anything fails, nothing is bumped or tagged;
 2. works out the next version, writes it into every file that carries it, commits `Release X.Y.Z` and pushes the commit and the tag `vX.Y.Z` in one atomic push (if `main` moved in the meantime the push is refused and nothing is released);
 3. builds on Windows: builds the minimal static FFmpeg libraries the audio decoder links (cached; there is no ffmpeg program, audio is decoded in-app), downloads the pinned yt-dlp (SHA-256 checked against the value pinned in the repo), builds the UI, builds the installer, **installs it silently, checks that no ffmpeg program or libav DLL slipped in and that the FFmpeg LGPL text is installed, and runs the bundled yt-dlp from where it landed**;
-4. writes the release notes (below), creates the release as a draft, uploads the installers, `SHA256SUMS.txt`, the third-party notices and the FFmpeg LGPL text, then publishes it. The licence items to check each time are in `docs/windows-checklist.md` ("FFmpeg licence"). A signed build-provenance attestation is added when the repository allows it.
+4. writes the release notes (below), creates the release as a draft, uploads the installers, `SHA256SUMS.txt`, the third-party notices and the FFmpeg LGPL text, then publishes it. A signed build-provenance attestation is added when the repository allows it.
 
 The first release ever (no `v*.*.*` tag yet) publishes the version already in the files as it is. `0.0.1` is the current one.
 
@@ -59,8 +59,8 @@ The run summary says what to do. Short version: a flaky step (network, runner) -
 
 The release workflow builds the zip after the installers, unpacks it, runs the bundled `yt-dlp.exe --version`, and attaches it to the release; it is covered by `SHA256SUMS.txt` like the installers. A portable copy never runs an installer: Settings > Updates tells it to download the new zip and unpack it over the folder (`data\` is not in the zip, so it stays). yt-dlp still updates in place, into `data\tools`.
 
-## FFmpeg build kit
-FFmpeg is linked statically under the LGPL, so each release also carries `Pyxee_<version>_ffmpeg-build-kit.zip` (`cargo xtask ffmpeg-kit`, a step of the release workflow): the exact libraries and headers that were linked, the unmodified FFmpeg source at the pinned commit, `build-ffmpeg.sh`, and a README with the relink steps (`PYXEE_FFMPEG_DIR` plus `cargo xtask installer`). It is covered by `SHA256SUMS.txt` and the build provenance like the other zips. Nothing needs editing when the FFmpeg pin changes: the kit reads it from `scripts/build-ffmpeg.sh`.
+## Notices
+`crates/app/licenses/` holds the licence texts and notices that ship with the app (the FFmpeg LGPL text and notice, the yt-dlp licences); the release uploads them next to the installers. They are plain committed files: nothing generates or checks them, so update them by hand when the FFmpeg or yt-dlp version changes.
 
 ## Bumping the bundled yt-dlp
 Installers and the portable zip bundle one pinned yt-dlp release, so two builds of a tag contain the same `yt-dlp.exe`. The pin is `YTDLP_VERSION` and `YTDLP_SHA256` in `xtask/src/main.rs`; `cargo xtask tools` downloads that exact release and stops if the bytes do not match. The in-app updater is separate and still pulls the latest release at run time, which is what keeps users working when YouTube changes.
@@ -68,9 +68,8 @@ Installers and the portable zip bundle one pinned yt-dlp release, so two builds 
 To bump it:
 1. Pick the release at https://github.com/yt-dlp/yt-dlp/releases and read the `yt-dlp.exe` line of its `SHA2-256SUMS`.
 2. Set `YTDLP_VERSION` and `YTDLP_SHA256` in `xtask/src/main.rs`.
-3. The same release's licence files are pinned there too (`ytdlp_license_files`): download `THIRD_PARTY_LICENSES.txt` from the repository at that tag, set its hash (`sha256sum` of the file, line endings as LF), and update `crates/app/licenses/yt-dlp-THIRD_PARTY_LICENSES.txt`. Run `cargo xtask tools`: it fails and prints the hash it got if a pin is wrong.
-4. Update the yt-dlp version and source tarball URL in `crates/app/licenses/THIRD_PARTY.txt` (`scripts/tests/test_licenses.py` checks they match `YTDLP_VERSION`).
-5. Run `cargo test -p xtask` and `python -m unittest discover -s scripts/tests`; the release workflow's smoke tests then run the new exe with the app's real format selector.
+3. Optionally refresh `crates/app/licenses/yt-dlp-THIRD_PARTY_LICENSES.txt` from the repository at that tag, and the yt-dlp version and source URL in `crates/app/licenses/THIRD_PARTY.txt`. Nothing checks them.
+4. Run `cargo test -p xtask` and `python -m unittest discover -s scripts/tests`; the release workflow's smoke tests then run the new exe with the app's real format selector.
 
 ## Code signing
 Signing is wired in and **off until a certificate exists**. Nothing is faked: without a certificate the build is unsigned and says so (and the release notes say "not code-signed"). It is configured with environment variables, so no secret is ever in the repository, in a Tauri config or on a printed command line:

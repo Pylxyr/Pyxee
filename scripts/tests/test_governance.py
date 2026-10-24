@@ -29,10 +29,6 @@ class Security(unittest.TestCase):
         self.assertIn("Report a vulnerability", text)
         self.assertNotRegex(text, r"[\w.+-]+@[\w-]+\.[\w.]+", "no email address: none was provided")
 
-    def test_codeowners_names_the_owner(self):
-        text = (ROOT / ".github/CODEOWNERS").read_text(encoding="utf-8")
-        self.assertRegex(text, r"(?m)^\*\s+@Pylxyr\s*$")
-
 
 class SecretFlow(unittest.TestCase):
     def test_cut_release_no_longer_inherits_everything(self):

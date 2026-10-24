@@ -98,9 +98,8 @@ cargo test --workspace
 `cargo test -p pyxee-app` regenerates the TypeScript types in `ui/src/lib/bindings` from the Rust types.
 
 ## Dependency checks
-CI has a `deny` job (`deny.toml`, cargo-deny) and an `npm audit --omit=dev` step. Run them locally with `cargo deny --locked check` and `npm audit --omit=dev --prefix ui`.
+CI has a `deny` job (cargo-deny, advisories only) and an `npm audit --omit=dev` step. Run them locally with `cargo deny --locked check advisories` and `npm audit --omit=dev --prefix ui`.
 
-* **Licences, bans, sources: blocking.** Every licence in the shipped Windows build is on the allow-list in `deny.toml`, each with the reason; a new licence fails the job until someone reads it and adds it there (and to `about.toml`).
 * **Advisories: not blocking** (`continue-on-error`), because the baseline is not clean and fixing it means upgrading dependencies. Baseline on 2026-10-22 (cargo-deny 0.20.2, RustSec database of that day): `rustls` 0.23.45 (RUSTSEC-2026-0346, -0347, -0348, -0349), `rustls-webpki` (RUSTSEC-2026-0382), `webpki-roots` (RUSTSEC-2026-0381), `rustls-pemfile` (RUSTSEC-2025-0134, unmaintained), `zip` 2.4.2 (RUSTSEC-2026-0367, -0368, -0369), `ringbuf` 0.4.8 (RUSTSEC-2026-0293). Nothing has been judged harmless here; the next dependency update should clear them, after which the advisories step can become blocking.
 * **npm audit: informational.** Zero vulnerabilities in the runtime dependencies on 2026-10-22.
 

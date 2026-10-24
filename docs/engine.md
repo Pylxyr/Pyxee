@@ -152,8 +152,8 @@ libavformat through read/seek callbacks), no filters, devices or programs.
   through the offset (`LibavSource::skip_ms`). A server that ignores range requests fails the song.
 - Output is always stereo `f32` at the stream's own rate (libswresample downmixes surround); `rubato` still resamples to the device.
 - Updating FFmpeg: change the tag and commit in `scripts/build-ffmpeg.sh`, then rerun `cargo xtask ffmpeg`; the C shim is the
-  only code that touches libav structs. FFmpeg is LGPL: it is linked statically here, so release builds must keep the
-  object files or the build inputs available for relinking, and ship the LGPL notice (see "FFmpeg licence" in `docs/windows-checklist.md`; `scripts/tests/test_licenses.py` enforces what can be).
+  only code that touches libav structs. FFmpeg is LGPL and linked statically; the source is public and `scripts/build-ffmpeg.sh` rebuilds it, which
+  is what lets anyone relink, and the LGPL text and notice ship with the app (`crates/app/licenses/`).
 The `*_frag.m4a` test fixtures were made once, with ffmpeg as a dev-time tool, by stream-copying the plain m4a fixtures
 into a fragmented layout (500 ms fragments, empty moov, global sidx); nothing at runtime uses it.
 

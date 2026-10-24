@@ -17,18 +17,6 @@ FFmpeg libraries (linked into Pyxee: libavformat, libavcodec, libswresample, lib
   scripts/build-ffmpeg.sh. To build Pyxee with a different or modified FFmpeg, change the commit (or the source
   tree) there and run `cargo xtask ffmpeg`, then build Pyxee again.
 
-  Relinking kit: because the libraries are linked statically, every Pyxee release also carries the asset
-  Pyxee_<version>_ffmpeg-build-kit.zip next to the installers. It holds the exact static libraries and headers that
-  were linked into that release (prefix/lib, prefix/include), the unmodified FFmpeg source of the commit above
-  (ffmpeg-source/FFmpeg-<commit>.tar.gz), the build inputs (build-inputs/build-ffmpeg.sh and the workflow action that
-  runs it) and a README with these steps. To relink Pyxee with your own FFmpeg:
-    1. Get Pyxee's source for the same version from https://github.com/Pylxyr/Pyxee (tag v<version>).
-    2. Put your own FFmpeg libraries (same four names, Windows x64, built with the options in build-ffmpeg.sh from your
-       modified source) in a folder laid out like the kit's prefix/ (lib and include), or run `cargo xtask ffmpeg`
-       after changing the source or commit.
-    3. Set PYXEE_FFMPEG_DIR to that folder and run `cargo xtask installer` (or `cargo xtask portable`) on Windows with
-       Rust, Node and the Visual Studio C++ build tools (docs/development.md). The result uses your FFmpeg.
-
   FFmpeg is a trademark of Fabrice Bellard, originator of the FFmpeg project.
 
 
@@ -52,8 +40,7 @@ yt-dlp (bundled program; it runs as a separate process and Pyxee does not link i
 
 Rust crates and npm packages (compiled into Pyxee)
   Pyxee is built from open-source Rust crates and npm packages, all under permissive or weak-copyleft licences
-  (MIT, Apache-2.0, BSD-3-Clause, ISC, Zlib, Unicode-3.0, CDLA-Permissive-2.0, MPL-2.0; the allow-list is in
-  deny.toml). The exact packages and versions are in Cargo.lock and ui/package-lock.json in the source
+  (MIT, Apache-2.0, BSD-3-Clause, ISC, Zlib, Unicode-3.0, CDLA-Permissive-2.0, MPL-2.0). The exact packages and versions are in Cargo.lock and ui/package-lock.json in the source
   repository, and each package's licence text is in its own source. Pyxee's own code is MIT licensed (LICENSE).
 
 Using yt-dlp to access YouTube may conflict with YouTube's Terms of Service. Pyxee is for personal use.

@@ -215,14 +215,6 @@ jobs:
           if (-not (Test-Path (Join-Path $root.FullName "portable.txt"))) { throw "portable.txt is missing" }
           & (Join-Path $root.FullName "yt-dlp.exe") --version
           if ($LASTEXITCODE -ne 0) { throw "the portable yt-dlp does not run" }
-      # LGPL relinking material for the statically linked FFmpeg: the exact libraries and headers that were linked, the
-      # unmodified FFmpeg source at the pinned commit, the build script and the relink steps (see xtask/src/kit.rs).
-      - name: Build the FFmpeg build kit
-        shell: pwsh
-        run: |
-          cargo xtask ffmpeg-kit
-          if ($LASTEXITCODE -ne 0) { throw "cargo xtask ffmpeg-kit failed ($LASTEXITCODE)" }
-          if (-not (Get-ChildItem "target/kit/*_ffmpeg-build-kit.zip")) { throw "the FFmpeg build kit was not built" }
       # Install the built installer for real, silently, and run what it installed. This proves the installed layout
       # (the app with yt-dlp next to it, and no ffmpeg) is what the app expects.
       - name: Installed layout works
@@ -252,7 +244,6 @@ jobs:
           $files = @(Get-ChildItem "target/release/bundle/nsis/*-setup.exe")
           if ($env:VERSION -notmatch '-') { $files += @(Get-ChildItem "target/release/bundle/msi/*.msi") }
           $files += @(Get-ChildItem "target/portable/*_x64-portable.zip")
-          $files += @(Get-ChildItem "target/kit/*_ffmpeg-build-kit.zip") # LGPL relinking material (THIRD_PARTY_NOTICES.txt)
           if ($files.Count -eq 0) { throw "No installers were built" }
           foreach ($f in $files) {
             if ($f.Name -notlike "*$($env:VERSION)*") { throw "$($f.Name) does not carry version $($env:VERSION)" }
@@ -260,7 +251,7 @@ jobs:
           }
           Copy-Item crates/app/licenses/THIRD_PARTY.txt release/THIRD_PARTY_NOTICES.txt
           Copy-Item crates/app/licenses/FFmpeg-LGPL-2.1.txt release/FFmpeg-LGPL-2.1.txt
-          # yt-dlp.exe is a GPLv3+ combined work: its licence texts go next to the notices (fetched and hash-checked by `cargo xtask tools`).
+          # yt-dlp.exe is a GPLv3+ combined work: its licence texts go next to the notices (committed in crates/app/licenses).
           Copy-Item crates/app/licenses/GPL-3.0.txt release/GPL-3.0.txt
           Copy-Item crates/app/licenses/yt-dlp-THIRD_PARTY_LICENSES.txt release/yt-dlp-THIRD_PARTY_LICENSES.txt
           Get-ChildItem release | ForEach-Object { "{0}: {1:N1} MB" -f $_.Name, ($_.Length / 1MB) }
