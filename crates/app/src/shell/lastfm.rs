@@ -303,7 +303,13 @@ fn parse_response(status: u16, body: &str) -> Result<Value, ApiError> {
         }
         Err(e) => return Err(ApiError::Parse(e.to_string())),
     };
-    if let Some(code) = value.get("error").and_then(Value::as_u64) {
+    // Last.fm sends a number. A numeric string is read the same way, and any other `error` still counts as a failure
+    // (code 0), so its message reaches the log instead of the answer being mistaken for a good one.
+    if let Some(err) = value.get("error").filter(|e| !e.is_null()) {
+        let code = err
+            .as_u64()
+            .or_else(|| err.as_str().and_then(|s| s.trim().parse().ok()))
+            .unwrap_or(0);
         let message = value
             .get("message")
             .and_then(Value::as_str)
@@ -326,7 +332,22 @@ fn parse_token(v: &Value) -> Result<String, ApiError> {
         .and_then(Value::as_str)
         .filter(|t| !t.is_empty() && t.len() <= 64 && t.bytes().all(|b| b.is_ascii_alphanumeric()))
         .map(str::to_owned)
-        .ok_or_else(|| ApiError::Parse("no request token".into()))
+        .ok_or_else(|| ApiError::Parse(format!("no request token; the answer holds: {}", shape(v))))
+}
+
+/// What an answer looked like, for the log: an object's key names, never its values (they can hold tokens and keys).
+fn shape(v: &Value) -> String {
+    match v {
+        Value::Object(m) if m.is_empty() => "an empty object".into(),
+        Value::Object(m) => m
+            .keys()
+            .take(8)
+            .map(|k| k.chars().take(30).collect::<String>())
+            .collect::<Vec<_>>()
+            .join(", "),
+        Value::Array(_) => "an array".into(),
+        _ => "something that is not an object".into(),
+    }
 }
 
 /// The session key and the user's name from `auth.getSession`.
@@ -818,5 +839,54 @@ impl Lastfm {
         if self.tx.send(Msg::Shutdown(done_tx)).is_ok() {
             let _ = done_rx.recv_timeout(SHUTDOWN_WAIT);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn an_error_code_is_read_as_a_number_or_a_numeric_string() {
+        for body in [
+            r#"{"error":10,"message":"bad key"}"#,
+            r#"{"error":"10","message":"bad key"}"#,
+        ] {
+            assert_eq!(
+                parse_response(200, body),
+                Err(ApiError::Api {
+                    code: 10,
+                    message: "bad key".into()
+                }),
+                "{body}"
+            );
+        }
+    }
+
+    #[test]
+    fn an_error_of_another_kind_is_still_a_failure_with_its_message() {
+        let got = parse_response(200, r#"{"error":"nope","message":"why"}"#);
+        assert_eq!(
+            got,
+            Err(ApiError::Api {
+                code: 0,
+                message: "why".into()
+            })
+        );
+        assert!(parse_response(200, r#"{"error":null,"token":"abc"}"#).is_ok());
+    }
+
+    #[test]
+    fn a_missing_token_names_the_keys_of_the_answer_and_not_their_values() {
+        let v: Value = serde_json::from_str(r#"{"status":"ok","data":"secret123"}"#).unwrap();
+        let msg = parse_token(&v).unwrap_err().to_string();
+        assert!(msg.contains("status") && msg.contains("data"), "{msg}");
+        assert!(!msg.contains("secret123"), "{msg}");
+        let ok: Value =
+            serde_json::from_str(r#"{"token":"cf45fe5a3e3cebe168480a086d7fe481"}"#).unwrap();
+        assert_eq!(
+            parse_token(&ok).unwrap(),
+            "cf45fe5a3e3cebe168480a086d7fe481"
+        );
     }
 }
