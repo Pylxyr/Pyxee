@@ -23,6 +23,7 @@ tauri-plugin-autostart = "2"
 tauri-plugin-notification = "2"
 souvlaki = { version = "0.8.3", default-features = false, features = ["use_zbus"] }
 discord-rich-presence = "1.1"
+md-5 = "0.10"
 
 [target.'cfg(windows)'.dependencies]
 window-vibrancy = "0.8"

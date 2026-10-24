@@ -100,6 +100,7 @@ pub fn shell_get(app: AppHandle) -> ShellSettingsDto {
         tray_controls: false,
         flyout_on_click: true,
         discord_presence: true,
+        lastfm_scrobbling: false,
         borderless: true,
     })
 }
@@ -107,23 +108,27 @@ pub fn shell_get(app: AppHandle) -> ShellSettingsDto {
 #[tauri::command]
 pub fn shell_set(app: AppHandle, settings: ShellSettingsDto) -> Result<ShellSettingsDto, String> {
     let shell = app.state::<ShellState>();
+    let lastfm_turned_on;
     {
         let mut s = shell
             .settings
             .lock()
             .map_err(|_| "Settings are unavailable.".to_string())?;
+        lastfm_turned_on = !s.lastfm_scrobbling && settings.lastfm_scrobbling;
         s.close_to_tray = settings.close_to_tray;
         s.start_with_windows = settings.start_with_windows;
         s.toast_on_change = settings.toast_on_change;
         s.tray_controls = settings.tray_controls;
         s.flyout_on_click = settings.flyout_on_click;
         s.discord_presence = settings.discord_presence;
+        s.lastfm_scrobbling = settings.lastfm_scrobbling;
         s.borderless = settings.borderless;
     }
     shell.save_settings();
     super::sync_autostart(&app);
     super::tray_buttons::sync(&app, settings.tray_controls);
     super::sync_discord(&app);
+    super::sync_lastfm(&app, lastfm_turned_on);
     super::sync_window_frame(&app);
     Ok(settings)
 }

@@ -62,6 +62,12 @@
       onchange={(on) => shellSettings.update({ discordPresence: on })}
     />
     <Toggle
+      label="Scrobble what I play to Last.fm"
+      hint="Sends the songs you listen to, and the one playing now, to your Last.fm account. The first time, your browser opens so you can allow Pyxee."
+      checked={shellSettings.settings.lastfmScrobbling}
+      onchange={(on) => shellSettings.update({ lastfmScrobbling: on })}
+    />
+    <Toggle
       label="Borderless window"
       hint="Pyxee draws its own slim title bar instead of the Windows one. Press F11 for full screen."
       checked={shellSettings.settings.borderless}

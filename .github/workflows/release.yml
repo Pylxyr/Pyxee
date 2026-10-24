@@ -31,6 +31,12 @@ on:
       PYXEE_DISCORD_CLIENT_ID:
         description: "Discord application ID built into the exe (Rich Presence); unset means presence off"
         required: false
+      PYXEE_LASTFM_API_KEY:
+        description: "Last.fm API key built into the exe (scrobbling); unset means scrobbling unavailable"
+        required: false
+      PYXEE_LASTFM_API_SECRET:
+        description: "Last.fm shared secret built into the exe (scrobbling); unset means scrobbling unavailable"
+        required: false
       WINDOWS_CERT_PFX_BASE64:
         description: "Base64 of the code-signing .pfx; unset means an unsigned build"
         required: false
@@ -109,6 +115,10 @@ jobs:
       # repository *secret* so that Actions masks it in public logs; it is kept out of logs, UI and docs.
       # Unset or empty means the release is built with presence off.
       PYXEE_DISCORD_CLIENT_ID: ${{ secrets.PYXEE_DISCORD_CLIENT_ID }}
+      # Last.fm scrobbling: the application's key and shared secret ship inside the exe, like the Discord ID, and are
+      # repository *secrets* for the same reason. Both unset or empty means the release has scrobbling unavailable.
+      PYXEE_LASTFM_API_KEY: ${{ secrets.PYXEE_LASTFM_API_KEY }}
+      PYXEE_LASTFM_API_SECRET: ${{ secrets.PYXEE_LASTFM_API_SECRET }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

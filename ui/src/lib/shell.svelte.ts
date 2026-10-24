@@ -2,7 +2,7 @@ import type { Backend } from './backend';
 import { messageOf } from './backend';
 import type { ShellSettingsDto } from './bindings/ShellSettingsDto';
 
-const OFF: ShellSettingsDto = { closeToTray: false, startWithWindows: false, toastOnChange: false, trayControls: false, flyoutOnClick: true, discordPresence: true, borderless: true };
+const OFF: ShellSettingsDto = { closeToTray: false, startWithWindows: false, toastOnChange: false, trayControls: false, flyoutOnClick: true, discordPresence: true, lastfmScrobbling: false, borderless: true };
 
 /** Tray, start-with-Windows and toast settings. A change shows at once and goes back if it could not be saved. */
 class ShellStore {

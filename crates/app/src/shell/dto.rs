@@ -116,6 +116,7 @@ pub struct ShellSettingsDto {
     pub tray_controls: bool,
     pub flyout_on_click: bool,
     pub discord_presence: bool,
+    pub lastfm_scrobbling: bool,
     pub borderless: bool,
 }
 
@@ -128,6 +129,7 @@ impl From<&ShellSettings> for ShellSettingsDto {
             tray_controls: s.tray_controls,
             flyout_on_click: s.flyout_on_click,
             discord_presence: s.discord_presence,
+            lastfm_scrobbling: s.lastfm_scrobbling,
             borderless: s.borderless,
         }
     }

@@ -39,7 +39,7 @@ beforeEach(() => {
   lyricsStore.state = { kind: 'idle' };
   sleep.status = null;
   updates.reset();
-  shellSettings.settings = { closeToTray: false, startWithWindows: false, toastOnChange: false, trayControls: false, flyoutOnClick: true, discordPresence: true, borderless: true };
+  shellSettings.settings = { closeToTray: false, startWithWindows: false, toastOnChange: false, trayControls: false, flyoutOnClick: true, discordPresence: true, lastfmScrobbling: false, borderless: true };
   shellSettings.error = null;
   theme.settings = { followSystem: true, themeId: 'dark', lightId: 'light', darkId: 'dark', dynamicColor: false, custom: [] };
   for (const s of [...snackbar.items]) snackbar.dismiss(s.id);
@@ -181,7 +181,7 @@ describe('Windows settings', () => {
     await waitFor(() => expect(mock.shell.closeToTray).toBe(true));
     await fireEvent.click(within(section).getByLabelText(/Start Pyxee when I sign in/));
     await fireEvent.click(within(section).getByLabelText(/notification when the song changes/));
-    await waitFor(() => expect(mock.shell).toEqual({ closeToTray: true, startWithWindows: true, toastOnChange: true, trayControls: false, flyoutOnClick: true, discordPresence: true, borderless: true }));
+    await waitFor(() => expect(mock.shell).toEqual({ closeToTray: true, startWithWindows: true, toastOnChange: true, trayControls: false, flyoutOnClick: true, discordPresence: true, lastfmScrobbling: false, borderless: true }));
   });
 
   it('the notification area switches say what they do and save through the backend', async () => {

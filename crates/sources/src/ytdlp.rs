@@ -11,7 +11,7 @@ use crate::{
 };
 use serde::Deserialize;
 use serde_json::Value;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -500,6 +500,28 @@ fn artist_of(v: &Value) -> Option<String> {
     (!name.is_empty()).then(|| name.to_string())
 }
 
+/// Whether a flat-playlist entry is a song. YouTube Music's songs are the auto-generated uploads of a channel called
+/// "<Artist> - Topic" (the suffix `artist_of` removes); videos, animated shorts and the like come from ordinary
+/// channels.
+fn is_song_entry(v: &Value) -> bool {
+    ["channel", "uploader"]
+        .iter()
+        .filter_map(|k| text(v, k))
+        .any(|name| name.trim_end().ends_with(" - Topic"))
+}
+
+/// The keys (`yt:<id>`) of the entries in yt-dlp's flat-playlist output that are songs.
+fn song_keys(stdout: &str) -> HashSet<String> {
+    stdout
+        .lines()
+        .filter(|l| l.trim_start().starts_with('{'))
+        .filter_map(|l| serde_json::from_str::<Value>(l).ok())
+        .filter(is_song_entry)
+        .filter_map(|v| text(&v, "id"))
+        .map(|id| format!("yt:{id}"))
+        .collect()
+}
+
 fn artist_name(v: &Value) -> String {
     artist_of(v).unwrap_or_else(|| UNKNOWN_ARTIST.into())
 }
@@ -743,6 +765,10 @@ impl MusicSource for YtDlpSource {
         let id = video_id(key)?;
         let target = format!("https://www.youtube.com/watch?v={id}&list=RD{id}");
         let out = self.run("related", &flat_args(target, count + 1))?;
+        // A mix lists its seed first, so the output says what the song that is playing is. When it is a song, only
+        // songs follow it: the mix also holds videos, animated shorts and other things that are not.
+        let songs = song_keys(&out);
+        let only_songs = songs.contains(key);
         Ok(parse_entries(&out)?
             .into_iter()
             .filter_map(|i| {
@@ -753,6 +779,7 @@ impl MusicSource for YtDlpSource {
                 }
             })
             .filter(|t| t.key != key)
+            .filter(|t| !only_songs || songs.contains(&t.key))
             .take(count)
             .collect())
     }

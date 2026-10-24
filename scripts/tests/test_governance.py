@@ -6,7 +6,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 RELEASE = (ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
 CUT = (ROOT / ".github/workflows/cut-release.yml").read_text(encoding="utf-8")
-SECRETS = ["PYXEE_DISCORD_CLIENT_ID", "WINDOWS_CERT_PFX_BASE64", "WINDOWS_CERT_PASSWORD", "ANTHROPIC_API_KEY", "AI_API_KEY"]
+SECRETS = ["PYXEE_DISCORD_CLIENT_ID", "PYXEE_LASTFM_API_KEY", "PYXEE_LASTFM_API_SECRET", "WINDOWS_CERT_PFX_BASE64", "WINDOWS_CERT_PASSWORD", "ANTHROPIC_API_KEY", "AI_API_KEY"]
 
 
 def block(text: str, header: str) -> str:

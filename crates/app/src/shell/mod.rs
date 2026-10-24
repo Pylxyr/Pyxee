@@ -6,6 +6,7 @@ pub mod commands;
 pub mod discord;
 pub mod dto;
 mod flyout;
+pub mod lastfm;
 mod media;
 mod mini;
 mod power;
@@ -72,6 +73,7 @@ pub struct ShellState {
     sent: Mutex<Sent>,
     media: Mutex<Option<media::Media>>,
     discord: Mutex<Option<discord::Discord>>,
+    lastfm: Mutex<Option<lastfm::Lastfm>>,
     mini_dirty: AtomicBool,
     mini_saved: Mutex<Option<Instant>>,
 }
@@ -103,6 +105,7 @@ impl ShellState {
             sent: Mutex::new(Sent::default()),
             media: Mutex::new(None),
             discord: Mutex::new(None),
+            lastfm: Mutex::new(None),
             mini_dirty: AtomicBool::new(false),
             mini_saved: Mutex::new(None),
         }
@@ -142,6 +145,7 @@ pub fn init(app: &AppHandle, args: &[String]) {
         *m = media::init(app);
     }
     sync_discord(app);
+    sync_lastfm(app, false);
     sync_window_frame(app);
     sync_autostart(app);
     #[cfg(all(windows, feature = "win-extras"))]
@@ -210,6 +214,75 @@ pub fn sync_discord(app: &AppHandle) {
     if let Some(discord) = stopped {
         discord.shutdown();
     }
+}
+
+/// Makes Last.fm scrobbling match the saved setting: starts it when it is on (signing in first if there is no saved
+/// session), and sends what is still waiting and stops it when it is off. `announce` says why it cannot start (a
+/// build without a Last.fm application) to the listener, which is only wanted right after they turned it on.
+/// Safe to call at any time.
+pub fn sync_lastfm(app: &AppHandle, announce: bool) {
+    let shell = app.state::<ShellState>();
+    let (want, session) = shell.settings.lock().map_or((false, None), |s| {
+        (s.lastfm_scrobbling, s.lastfm_session.clone())
+    });
+    let mut refused = None;
+    let stopped = {
+        let Ok(mut slot) = shell.lastfm.lock() else {
+            return;
+        };
+        match (want, slot.is_some()) {
+            (true, false) => {
+                let handle = app.clone();
+                match lastfm::init(session, move |e| on_lastfm_event(&handle, e)) {
+                    Ok(l) => *slot = Some(l),
+                    Err(why) => refused = announce.then_some(why),
+                }
+                None
+            }
+            (false, true) => {
+                log::info!("last.fm: off (turned off in Settings)");
+                slot.take()
+            }
+            _ => None,
+        }
+    };
+    if let Some(why) = refused {
+        notify(app, why);
+    }
+    // Outside the lock: sending what is left can take a moment and `on_state` must not be held up by it.
+    if let Some(lastfm) = stopped {
+        lastfm.shutdown();
+    }
+}
+
+fn notify(app: &AppHandle, message: String) {
+    log::info!("notice shown to the listener: {message}");
+    if let Err(e) = emit_noted(
+        app,
+        crate::state::NOTICE_EVENT,
+        crate::dto::NoticeDto { message },
+    ) {
+        log::warn!("could not send a notice to the window: {e}");
+    }
+}
+
+/// What the Last.fm thread reports: something to tell the listener, or a session key to keep or to forget.
+fn on_lastfm_event(app: &AppHandle, e: lastfm::Event) {
+    match e {
+        lastfm::Event::Notice(message) => notify(app, message),
+        lastfm::Event::Session(key) => set_lastfm_session(app, Some(key)),
+        lastfm::Event::SessionLost => set_lastfm_session(app, None),
+    }
+}
+
+fn set_lastfm_session(app: &AppHandle, key: Option<String>) {
+    let Some(shell) = app.try_state::<ShellState>() else {
+        return;
+    };
+    if let Ok(mut s) = shell.settings.lock() {
+        s.lastfm_session = key;
+    }
+    shell.save_settings();
 }
 
 /// Makes Windows' start-with-sign-in match the saved setting (the user may have removed it in Task Manager).
@@ -284,6 +357,11 @@ pub fn quit(app: &AppHandle) {
     let discord = shell.discord.lock().ok().and_then(|mut d| d.take());
     if let Some(discord) = discord {
         discord.shutdown();
+    }
+    // Sends the scrobbles still waiting; also at most a couple of seconds.
+    let lastfm = shell.lastfm.lock().ok().and_then(|mut l| l.take());
+    if let Some(lastfm) = lastfm {
+        lastfm.shutdown();
     }
     app.exit(0);
 }
@@ -419,6 +497,11 @@ pub fn on_state(app: &AppHandle, s: &PlayerStateDto) {
     if let Ok(guard) = shell.discord.lock() {
         if let Some(discord) = guard.as_ref() {
             discord.on_state(phase, entry.map(|e| &e.track), s.position_ms);
+        }
+    };
+    if let Ok(guard) = shell.lastfm.lock() {
+        if let Some(lastfm) = guard.as_ref() {
+            lastfm.on_state(phase, id, entry.map(|e| &e.track), s.position_ms);
         }
     };
 }

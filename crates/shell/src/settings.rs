@@ -23,6 +23,12 @@ pub struct ShellSettings {
     /// Discord Rich Presence ("Listening to Pyxee"). Only does anything when the build has a Discord application
     /// ID baked in (`PYXEE_DISCORD_CLIENT_ID` at build time); on by default, so such a build behaves as before.
     pub discord_presence: bool,
+    /// Last.fm scrobbling: "now playing" and a scrobble for the songs listened to. Off until turned on, because it
+    /// tells a third party what is played. Only does anything when the build has a Last.fm application key and secret
+    /// baked in (`PYXEE_LASTFM_API_KEY` and `PYXEE_LASTFM_API_SECRET` at build time).
+    pub lastfm_scrobbling: bool,
+    /// The Last.fm session key from signing in, kept so that signing in happens once. Never sent to the window.
+    pub lastfm_session: Option<String>,
     /// The main window has no Windows title bar: Pyxee draws its own slim bar (on by default). Off gives the
     /// window the standard Windows frame.
     pub borderless: bool,
@@ -39,6 +45,8 @@ impl Default for ShellSettings {
             tray_controls: false,
             flyout_on_click: true,
             discord_presence: true,
+            lastfm_scrobbling: false,
+            lastfm_session: None,
             borderless: true,
             mini_bounds: None,
         }

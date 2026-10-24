@@ -190,7 +190,7 @@ export class MockBackend extends MockLibrary implements Backend {
     }
     return false;
   }
-  shell: ShellSettingsDto = { closeToTray: false, startWithWindows: false, toastOnChange: false, trayControls: false, flyoutOnClick: true, discordPresence: true, borderless: true };
+  shell: ShellSettingsDto = { closeToTray: false, startWithWindows: false, toastOnChange: false, trayControls: false, flyoutOnClick: true, discordPresence: true, lastfmScrobbling: false, borderless: true };
   /** Set to make `shellSet` fail, to test how the UI reports it. */
   shellError: string | null = null;
   async shellGet() { return { ...this.shell }; }

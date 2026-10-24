@@ -112,6 +112,8 @@ jobs:
     # Exactly the secrets release.yml declares under on.workflow_call.secrets, nothing else.
     secrets:
       PYXEE_DISCORD_CLIENT_ID: ${{ secrets.PYXEE_DISCORD_CLIENT_ID }}
+      PYXEE_LASTFM_API_KEY: ${{ secrets.PYXEE_LASTFM_API_KEY }}
+      PYXEE_LASTFM_API_SECRET: ${{ secrets.PYXEE_LASTFM_API_SECRET }}
       WINDOWS_CERT_PFX_BASE64: ${{ secrets.WINDOWS_CERT_PFX_BASE64 }}
       WINDOWS_CERT_PASSWORD: ${{ secrets.WINDOWS_CERT_PASSWORD }}
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}

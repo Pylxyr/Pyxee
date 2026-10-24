@@ -3,14 +3,14 @@ Pyxee ships the Rust crates and the npm packages listed below. This file is gene
 scripts/gen_dependency_notices.py (cargo-about for the crates, a walk of ui/node_modules for npm); do not edit it.
 The program, its own crates and the other bundled components are described in THIRD_PARTY.txt.
 Generated from these lock files (a change to either means this file must be regenerated):
-Cargo.lock sha256: 48e585285f1cd4fb0beea73b9a53f7f50cc6b725bdd043b720670081cad44271
+Cargo.lock sha256: 59496d3e002949426f9ca80f7a19fbaf90b2278e2d548ac04cd3a1aa38e8e339
 ui/package-lock.json sha256: 1659754df8e4f1d0c251233d1dfe71a97bbd2bff80fdcb8f9df596e1b0150ba4
 
 ================================================================================
 PART 1: RUST CRATES (Windows build)
 ================================================================================
 
-MIT License (MIT): used by 248 crate(s)
+MIT License (MIT): used by 249 crate(s)
 Unicode License v3 (Unicode-3.0): used by 19 crate(s)
 ISC License (ISC): used by 18 crate(s)
 Apache License 2.0 (Apache-2.0): used by 8 crate(s)
@@ -1997,6 +1997,7 @@ fn is_meta_character(c: char) -> bool {
 MIT License
 
 Used by:
+  - md-5 0.10.6 (https://github.com/RustCrypto/hashes)
   - sha2 0.10.9 (https://github.com/RustCrypto/hashes)
 
 Copyright (c) 2006-2009 Graydon Hoare
