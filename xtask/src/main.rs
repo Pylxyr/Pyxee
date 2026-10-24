@@ -308,11 +308,12 @@ fn dump_msvc_env(vcvars: &Path) -> Res<String> {
     }
 }
 
-/// The commit a git checkout is at.
+/// The commit a git checkout is at. Looks only at the checkout's own `.git`: a folder that has none (or a broken one)
+/// reads as "no commit" instead of reporting the commit of whatever repository it happens to sit inside.
 fn git_head(src: &Path) -> Res<String> {
     let out = Command::new("git")
-        .arg("-C")
-        .arg(src)
+        .arg("--git-dir")
+        .arg(src.join(".git"))
         .args(["rev-parse", "HEAD"])
         .output()
         .map_err(|e| format!("could not run git: {e}"))?;
@@ -947,6 +948,18 @@ mod tests {
         let prefix = root.join("target/ffmpeg/x");
         let tgz = ffmpeg_source_archive(&root, &prefix, &pin).expect("stale clone is replaced");
         assert!(!tgz.is_empty());
+        assert_eq!(git_head(&stale).unwrap(), pinned);
+
+        // A folder with a broken `.git`, inside a repository of its own (the CI checkout): it must not be read as that
+        // repository's commit, and it is replaced too.
+        git(&root, &["init", "-q", "-b", "main"]);
+        std::fs::write(root.join("f.txt"), "x").unwrap();
+        git(&root, &["add", "f.txt"]);
+        git(&root, &["commit", "-q", "-m", "workspace"]);
+        std::fs::remove_dir_all(&stale).unwrap();
+        std::fs::create_dir_all(stale.join(".git")).unwrap();
+        assert_eq!(git_head(&stale).unwrap(), "");
+        ffmpeg_source_archive(&root, &prefix, &pin).expect("broken clone is replaced");
         assert_eq!(git_head(&stale).unwrap(), pinned);
         let _ = std::fs::remove_dir_all(&base);
     }
