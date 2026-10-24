@@ -933,7 +933,7 @@ mod tests {
         let root = base.join("root");
         // A cached clone from before the pin moved: the first commit.
         let stale = root.join("target/kit/ffmpeg-src");
-        std::fs::create_dir_all(&root.join("target/kit")).unwrap();
+        std::fs::create_dir_all(root.join("target/kit")).unwrap();
         git(
             &base,
             &[
