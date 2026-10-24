@@ -1,6 +1,7 @@
 import type { CommandDto } from './bindings/CommandDto';
 import type { AddResultDto } from './bindings/AddResultDto';
 import type { ExploreShelfDto } from './bindings/ExploreShelfDto';
+import type { GenreDto } from './bindings/GenreDto';
 import type { FilterInfoDto } from './bindings/FilterInfoDto';
 import type { HistoryItemDto } from './bindings/HistoryItemDto';
 import type { LogInfoDto } from './bindings/LogInfoDto';
@@ -49,6 +50,12 @@ export interface LibraryBackend {
   relatedGet(key: string, count: number): Promise<TrackDto[]>;
   /** The shelves of YouTube Music's Explore page (trending songs, new releases...). Rejects with a `SearchErrorDto` like `search` does. */
   exploreGet(): Promise<ExploreShelfDto[]>;
+  /** The genres and moods of YouTube Music's "Moods & genres" page. Rejects with a `SearchErrorDto`. */
+  genresGet(): Promise<GenreDto[]>;
+  /** The shelves of one genre (`params` from `genresGet`): playlists and songs. Rejects with a `SearchErrorDto`. */
+  genreGet(params: string): Promise<ExploreShelfDto[]>;
+  /** The songs of a YouTube Music playlist (its first page), to play. Rejects with a `SearchErrorDto`. */
+  playlistTracksGet(id: string): Promise<TrackDto[]>;
 }
 
 /** Everything the UI needs from Rust. Implemented by Tauri at runtime and by a mock in the browser and in tests. */
@@ -170,6 +177,9 @@ export async function tauriBackend(): Promise<Backend> {
     homeGet: () => invoke<HomeDto>('home_get'),
     relatedGet: (key, count) => invoke<TrackDto[]>('related_get', { key, count }),
     exploreGet: () => invoke<ExploreShelfDto[]>('explore_get'),
+    genresGet: () => invoke<GenreDto[]>('genres_get'),
+    genreGet: (params) => invoke<ExploreShelfDto[]>('genre_get', { params }),
+    playlistTracksGet: (id) => invoke<TrackDto[]>('playlist_tracks_get', { id }),
     devCatalog: () => invoke<TrackDto[]>('dev_catalog'),
     lyricsGet: (t) =>
       invoke<LyricsDto>('lyrics_get', { key: t.key, title: t.title, artist: t.artist, durationMs: t.durationMs }).catch(

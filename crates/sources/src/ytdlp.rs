@@ -6,8 +6,8 @@ use crate::jsruntime::JsRuntime;
 use crate::suggest::{encode, Suggester};
 use crate::ytmusic;
 use crate::{
-    classify_stderr, program_name, scrub, ExploreShelf, MusicSource, SearchFilter, SearchItem,
-    SourceError, StreamInfo, StreamMeta, TrackInfo, UNKNOWN_ARTIST,
+    classify_stderr, program_name, scrub, ExploreShelf, GenreInfo, MusicSource, SearchFilter,
+    SearchItem, SourceError, StreamInfo, StreamMeta, TrackInfo, UNKNOWN_ARTIST,
 };
 use serde::Deserialize;
 use serde_json::Value;
@@ -778,6 +778,40 @@ impl MusicSource for YtDlpSource {
         log::info!("explore: {} shelves from YouTube Music", shelves.len());
         Ok(shelves)
     }
+
+    /// YouTube Music's genres and moods, asked directly like `explore`.
+    fn genres(&self) -> Result<Vec<GenreInfo>, SourceError> {
+        let Some(endpoint) = &self.browse_endpoint else {
+            return Err(SourceError::Unsupported("Genres".into()));
+        };
+        let genres = self
+            .gate
+            .run("genres", || ytmusic::fetch_genres(endpoint))?;
+        log::info!("genres: {} from YouTube Music", genres.len());
+        Ok(genres)
+    }
+
+    fn genre(&self, params: &str) -> Result<Vec<ExploreShelf>, SourceError> {
+        let Some(endpoint) = &self.browse_endpoint else {
+            return Err(SourceError::Unsupported("Genres".into()));
+        };
+        let shelves = self
+            .gate
+            .run("genre", || ytmusic::fetch_genre(endpoint, params))?;
+        log::info!("genre: {} shelves from YouTube Music", shelves.len());
+        Ok(shelves)
+    }
+
+    fn playlist_tracks(&self, id: &str) -> Result<Vec<TrackInfo>, SourceError> {
+        let Some(endpoint) = &self.browse_endpoint else {
+            return Err(SourceError::Unsupported("Playlists".into()));
+        };
+        let tracks = self
+            .gate
+            .run("playlist", || ytmusic::fetch_playlist(endpoint, id))?;
+        log::info!("playlist: {} songs from YouTube Music", tracks.len());
+        Ok(tracks)
+    }
 }
 
 #[cfg(test)]
@@ -1352,6 +1386,38 @@ mod tests {
             let found = s.search("neon", SearchFilter::Songs).unwrap();
             assert!(!found.is_empty());
             assert!(request.recv_timeout(Duration::from_secs(2)).is_ok());
+        }
+
+        #[test]
+        fn genres_genre_and_playlists_ask_youtube_music_directly_and_need_music_search_on() {
+            let button = r#"{"musicNavigationButtonRenderer":{"buttonText":{"runs":[{"text":"K-Pop"}]},"clickCommand":{"browseEndpoint":{"browseId":"FEmusic_moods_and_genres_category","params":"ggMPkpop"}}}}"#;
+            let page = format!(
+                r#"{{"contents":{{"singleColumnBrowseResultsRenderer":{{"tabs":[{{"tabRenderer":{{"content":{{"sectionListRenderer":{{"contents":[{{"gridRenderer":{{"items":[{button}]}}}}]}}}}}}}}]}}}}}}"#
+            );
+            let (url, request) = testserver::once(200, &page);
+            let s = source("http://127.0.0.1:9/unused").with_browse_endpoint(&url);
+            let genres = s.genres().unwrap();
+            assert_eq!(genres.len(), 1);
+            assert_eq!(genres[0].title, "K-Pop");
+            assert!(request.recv().unwrap().contains("FEmusic_moods_and_genres"));
+
+            let (url, request) = testserver::once(200, r#"{"contents":{}}"#);
+            let s = source("http://127.0.0.1:9/unused").with_browse_endpoint(&url);
+            assert!(matches!(s.genre("ggMPkpop"), Err(SourceError::Parse(_))));
+            assert!(request.recv().unwrap().contains("ggMPkpop"));
+
+            let (url, request) = testserver::once(200, r#"{"musicShelfRenderer":{"contents":[]}}"#);
+            let s = source("http://127.0.0.1:9/unused").with_browse_endpoint(&url);
+            assert_eq!(s.playlist_tracks("RDCLAK5uy_a").unwrap(), vec![]);
+            assert!(request.recv().unwrap().contains("VLRDCLAK5uy_a"));
+
+            let off = source("http://127.0.0.1:9/unused").without_music_search();
+            assert!(matches!(off.genres(), Err(SourceError::Unsupported(_))));
+            assert!(matches!(off.genre("x"), Err(SourceError::Unsupported(_))));
+            assert!(matches!(
+                off.playlist_tracks("x"),
+                Err(SourceError::Unsupported(_))
+            ));
         }
 
         #[test]

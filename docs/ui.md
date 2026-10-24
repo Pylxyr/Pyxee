@@ -39,6 +39,10 @@ back; Rust applies it with `set_decorations` at start-up and whenever the settin
 then does not draw its bar. **F11** switches full screen (`setFullscreen` in `lib/windowControls.ts`); in full screen there is no bar
 and no frame, and the page follows the window's state through its resize events.
 
+Mica and the borderless window: Windows draws the system backdrop in a window without a native title bar only where the DWM frame is
+extended into the page, so `apply_backdrop` (`window.rs`) calls `DwmExtendFrameIntoClientArea` with -1 margins after `apply_mica`
+when the window has no frame. `sync_window_frame` asks for the backdrop again after every frame change.
+
 ## Theming and Mica
 CSS variables on `<html>`: `data-theme` (dark/light, follows the system unless overridden) and `data-backdrop`.
 On Windows 11 the app asks for Mica (`window-vibrancy`); if that succeeds the backend reports `mica` and the page
@@ -110,6 +114,17 @@ per seed (likes first, then recent plays, one per artist), which come from `rela
 mix). Everything loads one request after another, stops early on offline / rate-limited / tool-missing, and is cached for
 the session (Refresh asks again). If the Explore page itself fails the page says why and the personal shelves still load.
 Logic: `lib/explore.ts` (pure), `lib/explore.svelte.ts`, `pages/Explore.svelte`; Rust: `crates/sources/src/ytmusic.rs`.
+
+**Genres.** Above the shelves sit YouTube Music's own "Moods & genres" as chips (`GenreChips.svelte`): *For you* is the page
+above, and anime, J-Pop, K-Pop (and J-Rock, city pop, Vocaloid, C-Pop) come first in front of the rest in the website's own order
+(`lib/genres.ts`); the rest are behind *More genres*. Picking one swaps the page for that genre's page: YouTube Music's own
+playlists (a cover plays the playlist: `PlaylistGrid.svelte`, `playlist_tracks_get`, one request for its first page of songs) and
+its song shelves. Album shelves are left out of genre pages on purpose, and on the main page the "New albums & singles" shelf
+now comes last: that feed is whatever distributors released this week, where bulk-made releases pile up, while the genre
+pages are editorial picks. Rust: `genres_get`, `genre_get`, `playlist_tracks_get` (`MusicSource::genres`, `genre`,
+`playlist_tracks`; the website's `browse` endpoint with `FEmusic_moods_and_genres`, `FEmusic_moods_and_genres_category` and
+`VL<playlist id>`, no yt-dlp run). Genres load once per session after the page, a genre is asked once per session (Refresh asks
+again), and a failure only hides the chips or shows a notice with *Try again*.
 
 ## Now Playing > Related
 Songs similar to the one being shown, from the same `related_get` command as Explore (`MusicSource::related`, 20 songs).

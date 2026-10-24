@@ -625,6 +625,35 @@ input[type='range'].slider:disabled {
     cursor: default;
   }
 
+  /* Genres on Explore: a wrapping row of pill buttons, one pressed. */
+  .chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 16px;
+  }
+  .chip {
+    padding: 6px 14px;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    color: var(--fg);
+    font-size: 14px;
+    transition: background-color var(--dur-fast) var(--ease);
+  }
+  .chip:hover {
+    background: var(--hover);
+  }
+  .chip[aria-pressed='true'] {
+    background: var(--surface-2);
+    color: var(--fg);
+    font-weight: 600;
+    box-shadow: inset 0 -2px 0 var(--accent);
+  }
+  .chip-more {
+    color: var(--muted);
+    border-style: dashed;
+  }
+
   /* Layout: the rail, the page (content layer), the stage and the dock. */
   /* The main window has no native title bar: `.titlebar` (a slim bar with the drag area and the window buttons) sits above the shell. */
   .frame {

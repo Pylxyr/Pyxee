@@ -21,6 +21,9 @@ export const noLibrary: LibraryBackend = {
   homeGet: async () => ({ quickPicks: [], recent: [], likedCount: 0 }),
   relatedGet: async () => [],
   exploreGet: async () => [],
+  genresGet: async () => [],
+  genreGet: async () => [],
+  playlistTracksGet: async () => [],
 };
 
 /** Diagnostics methods for test backends that do not care about them. */

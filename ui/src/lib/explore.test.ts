@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest';
 import type { HistoryItemDto } from './bindings/HistoryItemDto';
 import type { TrackDto } from './bindings/TrackDto';
 import type { AlbumDto } from './bindings/AlbumDto';
-import { albumQuery, freshTracks, jumpBackIn, pickSeeds, shelfTitle } from './explore';
+import type { ExploreShelfDto } from './bindings/ExploreShelfDto';
+import { albumQuery, albumsLast, freshTracks, jumpBackIn, pickSeeds, shelfTitle } from './explore';
 
 const t = (n: number, artist = `Artist ${n}`): TrackDto => ({ key: `k${n}`, title: `Song ${n}`, artist, durationMs: 1000, thumbnail: null });
 const h = (track: TrackDto, playedAt = 1): HistoryItemDto => ({ track, playedAt });
@@ -38,5 +39,22 @@ describe('shelf helpers', () => {
     expect(albumQuery(album('Lowtide'))).toBe('Night Shift Lowtide');
     expect(albumQuery(album('Unknown artist'))).toBe('Night Shift');
     expect(albumQuery(album('  '))).toBe('Night Shift');
+  });
+});
+
+describe('albumsLast', () => {
+  const songs = (id: string): ExploreShelfDto => ({ kind: 'songs', id, title: id, tracks: [] });
+  const albums = (id: string): ExploreShelfDto => ({ kind: 'albums', id, title: id, albums: [] });
+  const playlists = (id: string): ExploreShelfDto => ({ kind: 'playlists', id, title: id, playlists: [] });
+
+  it('moves the albums-and-singles shelves to the end and keeps every other order', () => {
+    const page = [albums('new'), songs('trending'), albums('more'), playlists('picks'), songs('videos')];
+    expect(albumsLast(page).map((s) => s.id)).toEqual(['trending', 'picks', 'videos', 'new', 'more']);
+  });
+
+  it('does not change the list it is given', () => {
+    const page = [albums('a'), songs('s')];
+    albumsLast(page);
+    expect(page.map((s) => s.id)).toEqual(['a', 's']);
   });
 });

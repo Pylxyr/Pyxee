@@ -2,7 +2,7 @@
 //! -> `HttpRangeSource` -> `LibavSource` -> `GaplessSource`. No audio device is needed.
 //! Driven by `scripts/check-windows.ps1`; usable by hand:
 //!
-//!   livecheck <formats|search|stream|stress|fake429> [--ytdlp PATH] [--q1 QUERY] [--q2 QUERY]
+//!   livecheck <formats|search|genres|stream|stress|fake429> [--ytdlp PATH] [--q1 QUERY] [--q2 QUERY]
 //!
 //! Output is one line per result, `CHECK <PASS|FAIL|WARN|INFO> <name> :: <detail>`, plus `LOG ...`
 //! lines from the app's own logging (yt-dlp gate waits, cookie use). Stream URLs are never printed:
@@ -16,7 +16,9 @@ use pyxee_audio::http::HttpRangeSource;
 use pyxee_audio::AudioError;
 use pyxee_sources::gate::GateConfig;
 use pyxee_sources::ytdlp::{Cookies, YtDlpSource, FORMAT_SELECTOR};
-use pyxee_sources::{MusicSource, SearchFilter, SearchItem, SourceError, StreamInfo, TrackInfo};
+use pyxee_sources::{
+    ExploreShelf, MusicSource, SearchFilter, SearchItem, SourceError, StreamInfo, TrackInfo,
+};
 use std::io::Write;
 use std::path::PathBuf;
 use std::process::Command;
@@ -180,6 +182,132 @@ fn formats(o: &Opts) -> Result<()> {
 }
 
 // ---------------------------------------------------------------- search
+
+// ---------------------------------------------------------------- genres
+
+/// Explore's genres against the real website: the list, one genre's page (K-Pop when it is listed, else the first)
+/// and the songs of its first playlist. The parsers follow the website's shapes from documentation, so this is where
+/// a change on its side shows up.
+fn genres(o: &Opts) -> Result<()> {
+    let src = source(o);
+    let list = match src.genres() {
+        Ok(l) if !l.is_empty() => l,
+        Ok(_) => {
+            emit("FAIL", "genres-listed", "the page listed no genres");
+            return Ok(());
+        }
+        Err(e) => {
+            emit("FAIL", "genres-listed", e.to_string());
+            return Ok(());
+        }
+    };
+    let titles: Vec<&str> = list.iter().map(|g| g.title.as_str()).collect();
+    emit(
+        "PASS",
+        "genres-listed",
+        format!("{} genres: {}", list.len(), titles.join(", ")),
+    );
+    // Which of the ones Explore puts first this region lists (a region may not list all of them).
+    let has = |needle: &str| {
+        list.iter()
+            .any(|g| g.title.to_lowercase().replace('-', "").contains(needle))
+    };
+    let wanted = [("anime", "Anime"), ("jpop", "J-Pop"), ("kpop", "K-Pop")];
+    let found: Vec<&str> = wanted
+        .iter()
+        .filter(|(n, _)| has(n))
+        .map(|(_, l)| *l)
+        .collect();
+    let missing: Vec<&str> = wanted
+        .iter()
+        .filter(|(n, _)| !has(n))
+        .map(|(_, l)| *l)
+        .collect();
+    emit(
+        "INFO",
+        "genres-favourites",
+        format!("listed: {found:?}, not listed here: {missing:?}"),
+    );
+
+    let pick = list
+        .iter()
+        .find(|g| g.title.to_lowercase().replace('-', "").contains("kpop"))
+        .unwrap_or(&list[0]);
+    let shelves = match src.genre(&pick.params) {
+        Ok(s) if !s.is_empty() => s,
+        Ok(_) => {
+            emit("FAIL", "genre-page", format!("{}: no shelves", pick.title));
+            return Ok(());
+        }
+        Err(e) => {
+            emit("FAIL", "genre-page", format!("{}: {e}", pick.title));
+            return Ok(());
+        }
+    };
+    let kinds: Vec<String> = shelves
+        .iter()
+        .map(|s| match s {
+            ExploreShelf::Playlists {
+                title, playlists, ..
+            } => {
+                format!("{title} ({} playlists)", playlists.len())
+            }
+            ExploreShelf::Songs { title, tracks, .. } => {
+                format!("{title} ({} songs)", tracks.len())
+            }
+            ExploreShelf::Albums { title, .. } => format!("{title} (albums: should not be here)"),
+        })
+        .collect();
+    let albums = shelves
+        .iter()
+        .any(|s| matches!(s, ExploreShelf::Albums { .. }));
+    emit(
+        if albums { "FAIL" } else { "PASS" },
+        "genre-page",
+        format!("{}: {}", pick.title, kinds.join("; ")),
+    );
+
+    let playlist = shelves.iter().find_map(|s| match s {
+        ExploreShelf::Playlists { playlists, .. } => playlists.first(),
+        _ => None,
+    });
+    let Some(playlist) = playlist else {
+        emit(
+            "WARN",
+            "genre-playlist",
+            "this genre page has no playlist to open",
+        );
+        return Ok(());
+    };
+    match src.playlist_tracks(&playlist.id) {
+        Ok(tracks) if !tracks.is_empty() => {
+            let no_artist = tracks
+                .iter()
+                .filter(|t| t.artist == pyxee_sources::UNKNOWN_ARTIST)
+                .count();
+            let no_length = tracks.iter().filter(|t| t.duration_ms.is_none()).count();
+            let bad = no_artist * 2 > tracks.len() || no_length * 2 > tracks.len();
+            emit(
+                if bad { "FAIL" } else { "PASS" },
+                "playlist-songs",
+                format!(
+                    "{}: {} songs ({no_artist} without an artist, {no_length} without a length); first: {} by {}",
+                    playlist.title,
+                    tracks.len(),
+                    tracks[0].title,
+                    tracks[0].artist
+                ),
+            );
+        }
+        Ok(_) => emit(
+            "FAIL",
+            "playlist-songs",
+            format!("{}: no songs", playlist.title),
+        ),
+        Err(e) => emit("FAIL", "playlist-songs", format!("{}: {e}", playlist.title)),
+    }
+    Ok(())
+}
 
 fn search(o: &Opts) -> Result<()> {
     let src = source(o);
@@ -783,10 +911,11 @@ fn main() {
     let r = match cmd.as_str() {
         "formats" => formats(&o),
         "search" => search(&o),
+        "genres" => genres(&o),
         "stream" => stream(&o),
         "stress" => stress(&o),
         "fake429" => fake429(&o),
-        _ => Err(anyhow!("usage: livecheck <formats|search|stream|stress|fake429> [--ytdlp PATH] [--q1 Q] [--q2 Q]")),
+        _ => Err(anyhow!("usage: livecheck <formats|search|genres|stream|stress|fake429> [--ytdlp PATH] [--q1 Q] [--q2 Q]")),
     };
     if let Err(e) = r {
         emit("FAIL", &cmd, format!("{e:#}"));

@@ -11,6 +11,7 @@ import type { SleepSettingDto } from './bindings/SleepSettingDto';
 import type { SleepStateDto } from './bindings/SleepStateDto';
 import type { SleepStatusDto } from './bindings/SleepStatusDto';
 import type { ExploreShelfDto } from './bindings/ExploreShelfDto';
+import type { GenreDto } from './bindings/GenreDto';
 import type { FilterInfoDto } from './bindings/FilterInfoDto';
 import type { SearchFilterDto } from './bindings/SearchFilterDto';
 import type { SearchItemDto } from './bindings/SearchItemDto';
@@ -237,6 +238,47 @@ export class MockBackend extends MockLibrary implements Backend {
     this.exploreCalls++;
     if (this.exploreFailure) throw this.exploreFailure;
     return clone(this.exploreShelves);
+  }
+  /** Set to make `genresGet`, `genreGet` or `playlistTracksGet` reject, e.g. `{ kind: 'offline', message: '...' }`. */
+  genreFailure: unknown = null;
+  genresCalls = 0;
+  genreCalls: string[] = [];
+  playlistCalls: string[] = [];
+  /** What `genresGet` answers: genres as YouTube Music lists them, in its order. */
+  genres: GenreDto[] = [
+    { title: 'Chill', params: 'p-chill' },
+    { title: 'Rock', params: 'p-rock' },
+    { title: 'K-Pop', params: 'p-kpop' },
+    { title: 'J-Pop', params: 'p-jpop' },
+    { title: 'Anime', params: 'p-anime' },
+  ];
+  /** What `genreGet` answers for any genre: a playlists shelf and a songs shelf, like a genre page. */
+  genreShelves: ExploreShelfDto[] = [
+    {
+      kind: 'playlists',
+      id: 'genre-0',
+      title: 'Featured playlists',
+      playlists: [
+        { id: 'RDdemo1', title: 'Essentials', subtitle: 'YouTube Music', thumbnail: null },
+        { id: 'RDdemo2', title: 'Rising', subtitle: 'YouTube Music', thumbnail: null },
+      ],
+    },
+    { kind: 'songs', id: 'genre-1', title: 'Top songs', tracks: DEMO_TRACKS.slice(0, 3) },
+  ];
+  async genresGet(): Promise<GenreDto[]> {
+    this.genresCalls++;
+    if (this.genreFailure) throw this.genreFailure;
+    return clone(this.genres);
+  }
+  async genreGet(params: string): Promise<ExploreShelfDto[]> {
+    this.genreCalls.push(params);
+    if (this.genreFailure) throw this.genreFailure;
+    return clone(this.genreShelves);
+  }
+  async playlistTracksGet(id: string): Promise<TrackDto[]> {
+    this.playlistCalls.push(id);
+    if (this.genreFailure) throw this.genreFailure;
+    return DEMO_TRACKS.slice(0, 3);
   }
   async suggest(prefix: string) {
     const p = prefix.trim().toLowerCase();

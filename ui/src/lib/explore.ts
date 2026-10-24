@@ -1,4 +1,5 @@
 import type { AlbumDto } from './bindings/AlbumDto';
+import type { ExploreShelfDto } from './bindings/ExploreShelfDto';
 import type { HistoryItemDto } from './bindings/HistoryItemDto';
 import type { TrackDto } from './bindings/TrackDto';
 
@@ -65,4 +66,12 @@ export function freshTracks(tracks: TrackDto[], seen: Set<string>): TrackDto[] {
     out.push(t);
   }
   return out;
+}
+
+/**
+ * YouTube Music's shelves with the albums-and-singles ones last. That feed is whatever distributors released this week
+ * (bulk-made releases pile up in it), so it comes after the songs and playlists worth starting with. Order is otherwise kept.
+ */
+export function albumsLast(shelves: ExploreShelfDto[]): ExploreShelfDto[] {
+  return [...shelves.filter((s) => s.kind !== 'albums'), ...shelves.filter((s) => s.kind === 'albums')];
 }

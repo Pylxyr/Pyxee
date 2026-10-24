@@ -2,7 +2,9 @@
 //! (`cargo test -p pyxee-app` writes them to `ui/src/lib/bindings`), so the two sides cannot drift.
 
 use pyxee_core::{Command, EntryId, Failure, Origin, Player, Repeat, Track, Transport};
-use pyxee_sources::{AlbumInfo, ExploreShelf, SearchFilter, SearchItem, SourceError};
+use pyxee_sources::{
+    AlbumInfo, ExploreShelf, GenreInfo, PlaylistInfo, SearchFilter, SearchItem, SourceError,
+};
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
@@ -379,11 +381,56 @@ impl From<&AlbumInfo> for AlbumDto {
     }
 }
 
-/// One row of YouTube Music's Explore page: songs to play, or albums to look up.
+/// A genre or mood of YouTube Music's "Moods & genres" page.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct GenreDto {
+    pub title: String,
+    pub params: String,
+}
+
+impl From<&GenreInfo> for GenreDto {
+    fn from(g: &GenreInfo) -> Self {
+        Self {
+            title: g.title.clone(),
+            params: g.params.clone(),
+        }
+    }
+}
+
+/// A YouTube Music playlist as a cover tile on a genre page.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct PlaylistCoverDto {
+    pub id: String,
+    pub title: String,
+    pub subtitle: String,
+    pub thumbnail: Option<String>,
+}
+
+impl From<&PlaylistInfo> for PlaylistCoverDto {
+    fn from(p: &PlaylistInfo) -> Self {
+        Self {
+            id: p.id.clone(),
+            title: p.title.clone(),
+            subtitle: p.subtitle.clone(),
+            thumbnail: p.thumbnail.clone(),
+        }
+    }
+}
+
+/// One row of YouTube Music's Explore page: songs to play, albums to look up, or playlists to play.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 #[serde(tag = "kind", rename_all = "camelCase")]
 #[ts(export)]
 pub enum ExploreShelfDto {
+    Playlists {
+        id: String,
+        title: String,
+        playlists: Vec<PlaylistCoverDto>,
+    },
     Songs {
         id: String,
         title: String,
@@ -403,6 +450,15 @@ impl From<&ExploreShelf> for ExploreShelfDto {
                 id: id.clone(),
                 title: title.clone(),
                 tracks: tracks.iter().map(TrackDto::from).collect(),
+            },
+            ExploreShelf::Playlists {
+                id,
+                title,
+                playlists,
+            } => ExploreShelfDto::Playlists {
+                id: id.clone(),
+                title: title.clone(),
+                playlists: playlists.iter().map(PlaylistCoverDto::from).collect(),
             },
             ExploreShelf::Albums { id, title, albums } => ExploreShelfDto::Albums {
                 id: id.clone(),
@@ -816,6 +872,25 @@ mod tests {
         let v = serde_json::to_value(ExploreShelfDto::from(&albums)).unwrap();
         assert_eq!(v["kind"], "albums");
         assert_eq!(v["albums"][0]["title"], "Night Shift");
+        let playlists = ExploreShelf::Playlists {
+            id: "genre-0".into(),
+            title: "Featured playlists".into(),
+            playlists: vec![PlaylistInfo {
+                id: "RDCLAK5uy_a".into(),
+                title: "J-Pop Rising".into(),
+                subtitle: "YouTube Music".into(),
+                thumbnail: None,
+            }],
+        };
+        let v = serde_json::to_value(ExploreShelfDto::from(&playlists)).unwrap();
+        assert_eq!(v["kind"], "playlists");
+        assert_eq!(v["playlists"][0]["id"], "RDCLAK5uy_a");
+        assert_eq!(v["playlists"][0]["subtitle"], "YouTube Music");
+        let genre = GenreDto::from(&GenreInfo {
+            title: "K-Pop".into(),
+            params: "ggMPkpop".into(),
+        });
+        assert_eq!(serde_json::to_value(genre).unwrap()["params"], "ggMPkpop");
     }
 
     #[test]

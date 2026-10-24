@@ -83,9 +83,33 @@ pub struct AlbumInfo {
     pub thumbnail: Option<String>,
 }
 
-/// One row of YouTube Music's Explore page, as a shelf of songs or of albums.
+/// A genre or mood of YouTube Music's "Moods & genres" page (K-Pop, Anime, Chill...). `params` is the opaque token its
+/// page is asked for with.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct GenreInfo {
+    pub title: String,
+    pub params: String,
+}
+
+/// A playlist as a cover tile (a genre page's playlists): what it is called, who makes it, and its cover.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PlaylistInfo {
+    /// YouTube's playlist id (no `VL` prefix).
+    pub id: String,
+    pub title: String,
+    /// Who it is by or how long it is, as the website words it; empty when it says nothing useful.
+    pub subtitle: String,
+    pub thumbnail: Option<String>,
+}
+
+/// One row of YouTube Music's Explore page, as a shelf of songs, albums or playlists.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum ExploreShelf {
+    Playlists {
+        id: String,
+        title: String,
+        playlists: Vec<PlaylistInfo>,
+    },
     Songs {
         id: String,
         title: String,
@@ -139,6 +163,18 @@ pub trait MusicSource: Send + Sync {
     fn explore(&self) -> Result<Vec<ExploreShelf>, SourceError> {
         Err(SourceError::Unsupported("Explore".into()))
     }
+    /// The genres and moods YouTube Music lists on its "Moods & genres" page.
+    fn genres(&self) -> Result<Vec<GenreInfo>, SourceError> {
+        Err(SourceError::Unsupported("Genres".into()))
+    }
+    /// The shelves of one genre's page (`params` from `genres`): playlists and songs, no albums.
+    fn genre(&self, _params: &str) -> Result<Vec<ExploreShelf>, SourceError> {
+        Err(SourceError::Unsupported("Genres".into()))
+    }
+    /// The songs of a YouTube Music playlist (the first page of it), in order.
+    fn playlist_tracks(&self, _id: &str) -> Result<Vec<TrackInfo>, SourceError> {
+        Err(SourceError::Unsupported("Playlists".into()))
+    }
 }
 
 /// Routes by key prefix: `yt:` to yt-dlp, `file:` to local files. Search and suggestions go to yt-dlp.
@@ -173,6 +209,15 @@ impl MusicSource for CompositeSource {
     }
     fn explore(&self) -> Result<Vec<ExploreShelf>, SourceError> {
         self.remote.explore()
+    }
+    fn genres(&self) -> Result<Vec<GenreInfo>, SourceError> {
+        self.remote.genres()
+    }
+    fn genre(&self, params: &str) -> Result<Vec<ExploreShelf>, SourceError> {
+        self.remote.genre(params)
+    }
+    fn playlist_tracks(&self, id: &str) -> Result<Vec<TrackInfo>, SourceError> {
+        self.remote.playlist_tracks(id)
     }
 }
 

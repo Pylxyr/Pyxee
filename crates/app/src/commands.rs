@@ -1,6 +1,6 @@
 use crate::dto::{
-    state_dto, AddResultDto, CommandDto, ExploreShelfDto, FilterInfoDto, HistoryItemDto, HomeDto,
-    LibrarySnapshotDto, LogInfoDto, PlayerStateDto, PlaylistDto, PlaylistSnapshotDto,
+    state_dto, AddResultDto, CommandDto, ExploreShelfDto, FilterInfoDto, GenreDto, HistoryItemDto,
+    HomeDto, LibrarySnapshotDto, LogInfoDto, PlayerStateDto, PlaylistDto, PlaylistSnapshotDto,
     RemovedEntryDto, SearchErrorDto, SearchFilterDto, SearchItemDto, SearchResponseDto, TrackDto,
     WindowInfoDto,
 };
@@ -110,6 +110,58 @@ pub async fn explore_get(
     })?
     .map(|shelves| shelves.iter().map(ExploreShelfDto::from).collect())
     .map_err(|e| SearchErrorDto::from(&e))
+}
+
+/// YouTube Music's genres and moods (K-Pop, Anime, Chill...), for the chips on Explore. Same worker-thread shape as
+/// `explore_get`.
+#[tauri::command]
+pub async fn genres_get(state: State<'_, AppState>) -> Result<Vec<GenreDto>, SearchErrorDto> {
+    let source = std::sync::Arc::clone(&state.source);
+    tauri::async_runtime::spawn_blocking(move || {
+        pyxee_sources::gate::background(|| source.genres())
+    })
+    .await
+    .map_err(|e| SearchErrorDto {
+        kind: crate::dto::SearchErrorKind::Other,
+        message: e.to_string(),
+    })?
+    .map(|genres| genres.iter().map(GenreDto::from).collect())
+    .map_err(|e| SearchErrorDto::from(&e))
+}
+
+/// The shelves of one genre (`params` from `genres_get`): YouTube Music's playlists and songs for it. The listener
+/// clicked a genre, so unlike the automatic loads it is not run at background priority.
+#[tauri::command]
+pub async fn genre_get(
+    state: State<'_, AppState>,
+    params: String,
+) -> Result<Vec<ExploreShelfDto>, SearchErrorDto> {
+    let source = std::sync::Arc::clone(&state.source);
+    tauri::async_runtime::spawn_blocking(move || source.genre(&params))
+        .await
+        .map_err(|e| SearchErrorDto {
+            kind: crate::dto::SearchErrorKind::Other,
+            message: e.to_string(),
+        })?
+        .map(|shelves| shelves.iter().map(ExploreShelfDto::from).collect())
+        .map_err(|e| SearchErrorDto::from(&e))
+}
+
+/// The songs of a YouTube Music playlist, to play. The listener asked for it, so it is not run at background priority.
+#[tauri::command]
+pub async fn playlist_tracks_get(
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<Vec<TrackDto>, SearchErrorDto> {
+    let source = std::sync::Arc::clone(&state.source);
+    tauri::async_runtime::spawn_blocking(move || source.playlist_tracks(&id))
+        .await
+        .map_err(|e| SearchErrorDto {
+            kind: crate::dto::SearchErrorKind::Other,
+            message: e.to_string(),
+        })?
+        .map(|tracks| tracks.iter().map(TrackDto::from).collect())
+        .map_err(|e| SearchErrorDto::from(&e))
 }
 
 #[tauri::command]

@@ -140,6 +140,40 @@ describe('App shell', () => {
     expect(search.query).toBe('Night Shift Lowtide');
   });
 
+  it('Explore lists genres with anime, J-Pop and K-Pop first; a genre swaps the page for its playlists and a playlist plays', async () => {
+    explore.status = 'idle';
+    explore.browseStatus = 'idle';
+    explore.genresStatus = 'idle';
+    explore.selectedGenre = null;
+    await openApp();
+    await fireEvent.click(screen.getByRole('button', { name: /Explore/ }));
+    const group = await screen.findByRole('group', { name: 'Genres' });
+    expect(within(group).getAllByRole('button').map((b) => b.textContent)).toEqual(['For you', 'Anime', 'J-Pop', 'K-Pop', 'Chill', 'Rock']);
+    await fireEvent.click(within(group).getByRole('button', { name: 'K-Pop' }));
+    expect(await screen.findByRole('list', { name: 'Featured playlists' })).toBeTruthy();
+    expect(mock.genreCalls).toEqual(['p-kpop']);
+    expect(screen.queryByRole('heading', { name: 'Trending' })).toBeNull();
+    await fireEvent.click(screen.getByRole('button', { name: 'Play Essentials' }));
+    await waitFor(() => expect(mock.playlistCalls).toEqual(['RDdemo1']));
+    await fireEvent.click(within(group).getByRole('button', { name: 'For you' }));
+    expect(await screen.findByRole('heading', { name: 'Trending' })).toBeTruthy();
+  });
+
+  it('a playlist that fails to open says why instead of doing nothing', async () => {
+    explore.status = 'idle';
+    explore.browseStatus = 'idle';
+    explore.genresStatus = 'idle';
+    explore.selectedGenre = null;
+    await openApp();
+    await fireEvent.click(screen.getByRole('button', { name: /Explore/ }));
+    const group = await screen.findByRole('group', { name: 'Genres' });
+    await fireEvent.click(within(group).getByRole('button', { name: 'Anime' }));
+    await screen.findByRole('list', { name: 'Featured playlists' });
+    mock.genreFailure = { kind: 'offline', message: "You're offline." };
+    await fireEvent.click(screen.getByRole('button', { name: 'Play Rising' }));
+    await waitFor(() => expect(snackbar.items.map((x) => x.message).join(' ')).toContain("You're offline."));
+  });
+
   it('searching opens the results page with the query', async () => {
     await openApp();
     const box = screen.getByRole('combobox', { name: 'Search' });

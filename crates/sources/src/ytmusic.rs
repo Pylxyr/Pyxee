@@ -12,7 +12,10 @@
 //! open-source `ytmusicapi` reads from it). Every piece is optional, so a shelf the website reshapes is left out
 //! rather than failing the page.
 
-use crate::{AlbumInfo, ExploreShelf, SearchItem, SourceError, TrackInfo, UNKNOWN_ARTIST};
+use crate::{
+    AlbumInfo, ExploreShelf, GenreInfo, PlaylistInfo, SearchItem, SourceError, TrackInfo,
+    UNKNOWN_ARTIST,
+};
 use serde_json::{json, Value};
 use std::collections::HashSet;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -51,8 +54,14 @@ pub fn direct_requests_allowed_from_env() -> bool {
 pub const BROWSE_ENDPOINT: &str = "https://music.youtube.com/youtubei/v1/browse?prettyPrint=false";
 /// The page behind the website's Explore tab.
 const EXPLORE_PAGE: &str = "FEmusic_explore";
+/// The page behind the website's "Moods & genres" button, and the page of one of its genres (asked for with the
+/// `params` token from the first).
+const GENRES_PAGE: &str = "FEmusic_moods_and_genres";
+const GENRE_PAGE: &str = "FEmusic_moods_and_genres_category";
 /// Shelves longer than this are cut: a row on a page, not a catalogue.
 const SHELF_MAX: usize = 20;
+/// A playlist's first page holds about this many songs; that is what is played.
+const PLAYLIST_MAX: usize = 100;
 
 /// The website's own filter value for its "Songs" tab.
 const SONGS_PARAMS: &str = "EgWKAQIIAWoMEA4QChADEAQQCRAF";
@@ -110,6 +119,31 @@ pub fn explore_body(now: SystemTime) -> String {
     .to_string()
 }
 
+pub fn genres_body(now: SystemTime) -> String {
+    json!({
+        "context": context(now),
+        "browseId": GENRES_PAGE,
+    })
+    .to_string()
+}
+
+pub fn genre_body(params: &str, now: SystemTime) -> String {
+    json!({
+        "context": context(now),
+        "browseId": GENRE_PAGE,
+        "params": params,
+    })
+    .to_string()
+}
+
+pub fn playlist_body(id: &str, now: SystemTime) -> String {
+    json!({
+        "context": context(now),
+        "browseId": format!("VL{id}"),
+    })
+    .to_string()
+}
+
 /// One POST to the website's own API, answered with the body text. `what` names the request in an error.
 fn post(endpoint: &str, body: &str, what: &str) -> Result<String, SourceError> {
     let agent = ureq::AgentBuilder::new()
@@ -155,11 +189,31 @@ pub fn fetch_explore(endpoint: &str) -> Result<Vec<ExploreShelf>, SourceError> {
     parse_explore(&body)
 }
 
+/// Asks YouTube Music for its list of genres and moods.
+pub fn fetch_genres(endpoint: &str) -> Result<Vec<GenreInfo>, SourceError> {
+    let body = post(endpoint, &genres_body(SystemTime::now()), "genres")?;
+    parse_genres(&body)
+}
+
+/// Asks YouTube Music for the page of one genre (`params` as `parse_genres` found it).
+pub fn fetch_genre(endpoint: &str, params: &str) -> Result<Vec<ExploreShelf>, SourceError> {
+    let body = post(endpoint, &genre_body(params, SystemTime::now()), "genre")?;
+    parse_genre(&body)
+}
+
+/// Asks YouTube Music for the songs of a playlist.
+pub fn fetch_playlist(endpoint: &str, id: &str) -> Result<Vec<TrackInfo>, SourceError> {
+    let id = plain_video_id(id)
+        .ok_or_else(|| SourceError::Failed("that is not a playlist id".into()))?;
+    let body = post(endpoint, &playlist_body(id, SystemTime::now()), "playlist")?;
+    parse_playlist(&body)
+}
+
 /// The song rows of a YouTube Music search answer, in the order it lists them.
 pub fn parse_songs(body: &str) -> Result<Vec<SearchItem>, SourceError> {
     let v: Value = serde_json::from_str(body).map_err(|e| SourceError::Parse(e.to_string()))?;
     let mut shelves = Vec::new();
-    collect_shelves(&v, &mut shelves);
+    collect_keys(&v, &["musicShelfRenderer"], &mut shelves);
     let mut seen = HashSet::new();
     let mut out = Vec::new();
     for shelf in shelves {
@@ -181,19 +235,20 @@ pub fn parse_songs(body: &str) -> Result<Vec<SearchItem>, SourceError> {
     Ok(out)
 }
 
-/// Every `musicShelfRenderer` anywhere in the answer (where it sits among the tabs is not relied on).
-fn collect_shelves<'a>(v: &'a Value, out: &mut Vec<&'a Value>) {
+/// Every value stored under one of `keys` anywhere in the answer (where it sits among the tabs is not relied on),
+/// in the order of the answer's lists. What is found is not searched further.
+fn collect_keys<'a>(v: &'a Value, keys: &[&str], out: &mut Vec<&'a Value>) {
     match v {
         Value::Object(map) => {
             for (key, child) in map {
-                if key == "musicShelfRenderer" {
+                if keys.contains(&key.as_str()) {
                     out.push(child);
                 } else {
-                    collect_shelves(child, out);
+                    collect_keys(child, keys, out);
                 }
             }
         }
-        Value::Array(list) => list.iter().for_each(|c| collect_shelves(c, out)),
+        Value::Array(list) => list.iter().for_each(|c| collect_keys(c, keys, out)),
         _ => {}
     }
 }
@@ -309,6 +364,196 @@ pub fn parse_explore(body: &str) -> Result<Vec<ExploreShelf>, SourceError> {
             out.push(ExploreShelf::Albums { id, title, albums });
         }
     }
+    Ok(out)
+}
+
+// ------------------------------------------------------------------ genres
+
+/// The genres and moods on the "Moods & genres" page, in the order the page lists them, each once.
+///
+/// Every button on the page that opens a genre page counts, wherever it sits: the page's first rows are a
+/// personalised pick of the same buttons, and a repeat is dropped.
+pub fn parse_genres(body: &str) -> Result<Vec<GenreInfo>, SourceError> {
+    let v: Value = serde_json::from_str(body).map_err(|e| SourceError::Parse(e.to_string()))?;
+    let mut buttons = Vec::new();
+    collect_keys(&v, &["musicNavigationButtonRenderer"], &mut buttons);
+    let mut seen = HashSet::new();
+    let mut out = Vec::new();
+    for button in buttons {
+        let endpoint = button.pointer("/clickCommand/browseEndpoint");
+        let is_genre = endpoint
+            .and_then(|e| e.get("browseId"))
+            .and_then(Value::as_str)
+            == Some(GENRE_PAGE);
+        let params = endpoint
+            .and_then(|e| e.get("params"))
+            .and_then(Value::as_str)
+            .filter(|p| is_token(p));
+        let title = button
+            .pointer("/buttonText/runs/0/text")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|t| !t.is_empty());
+        let (true, Some(params), Some(title)) = (is_genre, params, title) else {
+            continue;
+        };
+        if seen.insert(params.to_string()) {
+            out.push(GenreInfo {
+                title: title.to_string(),
+                params: params.to_string(),
+            });
+        }
+    }
+    if out.is_empty() {
+        return Err(SourceError::Parse(
+            "the genres page has an unexpected layout".into(),
+        ));
+    }
+    Ok(out)
+}
+
+/// A `params` token as the website hands it out (base64 text). It only goes back into a request body, but nothing
+/// odd is let through.
+fn is_token(text: &str) -> bool {
+    !text.is_empty()
+        && text.len() <= 512
+        && text
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'-' | b'=' | b'%'))
+}
+
+/// The shelves of one genre's page, top to bottom: shelves of playlists (YouTube Music's own picks) and of songs.
+///
+/// Album shelves ("New albums", "New releases") are left out on purpose: they are a feed of whatever distributors
+/// uploaded this week, which is where bulk-made releases pile up.
+pub fn parse_genre(body: &str) -> Result<Vec<ExploreShelf>, SourceError> {
+    let v: Value = serde_json::from_str(body).map_err(|e| SourceError::Parse(e.to_string()))?;
+    let sections = v
+        .pointer(EXPLORE_SECTIONS)
+        .and_then(Value::as_array)
+        .ok_or_else(|| SourceError::Parse("the genre page has an unexpected layout".into()))?;
+    let mut out = Vec::new();
+    for (i, section) in sections.iter().enumerate() {
+        let (title, items) = if let Some(shelf) = section.get("musicCarouselShelfRenderer") {
+            (
+                shelf.pointer("/header/musicCarouselShelfBasicHeaderRenderer/title/runs/0/text"),
+                shelf.get("contents"),
+            )
+        } else if let Some(grid) = section.get("gridRenderer") {
+            (
+                grid.pointer("/header/gridHeaderRenderer/title/runs/0/text"),
+                grid.get("items"),
+            )
+        } else {
+            continue;
+        };
+        let (Some(title), Some(items)) = (
+            title
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|t| !t.is_empty()),
+            items.and_then(Value::as_array),
+        ) else {
+            continue;
+        };
+        let mut playlists: Vec<PlaylistInfo> = Vec::new();
+        let mut tracks: Vec<TrackInfo> = Vec::new();
+        for item in items {
+            if let Some(card) = item.get("musicTwoRowItemRenderer") {
+                if let Some(p) = playlist_from_card(card) {
+                    if !playlists.iter().any(|x| x.id == p.id) {
+                        playlists.push(p);
+                    }
+                } else if let Some(t) = video_from_card(card) {
+                    if !tracks.iter().any(|x| x.key == t.key) {
+                        tracks.push(t);
+                    }
+                }
+            } else if let Some(t) = item
+                .get("musicResponsiveListItemRenderer")
+                .and_then(song_from_row)
+            {
+                if !tracks.iter().any(|x| x.key == t.key) {
+                    tracks.push(t);
+                }
+            }
+        }
+        let id = format!("genre-{i}");
+        let title = title.to_string();
+        if !playlists.is_empty() {
+            playlists.truncate(SHELF_MAX);
+            out.push(ExploreShelf::Playlists {
+                id,
+                title,
+                playlists,
+            });
+        } else if !tracks.is_empty() {
+            tracks.truncate(SHELF_MAX);
+            out.push(ExploreShelf::Songs { id, title, tracks });
+        }
+    }
+    Ok(out)
+}
+
+/// A playlist card: its title links to `VL<playlist id>`, its subtitle reads `Playlist • YouTube Music` or similar.
+fn playlist_from_card(card: &Value) -> Option<PlaylistInfo> {
+    let id = card
+        .pointer("/title/runs/0/navigationEndpoint/browseEndpoint/browseId")
+        .and_then(Value::as_str)
+        .and_then(|b| b.strip_prefix("VL"))
+        .and_then(plain_video_id)?;
+    let title = card_title(card)?;
+    // The type label ("Playlist") says nothing the cover does not; what is left is who made it or how long it is.
+    let subtitle = segments(runs_in(card, "/subtitle/runs"))
+        .into_iter()
+        .map(|(t, _)| t.trim().to_string())
+        .filter(|t| t != "Playlist")
+        .collect::<Vec<_>>()
+        .join(" • ");
+    Some(PlaylistInfo {
+        id: id.to_string(),
+        title: title.to_string(),
+        subtitle,
+        thumbnail: best_cover(
+            card.pointer("/thumbnailRenderer/musicThumbnailRenderer/thumbnail/thumbnails"),
+        ),
+    })
+}
+
+/// The songs of a playlist page, in order, each once: the song list sits in a `musicShelfRenderer` (or an older
+/// `musicPlaylistShelfRenderer`) whichever way the page is laid out. Rows that cannot be played (removed or
+/// unavailable songs carry no video id) are skipped.
+pub fn parse_playlist(body: &str) -> Result<Vec<TrackInfo>, SourceError> {
+    let v: Value = serde_json::from_str(body).map_err(|e| SourceError::Parse(e.to_string()))?;
+    let mut shelves = Vec::new();
+    collect_keys(
+        &v,
+        &["musicPlaylistShelfRenderer", "musicShelfRenderer"],
+        &mut shelves,
+    );
+    if shelves.is_empty() {
+        return Err(SourceError::Parse(
+            "the playlist page has an unexpected layout".into(),
+        ));
+    }
+    let mut out: Vec<TrackInfo> = Vec::new();
+    for shelf in shelves {
+        let Some(rows) = shelf.get("contents").and_then(Value::as_array) else {
+            continue;
+        };
+        for row in rows {
+            let Some(song) = row
+                .get("musicResponsiveListItemRenderer")
+                .and_then(song_from_row)
+            else {
+                continue;
+            };
+            if !out.iter().any(|x| x.key == song.key) {
+                out.push(song);
+            }
+        }
+    }
+    out.truncate(PLAYLIST_MAX);
     Ok(out)
 }
 
@@ -939,7 +1184,9 @@ mod tests {
         let ids: HashSet<String> = shelves
             .iter()
             .map(|s| match s {
-                ExploreShelf::Songs { id, .. } | ExploreShelf::Albums { id, .. } => id.clone(),
+                ExploreShelf::Songs { id, .. }
+                | ExploreShelf::Albums { id, .. }
+                | ExploreShelf::Playlists { id, .. } => id.clone(),
             })
             .collect();
         assert_eq!(ids.len(), 3, "every shelf has its own id");
@@ -1087,5 +1334,216 @@ mod tests {
             assert!(!direct_requests_allowed(Some(off)), "{off}");
         }
         assert!(parse_switch("maybe").is_err());
+    }
+
+    // ------------------------------------------------------------- Genres and playlists
+
+    fn genre_button(title: &str, params: &str) -> Value {
+        json!({ "musicNavigationButtonRenderer": {
+            "buttonText": { "runs": [ text_run(title) ] },
+            "clickCommand": { "browseEndpoint": { "browseId": GENRE_PAGE, "params": params } },
+        } })
+    }
+
+    fn grid(items: Vec<Value>) -> Value {
+        json!({ "gridRenderer": { "items": items } })
+    }
+
+    #[test]
+    fn genres_are_the_buttons_that_open_a_genre_page_each_once_in_the_pages_order() {
+        let other = json!({ "musicNavigationButtonRenderer": {
+            "buttonText": { "runs": [ text_run("Charts") ] },
+            "clickCommand": { "browseEndpoint": { "browseId": "FEmusic_charts", "params": "xyz" } },
+        } });
+        let body = explore_answer(vec![
+            // The personalised pick at the top repeats buttons that come again below.
+            grid(vec![genre_button("K-Pop", "ggMPkpop")]),
+            grid(vec![genre_button("Chill", "ggMPchill"), other]),
+            grid(vec![
+                genre_button("K-Pop", "ggMPkpop"),
+                genre_button("J-Pop", "ggMPjpop"),
+                genre_button("Anime", "ggMPanime"),
+                json!({ "musicNavigationButtonRenderer": { "buttonText": { "runs": [ text_run("No link") ] } } }),
+                genre_button("Bad token", "has space"),
+                genre_button("  ", "ggMPblank"),
+            ]),
+        ]);
+        let genres = parse_genres(&body).unwrap();
+        let seen: Vec<(&str, &str)> = genres
+            .iter()
+            .map(|g| (g.title.as_str(), g.params.as_str()))
+            .collect();
+        assert_eq!(
+            seen,
+            [
+                ("K-Pop", "ggMPkpop"),
+                ("Chill", "ggMPchill"),
+                ("J-Pop", "ggMPjpop"),
+                ("Anime", "ggMPanime"),
+            ]
+        );
+    }
+
+    #[test]
+    fn a_genres_page_without_genre_buttons_is_a_parse_error() {
+        assert!(matches!(
+            parse_genres(&explore_answer(vec![grid(vec![])])),
+            Err(SourceError::Parse(_))
+        ));
+        assert!(matches!(parse_genres("<html>"), Err(SourceError::Parse(_))));
+    }
+
+    #[test]
+    fn a_genre_page_gives_playlist_and_song_shelves_and_no_albums() {
+        let body = explore_answer(vec![
+            carousel(
+                "Featured playlists",
+                vec![
+                    album_card(
+                        "VLRDCLAK5uy_a",
+                        "J-Pop Rising",
+                        vec![
+                            text_run("Playlist"),
+                            text_run(" • "),
+                            text_run("YouTube Music"),
+                        ],
+                    ),
+                    album_card(
+                        "VLRDCLAK5uy_a",
+                        "J-Pop Rising (again)",
+                        vec![text_run("Playlist")],
+                    ),
+                    album_card("VLPLabc123", "Anime Openings", vec![text_run("Playlist")]),
+                    // Not a playlist: a release. Genre pages do not list those.
+                    album_card("MPREb_x", "Some Album", vec![text_run("Album")]),
+                ],
+            ),
+            carousel(
+                "New albums",
+                vec![album_card("MPREb_y", "Fresh", vec![text_run("Album")])],
+            ),
+            carousel(
+                "Top songs",
+                vec![page_row("song0000001", "Idol", "YOASOBI", "1M views")],
+            ),
+            json!({ "musicCarouselShelfRenderer": { "contents": [] } }),
+            json!({ "gridRenderer": {
+                "header": { "gridHeaderRenderer": { "title": { "runs": [ text_run("More picks") ] } } },
+                "items": [ album_card("VLPLdef456", "City Pop Nights", vec![link_run("Someone")]) ],
+            } }),
+        ]);
+        let shelves = parse_genre(&body).unwrap();
+        assert_eq!(shelves.len(), 3, "{shelves:?}");
+        let ExploreShelf::Playlists {
+            title, playlists, ..
+        } = &shelves[0]
+        else {
+            panic!("not playlists: {:?}", shelves[0])
+        };
+        assert_eq!(title, "Featured playlists");
+        let ids: Vec<&str> = playlists.iter().map(|p| p.id.as_str()).collect();
+        assert_eq!(
+            ids,
+            ["RDCLAK5uy_a", "PLabc123"],
+            "VL is cut off, repeats and releases dropped"
+        );
+        assert_eq!(
+            playlists[0].subtitle, "YouTube Music",
+            "the type label is not repeated"
+        );
+        assert_eq!(playlists[1].subtitle, "");
+        assert!(playlists[0]
+            .thumbnail
+            .as_deref()
+            .is_some_and(|t| t.contains("w544")));
+        assert!(
+            matches!(&shelves[1], ExploreShelf::Songs { title, tracks, .. } if title == "Top songs" && tracks.len() == 1)
+        );
+        let ExploreShelf::Playlists {
+            title, playlists, ..
+        } = &shelves[2]
+        else {
+            panic!("not playlists: {:?}", shelves[2])
+        };
+        assert_eq!(title, "More picks");
+        assert_eq!(playlists[0].subtitle, "Someone");
+    }
+
+    #[test]
+    fn a_genre_page_with_an_unexpected_layout_is_a_parse_error() {
+        assert!(matches!(parse_genre("{}"), Err(SourceError::Parse(_))));
+    }
+
+    fn playlist_row(id: Option<&str>, title: &str, artist: &str, length: &str) -> Value {
+        let mut r = row(id, title, vec![link_run(artist)]);
+        r["musicResponsiveListItemRenderer"]["fixedColumns"] = json!([
+            { "musicResponsiveListItemFixedColumnRenderer": { "text": { "runs": [ text_run(length) ] } } }
+        ]);
+        r
+    }
+
+    #[test]
+    fn a_playlist_gives_its_playable_songs_in_order_in_either_page_layout() {
+        let rows = vec![
+            playlist_row(Some("song0000001"), "Idol", "YOASOBI", "3:33"),
+            playlist_row(None, "Removed song", "Nobody", "1:00"),
+            playlist_row(Some("song0000002"), "Gurenge", "LiSA", "3:57"),
+            playlist_row(Some("song0000001"), "Idol (again)", "YOASOBI", "3:33"),
+        ];
+        // Two-column layout: the list is in the secondary column.
+        let two = json!({ "contents": { "twoColumnBrowseResultsRenderer": {
+            "tabs": [ { "tabRenderer": { "content": { "sectionListRenderer": { "contents": [ { "musicResponsiveHeaderRenderer": {} } ] } } } } ],
+            "secondaryContents": { "sectionListRenderer": { "contents": [ { "musicShelfRenderer": { "contents": rows.clone() } } ] } }
+        } } })
+        .to_string();
+        // Older layout: one column, a playlist shelf.
+        let one = json!({ "contents": { "singleColumnBrowseResultsRenderer": { "tabs": [ { "tabRenderer": { "content": {
+            "sectionListRenderer": { "contents": [ { "musicPlaylistShelfRenderer": { "contents": rows } } ] }
+        } } } ] } } })
+        .to_string();
+        for body in [two, one] {
+            let tracks = parse_playlist(&body).unwrap();
+            let seen: Vec<(&str, &str, Option<u64>)> = tracks
+                .iter()
+                .map(|t| (t.key.as_str(), t.artist.as_str(), t.duration_ms))
+                .collect();
+            assert_eq!(
+                seen,
+                [
+                    ("yt:song0000001", "YOASOBI", Some(213_000)),
+                    ("yt:song0000002", "LiSA", Some(237_000)),
+                ]
+            );
+        }
+    }
+
+    #[test]
+    fn a_playlist_is_cut_at_its_first_page_and_a_page_without_a_list_is_an_error() {
+        let rows: Vec<Value> = (0..150)
+            .map(|i| playlist_row(Some(&format!("song{i:07}")), "T", "A", "1:00"))
+            .collect();
+        let body = answer(rows);
+        assert_eq!(parse_playlist(&body).unwrap().len(), PLAYLIST_MAX);
+        assert!(matches!(parse_playlist("{}"), Err(SourceError::Parse(_))));
+    }
+
+    #[test]
+    fn genre_and_playlist_requests_name_the_page_and_refuse_an_odd_id() {
+        let (url, request) = testserver::once(200, &explore_answer(vec![]));
+        assert_eq!(fetch_genre(&url, "ggMPkpop"), Ok(vec![]));
+        let sent = request.recv().unwrap();
+        assert!(sent.contains("FEmusic_moods_and_genres_category"), "{sent}");
+        assert!(sent.contains("ggMPkpop"), "{sent}");
+
+        let (url, request) = testserver::once(200, &answer(vec![]));
+        assert_eq!(fetch_playlist(&url, "RDCLAK5uy_a"), Ok(vec![]));
+        assert!(request.recv().unwrap().contains("VLRDCLAK5uy_a"));
+
+        let (url, request) = testserver::once(200, "{}");
+        assert!(matches!(
+            fetch_playlist(&url, "a\"b"),
+            Err(SourceError::Failed(_))
+        ));
+        assert!(request.try_recv().is_err(), "nothing was sent");
     }
 }

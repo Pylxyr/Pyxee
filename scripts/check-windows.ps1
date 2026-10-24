@@ -339,7 +339,15 @@ function Test-EditedTests {
       'the_value_of_a_cookies_argument_is_replaced',
       'errors_are_classified_for_the_ui',
       'a_403_or_a_5xx_from_youtube_is_transient_and_a_missing_video_is_not',
-      'empty_queries_search_nothing_and_non_youtube_keys_are_refused') },
+      'empty_queries_search_nothing_and_non_youtube_keys_are_refused',
+      'genres_are_the_buttons_that_open_a_genre_page_each_once_in_the_pages_order',
+      'a_genres_page_without_genre_buttons_is_a_parse_error',
+      'a_genre_page_gives_playlist_and_song_shelves_and_no_albums',
+      'a_genre_page_with_an_unexpected_layout_is_a_parse_error',
+      'a_playlist_gives_its_playable_songs_in_order_in_either_page_layout',
+      'a_playlist_is_cut_at_its_first_page_and_a_page_without_a_list_is_an_error',
+      'genre_and_playlist_requests_name_the_page_and_refuse_an_odd_id',
+      'genres_genre_and_playlists_ask_youtube_music_directly_and_need_music_search_on') },
     @{ Crate = 'pyxee-core'; Names = @(
       'a_prefetch_that_fails_while_the_player_waits_for_it_at_the_boundary_does_not_leave_loading_forever',
       'removing_the_song_that_is_loading_at_the_boundary_moves_on_to_the_one_after_it',
@@ -432,8 +440,27 @@ function Test-FramelessWindow {
   $shell = & $read 'crates\app\src\shell\mod.rs'
   & $expect 'frame-setting-applied' (($shell -match 'pub fn sync_window_frame') -and ($shell -match 'set_decorations\(!borderless\)') -and ($shell -match '(?s)sync_discord\(app\);\s*sync_window_frame\(app\);') -and ((& $read 'crates\app\src\shell\commands.rs') -match 'sync_window_frame\(&app\)')) 'the saved window frame is applied at start-up (before the window is shown) and whenever the setting is saved'
   & $expect 'frame-fullscreen' (($cap -match 'core:window:allow-set-fullscreen') -and ((& $read 'ui\src\lib\shortcuts.ts') -match 'F11') -and ((& $read 'ui\src\App.svelte') -match 'setFullscreen')) 'F11 switches full screen, and the page may do that to the main window'
+  $win = & $read 'crates\app\src\window.rs'
+  & $expect 'frame-backdrop-extended' (($win -match 'DwmExtendFrameIntoClientArea') -and ($win -match '(?s)is_decorated\(\)\.is_ok_and\(\|decorated\| !decorated\)\s*\{\s*extend_frame\(window\);') -and ($win -match 'left: -1')) 'a window without a native frame extends the DWM frame over the whole page, so the Mica backdrop shows through it (framed windows are left as they were)'
   $app = & $read 'ui\src\App.svelte'
   & $expect 'frame-title-bar-in-app' (($app -match 'TitleBar') -and ($app -match 'data-titlebar')) 'the main page draws the title bar and tells the overlays to start below it'
+}
+
+# Static facts about Explore's genres: the commands exist and are registered, genre pages leave albums out, and the
+# page is built from the new pieces. What the real website answers is checked live (phase "genres") and by hand.
+function Test-ExploreGenres {
+  $read = { param([string]$rel) $p = Join-Path $Root $rel; if (Test-Path -LiteralPath $p) { Get-Content -LiteralPath $p -Raw } else { '' } }
+  $expect = { param([string]$name, [bool]$ok, [string]$detail) if ($ok) { Add-Result 'PASS' $name $detail } else { Add-Result 'FAIL' $name $detail } }
+  $main = & $read 'crates\app\src\main.rs'
+  & $expect 'genres-commands-registered' (($main -match 'commands::genres_get') -and ($main -match 'commands::genre_get') -and ($main -match 'commands::playlist_tracks_get')) 'genres_get, genre_get and playlist_tracks_get are registered with Tauri'
+  $yt = & $read 'crates\sources\src\ytmusic.rs'
+  & $expect 'genres-pages-asked-for' (($yt -match 'FEmusic_moods_and_genres"') -and ($yt -match 'FEmusic_moods_and_genres_category') -and ($yt -match 'format!\("VL\{id\}"\)')) 'the requests name the genres page, a genre page and a playlist (VL<id>)'
+  & $expect 'genres-no-albums-on-genre-pages' (($yt -match 'Album shelves \("New albums", "New releases"\) are left out on purpose') -and ($yt -notmatch '(?s)pub fn parse_genre\(.{0,3000}ExploreShelf::Albums')) 'a genre page keeps playlists and songs and leaves album shelves out'
+  $page = & $read 'ui\src\pages\Explore.svelte'
+  & $expect 'genres-page-wired' (($page -match 'GenreChips') -and ($page -match 'PlaylistGrid') -and ($page -match 'playlistTracksGet')) 'Explore shows the genre chips, a genre''s playlists as covers, and plays a playlist through the backend'
+  & $expect 'genres-albums-last' (((& $read 'ui\src\lib\explore.svelte.ts') -match 'albumsLast\(page\)')) 'the new albums and singles shelf comes after the other shelves on the main page'
+  $live = & $read 'crates\spike\src\bin\livecheck.rs'
+  & $expect 'genres-live-phase' (($live -match '"genres" => genres\(&o\)') -and ((& $read 'scripts\check-windows.ps1') -match "@\('search', 'genres', 'stream'\)")) 'the live checks ask the real website for the genres, a genre page and a playlist'
 }
 
 # ---------------------------------------------------------------- UI rebuild: static facts, named tests, report
@@ -456,7 +483,7 @@ $script:UiNamedTests = @(
     'leaving is quicker than arriving') }
 )
 # 330 before; two App.test.ts tests were rewritten (same count) and 2 + 3 were added.
-$script:UiExpectedTests = 362
+$script:UiExpectedTests = 374
 
 function Get-UiSources([string[]]$Ext = @('.svelte', '.ts', '.css', '.html')) {
   $ui = Join-Path $Root 'ui'
@@ -656,6 +683,7 @@ $any | Select-Object -First 25 | ForEach-Object { Write-Report ("    " + $_.Subs
 Test-ReviewFixes
 Test-WebviewPower
 Test-FramelessWindow
+Test-ExploreGenres
 
 # ---------------------------------------------------------------- 1b. static: the UI rebuild
 
@@ -1048,7 +1076,7 @@ if (-not $SkipLive) {
       $env:PYXEE_COOKIES = $saveF; $env:PYXEE_COOKIES_FROM_BROWSER = $saveB
     }
 
-    foreach ($ph in @('search', 'stream')) {
+    foreach ($ph in @('search', 'genres', 'stream')) {
       if ($script:LiveBlocked) { Add-Result 'FAIL' "live-$ph" 'NOT RUN: YouTube is rate limiting this IP right now (try again in ~15 minutes, or use -CookieFile). A run that could not do its live checks is not a pass.'; continue }
       Invoke-Phase $ph
     }
@@ -1123,6 +1151,9 @@ if ($Manual) {
     @('frame-overlays', 'Borderless: with Settings, a sheet or Now Playing open, the title bar and its buttons stay visible and usable, and nothing in the sheet or Now Playing is hidden under the bar. Do the mini player and the tray flyout look and behave as before?'),
     @('frame-setting', 'Borderless: Settings > Windows > "Borderless window" switched off gives the main window the normal Windows title bar at once (Mica still shows, the content is not cut off, Pyxee''s own bar is gone); switched on again takes it away. Does the choice survive closing and starting Pyxee, also when it starts hidden in the tray and is opened from there?'),
     @('frame-fullscreen', 'Full screen: F11 fills the whole screen with no title bar (Pyxee''s or Windows'') and covers the taskbar; F11 again brings the window and its bar back as they were (maximized or not). Music keeps playing, and Now Playing and Settings still open.'),
+    @('frame-mica', 'Mica: with the borderless window, does the Windows 11 backdrop show through the rail and the page as it did with the Windows title bar (also maximized, in light and dark)? Switch "Borderless window" off and on again: does Mica still show in both?'),
+    @('explore-genres', 'Explore: below the title are genre chips (For you first). With a region that lists them, are Anime, J-Pop and K-Pop the first ones after it? Pick one: does the page change to that genre''s playlists and songs (and no albums), and does a playlist cover start playing it? Pick For you again: is "New albums & singles" the last of YouTube Music''s shelves?'),
+    @('explore-genres-failure', 'Explore: turn the network off, pick a genre that you have not opened yet. Does it say it could not load (with Try again) and keep the chips, and does Try again work after the network is back?'),
     @('ui-system-font', 'UI: does the text look like Windows 11 system text (Segoe UI Variable) everywhere, with no serif fallback and no empty boxes where an icon should be?')
   )
   foreach ($it in $items) {
