@@ -120,6 +120,45 @@ impl Cookies {
     }
 }
 
+/// The environment variable that chooses yt-dlp's YouTube player client(s).
+pub const PLAYER_CLIENT_VAR: &str = "PYXEE_YTDLP_PLAYER_CLIENT";
+
+/// What is passed when `PYXEE_YTDLP_PLAYER_CLIENT` is not set: yt-dlp's own client list without `tv_samsung`. As of
+/// yt-dlp 2026.10.21 that client is the first default, and googlevideo answers its stream URLs with HTTP 403 (even to
+/// curl), so no song starts. Excluding it leaves the others (`visionos`, which plays; `web`, which needs a PO token).
+pub const DEFAULT_PLAYER_CLIENT: &str = "-tv_samsung";
+
+/// `--extractor-args youtube:player_client=...` for yt-dlp. `PYXEE_YTDLP_PLAYER_CLIENT` set: that value (for example
+/// `visionos` or `web_safari,mweb`; `default` and `-name` work as in yt-dlp). `none`: nothing is passed and yt-dlp
+/// chooses. Unset or empty: `DEFAULT_PLAYER_CLIENT`. A value with anything but letters, digits and `_ , - .` is
+/// ignored in favour of the default, since it ends up inside one command-line argument.
+fn player_client_args(get: impl Fn(&str) -> Option<String>) -> Vec<String> {
+    let set = get(PLAYER_CLIENT_VAR)
+        .map(|v| v.trim().to_string())
+        .filter(|v| !v.is_empty());
+    let value = match set {
+        None => DEFAULT_PLAYER_CLIENT.to_string(),
+        Some(v) if v.eq_ignore_ascii_case("none") => return Vec::new(),
+        Some(v)
+            if v.len() > 100
+                || !v.bytes().all(|b| {
+                    b.is_ascii_alphanumeric() || matches!(b, b'_' | b',' | b'-' | b'.')
+                }) =>
+        {
+            log::warn!("{PLAYER_CLIENT_VAR} has unusable characters; using the default instead");
+            DEFAULT_PLAYER_CLIENT.to_string()
+        }
+        Some(v) => {
+            log::info!("yt-dlp: player client set to {v} ({PLAYER_CLIENT_VAR})");
+            v
+        }
+    };
+    vec![
+        "--extractor-args".into(),
+        format!("youtube:player_client={value}"),
+    ]
+}
+
 /// Search cache key: (lower-cased query, filter).
 type SearchCacheKey = (String, String);
 /// Search cache value: (time stored, results).
@@ -329,6 +368,7 @@ impl YtDlpSource {
         let all: Vec<String> = std::iter::once("--ignore-config".to_string())
             .chain(self.js_runtime.args())
             .chain(self.cookies.args())
+            .chain(player_client_args(|k| std::env::var(k).ok()))
             .chain(args.iter().cloned())
             .collect();
         self.gate
@@ -843,6 +883,26 @@ impl MusicSource for YtDlpSource {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn player_client_defaults_to_skipping_tv_samsung_and_obeys_the_setting() {
+        let with = |v: &'static str| player_client_args(move |_| Some(v.to_string()));
+        let arg = |c: &str| {
+            vec![
+                "--extractor-args".to_string(),
+                format!("youtube:player_client={c}"),
+            ]
+        };
+        assert_eq!(player_client_args(|_| None), arg("-tv_samsung"));
+        assert_eq!(with("  "), arg("-tv_samsung"));
+        assert_eq!(with("visionos "), arg("visionos"));
+        assert_eq!(with("web_safari,mweb"), arg("web_safari,mweb"));
+        assert_eq!(with("default,-tv"), arg("default,-tv"));
+        assert!(with("none").is_empty());
+        assert!(with("NONE").is_empty());
+        assert_eq!(with("a;b"), arg("-tv_samsung"));
+        assert_eq!(with("a b"), arg("-tv_samsung"));
+    }
+
     use super::*;
 
     const TRACK: &str = r#"{"_type":"url","ie_key":"Youtube","id":"abc12345678","url":"https://www.youtube.com/watch?v=abc12345678","title":"Neon Harbor","duration":213.5,"channel":"Lowtide - Topic","uploader":"Lowtide - Topic","thumbnails":[{"url":"https://i.ytimg.com/vi/abc12345678/small.jpg","width":120},{"url":"https://i.ytimg.com/vi/abc12345678/big.jpg","width":720}]}"#;

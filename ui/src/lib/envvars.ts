@@ -44,6 +44,13 @@ export const ENV_VARS: EnvVarInfo[] = [
     placeholder: 'node',
   },
   {
+    name: 'PYXEE_YTDLP_PLAYER_CLIENT',
+    title: 'YouTube player client',
+    about: 'The YouTube app yt-dlp pretends to be. Some of them are refused by YouTube\'s servers for a while (the song then fails with HTTP 403). By default Pyxee skips tv_samsung, which is refused as of yt-dlp 2026.10.21.',
+    fill: 'A yt-dlp client name such as visionos, or several separated by commas (web_safari,mweb). default,-name drops one from yt-dlp\'s own list. Type none to pass nothing and let yt-dlp decide. Leave it empty to use Pyxee\'s default.',
+    placeholder: 'visionos',
+  },
+  {
     name: 'PYXEE_YTMUSIC_DIRECT',
     title: 'Ask YouTube Music directly',
     about: 'Songs search and the Explore page ask YouTube Music\'s own, undocumented interface that can stop working whenever YouTube changes it. Turn it off to search with yt-dlp only; there is then no Explore page.',

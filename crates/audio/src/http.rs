@@ -92,6 +92,25 @@ pub(crate) fn is_expired(code: u16) -> bool {
     matches!(code, 401 | 403 | 410)
 }
 
+/// The player client YouTube recorded in a stream URL (`c=ANDROID_VR`, `c=WEB`, ...), for the log only.
+fn stream_client(url: &str) -> Option<&str> {
+    let query = url.split_once('?')?.1;
+    query
+        .split('&')
+        .find_map(|kv| kv.strip_prefix("c="))
+        .filter(|v| {
+            !v.is_empty()
+                && v.len() <= 32
+                && v.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_')
+        })
+}
+
+/// The host of a stream URL (no path and no query, so nothing signed reaches the log).
+fn url_host(url: &str) -> Option<&str> {
+    let rest = url.split_once("://")?.1;
+    rest.split(['/', '?']).next().filter(|h| !h.is_empty())
+}
+
 /// Applies the headers a stream URL needs (User-Agent etc.). Range is set by the caller and never overridden.
 fn with_headers(mut req: ureq::Request, headers: &[(String, String)]) -> ureq::Request {
     for (k, v) in headers {
@@ -247,7 +266,13 @@ impl HttpRangeSource {
         let resp = match first.call() {
             Ok(r) => r,
             Err(ureq::Error::Status(c, _)) if is_expired(c) => {
-                return Err(AudioError::UrlExpired(c))
+                log::warn!(
+                    "stream request refused (HTTP {c}): host={} client={}; a fresh URL refused on its first request \
+                     usually means yt-dlp picked a player client YouTube now rejects (update yt-dlp)",
+                    url_host(url).unwrap_or("?"),
+                    stream_client(url).unwrap_or("unknown"),
+                );
+                return Err(AudioError::UrlExpired(c));
             }
             Err(ureq::Error::Status(429, _)) => return Err(AudioError::RateLimited),
             Err(ureq::Error::Status(c, _)) => return Err(net(format!("HTTP {c}"))),
@@ -378,5 +403,20 @@ impl Seek for HttpRangeSource {
 impl crate::decode::ByteSource for HttpRangeSource {
     fn byte_len(&self) -> Option<u64> {
         Some(self.len)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn client_and_host_come_from_the_url_without_leaking_the_query() {
+        let u = "https://rr6---sn-x.googlevideo.com/videoplayback?expire=1&c=ANDROID_VR&sig=SECRET";
+        assert_eq!(stream_client(u), Some("ANDROID_VR"));
+        assert_eq!(url_host(u), Some("rr6---sn-x.googlevideo.com"));
+        assert_eq!(stream_client("https://h/p?cc=X&itag=140"), None);
+        assert_eq!(stream_client("https://h/p"), None);
+        assert_eq!(stream_client("https://h/p?c=a%20b"), None);
     }
 }
