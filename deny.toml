@@ -14,8 +14,8 @@ version = 2
 allow = [
     "MIT",
     "Apache-2.0",
-    # BSD-3-Clause: permissive; brotli, alloc-no-stdlib, alloc-stdlib, subtle. Needs the notice kept, which
-    # crates/app/licenses/THIRD_PARTY_DEPENDENCIES.txt does.
+    # BSD-3-Clause: permissive; brotli, alloc-no-stdlib, alloc-stdlib, subtle. Needs the notice kept (each
+    # crate's own licence text is in its source).
     "BSD-3-Clause",
     # ISC: permissive, MIT-like; ring, rustls-webpki, untrusted (TLS for the update and metadata requests).
     "ISC",
@@ -26,8 +26,8 @@ allow = [
     # CDLA-Permissive-2.0: the licence of the Mozilla CA list data in webpki-roots (the TLS root certificates).
     "CDLA-Permissive-2.0",
     # MPL-2.0: weak, file-level copyleft; cssparser, selectors, dtoa-short, option-ext (pulled in by Tauri's web
-    # stack). Pyxee does not modify them; their source is public on crates.io and the licence text is shipped in
-    # THIRD_PARTY_DEPENDENCIES.txt, which is what MPL-2.0 asks of an unmodified, unlinked-to-GPL redistribution.
+    # stack). Pyxee does not modify them; their source is public on crates.io, which is where MPL-2.0 points
+    # for an unmodified redistribution.
     "MPL-2.0",
 ]
 confidence-threshold = 0.9

@@ -62,9 +62,6 @@ The release workflow builds the zip after the installers, unpacks it, runs the b
 ## FFmpeg build kit
 FFmpeg is linked statically under the LGPL, so each release also carries `Pyxee_<version>_ffmpeg-build-kit.zip` (`cargo xtask ffmpeg-kit`, a step of the release workflow): the exact libraries and headers that were linked, the unmodified FFmpeg source at the pinned commit, `build-ffmpeg.sh`, and a README with the relink steps (`PYXEE_FFMPEG_DIR` plus `cargo xtask installer`). It is covered by `SHA256SUMS.txt` and the build provenance like the other zips. Nothing needs editing when the FFmpeg pin changes: the kit reads it from `scripts/build-ffmpeg.sh`.
 
-## Dependency notices
-`crates/app/licenses/THIRD_PARTY_DEPENDENCIES.txt` must match `Cargo.lock` and `ui/package-lock.json` (a test checks). After any dependency change run `python scripts/gen_dependency_notices.py` and commit the result; the release uploads it next to `THIRD_PARTY_NOTICES.txt`.
-
 ## Bumping the bundled yt-dlp
 Installers and the portable zip bundle one pinned yt-dlp release, so two builds of a tag contain the same `yt-dlp.exe`. The pin is `YTDLP_VERSION` and `YTDLP_SHA256` in `xtask/src/main.rs`; `cargo xtask tools` downloads that exact release and stops if the bytes do not match. The in-app updater is separate and still pulls the latest release at run time, which is what keeps users working when YouTube changes.
 

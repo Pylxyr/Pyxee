@@ -210,7 +210,7 @@ To update: download the new zip from https://github.com/Pylxyr/Pyxee/releases an
 unpack it over this folder. The data folder is not in the zip, so it stays.\r\n\
 Settings > Updates still updates yt-dlp, into data\\tools.\r\n\
 \r\n\
-Licences: THIRD_PARTY_NOTICES.txt, THIRD_PARTY_DEPENDENCIES.txt, FFmpeg-LGPL-2.1.txt,\r\n\
+Licences: THIRD_PARTY_NOTICES.txt, FFmpeg-LGPL-2.1.txt,\r\n\
 GPL-3.0.txt and
 yt-dlp-THIRD_PARTY_LICENSES.txt (yt-dlp.exe is a GPLv3+ combined work).\r\n";
 
@@ -239,10 +239,6 @@ pub fn portable_entries() -> Vec<Entry> {
         Entry {
             from: Some("crates/app/licenses/FFmpeg-LGPL-2.1.txt".into()),
             name: "FFmpeg-LGPL-2.1.txt",
-        },
-        Entry {
-            from: Some("crates/app/licenses/THIRD_PARTY_DEPENDENCIES.txt".into()),
-            name: "THIRD_PARTY_DEPENDENCIES.txt",
         },
         Entry {
             from: Some("crates/app/licenses/GPL-3.0.txt".into()),
@@ -504,11 +500,7 @@ mod tests {
     #[test]
     fn the_portable_zip_carries_the_gpl_texts_that_go_with_yt_dlp() {
         let names: Vec<&str> = portable_entries().iter().map(|e| e.name).collect();
-        for n in [
-            "GPL-3.0.txt",
-            "yt-dlp-THIRD_PARTY_LICENSES.txt",
-            "THIRD_PARTY_DEPENDENCIES.txt",
-        ] {
+        for n in ["GPL-3.0.txt", "yt-dlp-THIRD_PARTY_LICENSES.txt"] {
             assert!(names.contains(&n), "{n}");
         }
         assert!(PORTABLE_README.contains("GPL-3.0.txt"));
