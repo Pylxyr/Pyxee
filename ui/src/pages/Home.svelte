@@ -62,6 +62,7 @@
     <SectionHead>On rotation</SectionHead>
     <Skeleton rows={8} />
   {:else if hasLibrary}
+    <div class="home-body">
     {#if hero}
       {@const button = HERO_BUTTON[hero.action]}
       <div class="hero" data-testid="resume">
@@ -83,14 +84,21 @@
         {/if}
       </div>
     {/if}
-    {#if home.quickPicks.length > 0}
-      <SectionHead count={home.quickPicks.length}>On rotation</SectionHead>
-      <TrackList label="Quick picks" tracks={home.quickPicks} onplay={(i) => player.playTracks(home!.quickPicks, i)} />
-    {/if}
-    {#if home.recent.length > 0}
-      <SectionHead count={home.recent.length}>Recently played</SectionHead>
-      <CoverGrid label="Recently played" tracks={home.recent} onplay={(i) => player.playTracks(home!.recent, i)} />
-    {/if}
+    <div class="home-cols">
+      {#if home.quickPicks.length > 0}
+        <section class="min-w-0">
+          <SectionHead count={home.quickPicks.length}>On rotation</SectionHead>
+          <TrackList label="Quick picks" tracks={home.quickPicks} onplay={(i) => player.playTracks(home!.quickPicks, i)} />
+        </section>
+      {/if}
+      {#if home.recent.length > 0}
+        <section class="min-w-0">
+          <SectionHead count={home.recent.length}>Recently played</SectionHead>
+          <CoverGrid label="Recently played" tracks={home.recent} onplay={(i) => player.playTracks(home!.recent, i)} />
+        </section>
+      {/if}
+    </div>
+    </div>
   {:else if demo}
     <SectionHead count={demo.length}>On rotation</SectionHead>
     <p class="muted mb-2">Demo tracks with simulated playback. Real picks appear here as you listen and like songs.</p>

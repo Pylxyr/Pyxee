@@ -48,6 +48,9 @@ const BACKOFF_MAX: Duration = Duration::from_secs(5 * 60);
 /// How often Last.fm is asked whether the user has allowed Pyxee yet, and for how long.
 const AUTH_POLL: Duration = Duration::from_secs(3);
 const AUTH_WINDOW: Duration = Duration::from_secs(10 * 60);
+/// Asking for the request token is tried this many times (a second apart) before signing in is given up.
+const TOKEN_TRIES: u32 = 3;
+const TOKEN_RETRY_WAIT: Duration = Duration::from_secs(1);
 /// How long quitting waits for the last scrobbles to be sent before giving up on them.
 const SHUTDOWN_WAIT: Duration = Duration::from_millis(2_000);
 
@@ -326,13 +329,50 @@ fn parse_response(status: u16, body: &str) -> Result<Value, ApiError> {
     Ok(value)
 }
 
-/// An unauthorized request token: letters and digits only, because it goes into the address the browser opens.
+/// An unauthorized request token. Last.fm documents 32 hexadecimal characters, but anything printable without
+/// spaces is taken (it is percent-encoded where it goes into an address), so an unusual token does not stop the
+/// sign-in. The error says what was wrong with it, never what it was.
 fn parse_token(v: &Value) -> Result<String, ApiError> {
-    v.get("token")
-        .and_then(Value::as_str)
-        .filter(|t| !t.is_empty() && t.len() <= 64 && t.bytes().all(|b| b.is_ascii_alphanumeric()))
-        .map(str::to_owned)
-        .ok_or_else(|| ApiError::Parse(format!("no request token; the answer holds: {}", shape(v))))
+    let raw = match v.get("token") {
+        None => {
+            return Err(ApiError::Parse(format!(
+                "no request token; the answer holds: {}",
+                shape(v)
+            )));
+        }
+        Some(Value::String(s)) => s.trim(),
+        Some(_) => return Err(ApiError::Parse("the request token is not text".into())),
+    };
+    let chars = raw.chars().count();
+    if raw.is_empty() {
+        Err(ApiError::Parse("the request token is empty".into()))
+    } else if raw.len() > 128 {
+        Err(ApiError::Parse(format!(
+            "the request token is too long ({chars} characters)"
+        )))
+    } else if !raw.bytes().all(|b| b.is_ascii_graphic()) {
+        Err(ApiError::Parse(format!(
+            "the request token has spaces or characters that are not plain ASCII ({chars} characters)"
+        )))
+    } else {
+        Ok(raw.to_owned())
+    }
+}
+
+/// `s` written for the query part of an address: everything but letters, digits and `-_.~` becomes `%XX`.
+fn encode_component(s: &str) -> String {
+    const HEX: &[u8; 16] = b"0123456789ABCDEF";
+    let mut out = String::with_capacity(s.len());
+    for b in s.bytes() {
+        if b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b'.' | b'~') {
+            out.push(char::from(b));
+        } else {
+            out.push('%');
+            out.push(char::from(HEX[usize::from(b >> 4)]));
+            out.push(char::from(HEX[usize::from(b & 0x0f)]));
+        }
+    }
+    out
 }
 
 /// What an answer looked like, for the log: an object's key names, never its values (they can hold tokens and keys).
@@ -378,7 +418,11 @@ fn parse_scrobbles(v: &Value) -> Result<(u64, u64), ApiError> {
 
 /// The address where the user allows Pyxee to use their Last.fm account.
 fn auth_page(app: &App, token: &str) -> String {
-    format!("{AUTH_URL}?api_key={}&token={token}", app.key)
+    format!(
+        "{AUTH_URL}?api_key={}&token={}",
+        app.key,
+        encode_component(token)
+    )
 }
 
 fn param(name: &str, value: impl Into<String>) -> (String, String) {
@@ -557,13 +601,34 @@ impl<F: Fn(Event)> Worker<F> {
         self.pending.clear();
     }
 
+    /// Asks for a request token, again after a short wait when the failure may be temporary.
+    fn fetch_token(&self) -> Result<String, ApiError> {
+        let mut tries = 1;
+        loop {
+            match self.api.get_token() {
+                Err(e) if e.outcome() == Outcome::Retry && tries < TOKEN_TRIES => {
+                    log::debug!("last.fm: no request token yet ({e}); asking again");
+                    tries += 1;
+                    std::thread::sleep(TOKEN_RETRY_WAIT);
+                }
+                other => return other,
+            }
+        }
+    }
+
     /// Asks Last.fm for a request token and opens the page where the user allows Pyxee.
     fn begin_auth(&mut self) {
-        let token = match self.api.get_token() {
+        let token = match self.fetch_token() {
             Ok(t) => t,
             Err(e) => {
                 log::warn!("last.fm: could not start signing in: {e}");
-                self.give_up("Last.fm could not be reached to sign in.");
+                self.give_up(match e {
+                    ApiError::Network(_) => "Last.fm could not be reached to sign in.",
+                    ApiError::Parse(_) => {
+                        "Last.fm answered in a way Pyxee could not use to sign in."
+                    }
+                    ApiError::Api { .. } => "Last.fm refused the request to sign in.",
+                });
                 return;
             }
         };
@@ -888,5 +953,36 @@ mod tests {
             parse_token(&ok).unwrap(),
             "cf45fe5a3e3cebe168480a086d7fe481"
         );
+    }
+
+    #[test]
+    fn an_unusual_token_is_taken_and_a_bad_one_is_described_without_its_value() {
+        let token = |t: &str| parse_token(&serde_json::json!({ "token": t }));
+        assert_eq!(token("ab-_.12").unwrap(), "ab-_.12");
+        assert_eq!(token(" abc ").unwrap(), "abc");
+        let long = "a".repeat(129);
+        for bad in ["", "a b", "caf\u{e9}", long.as_str()] {
+            let msg = token(bad).unwrap_err().to_string();
+            assert!(msg.contains("request token"), "{msg}");
+            assert!(!bad.is_empty() || msg.contains("empty"), "{msg}");
+            assert!(bad.len() < 3 || !msg.contains(bad), "{msg}");
+        }
+        let msg = parse_token(&serde_json::json!({ "token": 5 }))
+            .unwrap_err()
+            .to_string();
+        assert!(msg.contains("not text"), "{msg}");
+    }
+
+    #[test]
+    fn the_token_is_encoded_in_the_address_the_browser_opens() {
+        let app = App {
+            key: "0123456789abcdef0123456789abcdef".into(),
+            secret: "fedcba9876543210fedcba9876543210".into(),
+        };
+        assert_eq!(
+            auth_page(&app, "cf45fe5a"),
+            "https://www.last.fm/api/auth/?api_key=0123456789abcdef0123456789abcdef&token=cf45fe5a"
+        );
+        assert!(auth_page(&app, "a&b=c d").ends_with("token=a%26b%3Dc%20d"));
     }
 }

@@ -23,6 +23,8 @@ the **page** between them as the content layer, with a rounded top-left corner.
   a preview of Up next with **Open queue**). Before anything plays the stage says so; it never moves when the first song starts.
 - **Narrow**: page, then the dock (a one-line player with the seek line along its top edge), then the bottom bar. The search
   box and Settings are at the top of the page.
+Above 1280 px the stage grows with the window (340 to 560 px) and the page margins grow at 1600 and 1920 px; Home puts "On rotation" and
+"Recently played" side by side once its page is about 1000 px wide, and Now Playing has no width cap (a bigger cover and a wider queue column at 1280 and 1536 px).
 Click the cover or the dock to open Now Playing (Up next / Lyrics / Related). The same four destinations (`lib/destinations.ts`)
 feed the rail and the bottom bar (`Navigation.svelte`, `layout="rail" | "bar"`).
 
@@ -75,14 +77,14 @@ Space and arrows are left to focused buttons and sliders. Global media keys come
 
 ## Identity: Rail, Page, Stage
 - **Navigation** is a rail (see Layout), with a small accent bar beside the chosen place. Search is the same box at the top of the
-  page at every size. Library sections and search filters are `Segmented` controls (a raised pill, accent underline).
+  page at every size. Library sections and search filters are `Segmented` controls (plain tabs on a hairline, accent underline).
 - **Lists are tables.** `TrackList` draws the column names (#, Title, Artist, Time) and `TrackRow` the rows: place number (a play mark
   on hover, moving bars on the song that is playing), small cover, title, artist, length. The artist gets its own column when the
   *list* is wide enough (a container query), whatever the window does. Row buttons (like, menu) appear on hover or focus; a
   touch screen always shows them. Queue, Up next and playlists share `EditableRow`.
 - **The song that is playing is marked in every list** (accent title, bars), not only in the queue.
-- **Type** is one family, Segoe UI Variable, in the Windows 11 ramp (12/16, 14/20, 18/24, 20/28, 28/36, 40/52), sentence case,
-  regular and semibold. There are no tracked capitals. Times use tabular figures.
+- **Type**: Segoe UI Variable for text and Bahnschrift (installed with Windows 10 and 11; Segoe UI Variable Display is the fallback) for titles, in the
+  Windows 11 ramp (12/16, 14/20, 18/24, 20/28, 30/36, 40/52), sentence case, regular and semibold. There are no tracked capitals. Times use tabular figures.
 - **Home** opens with the *hero* (what is playing, or the last song, with Resume), then "On rotation" (the table) and
   "Recently played" as covers with the text under them (`CoverGrid`; Explore's "Jump back in" is the same).
 - **The stage** is the memorable part: a large cover, and the accent (of the theme, or of the cover with "Color from album art")
@@ -92,7 +94,7 @@ Space and arrows are left to focused buttons and sliders. Global media keys come
 ## Design tokens
 `app.css` has three tiers. (1) The seven theme colours, written by `theme.apply()` as `--t-*` (and the opaque `--solid`,
 `--solid-2`, `--on-fg`). (2) Semantic tokens mixed from them: `--layer`, `--hover`, `--press`, `--selected`, `--stage-wash`,
-`--focus`, plus radii (`--r-sm/md/lg` = 4/8/12), motion (`--dur-fast` 120 ms, `--dur-base` 200 ms, `--ease`) and layout
+`--focus`, plus radii (`--r-sm/md/lg` = 3/6/10), the hairline `--rule` and the cover's `--glow`, motion (`--dur-fast` 120 ms, `--dur-base` 200 ms, `--ease`) and layout
 (`--rail-w`, `--stage-w`, `--page-pad`). (3) Component classes in `@layer components` (`.btn`, `.icon-btn`, `.segmented`,
 `.trow`, `.stage`, ...) that read tier 2 only. Components use those and a few layout utilities; a new theme needs no CSS change.
 Primitives: `Button`, `IconButton`, `Toggle` (a real checkbox drawn as a switch), `Segmented`, `PageHeader`, `SectionHead`,

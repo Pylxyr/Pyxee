@@ -44,19 +44,21 @@
   --hover: color-mix(in srgb, var(--fg) 7%, transparent);
   --press: color-mix(in srgb, var(--fg) 11%, transparent);
   --selected: color-mix(in srgb, var(--accent) 16%, transparent);
-  --stage-wash: color-mix(in srgb, var(--accent) 15%, transparent);
+  --stage-wash: color-mix(in srgb, var(--accent) 22%, transparent);
+  --rule: color-mix(in srgb, var(--fg) 10%, transparent);
+  --glow: color-mix(in srgb, var(--accent) 38%, transparent);
   --focus: var(--accent);
   --shadow-pop: 0 10px 30px rgb(0 0 0 / 0.3), 0 0 0 1px var(--line);
   --shadow-art: 0 14px 34px rgb(0 0 0 / 0.34);
 
   /* Type: Segoe UI Variable (optical sizes switch on by themselves), one family, sentence case, regular and semibold. */
   --font-text: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif;
-  --font-display: 'Segoe UI Variable Display', 'Segoe UI', system-ui, sans-serif;
+  --font-display: 'Bahnschrift', 'Segoe UI Variable Display', 'Segoe UI', system-ui, sans-serif;
 
   /* Geometry: 4 px controls, 8 px menus, 12 px for the content layer and the cover, as Windows 11 rounds them. */
-  --r-sm: 4px;
-  --r-md: 8px;
-  --r-lg: 12px;
+  --r-sm: 3px;
+  --r-md: 6px;
+  --r-lg: 10px;
 
   /* Motion: 120 ms for feedback, 200 ms for changes of state, leaving a little faster than arriving. */
   --dur-fast: 120ms;
@@ -129,7 +131,18 @@
 @media (min-width: 1280px) {
   :root {
     --rail-w: 216px;
-    --stage-w: 340px;
+    --stage-w: clamp(340px, 24vw, 560px);
+  }
+}
+/* Roomy windows get roomier margins, so the page does not stop short of the stage. */
+@media (min-width: 1600px) {
+  :root {
+    --page-pad: 32px;
+  }
+}
+@media (min-width: 1920px) {
+  :root {
+    --page-pad: 40px;
   }
 }
 
@@ -339,7 +352,7 @@ input[type='range'].slider:disabled {
   }
   .t-title {
     font-family: var(--font-display);
-    font-size: 28px;
+    font-size: 30px;
     line-height: 36px;
     font-weight: 600;
     letter-spacing: -0.01em;
@@ -498,7 +511,7 @@ input[type='range'].slider:disabled {
     justify-content: center;
     width: 44px;
     height: 44px;
-    border-radius: 9999px;
+    border-radius: 30%;
     background: var(--accent);
     color: var(--on-accent);
     transition: filter var(--dur-fast) var(--ease), transform var(--dur-fast) var(--ease);
@@ -590,20 +603,18 @@ input[type='range'].slider:disabled {
     font-size: 12px;
   }
 
-  /* Segmented control: tabs and filters. The chosen one is a raised pill, the rest are quiet text. */
+  /* Segmented control: tabs and filters. Plain text on a hairline; the chosen one is bold with an accent underline. */
   .segmented {
     display: inline-flex;
     flex-wrap: wrap;
-    gap: 2px;
-    padding: 2px;
-    border-radius: var(--r-md);
-    background: var(--surface);
-    border: 1px solid var(--line);
+    gap: 4px;
+    padding: 0;
+    border-bottom: 1px solid var(--rule);
   }
   .segment {
-    min-height: 28px;
-    padding: 0 12px;
-    border-radius: var(--r-sm);
+    min-height: 32px;
+    padding: 0 10px;
+    border-radius: var(--r-sm) var(--r-sm) 0 0;
     color: var(--muted);
     font-size: 14px;
     line-height: 20px;
@@ -615,7 +626,6 @@ input[type='range'].slider:disabled {
   }
   .segment[aria-selected='true'],
   .segment[aria-pressed='true'] {
-    background: var(--surface-2);
     color: var(--fg);
     font-weight: 600;
     box-shadow: inset 0 -2px 0 var(--accent);
@@ -644,10 +654,10 @@ input[type='range'].slider:disabled {
     background: var(--hover);
   }
   .chip[aria-pressed='true'] {
-    background: var(--surface-2);
-    color: var(--fg);
+    border-color: transparent;
+    background: var(--fg);
+    color: var(--on-fg);
     font-weight: 600;
-    box-shadow: inset 0 -2px 0 var(--accent);
   }
   .chip-more {
     color: var(--muted);
@@ -733,9 +743,7 @@ input[type='range'].slider:disabled {
     background: var(--layer);
   }
   .shell[data-layout='wide'] .page {
-    border-top: 1px solid var(--line);
-    border-left: 1px solid var(--line);
-    border-top-left-radius: var(--r-lg);
+    border-left: 1px solid var(--rule);
   }
   .shell[data-layout='narrow'] .page {
     border-bottom: 1px solid var(--line);
@@ -787,19 +795,22 @@ input[type='range'].slider:disabled {
     color: var(--fg);
   }
   .nav-item[aria-current='page'] {
-    background: var(--selected);
+    background: var(--hover);
     color: var(--fg);
     font-weight: 600;
   }
-  /* The little accent bar Windows puts beside the chosen destination. */
+  .nav-item[aria-current='page'] > :first-child {
+    color: var(--accent);
+  }
+  /* An accent bar on the edge of the chosen destination. */
   .nav-item[aria-current='page']::before {
     content: '';
     position: absolute;
     left: 0;
-    top: 11px;
+    top: 8px;
+    bottom: 8px;
     width: 3px;
-    height: 18px;
-    border-radius: 2px;
+    border-radius: 0 2px 2px 0;
     background: var(--accent);
   }
   .rail-label {
@@ -927,19 +938,29 @@ input[type='range'].slider:disabled {
     width: var(--stage-w);
     padding: 20px;
     overflow-y: auto;
-    border-top: 1px solid var(--line);
-    border-left: 1px solid var(--line);
-    background: linear-gradient(to bottom, var(--stage-wash), transparent 55%), var(--layer);
+    border-left: 1px solid var(--rule);
+    background: linear-gradient(to bottom, var(--stage-wash), transparent 60%), var(--layer);
   }
   .stage > * {
     flex-shrink: 0;
   }
   .stage-art {
+    position: relative;
     width: 100%;
     aspect-ratio: 1;
     overflow: hidden;
-    border-radius: var(--r-lg);
-    box-shadow: var(--shadow-art);
+    border-radius: var(--r-md);
+    box-shadow: var(--shadow-art), 0 0 56px -12px var(--glow);
+  }
+  /* The sleeve's edge: a hairline inside the cover, so a dark cover still has an outline on a dark page. */
+  .stage-art::after,
+  .cover-tile .cover-art::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--fg) 14%, transparent);
+    pointer-events: none;
   }
   .stage-empty {
     align-items: center;
@@ -979,6 +1000,10 @@ input[type='range'].slider:disabled {
   .section-head:first-child {
     margin-top: 0;
   }
+  .section-head > .flex-1 {
+    height: 1px;
+    background: var(--rule);
+  }
   .notice {
     padding: 12px 16px;
     border: 1px solid var(--line);
@@ -995,7 +1020,7 @@ input[type='range'].slider:disabled {
     grid-template-columns: 32px 40px minmax(0, 1fr) 48px;
     column-gap: 12px;
     padding: 4px 72px 4px 8px;
-    border-bottom: 1px solid var(--line);
+    border-bottom: 1px solid var(--rule);
     color: var(--muted);
     font-size: 12px;
     line-height: 16px;
@@ -1015,7 +1040,7 @@ input[type='range'].slider:disabled {
   .trow {
     display: flex;
     align-items: center;
-    border-radius: var(--r-md);
+    border-bottom: 1px solid var(--rule);
     transition: background-color var(--dur-fast) var(--ease);
   }
   .trow:hover,
@@ -1024,6 +1049,7 @@ input[type='range'].slider:disabled {
   }
   .trow[data-current='true'] {
     background: var(--selected);
+    box-shadow: inset 3px 0 0 var(--accent);
   }
   .trow-main {
     display: grid;
@@ -1032,7 +1058,7 @@ input[type='range'].slider:disabled {
     column-gap: 12px;
     flex: 1 1 0;
     min-width: 0;
-    padding: 6px 8px;
+    padding: 8px 8px;
     text-align: left;
   }
   .trow-text {
@@ -1119,11 +1145,18 @@ input[type='range'].slider:disabled {
       line-height: 20px;
     }
   }
+  @container (min-width: 1000px) {
+    .tracklist-head,
+    .trow-main {
+      grid-template-columns: 32px 40px minmax(0, 1.2fr) minmax(0, 1fr) 72px;
+      column-gap: 24px;
+    }
+  }
   .row-edit {
     display: flex;
     align-items: center;
     gap: 2px;
-    border-radius: var(--r-md);
+    border-radius: var(--r-sm);
     border-top: 2px solid transparent;
     border-bottom: 2px solid transparent;
   }
@@ -1133,6 +1166,7 @@ input[type='range'].slider:disabled {
   }
   .row-edit[data-current='true'] {
     background: var(--selected);
+    box-shadow: inset 3px 0 0 var(--accent);
   }
   .row-edit[data-over='above'] {
     border-top-color: var(--accent);
@@ -1191,7 +1225,7 @@ input[type='range'].slider:disabled {
   /* Cover grid (recent songs, jump back in) */
   .cover-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(132px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(clamp(132px, 9vw, 190px), 1fr));
     gap: 12px;
     margin: 0;
     padding: 4px 0 0;
@@ -1206,7 +1240,7 @@ input[type='range'].slider:disabled {
     position: relative;
     aspect-ratio: 1;
     overflow: hidden;
-    border-radius: var(--r-md);
+    border-radius: var(--r-sm);
   }
   .cover-tile .cover-play {
     position: absolute;
@@ -1217,7 +1251,7 @@ input[type='range'].slider:disabled {
     justify-content: center;
     width: 36px;
     height: 36px;
-    border-radius: 9999px;
+    border-radius: 30%;
     background: var(--accent);
     color: var(--on-accent);
     opacity: 0;
@@ -1347,9 +1381,31 @@ input[type='range'].slider:disabled {
     display: flex;
     align-items: center;
     gap: 20px;
-    padding: 16px;
-    border: 1px solid var(--line);
+    padding: 20px;
+    border: 1px solid var(--rule);
     border-radius: var(--r-lg);
-    background: linear-gradient(100deg, var(--stage-wash), transparent 70%), var(--surface);
+    background: linear-gradient(100deg, var(--stage-wash), transparent 75%), var(--surface);
+  }
+  /* Home: the body is one column, and two (the table, then the covers) once the page is wide enough for both. */
+  .home-body {
+    container-type: inline-size;
+  }
+  .home-cols {
+    display: grid;
+    gap: 32px;
+  }
+  .hero + .home-cols {
+    margin-top: 32px;
+  }
+  @container (min-width: 1000px) {
+    .home-cols {
+      grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+      gap: 40px;
+      align-items: start;
+    }
+  }
+  .hero .t-title {
+    font-size: 36px;
+    line-height: 44px;
   }
 }

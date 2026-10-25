@@ -48,12 +48,12 @@
       <span class="t-strong muted">Now playing</span>
     </div>
 
-    <div class="mx-auto grid min-h-0 w-full max-w-6xl flex-1 grid-cols-[minmax(0,1fr)] grid-rows-[auto_minmax(0,1fr)] gap-4 px-6 pb-4 lg:grid-cols-[minmax(0,1fr)_28rem] lg:grid-rows-1 lg:gap-10 lg:pb-8">
+    <div class="grid min-h-0 w-full flex-1 grid-cols-[minmax(0,1fr)] grid-rows-[auto_minmax(0,1fr)] gap-4 px-6 pb-4 lg:grid-cols-[minmax(0,1fr)_28rem] lg:grid-rows-1 lg:gap-10 lg:pb-8 xl:grid-cols-[minmax(0,1fr)_34rem] 2xl:grid-cols-[minmax(0,1fr)_44rem] 2xl:gap-16 2xl:px-10">
       <section class="flex min-h-0 flex-col items-center justify-center gap-3 lg:gap-5 lg:overflow-y-auto" data-testid="np-controls">
-        <div class="stage-art aspect-square w-[min(56vw,26vh)] shrink-0 lg:w-[min(22rem,48vh)]" data-testid="np-art">
+        <div class="stage-art aspect-square w-[min(56vw,26vh)] shrink-0 lg:w-[min(22rem,48vh)] xl:w-[min(30rem,50vh)] 2xl:w-[min(40rem,56vh)]" data-testid="np-art">
           <Thumb src={entry.track.thumbnail} seed={entry.track.key} size={352} fill rounded="r-lg" />
         </div>
-        <div class="flex w-[min(80vw,22rem)] items-center justify-between gap-3">
+        <div class="flex w-[min(80vw,22rem)] items-center justify-between gap-3 xl:w-[min(80vw,30rem)] 2xl:w-[min(80vw,40rem)]">
           <div class="min-w-0">
             <h1 class="t-title truncate">{entry.track.title}</h1>
             <p class="muted truncate">{entry.track.artist}</p>
@@ -65,7 +65,7 @@
             <LikeButton track={entry.track} />
           </div>
         </div>
-        <div class="w-[min(80vw,22rem)]">
+        <div class="w-[min(80vw,22rem)] xl:w-[min(80vw,30rem)] 2xl:w-[min(80vw,40rem)]">
           <Seek positionMs={player.state.positionMs} durationMs={player.durationMs} onseek={player.seek} accent label="Seek" />
           <div class="t-caption muted nums flex justify-between">
             <span>{formatTime(player.state.positionMs)}</span><span>{player.durationMs ? formatTime(player.durationMs) : 'length unknown'}</span>

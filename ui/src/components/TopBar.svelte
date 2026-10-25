@@ -43,7 +43,7 @@
 </script>
 
 <header class="topbar page-pad">
-  <form class="relative min-w-0 max-w-xl flex-1" role="search" onsubmit={submit}>
+  <form class="relative min-w-0 max-w-xl flex-1 2xl:max-w-3xl" role="search" onsubmit={submit}>
     <div class="search-box">
       <Icon name="search" size={18} />
       <input
