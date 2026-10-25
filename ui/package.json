@@ -2,7 +2,7 @@
   "name": "pyxee-ui",
   "private": true,
   "type": "module",
-  "version": "0.4.3",
+  "version": "0.4.4-rc1",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
