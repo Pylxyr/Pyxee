@@ -45,7 +45,8 @@
       {#each lyrics.lines as line, i (i)}
         <li>
           <button
-            class="t-subtitle w-full text-left transition-colors {i === index ? 'text-fg' : i < index ? 'text-muted/60' : 'text-muted'}"
+            class="lyric t-subtitle w-full text-left {i === index ? 'text-fg' : i < index ? 'text-muted/60' : 'text-muted'}"
+            style="--d:{index < 0 ? 0 : Math.min(Math.abs(i - index), 4)}"
             data-current={i === index}
             onclick={() => player.seek(line.timeMs)}
           >{line.text || '♪'}</button>

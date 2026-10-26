@@ -24,7 +24,7 @@
       <Seek positionMs={player.state.positionMs} durationMs={player.durationMs} onseek={player.seek} accent label="Seek" />
     </div>
     <button class="flex min-w-0 flex-1 items-center gap-3 text-left" aria-label="Open Now Playing" onclick={() => nav.openNowPlaying()}>
-      <Thumb src={entry.track.thumbnail} seed={entry.track.key} size={44} rounded="r-sm" />
+      <span class="flex shrink-0" data-np-source><Thumb src={entry.track.thumbnail} seed={entry.track.key} size={44} rounded="r-sm" /></span>
       <span class="min-w-0">
         <span class="t-strong block truncate">{entry.track.title}</span>
         {#if player.failure}

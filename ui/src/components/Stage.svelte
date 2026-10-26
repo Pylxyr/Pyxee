@@ -69,7 +69,7 @@
     </div>
     {#key entry.track.key}
     <div class="deck-now track-in">
-      <button class="deck-art" aria-label="Open Now Playing" onclick={() => nav.openNowPlaying()}>
+      <button class="deck-art" data-np-source aria-label="Open Now Playing" onclick={() => nav.openNowPlaying()}>
         <Thumb src={entry.track.thumbnail} seed={entry.track.key} size={72} fill rounded="r-sm" />
       </button>
       <div class="min-w-0 flex-1">

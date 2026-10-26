@@ -14,6 +14,8 @@
   {#if player.state.transport.state === 'loading'}
     <span class="spinner" aria-hidden="true"></span>
   {:else}
-    <Icon name={player.isPlaying ? 'pause' : 'play'} size={size === 'lg' ? 28 : size === 'sm' ? 18 : 22} fill={!player.isPlaying} />
+    {#key player.isPlaying}
+      <span class="pp-icon"><Icon name={player.isPlaying ? 'pause' : 'play'} size={size === 'lg' ? 28 : size === 'sm' ? 18 : 22} fill={!player.isPlaying} /></span>
+    {/key}
   {/if}
 </button>

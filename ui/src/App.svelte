@@ -151,7 +151,7 @@
       {#if library.snapshot.error}
         <p class="notice mb-2 shrink-0" style="margin-inline:var(--page-pad)" role="status">Your library couldn't be opened ({library.snapshot.error}). Likes, playlists and history won't be saved this session.</p>
       {/if}
-      <div class="min-h-0 flex-1">
+      <div class="page-host min-h-0 flex-1">
         {#key nav.route}
           <div class="route-in h-full">
             {#if nav.route === 'home'}<Home />

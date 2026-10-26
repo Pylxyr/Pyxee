@@ -1,4 +1,5 @@
 import type { TrackDto } from './bindings/TrackDto';
+import { withViewTransition } from './motion';
 
 export type Route = 'home' | 'explore' | 'library' | 'playlist' | 'queue' | 'search';
 export type LibraryTab = 'liked' | 'playlists' | 'history' | 'downloads';
@@ -12,6 +13,9 @@ export interface NamePrompt {
   run: (name: string) => Promise<void>;
 }
 export type NowPlayingTab = 'upnext' | 'lyrics' | 'related';
+
+/** Pages in the order they sit in: a page after the current one slides in from the right, before it from the left. */
+const ORDER: Route[] = ['home', 'explore', 'library', 'playlist', 'queue', 'search'];
 
 class NavStore {
   route = $state<Route>('home');
@@ -30,16 +34,34 @@ class NavStore {
   libraryTab = $state<LibraryTab>('liked');
   playlistId = $state<number | null>(null);
 
+  /** True while a view transition carries the cover into (or out of) Now Playing; its own slide then stands down. */
+  morphing = $state(false);
+
+  /** Shows a page, sliding it past the old one along the axis the pages are ordered on. */
+  #show(route: Route, before?: () => void) {
+    const dir = ORDER.indexOf(route) >= ORDER.indexOf(this.route) ? 1 : -1;
+    const host = () => document.querySelector<HTMLElement>('.page-host');
+    withViewTransition(
+      () => {
+        before?.();
+        this.route = route;
+      },
+      {
+        dir,
+        before: () => host()?.style.setProperty('view-transition-name', 'page'),
+        after: () => host()?.style.removeProperty('view-transition-name'),
+      },
+    );
+  }
   go(route: Route) {
-    this.route = route;
+    if (route !== this.route) this.#show(route);
   }
   search(query: string) {
     this.query = query.trim();
-    if (this.query) this.route = 'search';
+    if (this.query) this.#show('search');
   }
   openPlaylist(id: number) {
-    this.playlistId = id;
-    this.route = 'playlist';
+    this.#show('playlist', () => (this.playlistId = id));
   }
   openThemeEditor() {
     this.themeEditorOpen = true;
@@ -47,11 +69,40 @@ class NavStore {
   closeThemeEditor() {
     this.themeEditorOpen = false;
   }
+  /** The cover on the deck or dock grows into the big one: a container transform, where the browser can. */
   openNowPlaying() {
-    this.nowPlayingOpen = true;
+    if (this.nowPlayingOpen) return;
+    const source = () => document.querySelector<HTMLElement>('[data-np-source]');
+    withViewTransition(
+      () => (this.nowPlayingOpen = true),
+      {
+        before: () => {
+          this.morphing = true;
+          source()?.style.setProperty('view-transition-name', 'np-cover');
+        },
+        during: () => source()?.style.removeProperty('view-transition-name'),
+        after: () => (this.morphing = false),
+      },
+    );
   }
-  closeNowPlaying() {
-    this.nowPlayingOpen = false;
+  /** And back: the big cover shrinks into the deck's. Given a page, it closes onto that page. */
+  closeNowPlaying(then?: Route) {
+    if (!this.nowPlayingOpen) return;
+    const source = () => document.querySelector<HTMLElement>('[data-np-source]');
+    withViewTransition(
+      () => {
+        this.nowPlayingOpen = false;
+        if (then) this.route = then;
+      },
+      {
+        before: () => (this.morphing = true),
+        during: () => source()?.style.setProperty('view-transition-name', 'np-cover'),
+        after: () => {
+          this.morphing = false;
+          source()?.style.removeProperty('view-transition-name');
+        },
+      },
+    );
   }
 }
 

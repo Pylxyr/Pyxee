@@ -42,7 +42,7 @@
     data-testid="np-root"
     role="region"
     aria-label="Now Playing"
-    transition:fly={{ y: motionPx(96), duration: motionMs(MOTION.slow), easing: expoOut }}
+    transition:fly={{ y: motionPx(96), duration: nav.morphing ? 0 : motionMs(MOTION.slow), easing: expoOut }}
   >
     <div class="np-bg" aria-hidden="true"><Thumb src={entry.track.thumbnail} seed={entry.track.key} size={96} fill rounded="r-sm" /></div>
     <div class="page-pad flex shrink-0 items-center gap-2 py-3" data-testid="np-header">
@@ -93,7 +93,7 @@
       <section class="flex min-h-0 min-w-0 flex-col">
         <div class="flex shrink-0 flex-wrap items-center justify-between gap-x-3 gap-y-1" data-testid="np-tabs">
           <Segmented items={tabs} value={nav.tab} onselect={(id) => (nav.tab = id)} label="Now Playing sections" class="min-w-0 flex-nowrap [&_.segment]:whitespace-nowrap [&_.segment]:px-2.5" />
-          <Button variant="quiet" size="sm" class="shrink-0" onclick={() => { nav.closeNowPlaying(); nav.go('queue'); }}>Open queue</Button>
+          <Button variant="quiet" size="sm" class="shrink-0" onclick={() => nav.closeNowPlaying('queue')}>Open queue</Button>
         </div>
         <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
         <div class="mt-3 min-h-0 flex-1 overflow-y-auto" role="tabpanel" data-testid="np-scroll" data-scroll tabindex="0">
