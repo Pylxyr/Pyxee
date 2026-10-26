@@ -1,3 +1,4 @@
+import { isKnownMissing, isMissingStill, noteMissing, thumbCandidates } from './thumb';
 /** Picks a vivid representative colour from RGBA pixel data (for the optional dynamic accent). */
 export function dominantColor(data: Uint8ClampedArray): string | null {
   const buckets = new Map<number, { w: number; r: number; g: number; b: number }>();
@@ -72,20 +73,31 @@ export function normalizeHex(v: string): string | null {
   return /^[0-9a-f]{6}$/.test(h) ? `#${h}` : null;
 }
 
-/** Loads an image and returns its dominant colour, or null if it cannot be read (CORS, 404). */
+/**
+ * Loads a cover and returns its dominant colour, or null if it cannot be read (CORS, 404). It asks for the same small
+ * images the covers on screen use (https, the sized or still variant), and moves on to the next one when a picture is
+ * missing, so a cover that shows in a list also gives the app its colour.
+ */
 export async function accentFromImage(url: string): Promise<string | null> {
-  try {
-    const img = new Image();
-    img.crossOrigin = 'anonymous';
-    img.src = url;
-    await img.decode();
-    const canvas = document.createElement('canvas');
-    canvas.width = canvas.height = 32;
-    const ctx = canvas.getContext('2d', { willReadFrequently: true });
-    if (!ctx) return null;
-    ctx.drawImage(img, 0, 0, 32, 32);
-    return dominantColor(ctx.getImageData(0, 0, 32, 32).data);
-  } catch {
-    return null;
+  for (const candidate of thumbCandidates(url, 64).filter((u) => !isKnownMissing(u))) {
+    try {
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.src = candidate;
+      await img.decode();
+      if (isMissingStill(candidate, img.naturalWidth, img.naturalHeight)) {
+        noteMissing(candidate);
+        continue;
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = canvas.height = 32;
+      const ctx = canvas.getContext('2d', { willReadFrequently: true });
+      if (!ctx) return null;
+      ctx.drawImage(img, 0, 0, 32, 32);
+      return dominantColor(ctx.getImageData(0, 0, 32, 32).data);
+    } catch {
+      /* this one could not be loaded or read: try the next */
+    }
   }
+  return null;
 }

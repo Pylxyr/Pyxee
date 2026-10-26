@@ -4,7 +4,7 @@ import type { ExploreShelfDto } from './bindings/ExploreShelfDto';
 import type { GenreDto } from './bindings/GenreDto';
 import type { HistoryItemDto } from './bindings/HistoryItemDto';
 import type { TrackDto } from './bindings/TrackDto';
-import { albumsLast, freshTracks, jumpBackIn, pickSeeds, shelfTitle } from './explore';
+import { freshTracks, jumpBackIn, pickSeeds, shelfTitle, withoutJunk, withoutJunkTracks } from './explore';
 import { orderGenres } from './genres';
 
 export interface Shelf {
@@ -22,8 +22,7 @@ export const SHELF_SIZE = 12;
 const STOP_ON = new Set(['offline', 'rateLimited', 'toolMissing']);
 
 /**
- * Explore: YouTube Music's own Explore shelves (trending songs, new music videos, and last the new albums and singles),
- * "jump back in" from history, and one shelf of similar songs per seed (likes first, then recent plays). On top sit
+ * Explore: "jump back in" from history, and one shelf of similar songs per seed (likes first, then recent plays). On top sit
  * YouTube Music's genres (K-Pop, J-Pop, Anime...): picking one swaps the page for that genre's own playlists and songs.
  * Requests go one after another (they share one pacing gate with search) and an answer for an older load is dropped.
  */
@@ -31,10 +30,6 @@ export class ExploreStore {
   status = $state<'idle' | 'loading' | 'ready'>('idle');
   jump = $state<TrackDto[]>([]);
   shelves = $state<Shelf[]>([]);
-  /** YouTube Music's Explore page, shelf by shelf, under its own titles. */
-  browse = $state<ExploreShelfDto[]>([]);
-  browseStatus = $state<'idle' | 'loading' | 'ready' | 'error'>('idle');
-  browseError = $state<string | null>(null);
   /** YouTube Music's genres and moods, the favourites (anime, J-Pop, K-Pop) first. */
   genres = $state<GenreDto[]>([]);
   genresStatus = $state<'idle' | 'loading' | 'ready' | 'error'>('idle');
@@ -64,7 +59,6 @@ export class ExploreStore {
     const seq = ++this.#seq;
     this.#genreCache.clear(); // Refresh asks YouTube again, genres included
     this.status = 'loading';
-    this.browseStatus = 'loading';
     const [liked, history] = await Promise.all([
       backend.likedGet().catch((): TrackDto[] => []),
       backend.historyGet(60).catch((): HistoryItemDto[] => []),
@@ -81,27 +75,10 @@ export class ExploreStore {
       tracks: [],
       error: null,
     }));
-    this.browse = [];
-    this.browseError = null;
-    this.browseStatus = 'loading';
     this.status = 'ready';
 
-    // YouTube Music's own shelves first: they are the top of the page.
+    // The genre chips come first: one request, and they are the top of what the listener sees.
     let blocked: string | null = null;
-    try {
-      const page = await backend.exploreGet();
-      if (seq !== this.#seq) return;
-      this.browse = albumsLast(page);
-      this.browseStatus = 'ready';
-    } catch (e) {
-      if (seq !== this.#seq) return;
-      const err = toSearchError(e);
-      this.browseStatus = 'error';
-      this.browseError = err.message;
-      if (STOP_ON.has(err.kind)) blocked = err.message;
-    }
-
-    // The genre chips come right after the page: one request, and they are the top of what the listener sees.
     if (!blocked && this.genresStatus !== 'ready') await this.loadGenres(backend);
     if (seq !== this.#seq) return;
     if (this.selectedGenre) void this.selectGenre(backend, this.selectedGenre);
@@ -117,7 +94,7 @@ export class ExploreStore {
       try {
         const related = await backend.relatedGet(shelf.seed.key, SHELF_SIZE);
         if (seq !== this.#seq) return;
-        shelf.tracks = freshTracks(related, seen);
+        shelf.tracks = freshTracks(withoutJunkTracks(related), seen);
         shelf.status = 'ready';
       } catch (e) {
         if (seq !== this.#seq) return;
@@ -163,8 +140,9 @@ export class ExploreStore {
     try {
       const shelves = await backend.genreGet(genre.params);
       if (seq !== this.#genreSeq) return;
-      this.#genreCache.set(genre.params, shelves);
-      this.genreShelves = shelves;
+      const clean = withoutJunk(shelves);
+      this.#genreCache.set(genre.params, clean);
+      this.genreShelves = clean;
       this.genreStatus = 'ready';
     } catch (e) {
       if (seq !== this.#genreSeq) return;

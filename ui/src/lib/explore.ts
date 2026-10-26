@@ -69,9 +69,44 @@ export function freshTracks(tracks: TrackDto[], seen: Set<string>): TrackDto[] {
 }
 
 /**
- * YouTube Music's shelves with the albums-and-singles ones last. That feed is whatever distributors released this week
- * (bulk-made releases pile up in it), so it comes after the songs and playlists worth starting with. Order is otherwise kept.
+ * Mashups, AI-made songs and covers, and hour-long compilations are not what Explore is for. There is no way to know
+ * for sure from a title, so this is a list of the plain giveaways (the word "mashup", "AI generated", Suno or Udio,
+ * "beats to study to", "10 hours"), plus anything over 15 minutes. A bare "AI" is not matched: it is also an artist's name.
  */
-export function albumsLast(shelves: ExploreShelfDto[]): ExploreShelfDto[] {
-  return [...shelves.filter((s) => s.kind !== 'albums'), ...shelves.filter((s) => s.kind === 'albums')];
+const JUNK_TEXT: RegExp[] = [
+  /\bmash[\s-]?ups?\b/i,
+  /\bmedley\b|\bmegamix\b/i,
+  /\btik[\s-]?tok\b/i,
+  /\bai[\s-]?(?:generated|made|cover|covers|music|song|songs|voice|remix|version)\b|\bgenerated (?:by|with) ai\b|[(\[]\s*ai\s*[)\]]/i,
+  /\bsuno\b|\budio\b|\bvoice (?:model|clone)\b/i,
+  /\b(?:lo-?fi|chill|jazz|piano)?\s*(?:beats|music) (?:to|for) (?:study|studying|relax|relaxing|sleep|sleeping|work|working|focus|chill)\b|\b(?:study|sleep|relaxing|focus) music\b/i,
+  /\b\d+\s*(?:hours?|hrs?)\b|\bfull album\b|\bplaylist\b/i,
+];
+const TOO_LONG_MS = 15 * 60 * 1000;
+
+export function isJunk(title: string, artist = '', durationMs: number | null = null): boolean {
+  if (durationMs !== null && durationMs >= TOO_LONG_MS) return true;
+  return JUNK_TEXT.some((re) => re.test(title) || re.test(artist));
+}
+
+export function withoutJunkTracks(tracks: TrackDto[]): TrackDto[] {
+  return tracks.filter((t) => !isJunk(t.title, t.artist, t.durationMs));
+}
+
+/** Explore's shelves without the junk; a shelf left with nothing in it goes too. */
+export function withoutJunk(shelves: ExploreShelfDto[]): ExploreShelfDto[] {
+  const out: ExploreShelfDto[] = [];
+  for (const shelf of shelves) {
+    if (shelf.kind === 'songs') {
+      const tracks = withoutJunkTracks(shelf.tracks);
+      if (tracks.length > 0) out.push({ ...shelf, tracks });
+    } else if (shelf.kind === 'albums') {
+      const albums = shelf.albums.filter((a) => !isJunk(a.title, a.artist));
+      if (albums.length > 0) out.push({ ...shelf, albums });
+    } else {
+      const playlists = shelf.playlists.filter((p) => !isJunk(p.title));
+      if (playlists.length > 0) out.push({ ...shelf, playlists });
+    }
+  }
+  return out;
 }

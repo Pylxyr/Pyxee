@@ -123,27 +123,21 @@ describe('App shell', () => {
     expect(screen.getByRole('heading', { name: 'On rotation' })).toBeTruthy();
   });
 
-  it("Explore shows YouTube Music's shelves and shelves built from what you like, and no moods", async () => {
+  it('Explore shows shelves built from what you like and play, and no moods', async () => {
     explore.status = 'idle';
-    explore.browseStatus = 'idle';
     mock.likedGet = async () => [DEMO_TRACKS[0]!];
     await openApp();
     await fireEvent.click(screen.getByRole('button', { name: /Explore/ }));
-    expect(await screen.findByRole('heading', { name: 'Trending' })).toBeTruthy();
-    expect(await screen.findByRole('list', { name: 'Trending' })).toBeTruthy();
-    expect(await screen.findByRole('heading', { name: 'New albums & singles' })).toBeTruthy();
+    expect(screen.queryByRole('heading', { name: 'Trending' })).toBeNull();
+    expect(screen.queryByRole('heading', { name: 'New albums & singles' })).toBeNull();
     expect(await screen.findByRole('heading', { name: `Because you liked ${DEMO_TRACKS[0]!.title}` })).toBeTruthy();
     expect(await screen.findByRole('list', { name: `Because you liked ${DEMO_TRACKS[0]!.title}` })).toBeTruthy();
     expect(screen.queryByRole('list', { name: 'Moods' })).toBeNull();
     expect(screen.queryByText(/Start from a mood/)).toBeNull();
-    await fireEvent.click(screen.getByRole('button', { name: 'Search for Night Shift by Lowtide' }));
-    await waitFor(() => expect(nav.route).toBe('search'));
-    expect(search.query).toBe('Night Shift Lowtide');
   });
 
   it('Explore lists genres with anime, J-Pop and K-Pop first; a genre swaps the page for its playlists and a playlist plays', async () => {
     explore.status = 'idle';
-    explore.browseStatus = 'idle';
     explore.genresStatus = 'idle';
     explore.selectedGenre = null;
     await openApp();
@@ -157,12 +151,11 @@ describe('App shell', () => {
     await fireEvent.click(screen.getByRole('button', { name: 'Play Essentials' }));
     await waitFor(() => expect(mock.playlistCalls).toEqual(['RDdemo1']));
     await fireEvent.click(within(group).getByRole('button', { name: 'For you' }));
-    expect(await screen.findByRole('heading', { name: 'Trending' })).toBeTruthy();
+    await waitFor(() => expect(screen.queryByRole('list', { name: 'Featured playlists' })).toBeNull());
   });
 
   it('a playlist that fails to open says why instead of doing nothing', async () => {
     explore.status = 'idle';
-    explore.browseStatus = 'idle';
     explore.genresStatus = 'idle';
     explore.selectedGenre = null;
     await openApp();

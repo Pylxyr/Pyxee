@@ -2,15 +2,11 @@
   import { library } from '$lib/library.svelte';
   import { nav } from '$lib/nav.svelte';
   import { player } from '$lib/player.svelte';
-  import { search } from '$lib/search.svelte';
   import { explore } from '$lib/explore.svelte';
-  import { albumQuery } from '$lib/explore';
   import { messageOf, toSearchError } from '$lib/backend';
   import { snackbar } from '$lib/snackbar.svelte';
-  import type { AlbumDto } from '$lib/bindings/AlbumDto';
   import type { GenreDto } from '$lib/bindings/GenreDto';
   import type { PlaylistCoverDto } from '$lib/bindings/PlaylistCoverDto';
-  import AlbumGrid from '../components/AlbumGrid.svelte';
   import Button from '../components/Button.svelte';
   import CoverGrid from '../components/CoverGrid.svelte';
   import GenreChips from '../components/GenreChips.svelte';
@@ -48,12 +44,6 @@
     } finally {
       opening = null;
     }
-  }
-
-  // There is no album page yet: a cover opens an ordinary songs search for the release.
-  function openAlbum(album: AlbumDto) {
-    nav.go('search');
-    void search.run(albumQuery(album), 'songs');
   }
 </script>
 
@@ -102,33 +92,6 @@
       <SectionHead count={explore.jump.length}>Jump back in</SectionHead>
       <CoverGrid label="Jump back in" tracks={explore.jump} onplay={(i) => player.playTracks(explore.jump, i)} />
     {/if}
-
-    {#if explore.browseStatus === 'loading'}
-      <div class="mt-8"><Skeleton rows={4} /></div>
-    {:else if explore.browseStatus === 'error'}
-      <p class="notice mt-8" role="status">
-        Couldn't load YouTube Music's picks. {explore.browseError}
-        <button class="btn-link ml-2" onclick={() => explore.refresh()}>Try again</button>
-      </p>
-    {/if}
-
-    {#each explore.browse as shelf (shelf.id)}
-      {#if shelf.kind === 'songs'}
-        <SectionHead count={shelf.tracks.length}>
-          {shelf.title}
-          {#snippet actions()}
-            <Button variant="primary" size="sm" aria-label="Play {shelf.title}" onclick={() => player.playTracks(shelf.tracks, 0)}>Play all</Button>
-          {/snippet}
-        </SectionHead>
-        <CoverGrid label={shelf.title} tracks={shelf.tracks} onplay={(i) => player.playTracks(shelf.tracks, i)} />
-      {:else if shelf.kind === 'playlists'}
-        <SectionHead count={shelf.playlists.length}>{shelf.title}</SectionHead>
-        <PlaylistGrid label={shelf.title} playlists={shelf.playlists} busy={opening} onplay={playPlaylist} />
-      {:else}
-        <SectionHead count={shelf.albums.length}>{shelf.title}</SectionHead>
-        <AlbumGrid label={shelf.title} albums={shelf.albums} onopen={openAlbum} />
-      {/if}
-    {/each}
 
     {#each explore.shelves as shelf (shelf.id)}
       <SectionHead count={shelf.status === 'ready' ? shelf.tracks.length : null}>

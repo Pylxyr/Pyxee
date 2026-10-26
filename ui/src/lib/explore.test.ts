@@ -3,7 +3,7 @@ import type { HistoryItemDto } from './bindings/HistoryItemDto';
 import type { TrackDto } from './bindings/TrackDto';
 import type { AlbumDto } from './bindings/AlbumDto';
 import type { ExploreShelfDto } from './bindings/ExploreShelfDto';
-import { albumQuery, albumsLast, freshTracks, jumpBackIn, pickSeeds, shelfTitle } from './explore';
+import { albumQuery, freshTracks, isJunk, jumpBackIn, pickSeeds, shelfTitle, withoutJunk } from './explore';
 
 const t = (n: number, artist = `Artist ${n}`): TrackDto => ({ key: `k${n}`, title: `Song ${n}`, artist, durationMs: 1000, thumbnail: null });
 const h = (track: TrackDto, playedAt = 1): HistoryItemDto => ({ track, playedAt });
@@ -42,19 +42,28 @@ describe('shelf helpers', () => {
   });
 });
 
-describe('albumsLast', () => {
-  const songs = (id: string): ExploreShelfDto => ({ kind: 'songs', id, title: id, tracks: [] });
-  const albums = (id: string): ExploreShelfDto => ({ kind: 'albums', id, title: id, albums: [] });
-  const playlists = (id: string): ExploreShelfDto => ({ kind: 'playlists', id, title: id, playlists: [] });
-
-  it('moves the albums-and-singles shelves to the end and keeps every other order', () => {
-    const page = [albums('new'), songs('trending'), albums('more'), playlists('picks'), songs('videos')];
-    expect(albumsLast(page).map((s) => s.id)).toEqual(['trending', 'picks', 'videos', 'new', 'more']);
+describe('junk', () => {
+  it('drops mashups, AI-made songs, study loops and hour-long compilations', () => {
+    for (const title of ['New Tiktok Mashup 2026', 'Lofi Beats for Studying', 'Song Name (AI Cover)', 'Made with Suno', 'Rain sounds 10 hours', 'Best of 2026 Mega Medley']) {
+      expect(isJunk(title), title).toBe(true);
+    }
+    expect(isJunk('A long one', 'Someone', 20 * 60 * 1000)).toBe(true);
   });
 
-  it('does not change the list it is given', () => {
-    const page = [albums('a'), songs('s')];
-    albumsLast(page);
-    expect(page.map((s) => s.id)).toEqual(['a', 's']);
+  it('keeps ordinary songs, including an artist called Ai and a song called Nonstop', () => {
+    expect(isJunk('Neon Harbor', 'Orbit')).toBe(false);
+    expect(isJunk('Story', 'Ai')).toBe(false);
+    expect(isJunk('Nonstop', 'Drake', 239_000)).toBe(false);
+  });
+
+  it('removes junk from every kind of shelf and drops a shelf that ends up empty', () => {
+    const page: ExploreShelfDto[] = [
+      { kind: 'songs', id: 's', title: 'Trending', tracks: [{ key: 'a', title: 'Fine song', artist: 'X', durationMs: 200_000, thumbnail: null }, { key: 'b', title: 'Tiktok Mashup', artist: 'Y', durationMs: 200_000, thumbnail: null }] },
+      { kind: 'albums', id: 'al', title: 'New', albums: [{ id: '1', title: 'Lofi Beats for Studying', artist: 'Z', thumbnail: null }] },
+      { kind: 'playlists', id: 'p', title: 'Picks', playlists: [{ id: '2', title: 'Tiktok Mashup Hits', subtitle: 'Playlist', thumbnail: null }] },
+    ];
+    const out = withoutJunk(page);
+    expect(out.map((s) => s.id)).toEqual(['s']);
+    expect(out[0]).toMatchObject({ kind: 'songs', tracks: [{ key: 'a' }] });
   });
 });

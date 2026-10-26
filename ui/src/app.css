@@ -1587,8 +1587,23 @@ input[type='range'].slider:disabled {
     overflow-x: auto;
     overscroll-behavior-x: contain;
     scroll-snap-type: x proximity;
+    scroll-padding-inline: var(--page-pad);
   }
   .shelves .cover-grid > li {
     scroll-snap-align: start;
+  }
+  /* No scroll bar under a shelf: the buttons in the section's heading page it (a trackpad or the keyboard still scroll it). */
+  .shelves .cover-grid {
+    scrollbar-width: none;
+  }
+  .shelves .cover-grid::-webkit-scrollbar {
+    display: none;
+  }
+  .shelves .section-count {
+    display: none;
+  }
+  .shelf-nav {
+    display: inline-flex;
+    gap: 2px;
   }
 }
