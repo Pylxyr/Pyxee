@@ -15,6 +15,8 @@ struct Active {
     in_frames: u64,
     out_frames: u64,
     ratio: f64,
+    /// Output frames of filter delay still to drop from the start of the stream.
+    skip: usize,
 }
 
 /// Passthrough when rates match, otherwise a high-quality sinc resampler whose
@@ -42,7 +44,9 @@ impl StreamResampler {
         };
         let rs = Async::<f32>::new_sinc(ratio, 1.0, &params, CHUNK, CHANNELS, FixedAsync::Input)
             .map_err(err)?;
-        // rubato output is already time-aligned (measured in examples/lag.rs), so no delay is skipped.
+        // rubato 5 no longer hides its filter delay: the first `output_delay()` frames are
+        // leading silence, so they are dropped to keep the output time-aligned with the input.
+        let skip = rs.output_delay();
         Ok(Self {
             active: Some(Active {
                 rs,
@@ -50,6 +54,7 @@ impl StreamResampler {
                 in_frames: 0,
                 out_frames: 0,
                 ratio,
+                skip,
             }),
         })
     }
@@ -109,7 +114,10 @@ impl StreamResampler {
         Ok(res.take_data())
     }
 
-    fn emit(a: &mut Active, res: Vec<f32>, out: &mut Vec<f32>) {
+    fn emit(a: &mut Active, mut res: Vec<f32>, out: &mut Vec<f32>) {
+        let drop = a.skip.min(res.len() / CHANNELS);
+        a.skip -= drop;
+        res.drain(..drop * CHANNELS);
         a.out_frames += (res.len() / CHANNELS) as u64;
         out.extend_from_slice(&res);
     }
