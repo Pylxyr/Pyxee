@@ -84,7 +84,7 @@
     {#if pl && !missing}
       <PageHeader title={pl.name} meta="{pl.entries.length} {pl.entries.length === 1 ? 'song' : 'songs'}">
         {#snippet lead()}
-          <Thumb src={pl?.entries[0]?.track.thumbnail ?? null} seed={`pl:${pl?.id}`} size={96} rounded="r-md" />
+          <Thumb src={pl?.entries[0]?.track.thumbnail ?? null} seed={`pl:${pl?.id}`} size={160} rounded="r-sm" />
         {/snippet}
         {#snippet actions()}
           <Button variant="primary" disabled={tracks.length === 0} onclick={() => play(false)}>Play</Button>

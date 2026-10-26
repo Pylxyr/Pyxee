@@ -38,8 +38,10 @@
   import Queue from './pages/Queue.svelte';
   import Playlist from './pages/Playlist.svelte';
 
-  // Wide windows get the side rail and the stage; narrow ones the bottom bar and the dock.
+  // Wide windows get the tabs on top and the deck along the bottom; narrow ones the bottom bar and the dock.
   const wide = new MediaQuery('min-width: 900px');
+  // From 1440 px there is room for the queue lane beside the page.
+  const lane = new MediaQuery('min-width: 1440px');
 
   let backendRef = $state.raw<Backend | null>(null);
   // The main window has no native frame, so the page draws the title bar. Null in a browser, where there is no window to control.
@@ -138,11 +140,13 @@
 
 <div class="frame">
 {#if controls && showTitleBar}<TitleBar {controls} showBrand={!wide.current} />{/if}
-<div class="shell" data-layout={wide.current ? 'wide' : 'narrow'}>
-  {#if wide.current}<Navigation layout="rail" />{/if}
+<div class="shell" data-layout={wide.current ? 'wide' : 'narrow'} data-lane={wide.current && lane.current ? '' : undefined}>
+  {#if wide.current}
+    <div class="masthead"><Navigation layout="tabs" /><TopBar showSettings /></div>
+  {/if}
   <div class="workspace">
     <main class="page overflow-hidden">
-      <TopBar showSettings={!wide.current} />
+      {#if !wide.current}<TopBar showSettings />{/if}
       {#if library.snapshot.error}
         <p class="notice mb-2 shrink-0" style="margin-inline:var(--page-pad)" role="status">Your library couldn't be opened ({library.snapshot.error}). Likes, playlists and history won't be saved this session.</p>
       {/if}
@@ -160,7 +164,7 @@
       <Navigation layout="bar" />
     {/if}
   </div>
-  {#if wide.current}<Stage />{/if}
+  {#if wide.current}<Stage lane={lane.current} />{/if}
 </div>
 </div>
 

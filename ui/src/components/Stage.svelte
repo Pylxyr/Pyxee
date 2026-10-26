@@ -12,69 +12,83 @@
   import Thumb from './Thumb.svelte';
   import VolumeSlider from './VolumeSlider.svelte';
 
-  // The player of a wide window: a column of its own on the right, so the library keeps the whole middle and what is
-  // playing never leaves the screen. The accent of the theme (or of the cover, when "Color from album art" is on)
-  // washes down from the top of it.
+  // The player of a wide window, in two parts that the shell places on its grid: the deck along the bottom (what is
+  // playing, the transport, and a seek line that runs the full width of the window), and from 1440 px the queue lane
+  // beside the page, so what comes next stays in sight while you browse.
+  let { lane = false }: { lane?: boolean } = $props();
   const entry = $derived(player.shown);
-  const soon = $derived(player.upNext.slice(0, 3));
 </script>
 
+{#if entry && lane}
+  <aside class="lane" aria-label="Up next" data-testid="queue-lane">
+    <div class="lane-head">
+      <h2 class="t-lead">Up next</h2>
+      <Button variant="quiet" size="sm" onclick={() => nav.go('queue')}>Open queue</Button>
+    </div>
+    <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+    <ul class="lane-list" data-scroll tabindex="0">
+      <li class="lane-now">
+        <Thumb src={entry.track.thumbnail} seed={entry.track.key} size={40} rounded="r-sm" />
+        <span class="min-w-0 flex-1">
+          <span class="trow-title accent-text block">{entry.track.title}</span>
+          <span class="trow-artist block">Now playing</span>
+        </span>
+        <span class="trow-time">{formatTime(entry.track.durationMs)}</span>
+      </li>
+      {#each player.upNext as e (e.id)}
+        <li>
+          <MenuItem onclick={() => player.playEntry(e.id)}>
+            <Thumb src={e.track.thumbnail} seed={e.track.key} size={40} rounded="r-sm" />
+            <span class="min-w-0 flex-1">
+              <span class="trow-title block">{e.track.title}</span>
+              <span class="trow-artist block">{e.track.artist}</span>
+            </span>
+            <span class="trow-time">{formatTime(e.track.durationMs)}</span>
+          </MenuItem>
+        </li>
+      {:else}
+        <li class="t-caption muted px-2 py-3">Nothing queued after this song.</li>
+      {/each}
+    </ul>
+  </aside>
+{/if}
+
 {#if entry}
-  <aside class="stage" aria-label="Player" data-testid="player-bar">
-    <button class="stage-art shrink-0" aria-label="Open Now Playing" onclick={() => nav.openNowPlaying()}>
-      <Thumb src={entry.track.thumbnail} seed={entry.track.key} size={340} fill rounded="r-lg" />
-    </button>
-    <div class="min-w-0">
-      <p class="t-subtitle truncate" title={entry.track.title}>{entry.track.title}</p>
-      <p class="muted truncate">{entry.track.artist}</p>
+  <section class="deck" aria-label="Player" data-testid="player-bar">
+    <div class="deck-seek">
+      <Seek positionMs={player.state.positionMs} durationMs={player.durationMs} onseek={player.seek} accent label="Seek" />
     </div>
-    {#if player.failure}
-      <p class="accent-text flex items-center gap-2" role="alert">
-        <span class="min-w-0 flex-1">{describeFailure(player.failure)}</span>
-        <Button variant="primary" size="sm" onclick={player.retry}>Retry</Button>
-      </p>
-    {/if}
-    <div class="t-caption muted nums flex items-center gap-2">
-      <span class="w-10 text-right">{formatTime(player.state.positionMs)}</span>
-      <div class="min-w-0 flex-1"><Seek positionMs={player.state.positionMs} durationMs={player.durationMs} onseek={player.seek} accent label="Seek" /></div>
-      <span class="w-10">{player.durationMs ? formatTime(player.durationMs) : '--:--'}</span>
-    </div>
-    <div class="flex items-center justify-center gap-4">
-      <IconButton icon="prev" label="Previous" size="lg" strong iconSize={24} onclick={player.previous} />
-      <PlayButton size="lg" />
-      <IconButton icon="next" label="Next" size="lg" strong iconSize={24} onclick={player.next} />
-    </div>
-    <div class="flex items-center justify-between gap-2">
+    <div class="deck-now">
+      <button class="deck-art" aria-label="Open Now Playing" onclick={() => nav.openNowPlaying()}>
+        <Thumb src={entry.track.thumbnail} seed={entry.track.key} size={72} fill rounded="r-sm" />
+      </button>
+      <div class="min-w-0 flex-1">
+        <p class="t-strong truncate" title={entry.track.title}>{entry.track.title}</p>
+        {#if player.failure}
+          <p class="t-caption accent-text flex items-center gap-2" role="alert">
+            <span class="min-w-0 flex-1 truncate">{describeFailure(player.failure)}</span>
+            <Button variant="primary" size="sm" onclick={player.retry}>Retry</Button>
+          </p>
+        {:else}
+          <p class="muted truncate">{entry.track.artist}</p>
+        {/if}
+      </div>
       <LikeButton track={entry.track} />
+    </div>
+    <div class="deck-transport">
+      <IconButton icon="prev" label="Previous" size="lg" strong iconSize={24} onclick={player.previous} />
+      <PlayButton />
+      <IconButton icon="next" label="Next" size="lg" strong iconSize={24} onclick={player.next} />
+      <span class="deck-time nums">{formatTime(player.state.positionMs)} / {player.durationMs ? formatTime(player.durationMs) : '--:--'}</span>
+    </div>
+    <div class="deck-extra">
       <div class="w-32"><VolumeSlider /></div>
       <IconButton icon="expand" label="Expand Now Playing" onclick={() => nav.openNowPlaying()} />
     </div>
-    <div class="flex items-center justify-between pt-2">
-      <span class="t-strong">Up next</span>
-      <Button variant="quiet" size="sm" onclick={() => nav.go('queue')}>Open queue</Button>
-    </div>
-    {#if soon.length > 0}
-      <ul>
-        {#each soon as e (e.id)}
-          <li>
-            <MenuItem onclick={() => player.playEntry(e.id)}>
-              <Thumb src={e.track.thumbnail} seed={e.track.key} size={32} rounded="r-sm" />
-              <span class="min-w-0 flex-1">
-                <span class="trow-title block">{e.track.title}</span>
-                <span class="trow-artist block">{e.track.artist}</span>
-              </span>
-            </MenuItem>
-          </li>
-        {/each}
-      </ul>
-    {:else}
-      <p class="t-caption muted">Nothing queued after this song.</p>
-    {/if}
-  </aside>
+  </section>
 {:else}
-  <aside class="stage stage-empty" aria-label="Player">
-    <Logo size={48} />
-    <p class="t-strong mt-4">Nothing playing</p>
-    <p class="max-w-56">Pick a song and it shows up here.</p>
-  </aside>
+  <section class="deck deck-empty" aria-label="Player">
+    <Logo size={24} />
+    <p class="muted">Nothing playing. Pick a song and it shows up here.</p>
+  </section>
 {/if}

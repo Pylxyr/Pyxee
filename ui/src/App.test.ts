@@ -72,33 +72,34 @@ describe('App shell', () => {
     expect(narrow).toHaveLength(1);
     expect(narrow[0]!.getAttribute('data-layout')).toBe('bar');
     expect(narrow[0]!.textContent).toMatch(/Home.*Explore.*Library.*Queue/);
-    // Settings lives in the top bar when there is no rail.
+    // Settings lives in the top bar.
     expect(screen.getByRole('button', { name: 'Settings' })).toBeTruthy();
   });
 
-  it('wide layout puts the wordmark, the four destinations and Settings in a side rail, and the player on the right', async () => {
+  it('wide layout puts the wordmark and the four destinations in tabs on top, Settings beside the search, and the player along the bottom', async () => {
     setWide(true);
     await openApp();
-    const rail = screen.getByRole('navigation', { name: 'Main' });
-    expect(rail.getAttribute('data-layout')).toBe('rail');
-    expect(rail.textContent).toMatch(/Pyxee.*Home.*Explore.*Library.*Queue/);
-    expect(rail.querySelector('[aria-current="page"]')?.textContent).toContain('Home');
-    expect(within(rail).getByRole('button', { name: 'Settings' })).toBeTruthy();
+    const tabs = screen.getByRole('navigation', { name: 'Main' });
+    expect(tabs.getAttribute('data-layout')).toBe('tabs');
+    expect(tabs.textContent).toMatch(/Pyxee.*Home.*Explore.*Library.*Queue/);
+    expect(tabs.querySelector('[aria-current="page"]')?.textContent).toContain('Home');
+    expect(screen.getByRole('button', { name: 'Settings' })).toBeTruthy();
     expect(screen.getAllByRole('navigation', { name: 'Main' })).toHaveLength(1);
-    expect(screen.getByRole('complementary', { name: 'Player' })).toBeTruthy();
+    expect(screen.getByRole('region', { name: 'Player' })).toBeTruthy();
   });
 
-  it('the wide layout shows what plays on the stage: transport, a preview of Up next, and a way to play from it', async () => {
+  it('the wide layout shows what plays on the deck (transport, seek) and Up next in the lane, with a way to play from it', async () => {
     setWide(true);
     await openApp();
     await fireEvent.click(await screen.findByRole('button', { name: /^Neon Harbor/ }));
-    const stage = await screen.findByTestId('player-bar');
-    expect(within(stage).getByRole('button', { name: 'Previous' })).toBeTruthy();
-    expect(within(stage).getByRole('slider', { name: 'Seek' })).toBeTruthy();
-    expect(within(stage).getByText('Up next')).toBeTruthy();
-    await fireEvent.click(within(stage).getByRole('button', { name: /^Paper Planes/ }));
+    const deck = await screen.findByTestId('player-bar');
+    expect(within(deck).getByRole('button', { name: 'Previous' })).toBeTruthy();
+    expect(within(deck).getByRole('slider', { name: 'Seek' })).toBeTruthy();
+    const lane = await screen.findByTestId('queue-lane');
+    expect(within(lane).getByText('Up next')).toBeTruthy();
+    await fireEvent.click(within(lane).getByRole('button', { name: /^Paper Planes/ }));
     await waitFor(() => expect(player.shown?.track.title).toBe('Paper Planes'));
-    await fireEvent.click(within(stage).getByRole('button', { name: 'Open queue' }));
+    await fireEvent.click(within(lane).getByRole('button', { name: 'Open queue' }));
     expect(nav.route).toBe('queue');
   });
 

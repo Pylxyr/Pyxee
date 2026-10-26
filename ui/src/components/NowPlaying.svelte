@@ -36,13 +36,14 @@
 
 {#if nav.nowPlayingOpen && entry}
   <div
-    class="fixed inset-0 z-40 flex flex-col overflow-hidden"
+    class="np-root fixed inset-0 z-40 flex flex-col overflow-hidden"
     style="top:var(--titlebar-h, 0px);background:color-mix(in srgb, var(--accent) 14%, var(--solid))"
     data-testid="np-root"
     role="region"
     aria-label="Now Playing"
     transition:fly={{ y: motionPx(80), duration: motionMs(MOTION.base) }}
   >
+    <div class="np-bg" aria-hidden="true"><Thumb src={entry.track.thumbnail} seed={entry.track.key} size={96} fill rounded="r-sm" /></div>
     <div class="page-pad flex shrink-0 items-center gap-2 py-3" data-testid="np-header">
       <IconButton icon="down" label="Close Now Playing" size="lg" strong onclick={() => nav.closeNowPlaying()} />
       <span class="t-strong muted">Now playing</span>

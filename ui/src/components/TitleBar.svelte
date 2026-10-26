@@ -4,7 +4,7 @@
   import Icon from './Icon.svelte';
   import Logo from './Logo.svelte';
 
-  let { controls, showBrand = false }: { controls: WindowControls; /** The rail already shows the name in the wide layout. */ showBrand?: boolean } = $props();
+  let { controls, showBrand = false }: { controls: WindowControls; /** The tabs already show the name in the wide layout. */ showBrand?: boolean } = $props();
 
   let maximized = $state(false);
 

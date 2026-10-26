@@ -4,7 +4,7 @@
   import Icon from './Icon.svelte';
   import IconButton from './IconButton.svelte';
 
-  // The search box is the same place at every window size: the top of the page. Narrow windows, which have no rail,
+  // The search box is the same place at every window size: the top of the page. Narrow windows, which have no tabs,
   // also keep the Settings button here.
   let { showSettings = false }: { showSettings?: boolean } = $props();
 

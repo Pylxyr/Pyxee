@@ -62,33 +62,32 @@
     <SectionHead>On rotation</SectionHead>
     <Skeleton rows={8} />
   {:else if hasLibrary}
-    <div class="home-body">
+    <div class="home-body shelves">
     {#if hero}
       {@const button = HERO_BUTTON[hero.action]}
       <div class="hero" data-testid="resume">
-        <Thumb src={hero.track.thumbnail} seed={hero.track.key} size={120} rounded="r-md" />
+        <div class="hero-bg" aria-hidden="true"><Thumb src={hero.track.thumbnail} seed={hero.track.key} size={96} fill rounded="r-sm" /></div>
+        <div class="hero-art"><Thumb src={hero.track.thumbnail} seed={hero.track.key} size={240} fill rounded="r-sm" /></div>
         <div class="min-w-0 flex-1">
-          <p class="muted">{hero.label}</p>
+          <p class="hero-label">{hero.label}</p>
           <p class="t-title truncate">{hero.track.title}</p>
           <p class="muted truncate">{hero.track.artist}</p>
-          <Button class="mt-3" variant="primary" aria-label="{button.text} {hero.track.title}" onclick={() => heroClick(hero)}>
-            {#if button.icon}<Icon name={button.icon} size={16} fill={button.icon === 'play'} />{/if}{button.text}
-          </Button>
+          <div class="mt-4 flex flex-wrap items-center gap-2">
+            <Button variant="primary" aria-label="{button.text} {hero.track.title}" onclick={() => heroClick(hero)}>
+              {#if button.icon}<Icon name={button.icon} size={16} fill={button.icon === 'play'} />{/if}{button.text}
+            </Button>
+            {#if home.likedCount > 0}
+              <Button onclick={() => { nav.libraryTab = 'liked'; nav.go('library'); }}>Liked songs <span class="nums muted">{home.likedCount}</span></Button>
+            {/if}
+          </div>
         </div>
-        {#if home.likedCount > 0}
-          <button class="hidden shrink-0 self-stretch r-md border border-line px-5 text-left hover:bg-surface-2 sm:block" onclick={() => { nav.libraryTab = 'liked'; nav.go('library'); }}>
-            <span class="muted block">Liked songs</span>
-            <span class="t-title nums mt-1 block">{home.likedCount}</span>
-            <span class="t-caption muted">open the list</span>
-          </button>
-        {/if}
       </div>
     {/if}
     <div class="home-cols">
       {#if home.quickPicks.length > 0}
         <section class="min-w-0">
           <SectionHead count={home.quickPicks.length}>On rotation</SectionHead>
-          <TrackList label="Quick picks" tracks={home.quickPicks} onplay={(i) => player.playTracks(home!.quickPicks, i)} />
+          <div class="picks"><TrackList label="Quick picks" tracks={home.quickPicks} onplay={(i) => player.playTracks(home!.quickPicks, i)} /></div>
         </section>
       {/if}
       {#if home.recent.length > 0}

@@ -4,30 +4,23 @@
   import Icon from './Icon.svelte';
   import Logo from './Logo.svelte';
 
-  // One list of places, two shapes. `rail`: a column on the left of a wide window (icons alone up to 1280 px, then
-  // with names); the wordmark on top and Settings at the foot. `bar`: the bottom bar of a narrow window.
-  let { layout }: { layout: 'rail' | 'bar' } = $props();
+  // One list of places, two shapes. `tabs`: the top of a wide window, the wordmark then the four places as tabs.
+  // `bar`: the bottom bar of a narrow window.
+  let { layout }: { layout: 'tabs' | 'bar' } = $props();
 </script>
 
-{#if layout === 'rail'}
-  <nav class="rail" aria-label="Main" data-layout="rail">
-    <div class="rail-brand">
-      <Logo size={28} /><span class="wordmark rail-label">Pyxee</span>
+{#if layout === 'tabs'}
+  <nav class="tabs-nav" aria-label="Main" data-layout="tabs">
+    <div class="tabs-brand">
+      <Logo size={24} /><span class="wordmark">Pyxee</span>
     </div>
-    <ul class="rail-list">
+    <ul class="tabs-list">
       {#each DESTINATIONS as it (it.route)}
         <li>
-          <button class="nav-item" title={it.label} aria-current={nav.route === it.route ? 'page' : undefined} onclick={() => nav.go(it.route)}>
-            <Icon name={it.icon} size={20} /><span class="rail-label">{it.label}</span>
-          </button>
+          <button class="tab-item" aria-current={nav.route === it.route ? 'page' : undefined} onclick={() => nav.go(it.route)}>{it.label}</button>
         </li>
       {/each}
     </ul>
-    <div class="mt-auto">
-      <button class="nav-item" aria-label="Settings" title="Settings" onclick={() => (nav.themeSheetOpen = true)}>
-        <Icon name="settings" size={20} /><span class="rail-label" aria-hidden="true">Settings</span>
-      </button>
-    </div>
   </nav>
 {:else}
   <nav class="bar-nav" aria-label="Main" data-layout="bar">

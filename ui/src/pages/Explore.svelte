@@ -66,6 +66,7 @@
     </PageHeader>
   {/snippet}
 
+  <div class="shelves">
   {#if explore.genres.length > 0}
     <GenreChips genres={explore.genres} selected={explore.selectedGenre} onselect={pickGenre} />
   {/if}
@@ -158,4 +159,5 @@
       </p>
     {/if}
   {/if}
+  </div>
 </ScrollPage>

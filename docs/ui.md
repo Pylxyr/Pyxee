@@ -16,23 +16,23 @@ handover, prefetch, radio) so the real state machine drives the UI. Demo tracks 
 
 
 ## Layout
-Three parts, two layers, as Windows 11 stacks them: a **rail** and a **stage** on the base layer (the page background, or Mica) and
-the **page** between them as the content layer, with a rounded top-left corner.
-- **Wide (>= 900 px)**: rail on the left (icons only up to 1280 px, then with names; wordmark on top, Settings at the foot),
-  page in the middle (search box on top, then the view), stage on the right (cover, title, seek, transport, like, volume,
-  a preview of Up next with **Open queue**). Before anything plays the stage says so; it never moves when the first song starts.
+A **masthead** on top, the **page** under it, and the **deck** along the bottom; from 1440 px a **lane** (the queue) sits beside the page.
+- **Wide (>= 900 px)**: the masthead holds the wordmark (hidden under 1100 px), the four places as tabs, the search box and Settings. The
+  page fills the middle. The deck is 88 px: the cover, title and like on the left; previous, play, next and the time in the middle;
+  volume and Expand on the right; the seek line runs the full width of the deck's top edge. From 1440 px the lane (22 vw, 320 to 480 px)
+  shows what plays and Up next as a scrolling list with **Open queue**. Before anything plays the deck says so and keeps its height.
 - **Narrow**: page, then the dock (a one-line player with the seek line along its top edge), then the bottom bar. The search
   box and Settings are at the top of the page.
-Above 1280 px the stage grows with the window (340 to 560 px) and the page margins grow at 1600 and 1920 px; Home puts "On rotation" and
-"Recently played" side by side once its page is about 1000 px wide, and Now Playing has no width cap (a bigger cover and a wider queue column at 1280 and 1536 px).
-Click the cover or the dock to open Now Playing (Up next / Lyrics / Related). The same four destinations (`lib/destinations.ts`)
-feed the rail and the bottom bar (`Navigation.svelte`, `layout="rail" | "bar"`).
+Page margins grow at 1600 and 1920 px; Home puts "On rotation" and "Recently played" side by side once its page is about 1000 px wide,
+and Now Playing has no width cap (a bigger cover and a wider queue column at 1280 and 1536 px).
+Click the cover (deck or dock) to open Now Playing (Up next / Lyrics / Related). The same four destinations (`lib/destinations.ts`)
+feed the tabs and the bottom bar (`Navigation.svelte`, `layout="tabs" | "bar"`).
 
 **No native title bar (by default).** The main window is created without a frame (`decorations: false` in `tauri.conf.json`, with a shadow, so
 Windows still draws the rounded corners and the resize edges). `TitleBar.svelte` is a 32 px strip above the shell: the empty part
 is a drag region (a double click maximizes), and the three buttons call the window through `lib/windowControls.ts`
 (`minimize`, `toggleMaximize`, `close`; the last goes through the normal close request, so close-to-tray still applies). The name
-shows in the bar only in the narrow layout; the rail shows it otherwise. The bar exists only inside the app (`hasOwnWindow()`), not
+shows in the bar only in the narrow layout; the tabs show it otherwise. The bar exists only inside the app (`hasOwnWindow()`), not
 in a browser. Sheets and Now Playing start below it (`--titlebar-h`), so its buttons stay usable. The mini player and the flyout are
 frameless as before.
 
@@ -75,8 +75,8 @@ seeking (arrow keys work, `aria-valuetext` reads "1:23 of 3:42"), visible focus 
 Space play/pause, Left/Right seek 5 s, N next, P previous, Esc close Now Playing. Ignored while typing in a text field;
 Space and arrows are left to focused buttons and sliders. Global media keys come with SMTC in milestone 6.
 
-## Identity: Rail, Page, Stage
-- **Navigation** is a rail (see Layout), with a small accent bar beside the chosen place. Search is the same box at the top of the
+## Identity: Masthead, Page, Deck
+- **Navigation** is a row of tabs (see Layout), with an accent bar under the chosen place. Search is the same box at the top of the
   page at every size. Library sections and search filters are `Segmented` controls (plain tabs on a hairline, accent underline).
 - **Lists are tables.** `TrackList` draws the column names (#, Title, Artist, Time) and `TrackRow` the rows: place number (a play mark
   on hover, moving bars on the song that is playing), small cover, title, artist, length. The artist gets its own column when the
@@ -85,18 +85,20 @@ Space and arrows are left to focused buttons and sliders. Global media keys come
 - **The song that is playing is marked in every list** (accent title, bars), not only in the queue.
 - **Type**: Segoe UI Variable for text and Bahnschrift (installed with Windows 10 and 11; Segoe UI Variable Display is the fallback) for titles, in the
   Windows 11 ramp (12/16, 14/20, 18/24, 20/28, 30/36, 40/52), sentence case, regular and semibold. There are no tracked capitals. Times use tabular figures.
-- **Home** opens with the *hero* (what is playing, or the last song, with Resume), then "On rotation" (the table) and
-  "Recently played" as covers with the text under them (`CoverGrid`; Explore's "Jump back in" is the same).
-- **The stage** is the memorable part: a large cover, and the accent (of the theme, or of the cover with "Color from album art")
-  washing down from the top. The hero, the flyout and the mini player use the same wash.
-- Ink (blue-black with amber) is the default theme. The logo keeps its own red; the UI accent does not.
+- **Home** opens with the *hero* (what is playing, or the last song, as a large lit cover over a blurred wash of itself, with Resume and
+  Liked songs), then "On rotation" (the table's rows in as many columns as fit) and "Recently played" as a shelf of covers
+  (`CoverGrid` inside `.shelves`: one row that scrolls sideways to the page's edges; Explore's shelves are the same). Page titles are
+  poster-sized over a hairline.
+- **The deck** is the memorable part: a seek line across the whole window, a cover lit by the accent (of the theme, or of the
+  cover with "Color from album art"), and the same accent washing down the lane. The hero, the flyout and the mini player use the wash.
+- Ink (blue-black with a signal-lime accent) is the default theme, Frost (soft grey-white with olive-lime) the default light one. The logo keeps its own red; the UI accent does not.
 
 ## Design tokens
 `app.css` has three tiers. (1) The seven theme colours, written by `theme.apply()` as `--t-*` (and the opaque `--solid`,
 `--solid-2`, `--on-fg`). (2) Semantic tokens mixed from them: `--layer`, `--hover`, `--press`, `--selected`, `--stage-wash`,
 `--focus`, plus radii (`--r-sm/md/lg` = 3/6/10), the hairline `--rule` and the cover's `--glow`, motion (`--dur-fast` 120 ms, `--dur-base` 200 ms, `--ease`) and layout
-(`--rail-w`, `--stage-w`, `--page-pad`). (3) Component classes in `@layer components` (`.btn`, `.icon-btn`, `.segmented`,
-`.trow`, `.stage`, ...) that read tier 2 only. Components use those and a few layout utilities; a new theme needs no CSS change.
+(`--deck-h`, `--lane-w`, `--page-pad`). (3) Component classes in `@layer components` (`.btn`, `.icon-btn`, `.segmented`,
+`.trow`, `.deck`, ...) that read tier 2 only. Components use those and a few layout utilities; a new theme needs no CSS change.
 Primitives: `Button`, `IconButton`, `Toggle` (a real checkbox drawn as a switch), `Segmented`, `PageHeader`, `SectionHead`,
 `MenuItem`, `PlayButton`, `LikeButton`, `VolumeSlider`, `PlayingMark`. Script motion goes through `lib/motion.ts`, which drops
 lengths and distances to nothing when Windows asks for less motion; CSS motion does the same with `prefers-reduced-motion`.
@@ -152,7 +154,7 @@ real window, Mica and DPI behaviour need a first run on your PC.
 
 ## WP1 notes
 
-- **Settings** (gear: the foot of the rail, or the top right when narrow) holds Appearance and Diagnostics. Sheets stack in the order they were opened
+- **Settings** (gear: the top right) holds Appearance and Diagnostics. Sheets stack in the order they were opened
   (z-index 100 and up, above Now Playing at 40); the snackbar sits above them (1000).
 - **Covers** go through `lib/thumb.ts`: YouTube's 4:3 stills have black bars baked in, so small covers use `mqdefault`
   (16:9, no bars), big ones `maxresdefault` then `hq720` then `mqdefault`; Google cover URLs are resized to the displayed

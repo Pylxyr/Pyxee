@@ -229,13 +229,13 @@ describe('Windows settings', () => {
     await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Settings' })).toBeNull());
   });
 
-  it('on a wide window Settings slides in from the left, beside the rail button that opens it', async () => {
+  it('on a wide window Settings also slides in from the right, beside the top-right button that opens it', async () => {
     window.matchMedia = ((q: string) => ({
       matches: q.includes('min-width'), media: q, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {}, dispatchEvent: () => false, onchange: null,
     })) as typeof window.matchMedia;
     await openSettings();
     const tab = screen.getByRole('dialog', { name: 'Settings' });
-    expect(tab.getAttribute('data-side')).toBe('left');
+    expect(tab.getAttribute('data-side')).toBe('right');
     expect(tab.className).toContain('w-1/2');
   });
 

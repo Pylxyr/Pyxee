@@ -82,7 +82,7 @@
     {#if liked.length === 0}
       <EmptyState icon="heart" title="No liked songs yet" text="Tap the heart on a song and it will show up here." />
     {:else}
-      <div class="mb-2 flex items-center gap-2">
+      <div class="toolbar">
         <Button variant="primary" onclick={() => playAll(false)}>Play all</Button>
         <Button onclick={() => playAll(true)}>Shuffle</Button>
         <span class="muted ml-auto">{songs(liked.length)}</span>
@@ -90,33 +90,29 @@
       <TrackList label="Liked songs" tracks={liked} onplay={(i) => player.playTracks(liked, i)} />
     {/if}
   {:else if nav.libraryTab === 'playlists'}
-    <div class="mb-2">
+    <div class="toolbar">
       <Button variant="primary" onclick={newPlaylist}><Icon name="plus" size={18} />New playlist</Button>
     </div>
     {#if library.playlists.length === 0}
       <EmptyState icon="library" title="No playlists yet" text="Create one here, or choose Add to playlist on any song. You can also save your queue." />
     {:else}
-      <TrackList label="Playlists" head={false}>
+      <ul class="cover-grid mt-4" aria-label="Playlists">
         {#each library.playlists as p (p.id)}
-          <li class="trow">
-            <button class="trow-main" onclick={() => nav.openPlaylist(p.id)}>
-              <span class="trow-idx" aria-hidden="true"></span>
-              <Thumb src={p.thumbnail} seed={`pl:${p.id}`} size={40} rounded="r-sm" />
-              <span class="trow-text">
-                <span class="trow-title">{p.name}</span>
-                <span class="trow-artist">{songs(p.trackCount)}</span>
-              </span>
-              <span></span>
+          <li>
+            <button class="cover-tile" onclick={() => nav.openPlaylist(p.id)}>
+              <span class="cover-art block"><Thumb src={p.thumbnail} seed={`pl:${p.id}`} size={160} fill rounded="r-sm" /></span>
+              <span class="trow-title mt-2 block">{p.name}</span>
+              <span class="trow-artist block">{songs(p.trackCount)}</span>
             </button>
           </li>
         {/each}
-      </TrackList>
+      </ul>
     {/if}
   {:else if nav.libraryTab === 'history'}
     {#if history.length === 0}
       <EmptyState icon="music" title="No history yet" text="Songs you listen to for a while are listed here." />
     {:else}
-      <div class="mb-2 flex items-center">
+      <div class="toolbar">
         <span class="muted">{library.snapshot.historyCount} {library.snapshot.historyCount === 1 ? 'play' : 'plays'}</span>
         <Button class="ml-auto" onclick={clearHistory}>Clear history</Button>
       </div>

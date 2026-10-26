@@ -44,7 +44,7 @@ describe('TitleBar', () => {
     await waitFor(() => expect(screen.getByRole('button', { name: 'Maximize' })).toBeTruthy());
   });
 
-  it('shows the name only when asked (the rail shows it in the wide layout)', () => {
+  it('shows the name only when asked (the tabs show it in the wide layout)', () => {
     const { unmount } = render(TitleBar, { controls: fakeControls() });
     expect(screen.queryByText('Pyxee')).toBeNull();
     unmount();

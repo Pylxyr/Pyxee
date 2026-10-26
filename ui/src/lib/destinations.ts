@@ -6,7 +6,7 @@ export interface Destination {
   icon: string;
 }
 
-/** The four top-level places. The side rail (wide windows) and the bottom bar (narrow ones) show the same list. */
+/** The four top-level places. The top tabs (wide windows) and the bottom bar (narrow ones) show the same list. */
 export const DESTINATIONS: readonly Destination[] = [
   { route: 'home', label: 'Home', icon: 'home' },
   { route: 'explore', label: 'Explore', icon: 'explore' },

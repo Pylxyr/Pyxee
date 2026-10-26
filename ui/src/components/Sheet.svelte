@@ -1,7 +1,7 @@
 <script module lang="ts">
   // Sheets stack in the order they were opened, not in the order they appear in the page: a sheet
   // opened from another sheet (e.g. the theme editor from Settings) must land on top of it.
-  // 100 and up keeps every sheet above Now Playing (z-40), the dock, the rail and the top bar;
+  // 100 and up keeps every sheet above Now Playing (z-40), the dock, the deck and the top bar;
   // the snackbar sits above all of them so its Undo stays reachable.
   let opened = 0;
 </script>

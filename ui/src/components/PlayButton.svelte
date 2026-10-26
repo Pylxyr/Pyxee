@@ -3,8 +3,8 @@
   import Icon from './Icon.svelte';
 
   /**
-   * The play / pause button, shared by the dock, the stage and Now Playing. `announceLoading` is what the dock and the
-   * stage say while a song is still starting ("Loading, press to pause"); Now Playing keeps to Play and Pause.
+   * The play / pause button, shared by the dock, the deck and Now Playing. `announceLoading` is what the dock and the
+   * deck say while a song is still starting ("Loading, press to pause"); Now Playing keeps to Play and Pause.
    */
   let { size = 'md', announceLoading = true }: { size?: 'sm' | 'md' | 'lg'; announceLoading?: boolean } = $props();
   const label = $derived(player.isPlaying ? 'Pause' : announceLoading && player.isBusy ? 'Loading, press to pause' : 'Play');

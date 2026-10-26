@@ -26,17 +26,17 @@
  */
 :root {
   color-scheme: dark;
-  --bg: var(--t-bg, #12141b);
-  --surface: var(--t-surface, #1a1d27);
-  --surface-2: var(--t-surface-2, #252a37);
-  --line: var(--t-line, #2e3444);
-  --fg: var(--t-fg, #eef0f6);
-  --muted: var(--t-muted, #9ba3b7);
-  --accent: var(--t-accent, #f2a93b);
-  --on-accent: var(--t-on-accent, #14110a);
+  --bg: var(--t-bg, #0c1017);
+  --surface: var(--t-surface, #141a22);
+  --surface-2: var(--t-surface-2, #1e2631);
+  --line: var(--t-line, #28313e);
+  --fg: var(--t-fg, #e9eef5);
+  --muted: var(--t-muted, #92a0b3);
+  --accent: var(--t-accent, #c6f135);
+  --on-accent: var(--t-on-accent, #0c0f04);
   /* Opaque colours that Mica never makes transparent: overlays, menus, and text on solid-fg buttons. */
-  --solid: var(--t-solid, #12141b);
-  --solid-2: var(--t-solid-2, #252a37);
+  --solid: var(--t-solid, #0c1017);
+  --solid-2: var(--t-solid-2, #1e2631);
   --on-fg: var(--t-on-fg, #0f0f0f);
 
   /* Tier 2. The content layer sits on the base layer (the page background, or Mica) the way Windows 11 stacks them. */
@@ -65,23 +65,23 @@
   --dur-base: 200ms;
   --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
 
-  /* Layout: the rail is icons only up to 1280 px; the stage is the player column. */
-  --rail-w: 64px;
-  --stage-w: 300px;
+  /* Layout: the deck is the player along the bottom; the lane (from 1440 px) is the queue beside the page. */
+  --deck-h: 88px;
+  --lane-w: clamp(320px, 22vw, 480px);
   --page-pad: 24px;
 }
 
 :root[data-theme='light'] {
   color-scheme: light;
-  --bg: var(--t-bg, #f4f6fa);
-  --surface: var(--t-surface, #eaeef5);
-  --surface-2: var(--t-surface-2, #dde3ee);
-  --line: var(--t-line, #cdd5e3);
-  --fg: var(--t-fg, #141824);
-  --muted: var(--t-muted, #566078);
-  --accent: var(--t-accent, #b45309);
-  --solid: var(--t-solid, #f4f6fa);
-  --solid-2: var(--t-solid-2, #dde3ee);
+  --bg: var(--t-bg, #f2f3f0);
+  --surface: var(--t-surface, #e8eae5);
+  --surface-2: var(--t-surface-2, #dcdfd8);
+  --line: var(--t-line, #c9cdc3);
+  --fg: var(--t-fg, #12140f);
+  --muted: var(--t-muted, #565b50);
+  --accent: var(--t-accent, #4d7c0f);
+  --solid: var(--t-solid, #f2f3f0);
+  --solid-2: var(--t-solid-2, #dcdfd8);
   --on-fg: var(--t-on-fg, #ffffff);
   --hover: color-mix(in srgb, var(--fg) 6%, transparent);
   --press: color-mix(in srgb, var(--fg) 10%, transparent);
@@ -93,15 +93,15 @@
 @media (prefers-color-scheme: light) {
   :root:not([data-theme]) {
     color-scheme: light;
-    --bg: var(--t-bg, #f4f6fa);
-    --surface: var(--t-surface, #eaeef5);
-    --surface-2: var(--t-surface-2, #dde3ee);
-    --line: var(--t-line, #cdd5e3);
-    --fg: var(--t-fg, #141824);
-    --muted: var(--t-muted, #566078);
-    --accent: var(--t-accent, #b45309);
-    --solid: var(--t-solid, #f4f6fa);
-    --solid-2: var(--t-solid-2, #dde3ee);
+    --bg: var(--t-bg, #f2f3f0);
+    --surface: var(--t-surface, #e8eae5);
+    --surface-2: var(--t-surface-2, #dcdfd8);
+    --line: var(--t-line, #c9cdc3);
+    --fg: var(--t-fg, #12140f);
+    --muted: var(--t-muted, #565b50);
+    --accent: var(--t-accent, #4d7c0f);
+    --solid: var(--t-solid, #f2f3f0);
+    --solid-2: var(--t-solid-2, #dcdfd8);
     --on-fg: var(--t-on-fg, #ffffff);
   }
 }
@@ -111,10 +111,10 @@
  * A theme with a coloured background tints the backdrop with it (`--t-mica-tint`), so a blue theme is not grey.
  */
 :root[data-backdrop='mica'] {
-  --bg: color-mix(in srgb, var(--t-bg, #12141b) var(--t-mica-tint, 0%), transparent);
-  --surface: color-mix(in srgb, var(--t-fg, #eef0f6) 5%, transparent);
-  --surface-2: color-mix(in srgb, var(--t-fg, #eef0f6) 10%, transparent);
-  --line: color-mix(in srgb, var(--t-fg, #eef0f6) 12%, transparent);
+  --bg: color-mix(in srgb, var(--t-bg, #0c1017) var(--t-mica-tint, 0%), transparent);
+  --surface: color-mix(in srgb, var(--t-fg, #e9eef5) 5%, transparent);
+  --surface-2: color-mix(in srgb, var(--t-fg, #e9eef5) 10%, transparent);
+  --line: color-mix(in srgb, var(--t-fg, #e9eef5) 12%, transparent);
 }
 :root[data-backdrop='mica'][data-theme='light'] {
   --surface: color-mix(in srgb, var(--t-fg, #000000) 4%, transparent);
@@ -122,19 +122,13 @@
   --line: color-mix(in srgb, var(--t-fg, #000000) 10%, transparent);
 }
 
-/* Narrow windows get the 12 px margins Windows uses for its minimal navigation; roomy ones the rail's labels. */
+/* Narrow windows get the 12 px margins Windows uses for its minimal navigation; roomy ones the tab bar's full width. */
 @media (max-width: 899px) {
   :root {
     --page-pad: 12px;
   }
 }
-@media (min-width: 1280px) {
-  :root {
-    --rail-w: 216px;
-    --stage-w: clamp(340px, 24vw, 560px);
-  }
-}
-/* Roomy windows get roomier margins, so the page does not stop short of the stage. */
+/* Roomy windows get roomier margins, so the page does not stop short of the lane. */
 @media (min-width: 1600px) {
   :root {
     --page-pad: 32px;
@@ -227,7 +221,7 @@ input[type='range'].slider {
 }
 input[type='range'].slider::-webkit-slider-runnable-track {
   height: 4px;
-  border-radius: 2px;
+  border-radius: 0;
   background: linear-gradient(to right, var(--fg) var(--pct), var(--surface-2) var(--pct));
 }
 input[type='range'].slider.accent::-webkit-slider-runnable-track {
@@ -235,10 +229,10 @@ input[type='range'].slider.accent::-webkit-slider-runnable-track {
 }
 input[type='range'].slider::-webkit-slider-thumb {
   -webkit-appearance: none;
-  width: 14px;
-  height: 14px;
-  margin-top: -5px;
-  border-radius: 50%;
+  width: 8px;
+  height: 16px;
+  margin-top: -6px;
+  border-radius: 1px;
   background: var(--fg);
   opacity: 0;
   transition: opacity var(--dur-fast) var(--ease);
@@ -409,19 +403,21 @@ input[type='range'].slider:disabled {
     align-items: center;
     justify-content: center;
     gap: 8px;
-    min-height: 32px;
+    min-height: 34px;
     padding: 0 16px;
-    border: 1px solid var(--line);
+    border: 1px solid var(--rule);
     border-radius: var(--r-sm);
-    background: var(--surface);
+    background: transparent;
     color: var(--fg);
+    font-family: var(--font-display);
     font-size: 14px;
     line-height: 20px;
     white-space: nowrap;
     transition: background-color var(--dur-fast) var(--ease), filter var(--dur-fast) var(--ease);
   }
   .btn:hover {
-    background: var(--surface-2);
+    background: var(--hover);
+    border-color: var(--muted);
   }
   .btn:active {
     background: var(--press);
@@ -555,7 +551,7 @@ input[type='range'].slider:disabled {
     height: 20px;
     margin: 0;
     border: 1px solid var(--muted);
-    border-radius: 9999px;
+    border-radius: 2px;
     background: transparent;
     cursor: pointer;
     transition: background-color var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease);
@@ -567,7 +563,7 @@ input[type='range'].slider:disabled {
     left: 3px;
     width: 12px;
     height: 12px;
-    border-radius: 9999px;
+    border-radius: 1px;
     background: var(--muted);
     transition: transform var(--dur-fast) var(--ease), background-color var(--dur-fast) var(--ease);
   }
@@ -585,7 +581,7 @@ input[type='range'].slider:disabled {
     width: 100%;
     min-height: 32px;
     padding: 4px 12px;
-    border: 1px solid var(--line);
+    border: 1px solid var(--rule);
     border-bottom-color: var(--muted);
     border-radius: var(--r-sm);
     background: var(--surface);
@@ -645,7 +641,7 @@ input[type='range'].slider:disabled {
   .chip {
     padding: 6px 14px;
     border: 1px solid var(--line);
-    border-radius: 999px;
+    border-radius: var(--r-sm);
     color: var(--fg);
     font-size: 14px;
     transition: background-color var(--dur-fast) var(--ease);
@@ -664,7 +660,7 @@ input[type='range'].slider:disabled {
     border-style: dashed;
   }
 
-  /* Layout: the rail, the page (content layer), the stage and the dock. */
+  /* Layout: the masthead, the page (content layer), the lane, the deck and the dock. */
   /* The main window has no native title bar: `.titlebar` (a slim bar with the drag area and the window buttons) sits above the shell. */
   .frame {
     display: flex;
@@ -726,6 +722,26 @@ input[type='range'].slider:disabled {
   .shell[data-layout='narrow'] {
     flex-direction: column;
   }
+  /* Wide: masthead on top, the page (and the lane from 1440 px) in the middle, the deck along the bottom. */
+  .shell[data-layout='wide'] {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr) auto;
+  }
+  .shell[data-layout='wide'][data-lane] {
+    grid-template-columns: minmax(0, 1fr) var(--lane-w);
+  }
+  .shell[data-layout='wide'] .masthead,
+  .shell[data-layout='wide'] .deck {
+    grid-column: 1 / -1;
+  }
+  .shell[data-layout='wide'] .workspace {
+    display: contents;
+  }
+  .shell[data-layout='wide'] .lane {
+    grid-column: 2;
+    grid-row: 2;
+  }
   .workspace {
     display: flex;
     flex: 1 1 0;
@@ -743,7 +759,8 @@ input[type='range'].slider:disabled {
     background: var(--layer);
   }
   .shell[data-layout='wide'] .page {
-    border-left: 1px solid var(--rule);
+    grid-column: 1;
+    grid-row: 2;
   }
   .shell[data-layout='narrow'] .page {
     border-bottom: 1px solid var(--line);
@@ -753,81 +770,71 @@ input[type='range'].slider:disabled {
     padding-right: var(--page-pad);
   }
 
-  .rail {
+  /* The top of a wide window: tabs for the four places, then the search box, then Settings. */
+  .masthead {
     display: flex;
     flex: none;
-    flex-direction: column;
-    gap: 4px;
-    width: var(--rail-w);
-    padding: 12px 8px;
+    align-items: center;
+    gap: 24px;
+    padding: 0 var(--page-pad);
+    border-bottom: 1px solid var(--rule);
+    background: var(--layer);
   }
-  .rail-brand {
+  .masthead .topbar {
+    flex: 1 1 0;
+    justify-content: space-between;
+    min-width: 0;
+    padding-left: 0;
+    padding-right: 0;
+  }
+  .tabs-nav {
+    display: flex;
+    flex: none;
+    align-items: center;
+    gap: 24px;
+  }
+  .tabs-brand {
     display: flex;
     align-items: center;
-    gap: 12px;
-    height: 40px;
-    margin-bottom: 12px;
-    padding: 0 8px;
+    gap: 10px;
   }
-  .rail-list {
+  .tabs-list {
     display: flex;
-    flex-direction: column;
     gap: 2px;
     margin: 0;
     padding: 0;
     list-style: none;
   }
-  .nav-item {
+  .tab-item {
     position: relative;
-    display: flex;
-    align-items: center;
-    gap: 14px;
-    width: 100%;
-    height: 40px;
-    padding: 0 12px;
-    border-radius: var(--r-md);
+    height: 60px;
+    padding: 0 14px;
     color: var(--muted);
-    text-align: left;
-    transition: background-color var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+    font-family: var(--font-display);
+    font-size: 15px;
+    transition: color var(--dur-fast) var(--ease);
   }
-  .nav-item:hover {
-    background: var(--hover);
+  .tab-item:hover {
     color: var(--fg);
   }
-  .nav-item[aria-current='page'] {
-    background: var(--hover);
+  .tab-item[aria-current='page'] {
     color: var(--fg);
     font-weight: 600;
   }
-  .nav-item[aria-current='page'] > :first-child {
-    color: var(--accent);
-  }
-  /* An accent bar on the edge of the chosen destination. */
-  .nav-item[aria-current='page']::before {
+  /* The chosen place: a bar on the masthead's own edge. */
+  .tab-item[aria-current='page']::after {
     content: '';
     position: absolute;
-    left: 0;
-    top: 8px;
-    bottom: 8px;
-    width: 3px;
-    border-radius: 0 2px 2px 0;
+    left: 14px;
+    right: 14px;
+    bottom: -1px;
+    height: 3px;
+    border-radius: 2px 2px 0 0;
     background: var(--accent);
   }
-  .rail-label {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    overflow: hidden;
-    clip: rect(0 0 0 0);
-    white-space: nowrap;
-  }
-  @media (min-width: 1280px) {
-    .rail-label {
-      position: static;
-      width: auto;
-      height: auto;
-      overflow: visible;
-      clip: auto;
+  @media (max-width: 1099px) {
+    .tabs-brand .wordmark {
+      display: none;
     }
   }
 
@@ -929,20 +936,94 @@ input[type='range'].slider:disabled {
     z-index: 10;
   }
 
-  /* Stage (wide windows): the player column. The cover is the one big thing; the accent washes down from it. */
-  .stage {
+  /* The deck (wide windows): the player along the bottom, with the seek line running the full width of its top edge. */
+  .deck {
+    position: relative;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+    align-items: center;
+    gap: 24px;
+    height: var(--deck-h);
+    padding: 0 var(--page-pad);
+    border-top: 1px solid var(--rule);
+    background: var(--surface);
+  }
+  .deck-empty {
+    display: flex;
+    gap: 12px;
+  }
+  .deck-seek {
+    position: absolute;
+    inset-inline: 0;
+    top: -10px;
+    z-index: 10;
+  }
+  .deck-now {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    min-width: 0;
+  }
+  .deck-art {
+    position: relative;
+    flex: none;
+    width: 64px;
+    height: 64px;
+    overflow: hidden;
+    border-radius: var(--r-sm);
+    box-shadow: var(--shadow-art), 0 0 28px -8px var(--glow);
+  }
+  .deck-transport {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .deck-time {
+    min-width: 104px;
+    color: var(--muted);
+    font-size: 12px;
+    text-align: center;
+  }
+  .deck-extra {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+  }
+
+  /* The queue lane (from 1440 px): what plays and what comes next, beside the page. The accent washes down from the top. */
+  .lane {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    border-left: 1px solid var(--rule);
+    background: linear-gradient(to bottom, var(--stage-wash), transparent 45%), var(--layer);
+  }
+  .lane-head {
     display: flex;
     flex: none;
-    flex-direction: column;
-    gap: 16px;
-    width: var(--stage-w);
-    padding: 20px;
-    overflow-y: auto;
-    border-left: 1px solid var(--rule);
-    background: linear-gradient(to bottom, var(--stage-wash), transparent 60%), var(--layer);
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 14px 16px 8px 20px;
   }
-  .stage > * {
-    flex-shrink: 0;
+  .lane-list {
+    flex: 1 1 0;
+    min-height: 0;
+    margin: 0;
+    padding: 0 10px 12px;
+    list-style: none;
+    overflow-y: auto;
+  }
+  .lane-now {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 4px;
+    padding: 6px 8px;
+    border-radius: var(--r-sm);
+    background: var(--selected);
+    box-shadow: inset 3px 0 0 var(--accent);
   }
   .stage-art {
     position: relative;
@@ -954,6 +1035,7 @@ input[type='range'].slider:disabled {
   }
   /* The sleeve's edge: a hairline inside the cover, so a dark cover still has an outline on a dark page. */
   .stage-art::after,
+  .deck-art::after,
   .cover-tile .cover-art::after {
     content: '';
     position: absolute;
@@ -962,21 +1044,22 @@ input[type='range'].slider:disabled {
     box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--fg) 14%, transparent);
     pointer-events: none;
   }
-  .stage-empty {
-    align-items: center;
-    justify-content: center;
-    text-align: center;
-    color: var(--muted);
-  }
 
   /* Pages */
   .page-head {
     display: flex;
     flex-wrap: wrap;
-    align-items: center;
+    align-items: flex-end;
     gap: 8px 16px;
-    padding-top: 8px;
-    padding-bottom: 16px;
+    margin-bottom: 8px;
+    padding-top: 16px;
+    padding-bottom: 20px;
+    border-bottom: 1px solid var(--rule);
+  }
+  .page-head .t-title {
+    font-size: clamp(36px, 3.6vw, 60px);
+    line-height: 1.04;
+    letter-spacing: -0.01em;
   }
   .page-head-main {
     min-width: 12rem;
@@ -1006,8 +1089,9 @@ input[type='range'].slider:disabled {
   }
   .notice {
     padding: 12px 16px;
-    border: 1px solid var(--line);
-    border-radius: var(--r-md);
+    border: 1px solid var(--rule);
+    border-left: 3px solid var(--accent);
+    border-radius: var(--r-sm);
     background: var(--surface);
   }
 
@@ -1271,7 +1355,7 @@ input[type='range'].slider:disabled {
     justify-content: space-between;
     gap: 16px;
     padding: 12px;
-    border-radius: var(--r-md);
+    border-bottom: 1px solid var(--rule);
     cursor: pointer;
   }
   .setting:hover {
@@ -1290,7 +1374,7 @@ input[type='range'].slider:disabled {
     width: 100%;
     min-height: 40px;
     padding: 6px 12px;
-    border-radius: var(--r-md);
+    border-radius: var(--r-sm);
     text-align: left;
   }
   .menu-item:hover {
@@ -1316,17 +1400,19 @@ input[type='range'].slider:disabled {
   }
   .well {
     padding: 12px;
-    border-radius: var(--r-md);
-    background: var(--surface);
+    border: 1px solid var(--rule);
+    border-radius: var(--r-sm);
+    background: transparent;
   }
   .sheet-panel {
     position: relative;
     overflow-y: auto;
-    border: 1px solid var(--line);
+    border: 1px solid var(--rule);
     box-shadow: var(--shadow-pop);
   }
   .toast {
-    border-radius: var(--r-md);
+    border-left: 3px solid var(--accent);
+    border-radius: var(--r-sm);
     box-shadow: var(--shadow-pop);
   }
   .theme-chip {
@@ -1335,7 +1421,7 @@ input[type='range'].slider:disabled {
     gap: 10px;
     padding: 8px 12px;
     border: 2px solid transparent;
-    border-radius: var(--r-md);
+    border-radius: var(--r-sm);
     background: var(--surface);
     text-align: left;
   }
@@ -1376,36 +1462,133 @@ input[type='range'].slider:disabled {
 }
 
 @layer components {
-  /* The card at the top of Home: the accent washes in from the left, as it does down the stage. */
+  /* The feature at the top of Home: the cover, large and lit, over a blurred wash of itself. */
   .hero {
+    position: relative;
+    isolation: isolate;
     display: flex;
-    align-items: center;
-    gap: 20px;
-    padding: 20px;
+    align-items: flex-end;
+    gap: 28px;
+    min-height: clamp(220px, 22vw, 320px);
+    padding: 28px;
+    overflow: hidden;
     border: 1px solid var(--rule);
     border-radius: var(--r-lg);
-    background: linear-gradient(100deg, var(--stage-wash), transparent 75%), var(--surface);
+    background: var(--surface);
   }
-  /* Home: the body is one column, and two (the table, then the covers) once the page is wide enough for both. */
-  .home-body {
-    container-type: inline-size;
+  .hero-bg {
+    position: absolute;
+    inset: -48px;
+    z-index: -1;
+    opacity: 0.55;
+    filter: blur(44px) saturate(1.5);
   }
-  .home-cols {
-    display: grid;
-    gap: 32px;
+  .hero::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    background: linear-gradient(to right, color-mix(in srgb, var(--layer) 78%, transparent), transparent 85%);
   }
-  .hero + .home-cols {
-    margin-top: 32px;
+  .hero-art {
+    position: relative;
+    flex: none;
+    width: clamp(150px, 13vw, 240px);
+    aspect-ratio: 1;
+    overflow: hidden;
+    border-radius: var(--r-sm);
+    box-shadow: var(--shadow-art), 0 0 56px -12px var(--glow);
   }
-  @container (min-width: 1000px) {
-    .home-cols {
-      grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
-      gap: 40px;
-      align-items: start;
-    }
+  .hero-art::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--fg) 14%, transparent);
+    pointer-events: none;
+  }
+  .hero-label {
+    color: var(--accent);
+    font-size: 13px;
+    font-weight: 600;
   }
   .hero .t-title {
-    font-size: 36px;
-    line-height: 44px;
+    margin-top: 4px;
+    font-size: clamp(30px, 3.4vw, 56px);
+    line-height: 1.05;
+    letter-spacing: -0.01em;
+  }
+  /* A bar of actions above a list (Play all, Shuffle, the count), on a hairline. */
+  .toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 4px;
+    padding: 12px 0;
+    border-bottom: 1px solid var(--rule);
+  }
+  /* Now Playing: the cover blurred into the whole window, the title set large. */
+  .np-root {
+    isolation: isolate;
+  }
+  .np-bg {
+    position: absolute;
+    inset: -80px;
+    z-index: -1;
+    opacity: 0.5;
+    filter: blur(72px) saturate(1.6);
+    pointer-events: none;
+  }
+  .np-root .t-title {
+    font-size: clamp(28px, 2.8vw, 48px);
+    line-height: 1.05;
+    letter-spacing: -0.01em;
+  }
+  /* Home: the picks, a shelf of covers, one section under the other. */
+  .home-cols {
+    display: grid;
+    gap: 36px;
+  }
+  .hero + .home-cols {
+    margin-top: 36px;
+  }
+  /* Quick picks: the table's rows laid out in as many columns as fit, a bigger target than a one-line row. */
+  .picks .tracklist-head {
+    display: none;
+  }
+  .picks ul {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 340px), 1fr));
+    column-gap: 32px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  .picks .trow-main {
+    grid-template-columns: 24px 40px minmax(0, 1fr) 48px;
+    column-gap: 12px;
+  }
+  .picks .trow-text {
+    display: flex;
+  }
+  .picks .trow-artist {
+    font-size: 12px;
+    line-height: 16px;
+  }
+  /* Shelves (Home and Explore): covers in one row that scrolls sideways and runs to the page's edges. */
+  .shelves .cover-grid {
+    grid-template-columns: none;
+    grid-auto-flow: column;
+    grid-auto-columns: clamp(148px, 10.5vw, 220px);
+    gap: 16px;
+    margin-inline: calc(var(--page-pad) * -1);
+    padding: 4px var(--page-pad) 14px;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scroll-snap-type: x proximity;
+  }
+  .shelves .cover-grid > li {
+    scroll-snap-align: start;
   }
 }
