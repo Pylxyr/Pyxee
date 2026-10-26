@@ -336,7 +336,11 @@ pub fn zip_names(path: &Path) -> Res<Vec<String>> {
         std::fs::File::open(path).map_err(|e| format!("cannot open {}: {e}", path.display()))?;
     let mut archive = zip::ZipArchive::new(file).map_err(|e| format!("not a zip: {e}"))?;
     Ok((0..archive.len())
-        .filter_map(|i| archive.by_index(i).ok().map(|f| f.name().to_string()))
+        .filter_map(|i| {
+            let f = archive.by_index(i).ok()?;
+            let name = f.name().ok()?.into_owned();
+            Some(name)
+        })
         .collect())
 }
 

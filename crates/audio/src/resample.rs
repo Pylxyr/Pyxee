@@ -1,14 +1,16 @@
 //! Streaming stereo resampler (rubato sinc) that preserves exact output length.
 
 use crate::{AudioError, CHANNELS};
+use rubato::audioadapter_buffers::direct::SequentialSliceOfSlices;
 use rubato::{
-    Resampler, SincFixedIn, SincInterpolationParameters, SincInterpolationType, WindowFunction,
+    Async, FixedAsync, Resampler, SincInterpolationParameters, SincInterpolationType,
+    WindowFunction,
 };
 
 const CHUNK: usize = 1024;
 
 struct Active {
-    rs: SincFixedIn<f32>,
+    rs: Async<f32>,
     pending: [Vec<f32>; CHANNELS],
     in_frames: u64,
     out_frames: u64,
@@ -33,13 +35,14 @@ impl StreamResampler {
         let ratio = f64::from(out_rate) / f64::from(in_rate);
         let params = SincInterpolationParameters {
             sinc_len: 128,
-            f_cutoff: 0.95,
+            f_cutoff: Some(0.95),
             interpolation: SincInterpolationType::Linear,
             oversampling_factor: 128,
             window: WindowFunction::BlackmanHarris2,
         };
-        let rs = SincFixedIn::<f32>::new(ratio, 1.0, params, CHUNK, CHANNELS).map_err(err)?;
-        // rubato 0.16 output is already time-aligned (measured in examples/lag.rs), so no delay is skipped.
+        let rs = Async::<f32>::new_sinc(ratio, 1.0, &params, CHUNK, CHANNELS, FixedAsync::Input)
+            .map_err(err)?;
+        // rubato output is already time-aligned (measured in examples/lag.rs), so no delay is skipped.
         Ok(Self {
             active: Some(Active {
                 rs,
@@ -67,11 +70,8 @@ impl StreamResampler {
             if a.pending[0].len() < need {
                 return Ok(());
             }
-            let chunk = [&a.pending[0][..need], &a.pending[1][..need]];
-            let res = a.rs.process(&chunk, None).map_err(err)?;
-            a.pending[0].drain(..need);
-            a.pending[1].drain(..need);
-            Self::emit(a, &res, out);
+            let res = Self::run(a, need)?;
+            Self::emit(a, res, out);
         }
     }
 
@@ -86,11 +86,8 @@ impl StreamResampler {
             for ch in 0..CHANNELS {
                 a.pending[ch].resize(need.max(a.pending[ch].len()), 0.0);
             }
-            let chunk = [&a.pending[0][..need], &a.pending[1][..need]];
-            let res = a.rs.process(&chunk, None).map_err(err)?;
-            a.pending[0].drain(..need);
-            a.pending[1].drain(..need);
-            Self::emit(a, &res, out);
+            let res = Self::run(a, need)?;
+            Self::emit(a, res, out);
         }
         if a.out_frames > expected {
             let extra = (a.out_frames - expected) as usize;
@@ -100,12 +97,21 @@ impl StreamResampler {
         Ok(())
     }
 
-    fn emit(a: &mut Active, res: &[Vec<f32>], out: &mut Vec<f32>) {
-        for (l, r) in res[0].iter().zip(&res[1]) {
-            out.push(*l);
-            out.push(*r);
-        }
-        a.out_frames += res[0].len() as u64;
+    /// Resamples the first `need` pending frames and returns the interleaved result.
+    fn run(a: &mut Active, need: usize) -> Result<Vec<f32>, AudioError> {
+        let res = {
+            let chunk = [&a.pending[0][..need], &a.pending[1][..need]];
+            let input = SequentialSliceOfSlices::new(&chunk, CHANNELS, need).map_err(err)?;
+            a.rs.process(&input, None).map_err(err)?
+        };
+        a.pending[0].drain(..need);
+        a.pending[1].drain(..need);
+        Ok(res.take_data())
+    }
+
+    fn emit(a: &mut Active, res: Vec<f32>, out: &mut Vec<f32>) {
+        a.out_frames += (res.len() / CHANNELS) as u64;
+        out.extend_from_slice(&res);
     }
 }
 
