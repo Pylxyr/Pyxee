@@ -1,5 +1,6 @@
 <script lang="ts">
   import { fly } from 'svelte/transition';
+  import { expoOut } from 'svelte/easing';
   import { player, describeFailure } from '$lib/player.svelte';
   import { nav, type NowPlayingTab } from '$lib/nav.svelte';
   import { removeFromQueue } from '$lib/actions';
@@ -41,7 +42,7 @@
     data-testid="np-root"
     role="region"
     aria-label="Now Playing"
-    transition:fly={{ y: motionPx(80), duration: motionMs(MOTION.base) }}
+    transition:fly={{ y: motionPx(96), duration: motionMs(MOTION.slow), easing: expoOut }}
   >
     <div class="np-bg" aria-hidden="true"><Thumb src={entry.track.thumbnail} seed={entry.track.key} size={96} fill rounded="r-sm" /></div>
     <div class="page-pad flex shrink-0 items-center gap-2 py-3" data-testid="np-header">

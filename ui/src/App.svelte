@@ -111,7 +111,8 @@
       return;
     }
     let live = true;
-    accentFromImage(url).then((c) => live && (theme.art = c));
+    const backend = library.backend;
+    accentFromImage(url, backend ? (u) => backend.coverBytes(u) : undefined).then((c) => live && (theme.art = c));
     return () => (live = false);
   });
 
@@ -151,12 +152,16 @@
         <p class="notice mb-2 shrink-0" style="margin-inline:var(--page-pad)" role="status">Your library couldn't be opened ({library.snapshot.error}). Likes, playlists and history won't be saved this session.</p>
       {/if}
       <div class="min-h-0 flex-1">
-        {#if nav.route === 'home'}<Home />
-        {:else if nav.route === 'explore'}<Explore />
-        {:else if nav.route === 'library'}<Library />
-        {:else if nav.route === 'queue'}<Queue />
-        {:else if nav.route === 'playlist'}<Playlist />
-        {:else}<Search />{/if}
+        {#key nav.route}
+          <div class="route-in h-full">
+            {#if nav.route === 'home'}<Home />
+            {:else if nav.route === 'explore'}<Explore />
+            {:else if nav.route === 'library'}<Library />
+            {:else if nav.route === 'queue'}<Queue />
+            {:else if nav.route === 'playlist'}<Playlist />
+            {:else}<Search />{/if}
+          </div>
+        {/key}
       </div>
     </main>
     {#if !wide.current}

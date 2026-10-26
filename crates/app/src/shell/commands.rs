@@ -4,9 +4,57 @@ use super::dto::{LyricsDto, ShellSettingsDto, SleepSettingDto, SleepStateDto, Sl
 use super::{flyout, mini, sleep, ShellState};
 use crate::state::now_ms;
 use pyxee_lyrics::{fetch, Query, LRCLIB};
+use std::io::Read;
+use std::time::Duration;
 use tauri::{AppHandle, Manager};
 
 const LYRICS_CACHE_MAX: usize = 64;
+/// The most a cover may weigh for the app to fetch it (a 64 px thumbnail is a few KB).
+const COVER_MAX_BYTES: u64 = 512 * 1024;
+
+/// True for an https address on YouTube's or Google's image hosts, the only places covers come from.
+fn cover_host_ok(url: &str) -> bool {
+    let Some(rest) = url.strip_prefix("https://") else {
+        return false;
+    };
+    let host = rest.split(['/', '?', '#']).next().unwrap_or("");
+    let plain = !host.is_empty()
+        && host
+            .bytes()
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'.' || b == b'-');
+    plain
+        && [".ytimg.com", ".googleusercontent.com", ".ggpht.com"]
+            .iter()
+            .any(|suffix| host.ends_with(suffix))
+}
+
+/// The bytes of a cover, for the colour of the album art. The page cannot read the pixels of an image from another
+/// site unless that site allows it, so the app fetches the (small) picture itself and hands it over.
+#[tauri::command]
+pub async fn cover_bytes(url: String) -> Result<Vec<u8>, String> {
+    if !cover_host_ok(&url) {
+        return Err("not a cover address".into());
+    }
+    tauri::async_runtime::spawn_blocking(move || {
+        let agent = ureq::AgentBuilder::new()
+            .timeout(Duration::from_secs(8))
+            .redirects(0)
+            .build();
+        let response = agent.get(&url).call().map_err(|e| e.to_string())?;
+        let mut bytes = Vec::new();
+        response
+            .into_reader()
+            .take(COVER_MAX_BYTES + 1)
+            .read_to_end(&mut bytes)
+            .map_err(|e| e.to_string())?;
+        if bytes.len() as u64 > COVER_MAX_BYTES {
+            return Err("the cover is too large".to_string());
+        }
+        Ok(bytes)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
 
 /// Synced lyrics for a song, from LRCLIB. Answers are kept for the session so flipping tabs never asks twice.
 #[tauri::command]

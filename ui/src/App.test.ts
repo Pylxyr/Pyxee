@@ -103,6 +103,17 @@ describe('App shell', () => {
     expect(nav.route).toBe('queue');
   });
 
+  it("clicking the deck's empty space opens the queue, and its buttons keep their own jobs", async () => {
+    setWide(true);
+    await openApp();
+    await fireEvent.click(await screen.findByRole('button', { name: /^Neon Harbor/ }));
+    const deck = await screen.findByTestId('player-bar');
+    await fireEvent.click(within(deck).getByRole('button', { name: 'Next' }));
+    expect(nav.route).not.toBe('queue');
+    await fireEvent.click(deck);
+    expect(nav.route).toBe('queue');
+  });
+
   it('marks the song that is playing in every list it appears in', async () => {
     await openApp();
     const row = await screen.findByRole('button', { name: /^Neon Harbor/ });

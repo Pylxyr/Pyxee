@@ -43,6 +43,9 @@ export const noDiagnostics = {
 
 /** Lyrics, sleep timer, tray and shell-settings methods for test backends that do not care about them. */
 export const noShell = {
+  coverBytes: async (): Promise<number[]> => {
+    throw new Error('no cover');
+  },
   lyricsGet: async () => ({ kind: 'notFound' as const }),
   sleepSet: async () => {},
   sleepCancel: async () => {},

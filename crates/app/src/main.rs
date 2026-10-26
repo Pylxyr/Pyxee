@@ -223,6 +223,7 @@ fn main() {
             advanced::env_set,
             commands::set_window_theme,
             shell::commands::lyrics_get,
+            shell::commands::cover_bytes,
             shell::commands::sleep_set,
             shell::commands::sleep_cancel,
             shell::commands::sleep_extend,

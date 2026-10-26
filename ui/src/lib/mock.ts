@@ -135,6 +135,9 @@ export class MockBackend extends MockLibrary implements Backend {
   /** Lyrics a test wants for a song key; otherwise demo lines every 5 s. Keys containing "nolyrics" / "instrumental" / "lyricsfail" give those answers. */
   lyricsFor = new Map<string, LyricsDto>();
   lyricsRequests: string[] = [];
+  async coverBytes(): Promise<number[]> {
+    throw new Error('no cover in the demo');
+  }
   async lyricsGet(track: TrackDto): Promise<LyricsDto> {
     this.lyricsRequests.push(track.key);
     const set = this.lyricsFor.get(track.key);

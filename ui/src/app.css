@@ -60,10 +60,13 @@
   --r-md: 6px;
   --r-lg: 10px;
 
-  /* Motion: 120 ms for feedback, 200 ms for changes of state, leaving a little faster than arriving. */
+  /* Motion: 120 ms for feedback, 200 ms for changes of state, 360 ms for the few big moments (a cover settling in,
+     the accent following the cover). Things arrive on --ease-out (fast, then settling) and leave faster than they came. */
   --dur-fast: 120ms;
   --dur-base: 200ms;
+  --dur-slow: 360ms;
   --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
 
   /* Layout: the deck is the player along the bottom; the lane (from 1440 px) is the queue beside the page. */
   --deck-h: 88px;
@@ -246,21 +249,70 @@ input[type='range'].slider:disabled {
   opacity: 0.5;
 }
 
-@keyframes shimmer {
-  0% {
-    opacity: 0.55;
-  }
-  50% {
-    opacity: 1;
-  }
-  100% {
-    opacity: 0.55;
+/* Registered so they can be animated: the accent glides to the next cover's colour instead of snapping, and a
+   progress bar fills smoothly between the position updates. Both inherit, as plain custom properties do. */
+@property --accent {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: #c6f135;
+}
+@property --pct {
+  syntax: '<percentage>';
+  inherits: true;
+  initial-value: 0%;
+}
+:root {
+  transition: --accent 600ms var(--ease-out);
+}
+input[type='range'].slider {
+  transition: --pct 260ms linear;
+}
+input[type='range'].slider:active {
+  transition: none;
+}
+
+/* Loading placeholders: a soft sheen crosses them (transform only, and only while something is loading). */
+@keyframes sheen {
+  to {
+    transform: translateX(100%);
   }
 }
 .skeleton {
+  position: relative;
+  overflow: hidden;
   background: var(--surface-2);
   border-radius: var(--r-sm);
-  animation: shimmer 1.4s ease-in-out infinite;
+}
+.skeleton::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--fg) 9%, transparent), transparent);
+  animation: sheen 1.4s ease-in-out infinite;
+}
+
+/* One-off arrivals: a page after navigation, a song after a track change, the cover on Home. Opacity and transform only. */
+@keyframes arrive {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+@keyframes settle {
+  from {
+    opacity: 0;
+    transform: scale(0.94);
+  }
+}
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+}
+.route-in,
+.track-in {
+  animation: arrive var(--dur-base) var(--ease-out) both;
 }
 
 /* Seek bar while the song's length is not known: not interactive, gently animated. */
@@ -302,15 +354,27 @@ input[type='range'].slider:disabled {
 
 /* Motion that is not an answer to a click stops for people who asked their system for less of it. */
 @media (prefers-reduced-motion: reduce) {
-  .skeleton,
+  .skeleton::after,
   .seek-unknown,
   .eq i,
-  .spinner {
+  .spinner,
+  .route-in,
+  .track-in,
+  .hero-art,
+  .hero-bg {
     animation: none !important;
   }
   :root {
     --dur-fast: 0ms;
     --dur-base: 0ms;
+    --dur-slow: 0ms;
+    transition: none;
+  }
+  input[type='range'].slider {
+    transition: none;
+  }
+  .tab-indicator {
+    transition: none !important;
   }
 }
 
@@ -413,7 +477,10 @@ input[type='range'].slider:disabled {
     font-size: 14px;
     line-height: 20px;
     white-space: nowrap;
-    transition: background-color var(--dur-fast) var(--ease), filter var(--dur-fast) var(--ease);
+    transition: background-color var(--dur-fast) var(--ease), filter var(--dur-fast) var(--ease), transform var(--dur-fast) var(--ease);
+  }
+  .btn:active:not(:disabled) {
+    transform: scale(0.97);
   }
   .btn:hover {
     background: var(--hover);
@@ -474,7 +541,10 @@ input[type='range'].slider:disabled {
     height: 32px;
     border-radius: var(--r-sm);
     color: var(--muted);
-    transition: background-color var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+    transition: background-color var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease), transform var(--dur-fast) var(--ease);
+  }
+  .icon-btn:active:not(:disabled) {
+    transform: scale(0.9);
   }
   .icon-btn:hover {
     background: var(--hover);
@@ -821,16 +891,26 @@ input[type='range'].slider:disabled {
     color: var(--fg);
     font-weight: 600;
   }
-  /* The chosen place: a bar on the masthead's own edge. */
-  .tab-item[aria-current='page']::after {
-    content: '';
+  /* The chosen place: a bar on the masthead's own edge that slides from tab to tab. */
+  .tabs-list {
+    position: relative;
+  }
+  .tab-indicator {
     position: absolute;
-    left: 14px;
-    right: 14px;
+    left: 0;
     bottom: -1px;
+    width: var(--ind-w, 0px);
     height: 3px;
     border-radius: 2px 2px 0 0;
     background: var(--accent);
+    opacity: 0;
+    transform: translateX(var(--ind-x, 0px));
+  }
+  .tab-indicator[data-shown='true'] {
+    opacity: 1;
+  }
+  .tab-indicator[data-armed='true'] {
+    transition: transform var(--dur-base) var(--ease-out), width var(--dur-base) var(--ease-out), opacity var(--dur-fast) var(--ease);
   }
   @media (max-width: 1099px) {
     .tabs-brand .wordmark {
@@ -947,6 +1027,10 @@ input[type='range'].slider:disabled {
     padding: 0 var(--page-pad);
     border-top: 1px solid var(--rule);
     background: var(--surface);
+  }
+  .deck:not(.deck-empty),
+  .dock {
+    cursor: pointer;
   }
   .deck-empty {
     display: flex;
@@ -1482,6 +1566,7 @@ input[type='range'].slider:disabled {
     z-index: -1;
     opacity: 0.55;
     filter: blur(44px) saturate(1.5);
+    animation: fade-in 900ms ease-out both;
   }
   .hero::after {
     content: '';
@@ -1498,6 +1583,7 @@ input[type='range'].slider:disabled {
     overflow: hidden;
     border-radius: var(--r-sm);
     box-shadow: var(--shadow-art), 0 0 56px -12px var(--glow);
+    animation: settle var(--dur-slow) var(--ease-out) both;
   }
   .hero-art::after {
     content: '';

@@ -17,6 +17,12 @@
   // beside the page, so what comes next stays in sight while you browse.
   let { lane = false }: { lane?: boolean } = $props();
   const entry = $derived(player.shown);
+
+  // The bar's empty space opens the queue; the buttons and sliders in it keep their own jobs.
+  function openQueue(e: MouseEvent) {
+    if ((e.target as HTMLElement).closest('button, input, [role="slider"]')) return;
+    nav.go('queue');
+  }
 </script>
 
 {#if entry && lane}
@@ -27,7 +33,8 @@
     </div>
     <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
     <ul class="lane-list" data-scroll tabindex="0">
-      <li class="lane-now">
+      {#key entry.track.key}
+      <li class="lane-now track-in">
         <Thumb src={entry.track.thumbnail} seed={entry.track.key} size={40} rounded="r-sm" />
         <span class="min-w-0 flex-1">
           <span class="trow-title accent-text block">{entry.track.title}</span>
@@ -35,6 +42,7 @@
         </span>
         <span class="trow-time">{formatTime(entry.track.durationMs)}</span>
       </li>
+      {/key}
       {#each player.upNext as e (e.id)}
         <li>
           <MenuItem onclick={() => player.playEntry(e.id)}>
@@ -54,11 +62,13 @@
 {/if}
 
 {#if entry}
-  <section class="deck" aria-label="Player" data-testid="player-bar">
+  <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_noninteractive_element_interactions -->
+  <section class="deck" aria-label="Player" data-testid="player-bar" onclick={openQueue}>
     <div class="deck-seek">
       <Seek positionMs={player.state.positionMs} durationMs={player.durationMs} onseek={player.seek} accent label="Seek" />
     </div>
-    <div class="deck-now">
+    {#key entry.track.key}
+    <div class="deck-now track-in">
       <button class="deck-art" aria-label="Open Now Playing" onclick={() => nav.openNowPlaying()}>
         <Thumb src={entry.track.thumbnail} seed={entry.track.key} size={72} fill rounded="r-sm" />
       </button>
@@ -75,6 +85,7 @@
       </div>
       <LikeButton track={entry.track} />
     </div>
+    {/key}
     <div class="deck-transport">
       <IconButton icon="prev" label="Previous" size="lg" strong iconSize={24} onclick={player.previous} />
       <PlayButton />

@@ -73,12 +73,22 @@ export function normalizeHex(v: string): string | null {
   return /^[0-9a-f]{6}$/.test(h) ? `#${h}` : null;
 }
 
+function sampleColor(source: CanvasImageSource): string | null {
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = 32;
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  if (!ctx) return null;
+  ctx.drawImage(source, 0, 0, 32, 32);
+  return dominantColor(ctx.getImageData(0, 0, 32, 32).data);
+}
+
 /**
- * Loads a cover and returns its dominant colour, or null if it cannot be read (CORS, 404). It asks for the same small
- * images the covers on screen use (https, the sized or still variant), and moves on to the next one when a picture is
- * missing, so a cover that shows in a list also gives the app its colour.
+ * Loads a cover and returns its dominant colour, or null if it cannot be had. It asks for the same small images the
+ * covers on screen use (https, the sized or still variant) and moves on to the next one when a picture is missing.
+ * The page can only read an image's pixels when the image host allows it; when it does not, `fetchBytes` (the app
+ * fetching the picture itself) is used instead.
  */
-export async function accentFromImage(url: string): Promise<string | null> {
+export async function accentFromImage(url: string, fetchBytes?: (url: string) => Promise<number[]>): Promise<string | null> {
   for (const candidate of thumbCandidates(url, 64).filter((u) => !isKnownMissing(u))) {
     try {
       const img = new Image();
@@ -89,14 +99,24 @@ export async function accentFromImage(url: string): Promise<string | null> {
         noteMissing(candidate);
         continue;
       }
-      const canvas = document.createElement('canvas');
-      canvas.width = canvas.height = 32;
-      const ctx = canvas.getContext('2d', { willReadFrequently: true });
-      if (!ctx) return null;
-      ctx.drawImage(img, 0, 0, 32, 32);
-      return dominantColor(ctx.getImageData(0, 0, 32, 32).data);
+      return sampleColor(img);
     } catch {
-      /* this one could not be loaded or read: try the next */
+      /* not readable from the page (no CORS answer) or not there: ask the app for the picture */
+    }
+    if (!fetchBytes) continue;
+    try {
+      const bitmap = await createImageBitmap(new Blob([new Uint8Array(await fetchBytes(candidate))]));
+      try {
+        if (isMissingStill(candidate, bitmap.width, bitmap.height)) {
+          noteMissing(candidate);
+          continue;
+        }
+        return sampleColor(bitmap);
+      } finally {
+        bitmap.close();
+      }
+    } catch {
+      /* this one is not there either: try the next */
     }
   }
   return null;

@@ -96,11 +96,15 @@ Space and arrows are left to focused buttons and sliders. Global media keys come
 ## Design tokens
 `app.css` has three tiers. (1) The seven theme colours, written by `theme.apply()` as `--t-*` (and the opaque `--solid`,
 `--solid-2`, `--on-fg`). (2) Semantic tokens mixed from them: `--layer`, `--hover`, `--press`, `--selected`, `--stage-wash`,
-`--focus`, plus radii (`--r-sm/md/lg` = 3/6/10), the hairline `--rule` and the cover's `--glow`, motion (`--dur-fast` 120 ms, `--dur-base` 200 ms, `--ease`) and layout
+`--focus`, plus radii (`--r-sm/md/lg` = 3/6/10), the hairline `--rule` and the cover's `--glow`, motion (`--dur-fast` 120 ms, `--dur-base` 200 ms, `--dur-slow` 360 ms, `--ease`, `--ease-out`) and layout
 (`--deck-h`, `--lane-w`, `--page-pad`). (3) Component classes in `@layer components` (`.btn`, `.icon-btn`, `.segmented`,
 `.trow`, `.deck`, ...) that read tier 2 only. Components use those and a few layout utilities; a new theme needs no CSS change.
 Primitives: `Button`, `IconButton`, `Toggle` (a real checkbox drawn as a switch), `Segmented`, `PageHeader`, `SectionHead`,
-`MenuItem`, `PlayButton`, `LikeButton`, `VolumeSlider`, `PlayingMark`. Script motion goes through `lib/motion.ts`, which drops
+`MenuItem`, `PlayButton`, `LikeButton`, `VolumeSlider`, `PlayingMark`. Motion answers something that happened: a page arrives after navigation (`.route-in`), a new song arrives on the deck and lane
+(`.track-in`), the bar under the chosen tab slides to the next tab, the accent glides to the next cover's colour (registered
+`--accent`), a progress bar fills smoothly (registered `--pct`), buttons give under a press, Now Playing rises from the bottom, sheets
+slide from their edge, a toast settles with a small overshoot, and the Home cover settles in once. Loading placeholders get a sheen;
+nothing else loops while the window is idle. Script motion goes through `lib/motion.ts`, which drops
 lengths and distances to nothing when Windows asks for less motion; CSS motion does the same with `prefers-reduced-motion`.
 
 ## Scroll bars

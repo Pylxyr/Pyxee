@@ -9,10 +9,17 @@
 
   // The player of a narrow window: one strip above the bottom bar, with the seek line along its top edge.
   const entry = $derived(player.shown);
+
+  // The bar's empty space opens the queue; the buttons and sliders in it keep their own jobs.
+  function openQueue(e: MouseEvent) {
+    if ((e.target as HTMLElement).closest('button, input, [role="slider"]')) return;
+    nav.go('queue');
+  }
 </script>
 
 {#if entry}
-  <div class="dock" data-testid="player-bar">
+  <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
+  <div class="dock" data-testid="player-bar" onclick={openQueue}>
     <div class="dock-seek">
       <Seek positionMs={player.state.positionMs} durationMs={player.durationMs} onseek={player.seek} accent label="Seek" />
     </div>

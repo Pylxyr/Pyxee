@@ -2,7 +2,7 @@
  * Motion for the parts that Svelte animates from script (sheets, Now Playing, snackbars). The CSS side reads the same
  * two lengths from `--dur-fast` and `--dur-base` in app.css; both fall to nothing when the system asks for less motion.
  */
-export const MOTION = { fast: 120, base: 200, exit: 150 } as const;
+export const MOTION = { fast: 120, base: 200, exit: 150, slow: 360 } as const;
 
 /** True when Windows' "Show animations" is off or the page asked for reduced motion. */
 export function prefersReducedMotion(): boolean {

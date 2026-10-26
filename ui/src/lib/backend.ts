@@ -96,6 +96,8 @@ export interface Backend extends LibraryBackend {
   /** Demo tracks for the simulated engine; removed once real search lands (milestone 4). */
   devCatalog(): Promise<TrackDto[]>;
 
+  /** The bytes of a cover (YouTube or Google image hosts only), for the colour of the album art; rejects when it cannot be fetched. */
+  coverBytes(url: string): Promise<number[]>;
   /** Lyrics from LRCLIB; never rejects (a failed lookup is `{ kind: 'error' }`). */
   lyricsGet(track: TrackDto): Promise<LyricsDto>;
   sleepSet(setting: SleepSettingDto): Promise<void>;
@@ -181,6 +183,7 @@ export async function tauriBackend(): Promise<Backend> {
     genreGet: (params) => invoke<ExploreShelfDto[]>('genre_get', { params }),
     playlistTracksGet: (id) => invoke<TrackDto[]>('playlist_tracks_get', { id }),
     devCatalog: () => invoke<TrackDto[]>('dev_catalog'),
+    coverBytes: (url) => invoke<number[]>('cover_bytes', { url }),
     lyricsGet: (t) =>
       invoke<LyricsDto>('lyrics_get', { key: t.key, title: t.title, artist: t.artist, durationMs: t.durationMs }).catch(
         (e): LyricsDto => ({ kind: 'error', message: messageOf(e) }),

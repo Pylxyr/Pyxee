@@ -1,5 +1,6 @@
 <script lang="ts">
   import { fly } from 'svelte/transition';
+  import { backOut } from 'svelte/easing';
   import { snackbar } from '$lib/snackbar.svelte';
   import { MOTION, motionMs, motionPx } from '$lib/motion';
 </script>
@@ -8,7 +9,7 @@
 <div class="pointer-events-none fixed inset-x-0 bottom-36 z-[1000] flex flex-col items-center gap-2 px-4 min-[900px]:bottom-6" aria-live="polite">
   {#each snackbar.items as s (s.id)}
     <div
-      transition:fly={{ y: motionPx(16), duration: motionMs(MOTION.fast + 40) }}
+      transition:fly={{ y: motionPx(20), duration: motionMs(MOTION.base + 60), easing: backOut }}
       class="toast pointer-events-auto flex w-full max-w-md items-center gap-4 bg-fg px-4 py-3 text-on-fg"
       role="status"
     >
