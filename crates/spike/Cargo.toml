@@ -20,7 +20,7 @@ log = "0.4"
 
 # cpal uses WASAPI on Windows. These are unconditional only so the spike also compiles in CI/sandbox.
 cpal = "0.15"
-ringbuf = "0.4"
+ringbuf = "0.5"
 
 [lints]
 workspace = true
