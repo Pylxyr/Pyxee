@@ -3448,7 +3448,7 @@ checksum = "d55d956fa96f5ec02be2e13af0e20391a5aa83d6a074e3ad368959d0fab299ea"
 
 [[package]]
 name = "pyxee-app"
-version = "0.4.4-rc2"
+version = "0.4.4"
 dependencies = [
  "discord-rich-presence",
  "log",
@@ -3477,7 +3477,7 @@ dependencies = [
 
 [[package]]
 name = "pyxee-audio"
-version = "0.4.4-rc2"
+version = "0.4.4"
 dependencies = [
  "cc",
  "cpal",
@@ -3490,7 +3490,7 @@ dependencies = [
 
 [[package]]
 name = "pyxee-core"
-version = "0.4.4-rc2"
+version = "0.4.4"
 dependencies = [
  "serde",
  "serde_json",
@@ -3498,7 +3498,7 @@ dependencies = [
 
 [[package]]
 name = "pyxee-library"
-version = "0.4.4-rc2"
+version = "0.4.4"
 dependencies = [
  "pyxee-core",
  "rusqlite",
@@ -3507,7 +3507,7 @@ dependencies = [
 
 [[package]]
 name = "pyxee-lyrics"
-version = "0.4.4-rc2"
+version = "0.4.4"
 dependencies = [
  "log",
  "serde",
@@ -3518,7 +3518,7 @@ dependencies = [
 
 [[package]]
 name = "pyxee-shell"
-version = "0.4.4-rc2"
+version = "0.4.4"
 dependencies = [
  "serde",
  "serde_json",
@@ -3528,7 +3528,7 @@ dependencies = [
 
 [[package]]
 name = "pyxee-sources"
-version = "0.4.4-rc2"
+version = "0.4.4"
 dependencies = [
  "log",
  "serde",
@@ -3539,7 +3539,7 @@ dependencies = [
 
 [[package]]
 name = "pyxee-spike"
-version = "0.4.4-rc2"
+version = "0.4.4"
 dependencies = [
  "anyhow",
  "cpal",
@@ -6298,7 +6298,7 @@ dependencies = [
 
 [[package]]
 name = "xtask"
-version = "0.4.4-rc2"
+version = "0.4.4"
 dependencies = [
  "serde_json",
  "sha2",
