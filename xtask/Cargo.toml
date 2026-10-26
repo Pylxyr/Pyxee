@@ -9,7 +9,7 @@ publish = false
 sha2 = "0.10"
 serde_json = "1"
 # The portable zip (written here, so it is the same on every machine and tested on every platform)
-zip = { version = "~2.4", default-features = false, features = ["deflate"] }
+zip = { version = "~9.0", default-features = false, features = ["deflate"] }
 # native-certs: trust the OS certificate store (antivirus HTTPS scanning, corporate proxies)
 ureq = { version = "2", features = ["native-certs"] }
 
