@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { MOTION, motionMs, motionPx, prefersReducedMotion } from './motion';
+import { MOTION, motionMs, motionPx, prefersReducedMotion, springOut, springPop, withViewTransition } from './motion';
 
 const original = window.matchMedia;
 function system(reduce: boolean) {
@@ -25,5 +25,22 @@ describe('motion', () => {
   it('leaving is quicker than arriving', () => {
     expect(MOTION.exit).toBeLessThan(MOTION.base);
     expect(MOTION.fast).toBeLessThan(MOTION.base);
+  });
+
+  it('the springs start at 0, end at 1, and overshoot a little on the way', () => {
+    for (const spring of [springOut, springPop]) {
+      expect(spring(0)).toBe(0);
+      expect(spring(1)).toBe(1);
+      const peak = Math.max(...Array.from({ length: 100 }, (_, i) => spring(i / 99)));
+      expect(peak).toBeGreaterThan(1.02);
+      expect(peak).toBeLessThan(1.2);
+    }
+  });
+
+  it('runs the update at once when there are no view transitions (or less motion is asked for)', () => {
+    system(false);
+    let ran = 0;
+    expect(withViewTransition(() => ran++)).toBe(false);
+    expect(ran).toBe(1);
   });
 });

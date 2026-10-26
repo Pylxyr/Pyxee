@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { contrast } from './color';
+import { contrast, paletteFromArt } from './color';
 import { ThemeStore } from './theme.svelte';
-import { BUILTIN_THEMES, MAX_CUSTOM_THEMES, type ThemeDef } from './themes';
+import { BUILTIN_THEMES, MAX_CUSTOM_THEMES, contrastChecks, type ThemeDef } from './themes';
 
 function memory(initial: Record<string, string> = {}) {
   const data = { ...initial };
@@ -81,17 +81,27 @@ describe('ThemeStore', () => {
     expect(t.settings.lightId).toBe('light');
   });
 
-  it('uses the art colour only when dynamic colour is on, readable against the theme background', () => {
+  it('makes the whole palette from the art colour only when dynamic colour is on, and it stays readable', () => {
     const t = new ThemeStore(memory(), fakeMq(true).mq);
     t.art = '#101030';
-    expect(t.accent).toBe(t.active.colors.accent);
+    expect(t.colors).toEqual(t.active.colors);
     t.update({ dynamicColor: true });
-    expect(t.accent).not.toBe('#101030');
-    expect(contrast(t.accent, t.active.colors.bg)).toBeGreaterThanOrEqual(3);
-    t.select('sky'); // a light theme: the art colour is darkened instead
-    expect(contrast(t.accent, t.active.colors.bg)).toBeGreaterThanOrEqual(3);
+    expect(t.colors.bg).not.toBe(t.active.colors.bg);
+    expect(t.accent).toBe(t.colors.accent);
+    expect(contrastChecks(t.colors).filter((c) => !c.ok)).toEqual([]);
+    t.select('sky'); // a light theme stays light: the palette is light too
+    expect(t.colors.bg).not.toBe(t.active.colors.bg);
+    expect(contrastChecks(t.colors).filter((c) => !c.ok)).toEqual([]);
     t.art = null;
-    expect(t.accent).toBe(t.active.colors.accent);
+    expect(t.colors).toEqual(t.active.colors);
+  });
+
+  it('a palette from any cover colour reads, in both schemes', () => {
+    for (const art of ['#ff0000', '#00ff00', '#0000ff', '#fff200', '#808080', '#101030', '#f5e6c8', '#d9c9b0']) {
+      for (const scheme of ['dark', 'light'] as const) {
+        expect(contrastChecks(paletteFromArt(art, scheme)).filter((c) => !c.ok), `${art} ${scheme}`).toEqual([]);
+      }
+    }
   });
 
   it('writes the scheme, backdrop and every colour to the root element', () => {

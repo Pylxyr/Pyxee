@@ -18,6 +18,8 @@
   }
 </script>
 
+<!-- With "Color from album art" on, the cover is the theme, so these are switched off (inert: not clickable or focusable). -->
+<div class="theme-picker" inert={theme.settings.dynamicColor}>
 <Toggle
   label="Match system"
   hint="Use one theme when Windows is light and another when it is dark."
@@ -58,4 +60,5 @@
 
 <div class="flex gap-2 px-2 pb-2">
   <Button variant="primary" onclick={() => nav.openThemeEditor()}>Customize…</Button>
+</div>
 </div>

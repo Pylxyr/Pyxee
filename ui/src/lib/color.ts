@@ -1,3 +1,4 @@
+import type { ThemeColors } from './themes';
 import { isKnownMissing, isMissingStill, noteMissing, thumbCandidates } from './thumb';
 /** Picks a vivid representative colour from RGBA pixel data (for the optional dynamic accent). */
 export function dominantColor(data: Uint8ClampedArray): string | null {
@@ -120,4 +121,58 @@ export async function accentFromImage(url: string, fetchBytes?: (url: string) =>
     }
   }
   return null;
+}
+
+function toHsl(hex: string): [number, number, number] {
+  const [r, g, b] = parseHex(hex).map((v) => v / 255) as [number, number, number];
+  const max = Math.max(r, g, b), min = Math.min(r, g, b);
+  const l = (max + min) / 2;
+  if (max === min) return [0, 0, l];
+  const d = max - min;
+  const s = d / (1 - Math.abs(2 * l - 1));
+  const h = max === r ? ((g - b) / d + (g < b ? 6 : 0)) : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
+  return [h * 60, s, l];
+}
+
+function fromHsl(h: number, s: number, l: number): string {
+  const a = s * Math.min(l, 1 - l);
+  const f = (n: number) => {
+    const k = (n + h / 30) % 12;
+    return l - a * Math.max(-1, Math.min(k - 3, 9 - k, 1));
+  };
+  return toHex(f(0) * 255, f(8) * 255, f(4) * 255);
+}
+
+const clamp = (n: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, n));
+
+/**
+ * A whole theme from one colour (the cover's): background, panels, lines, text and accent all take its hue. Dark or
+ * light follows `scheme`. The text and the accent are nudged until they read, as the built-in themes do.
+ */
+export function paletteFromArt(art: string, scheme: 'dark' | 'light'): ThemeColors {
+  const [h, s, l] = toHsl(art);
+  if (scheme === 'dark') {
+    const n = clamp(s * 0.45, 0.1, 0.4);
+    const bg = fromHsl(h, n, 0.075);
+    return {
+      bg,
+      surface: fromHsl(h, n, 0.115),
+      surface2: fromHsl(h, n, 0.165),
+      line: fromHsl(h, n * 0.9, 0.23),
+      fg: fromHsl(h, n * 0.5, 0.94),
+      muted: ensureContrastOn(fromHsl(h, n * 0.8, 0.66), bg, 'dark', 4.5),
+      accent: ensureContrastOn(fromHsl(h, clamp(s, 0.55, 0.95), clamp(l, 0.55, 0.72)), bg, 'dark', 3),
+    };
+  }
+  const n = clamp(s * 0.35, 0.08, 0.3);
+  const bg = fromHsl(h, n, 0.955);
+  return {
+    bg,
+    surface: fromHsl(h, n, 0.925),
+    surface2: fromHsl(h, n, 0.885),
+    line: fromHsl(h, n * 0.9, 0.8),
+    fg: fromHsl(h, n * 0.6, 0.1),
+    muted: ensureContrastOn(fromHsl(h, n * 0.7, 0.36), bg, 'light', 4.5),
+    accent: ensureContrastOn(fromHsl(h, clamp(s, 0.55, 0.95), clamp(l, 0.3, 0.42)), bg, 'light', 3),
+  };
 }

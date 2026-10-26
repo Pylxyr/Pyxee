@@ -49,7 +49,7 @@ when the window has no frame. `sync_window_frame` asks for the backdrop again af
 CSS variables on `<html>`: `data-theme` (dark/light, follows the system unless overridden) and `data-backdrop`.
 On Windows 11 the app asks for Mica (`window-vibrancy`); if that succeeds the backend reports `mica` and the page
 background becomes transparent with translucent panels. On Windows 10 (or if Mica fails) it stays solid.
-The accent is red by default; "Color from album art" derives it from the thumbnail and lightens/darkens it to stay readable.
+"Color from album art" makes the whole theme from the cover of the song that is playing (`paletteFromArt` in `lib/color.ts`: background, panels, lines, text and accent all take its hue, and text and accent are nudged until they read). The theme's light or dark stays, the theme list is switched off (inert) while it is on, and with no cover the chosen theme shows.
 
 ## Mica-safe colours (fixed after the first Windows run)
 Under Mica the page background (`--bg`) is deliberately transparent, so nothing that must stay readable or opaque may use it.
@@ -96,15 +96,11 @@ Space and arrows are left to focused buttons and sliders. Global media keys come
 ## Design tokens
 `app.css` has three tiers. (1) The seven theme colours, written by `theme.apply()` as `--t-*` (and the opaque `--solid`,
 `--solid-2`, `--on-fg`). (2) Semantic tokens mixed from them: `--layer`, `--hover`, `--press`, `--selected`, `--stage-wash`,
-`--focus`, plus radii (`--r-sm/md/lg` = 3/6/10), the hairline `--rule` and the cover's `--glow`, motion (`--dur-fast` 120 ms, `--dur-base` 200 ms, `--dur-slow` 360 ms, `--ease`, `--ease-out`) and layout
+`--focus`, plus radii (`--r-sm/md/lg` = 6/10/16), the hairline `--rule` and the cover's `--glow`, motion (`--dur-fast` 120 ms, `--dur-base` 200 ms, `--dur-slow` 360 ms, `--ease`, `--ease-out`) and layout
 (`--deck-h`, `--lane-w`, `--page-pad`). (3) Component classes in `@layer components` (`.btn`, `.icon-btn`, `.segmented`,
 `.trow`, `.deck`, ...) that read tier 2 only. Components use those and a few layout utilities; a new theme needs no CSS change.
 Primitives: `Button`, `IconButton`, `Toggle` (a real checkbox drawn as a switch), `Segmented`, `PageHeader`, `SectionHead`,
-`MenuItem`, `PlayButton`, `LikeButton`, `VolumeSlider`, `PlayingMark`. Motion answers something that happened: a page arrives after navigation (`.route-in`), a new song arrives on the deck and lane
-(`.track-in`), the bar under the chosen tab slides to the next tab, the accent glides to the next cover's colour (registered
-`--accent`), a progress bar fills smoothly (registered `--pct`), buttons give under a press, Now Playing rises from the bottom, sheets
-slide from their edge, a toast settles with a small overshoot, and the Home cover settles in once. Loading placeholders get a sheen;
-nothing else loops while the window is idle. Script motion goes through `lib/motion.ts`, which drops
+`MenuItem`, `PlayButton`, `LikeButton`, `VolumeSlider`, `PlayingMark`. Motion answers something that happened. Pages slide past each other on a shared axis in the order of the tabs (a view transition named `page`, old page out in 160 ms, new page in on `--ease-out`), the cover on the deck or dock grows into the one in Now Playing and back (a container transform: `data-np-source` and `.stage-art` share the name `np-cover`), and where view transitions are missing the plain arrival (`.route-in`) stands in. Small things settle on springs (`--spring`, `--spring-pop`, sampled from a damped spring; `springOut` and `springPop` in `lib/motion.ts` are the same curves for script): the bar under the chosen tab, the release of a pressed button, the play and pause icon, the cover's play button, the slider thumb, Now Playing, sheets. A new song brings the deck cover into focus with a bloom of its glow; the line being sung in synced lyrics comes into focus while the rest blur with distance; the first rows of a page come in one after another; the accent glides to the next cover's colour (registered `--accent`) and a progress bar fills smoothly (registered `--pct`). Loading placeholders get a sheen; nothing else loops while the window is idle. Script motion goes through `lib/motion.ts`, which drops
 lengths and distances to nothing when Windows asks for less motion; CSS motion does the same with `prefers-reduced-motion`.
 
 ## Scroll bars

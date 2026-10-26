@@ -55,10 +55,10 @@
   --font-text: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif;
   --font-display: 'Bahnschrift', 'Segoe UI Variable Display', 'Segoe UI', system-ui, sans-serif;
 
-  /* Geometry: 4 px controls, 8 px menus, 12 px for the content layer and the cover, as Windows 11 rounds them. */
-  --r-sm: 3px;
-  --r-md: 6px;
-  --r-lg: 10px;
+  /* Geometry: 6 px for small controls and thumbnails, 10 px for buttons, cards and tiles, 16 px for the big cover and the hero panel. */
+  --r-sm: 6px;
+  --r-md: 10px;
+  --r-lg: 16px;
 
   /* Motion: 120 ms for feedback, 200 ms for changes of state, 360 ms for the few big moments (a cover settling in,
      the accent following the cover). Things arrive on --ease-out (fast, then settling) and leave faster than they came. */
@@ -67,6 +67,9 @@
   --dur-slow: 360ms;
   --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  /* Springs (sampled from a damped spring, so they settle with a small overshoot): soft for things that travel, pop for small ones. */
+  --spring: linear(0, 0.277, 0.531, 0.739, 0.893, 0.995, 1.055, 1.082, 1.087, 1.078, 1.063, 1.046, 1.03, 1.017, 1.008, 1.001, 0.997, 0.995, 0.995, 0.995, 0.996, 0.997, 0.998, 0.999, 0.999, 1, 1, 1, 1, 1);
+  --spring-pop: linear(0, 0.261, 0.524, 0.752, 0.928, 1.046, 1.112, 1.138, 1.134, 1.114, 1.085, 1.056, 1.03, 1.01, 0.996, 0.988, 0.985, 0.985, 0.987, 0.99, 0.993, 0.996, 0.999, 1, 1.001, 1.002, 1.002, 1.001, 1.001, 1);
 
   /* Layout: the deck is the player along the bottom; the lane (from 1440 px) is the queue beside the page. */
   --deck-h: 88px;
@@ -224,7 +227,7 @@ input[type='range'].slider {
 }
 input[type='range'].slider::-webkit-slider-runnable-track {
   height: 4px;
-  border-radius: 0;
+  border-radius: 2px;
   background: linear-gradient(to right, var(--fg) var(--pct), var(--surface-2) var(--pct));
 }
 input[type='range'].slider.accent::-webkit-slider-runnable-track {
@@ -235,14 +238,18 @@ input[type='range'].slider::-webkit-slider-thumb {
   width: 8px;
   height: 16px;
   margin-top: -6px;
-  border-radius: 1px;
+  border-radius: 4px;
   background: var(--fg);
   opacity: 0;
-  transition: opacity var(--dur-fast) var(--ease);
+  transition: opacity var(--dur-fast) var(--ease), transform 300ms var(--spring-pop);
 }
 input[type='range'].slider:hover::-webkit-slider-thumb,
 input[type='range'].slider:focus-visible::-webkit-slider-thumb {
   opacity: 1;
+  transform: scale(1.3);
+}
+input[type='range'].slider:active::-webkit-slider-thumb {
+  transform: scale(1.6, 1.2);
 }
 input[type='range'].slider:disabled {
   cursor: default;
@@ -293,6 +300,80 @@ input[type='range'].slider:active {
 }
 
 /* One-off arrivals: a page after navigation, a song after a track change, the cover on Home. Opacity and transform only. */
+@keyframes axis-out {
+  to {
+    opacity: 0;
+    transform: translateX(calc(var(--axis-dir, 1) * -28px));
+  }
+}
+@keyframes axis-in {
+  from {
+    opacity: 0;
+    transform: translateX(calc(var(--axis-dir, 1) * 28px));
+  }
+}
+@keyframes focus-in {
+  from {
+    opacity: 0.2;
+    filter: blur(6px);
+    transform: scale(1.1);
+  }
+}
+@keyframes glow-in {
+  from {
+    box-shadow: var(--shadow-art), 0 0 0 -8px transparent;
+  }
+}
+@keyframes pop {
+  from {
+    opacity: 0;
+    transform: scale(0.4) rotate(-40deg);
+  }
+}
+/* Pages: the old one leaves along the axis while the new one arrives from the other side (a shared axis). */
+/* (The page host is named only while a page change runs, so other transitions leave it in the root layer, under overlays.) */
+::view-transition-old(page) {
+  animation: axis-out 160ms var(--ease) both;
+  mix-blend-mode: normal;
+}
+::view-transition-new(page) {
+  animation: axis-in 380ms var(--ease-out) both;
+  mix-blend-mode: normal;
+}
+/* The cover: its box travels from the deck to Now Playing and back on a spring. */
+::view-transition-group(np-cover) {
+  animation-duration: 520ms;
+  animation-timing-function: var(--spring);
+}
+::view-transition-old(np-cover),
+::view-transition-new(np-cover) {
+  height: 100%;
+  object-fit: cover;
+}
+::view-transition-group(root) {
+  animation-duration: 300ms;
+}
+@keyframes row-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+.route-in .trow:nth-child(-n + 8) {
+  animation: row-in 320ms var(--ease-out) both;
+}
+.route-in .trow:nth-child(2) { animation-delay: 30ms; }
+.route-in .trow:nth-child(3) { animation-delay: 60ms; }
+.route-in .trow:nth-child(4) { animation-delay: 90ms; }
+.route-in .trow:nth-child(5) { animation-delay: 120ms; }
+.route-in .trow:nth-child(6) { animation-delay: 150ms; }
+.route-in .trow:nth-child(7) { animation-delay: 180ms; }
+.route-in .trow:nth-child(8) { animation-delay: 210ms; }
+@supports (view-transition-name: none) {
+  .route-in {
+    animation: none;
+  }
+}
 @keyframes arrive {
   from {
     opacity: 0;
@@ -361,8 +442,16 @@ input[type='range'].slider:active {
   .route-in,
   .track-in,
   .hero-art,
-  .hero-bg {
+  .hero-bg,
+  .pp-icon,
+  .deck-art,
+  .deck-art > *,
+  .route-in .trow {
     animation: none !important;
+  }
+  .lyric {
+    filter: none !important;
+    transition: none !important;
   }
   :root {
     --dur-fast: 0ms;
@@ -470,17 +559,18 @@ input[type='range'].slider:active {
     min-height: 34px;
     padding: 0 16px;
     border: 1px solid var(--rule);
-    border-radius: var(--r-sm);
+    border-radius: var(--r-md);
     background: transparent;
     color: var(--fg);
     font-family: var(--font-display);
     font-size: 14px;
     line-height: 20px;
     white-space: nowrap;
-    transition: background-color var(--dur-fast) var(--ease), filter var(--dur-fast) var(--ease), transform var(--dur-fast) var(--ease);
+    transition: background-color var(--dur-fast) var(--ease), filter var(--dur-fast) var(--ease), transform 340ms var(--spring-pop);
   }
   .btn:active:not(:disabled) {
-    transform: scale(0.97);
+    transform: scale(0.96);
+    transition-duration: var(--dur-fast), var(--dur-fast), 70ms;
   }
   .btn:hover {
     background: var(--hover);
@@ -541,10 +631,11 @@ input[type='range'].slider:active {
     height: 32px;
     border-radius: var(--r-sm);
     color: var(--muted);
-    transition: background-color var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease), transform var(--dur-fast) var(--ease);
+    transition: background-color var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease), transform 340ms var(--spring-pop);
   }
   .icon-btn:active:not(:disabled) {
-    transform: scale(0.9);
+    transform: scale(0.88);
+    transition-duration: var(--dur-fast), var(--dur-fast), 70ms;
   }
   .icon-btn:hover {
     background: var(--hover);
@@ -577,16 +668,22 @@ input[type='range'].slider:active {
     justify-content: center;
     width: 44px;
     height: 44px;
-    border-radius: 30%;
+    border-radius: 36%;
     background: var(--accent);
     color: var(--on-accent);
-    transition: filter var(--dur-fast) var(--ease), transform var(--dur-fast) var(--ease);
+    transition: filter var(--dur-fast) var(--ease), transform 380ms var(--spring-pop);
   }
   .play-btn:hover {
     filter: brightness(1.08);
   }
   .play-btn:active {
-    transform: scale(0.95);
+    transform: scale(0.93);
+    transition-duration: var(--dur-fast), 70ms;
+  }
+  /* Play and pause trade places: the new icon pops in on a spring. */
+  .pp-icon {
+    display: inline-flex;
+    animation: pop 360ms var(--spring-pop) both;
   }
   .play-btn-lg {
     width: 56px;
@@ -621,7 +718,7 @@ input[type='range'].slider:active {
     height: 20px;
     margin: 0;
     border: 1px solid var(--muted);
-    border-radius: 2px;
+    border-radius: 9999px;
     background: transparent;
     cursor: pointer;
     transition: background-color var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease);
@@ -633,7 +730,7 @@ input[type='range'].slider:active {
     left: 3px;
     width: 12px;
     height: 12px;
-    border-radius: 1px;
+    border-radius: 9999px;
     background: var(--muted);
     transition: transform var(--dur-fast) var(--ease), background-color var(--dur-fast) var(--ease);
   }
@@ -711,7 +808,7 @@ input[type='range'].slider:active {
   .chip {
     padding: 6px 14px;
     border: 1px solid var(--line);
-    border-radius: var(--r-sm);
+    border-radius: var(--r-md);
     color: var(--fg);
     font-size: 14px;
     transition: background-color var(--dur-fast) var(--ease);
@@ -910,7 +1007,7 @@ input[type='range'].slider:active {
     opacity: 1;
   }
   .tab-indicator[data-armed='true'] {
-    transition: transform var(--dur-base) var(--ease-out), width var(--dur-base) var(--ease-out), opacity var(--dur-fast) var(--ease);
+    transition: transform 460ms var(--spring), width 460ms var(--spring), opacity var(--dur-fast) var(--ease);
   }
   @media (max-width: 1099px) {
     .tabs-brand .wordmark {
@@ -1056,6 +1153,10 @@ input[type='range'].slider:active {
     overflow: hidden;
     border-radius: var(--r-sm);
     box-shadow: var(--shadow-art), 0 0 28px -8px var(--glow);
+    animation: glow-in 800ms var(--ease-out) both;
+  }
+  .deck-art > * {
+    animation: focus-in 460ms var(--ease-out) both;
   }
   .deck-transport {
     display: flex;
@@ -1105,7 +1206,7 @@ input[type='range'].slider:active {
     gap: 12px;
     margin-bottom: 4px;
     padding: 6px 8px;
-    border-radius: var(--r-sm);
+    border-radius: var(--r-md);
     background: var(--selected);
     box-shadow: inset 3px 0 0 var(--accent);
   }
@@ -1175,7 +1276,7 @@ input[type='range'].slider:active {
     padding: 12px 16px;
     border: 1px solid var(--rule);
     border-left: 3px solid var(--accent);
-    border-radius: var(--r-sm);
+    border-radius: var(--r-md);
     background: var(--surface);
   }
 
@@ -1408,7 +1509,7 @@ input[type='range'].slider:active {
     position: relative;
     aspect-ratio: 1;
     overflow: hidden;
-    border-radius: var(--r-sm);
+    border-radius: var(--r-md);
   }
   .cover-tile .cover-play {
     position: absolute;
@@ -1419,12 +1520,12 @@ input[type='range'].slider:active {
     justify-content: center;
     width: 36px;
     height: 36px;
-    border-radius: 30%;
+    border-radius: 36%;
     background: var(--accent);
     color: var(--on-accent);
     opacity: 0;
-    transform: translateY(4px);
-    transition: opacity var(--dur-fast) var(--ease), transform var(--dur-base) var(--ease);
+    transform: translateY(8px) scale(0.7);
+    transition: opacity var(--dur-fast) var(--ease), transform 380ms var(--spring-pop);
   }
   .cover-tile:hover .cover-play,
   .cover-tile:focus-visible .cover-play {
@@ -1485,7 +1586,7 @@ input[type='range'].slider:active {
   .well {
     padding: 12px;
     border: 1px solid var(--rule);
-    border-radius: var(--r-sm);
+    border-radius: var(--r-md);
     background: transparent;
   }
   .sheet-panel {
@@ -1496,8 +1597,11 @@ input[type='range'].slider:active {
   }
   .toast {
     border-left: 3px solid var(--accent);
-    border-radius: var(--r-sm);
+    border-radius: var(--r-md);
     box-shadow: var(--shadow-pop);
+  }
+  .theme-picker[inert] {
+    opacity: 0.4;
   }
   .theme-chip {
     display: flex;
@@ -1505,7 +1609,7 @@ input[type='range'].slider:active {
     gap: 10px;
     padding: 8px 12px;
     border: 2px solid transparent;
-    border-radius: var(--r-sm);
+    border-radius: var(--r-md);
     background: var(--surface);
     text-align: left;
   }
@@ -1581,7 +1685,7 @@ input[type='range'].slider:active {
     width: clamp(150px, 13vw, 240px);
     aspect-ratio: 1;
     overflow: hidden;
-    border-radius: var(--r-sm);
+    border-radius: var(--r-md);
     box-shadow: var(--shadow-art), 0 0 56px -12px var(--glow);
     animation: settle var(--dur-slow) var(--ease-out) both;
   }
@@ -1604,6 +1708,23 @@ input[type='range'].slider:active {
     line-height: 1.05;
     letter-spacing: -0.01em;
   }
+  /* Synced lyrics: the line being sung comes into focus and the rest fall away with their distance from it. */
+  .lyric {
+    transform-origin: left center;
+    opacity: calc(1 - var(--d, 0) * 0.16);
+    filter: blur(calc(var(--d, 0) * 0.45px));
+    transition: opacity 380ms var(--ease-out), filter 380ms var(--ease-out), transform 460ms var(--spring), color var(--dur-base) var(--ease);
+  }
+  .lyric[data-current='true'] {
+    transform: scale(1.05);
+    opacity: 1;
+    filter: none;
+  }
+  .lyric:hover {
+    opacity: 1;
+    filter: none;
+  }
+
   /* A bar of actions above a list (Play all, Shuffle, the count), on a hairline. */
   .toolbar {
     display: flex;
@@ -1625,6 +1746,9 @@ input[type='range'].slider:active {
     opacity: 0.5;
     filter: blur(72px) saturate(1.6);
     pointer-events: none;
+  }
+  .np-root .stage-art {
+    view-transition-name: np-cover;
   }
   .np-root .t-title {
     font-size: clamp(28px, 2.8vw, 48px);

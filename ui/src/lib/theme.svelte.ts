@@ -1,7 +1,7 @@
-import { ensureContrastOn } from './color';
+import { paletteFromArt } from './color';
 import {
   BUILTIN_THEMES, DEFAULT_DARK_ID, DEFAULT_LIGHT_ID, MAX_CUSTOM_THEMES, sanitizeTheme, themeVars,
-  type ThemeDef,
+  type ThemeColors, type ThemeDef,
 } from './themes';
 
 export type Backdrop = 'mica' | 'none';
@@ -79,11 +79,14 @@ export class ThemeStore {
     this.preview ?? this.all.find((t) => t.id === this.selectedId) ?? BUILTIN_THEMES[0]!,
   );
   resolved = $derived(this.active.scheme);
-  accent = $derived(
-    this.settings.dynamicColor && this.art && !this.preview
-      ? ensureContrastOn(this.art, this.active.colors.bg, this.active.scheme)
-      : this.active.colors.accent,
+  /**
+   * The colours in use: the active theme's, or, with "Color from album art" on and a cover to take it from, a whole
+   * palette made from the cover's colour (the theme's light or dark stays).
+   */
+  colors = $derived<ThemeColors>(
+    this.settings.dynamicColor && this.art && !this.preview ? paletteFromArt(this.art, this.active.scheme) : this.active.colors,
   );
+  accent = $derived(this.colors.accent);
   /** What the native window frame and backdrop should follow: the system (null) or a fixed light/dark. */
   windowTheme = $derived<'dark' | 'light' | null>(this.settings.followSystem && !this.preview ? null : this.resolved);
 
@@ -171,7 +174,7 @@ export class ThemeStore {
     root.dataset.theme = def.scheme;
     root.dataset.themeId = def.id || 'preview';
     root.dataset.backdrop = this.backdrop;
-    const vars = themeVars({ ...def.colors, accent: this.accent });
+    const vars = themeVars(this.colors);
     for (const [name, value] of Object.entries(vars)) root.style.setProperty(name, value);
   }
 }

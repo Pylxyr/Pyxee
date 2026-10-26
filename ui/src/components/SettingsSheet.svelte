@@ -37,7 +37,12 @@
   <section class="settings-section" aria-label="Appearance">
     <h3 class="group-title">Appearance</h3>
     <ThemePicker />
-    <Toggle label="Color from album art" checked={theme.settings.dynamicColor} onchange={(on) => theme.update({ dynamicColor: on })} />
+    <Toggle
+      label="Color from album art"
+      hint="The cover of the song that is playing becomes the whole theme: background, panels, text and accent. The themes above are off while this is on."
+      checked={theme.settings.dynamicColor}
+      onchange={(on) => theme.update({ dynamicColor: on })}
+    />
   </section>
 
   <section class="settings-section" aria-label="Windows">
