@@ -514,19 +514,21 @@ impl Api {
     }
 }
 
-/// Opens the address in the default browser.
+/// Opens the address in the default browser. On Windows that is the shell's own address handler, started directly
+/// (no `cmd`, so the `&` in the address is safe); `explorer <address>` can open a File Explorer window instead.
 fn open_url(url: &str) -> Result<(), String> {
-    let program = if cfg!(windows) {
-        "explorer"
+    let mut command = if cfg!(windows) {
+        let mut c = std::process::Command::new("rundll32");
+        c.arg("url.dll,FileProtocolHandler");
+        c
     } else {
-        "xdg-open"
+        std::process::Command::new("xdg-open")
     };
-    // Explorer reports failure even when it opened the page, so only a failure to start counts.
-    std::process::Command::new(program)
+    command
         .arg(url)
         .spawn()
         .map(drop)
-        .map_err(|e| format!("could not start {program}: {e}"))
+        .map_err(|e| format!("could not start the browser: {e}"))
 }
 
 // ---------------------------------------------------------------------------------------------------------------
