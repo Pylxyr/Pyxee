@@ -31,11 +31,11 @@ fn cover_host_ok(url: &str) -> bool {
 /// The bytes of a cover, for the colour of the album art. The page cannot read the pixels of an image from another
 /// site unless that site allows it, so the app fetches the (small) picture itself and hands it over.
 #[tauri::command]
-pub async fn cover_bytes(url: String) -> Result<Vec<u8>, String> {
+pub async fn cover_bytes(url: String) -> Result<tauri::ipc::Response, String> {
     if !cover_host_ok(&url) {
         return Err("not a cover address".into());
     }
-    tauri::async_runtime::spawn_blocking(move || {
+    let bytes = tauri::async_runtime::spawn_blocking(move || {
         let agent = ureq::AgentBuilder::new()
             .timeout(Duration::from_secs(8))
             .redirects(0)
@@ -53,7 +53,8 @@ pub async fn cover_bytes(url: String) -> Result<Vec<u8>, String> {
         Ok(bytes)
     })
     .await
-    .map_err(|e| e.to_string())?
+    .map_err(|e| e.to_string())??;
+    Ok(tauri::ipc::Response::new(bytes))
 }
 
 /// Synced lyrics for a song, from LRCLIB. Answers are kept for the session so flipping tabs never asks twice.

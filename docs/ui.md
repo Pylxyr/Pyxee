@@ -109,23 +109,20 @@ pointer is over a list, accent while dragged. Scroll areas that are not a form c
 list, Explore) carry `data-scroll tabindex="0"` so the keyboard can scroll them. `design-contract.test.ts` guards both.
 
 ## Explore
-YouTube Music's own Explore page first, shelf by shelf under its own titles: songs as covers (Trending, Top songs,
-New music videos, each with **Play all**) and albums and singles as covers ("New albums & singles"; Pyxee has no album page,
-so a cover opens a songs search for the release). They come from the `explore_get` command (`MusicSource::explore`, one
-request to the website's `browse` endpoint, no yt-dlp run); a shelf is recognised by what it holds, so the Moods and
-genres buttons and podcast episodes are simply not shown. Then "Jump back in" (recent plays) and a shelf of similar songs
-per seed (likes first, then recent plays, one per artist), which come from `related_get` (`MusicSource::related`, a YouTube
-mix). Everything loads one request after another, stops early on offline / rate-limited / tool-missing, and is cached for
-the session (Refresh asks again). If the Explore page itself fails the page says why and the personal shelves still load.
+"Jump back in" (recent plays), then a shelf of similar songs per seed (likes first, then recent plays, one per artist), which
+come from `related_get` (`MusicSource::related`, a YouTube mix). YouTube Music's own Explore page (Trending, new albums and
+singles) is not shown: it was mostly this week's bulk releases. Everything loads one request after another, stops early on
+offline / rate-limited / tool-missing, and is cached for the session (Refresh asks again). Mashups, AI-made songs and covers, study
+loops and anything over 15 minutes are filtered out of every shelf (`isJunk` in `lib/explore.ts`; a title filter, so it
+catches the plain giveaways only). Cover shelves scroll sideways and are paged by the arrows in their heading.
 Logic: `lib/explore.ts` (pure), `lib/explore.svelte.ts`, `pages/Explore.svelte`; Rust: `crates/sources/src/ytmusic.rs`.
 
 **Genres.** Above the shelves sit YouTube Music's own "Moods & genres" as chips (`GenreChips.svelte`): *For you* is the page
 above, and anime, J-Pop, K-Pop (and J-Rock, city pop, Vocaloid, C-Pop) come first in front of the rest in the website's own order
 (`lib/genres.ts`); the rest are behind *More genres*. Picking one swaps the page for that genre's page: YouTube Music's own
 playlists (a cover plays the playlist: `PlaylistGrid.svelte`, `playlist_tracks_get`, one request for its first page of songs) and
-its song shelves. Album shelves are left out of genre pages on purpose, and on the main page the "New albums & singles" shelf
-now comes last: that feed is whatever distributors released this week, where bulk-made releases pile up, while the genre
-pages are editorial picks. Rust: `genres_get`, `genre_get`, `playlist_tracks_get` (`MusicSource::genres`, `genre`,
+its song shelves. Album shelves are left out of genre pages on purpose: the albums feed is whatever distributors released this week, where
+bulk-made releases pile up, while the genre pages are editorial picks. Rust: `genres_get`, `genre_get`, `playlist_tracks_get` (`MusicSource::genres`, `genre`,
 `playlist_tracks`; the website's `browse` endpoint with `FEmusic_moods_and_genres`, `FEmusic_moods_and_genres_category` and
 `VL<playlist id>`, no yt-dlp run). Genres load once per session after the page, a genre is asked once per session (Refresh asks
 again), and a failure only hides the chips or shows a notice with *Try again*.

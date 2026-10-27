@@ -11,8 +11,8 @@
 //! The application's key and shared secret are built into the release (`PYXEE_LASTFM_API_KEY` and
 //! `PYXEE_LASTFM_API_SECRET` when it was built; there is no setting or variable for users), like the Discord
 //! application ID. The user signs in with Last.fm's desktop flow: the browser opens, they allow Pyxee, and Last.fm
-//! answers with a session key that does not expire. Only that key is kept (in `shell.json`); the password never
-//! reaches Pyxee. Neither the log nor any message ever contains a key, the secret, a token or a signature.
+//! answers with a session key that does not expire. Only that key is kept (in the Windows Credential Manager, see
+//! `vault`; an older version kept it in `shell.json`); the password never reaches Pyxee. Neither the log nor any message ever contains a key, the secret, a token or a signature.
 
 use crate::dto::TrackDto;
 use md5::{Digest, Md5};
@@ -107,6 +107,135 @@ fn sign(params: &[(String, String)], secret: &str) -> String {
     format!("{:x}", hash.finalize())
 }
 
+/// Where the session key is kept: the Windows Credential Manager (a generic credential of the current user, which
+/// Windows keeps encrypted), not a file anyone could read. Without Windows there is no vault: `store` says so and the
+/// caller keeps the key in the settings file as before.
+#[cfg(windows)]
+pub mod vault {
+    use std::ffi::c_void;
+    use std::ptr;
+
+    const TARGET: &str = "Pyxee Last.fm session";
+    const CRED_TYPE_GENERIC: u32 = 1;
+    const CRED_PERSIST_LOCAL_MACHINE: u32 = 2;
+
+    /// `FILETIME`.
+    #[repr(C)]
+    #[allow(dead_code)]
+    struct FileTime {
+        low: u32,
+        high: u32,
+    }
+
+    /// `CREDENTIALW` of the Win32 API (fields the system reads are only written here).
+    #[repr(C)]
+    #[allow(dead_code)]
+    struct Credential {
+        flags: u32,
+        kind: u32,
+        target_name: *mut u16,
+        comment: *mut u16,
+        last_written: FileTime,
+        blob_size: u32,
+        blob: *mut u8,
+        persist: u32,
+        attribute_count: u32,
+        attributes: *mut c_void,
+        target_alias: *mut u16,
+        user_name: *mut u16,
+    }
+
+    #[link(name = "advapi32")]
+    extern "system" {
+        fn CredWriteW(credential: *const Credential, flags: u32) -> i32;
+        fn CredReadW(
+            target: *const u16,
+            kind: u32,
+            flags: u32,
+            credential: *mut *mut Credential,
+        ) -> i32;
+        fn CredDeleteW(target: *const u16, kind: u32, flags: u32) -> i32;
+        fn CredFree(buffer: *mut c_void);
+    }
+
+    fn wide(s: &str) -> Vec<u16> {
+        s.encode_utf16().chain(std::iter::once(0)).collect()
+    }
+
+    /// Saves the key, replacing the one that was there.
+    pub fn store(key: &str) -> Result<(), String> {
+        let mut target = wide(TARGET);
+        let mut user = wide("Pyxee");
+        let mut blob = key.as_bytes().to_vec();
+        let blob_size = u32::try_from(blob.len()).map_err(|_| "the key is too long".to_string())?;
+        let credential = Credential {
+            flags: 0,
+            kind: CRED_TYPE_GENERIC,
+            target_name: target.as_mut_ptr(),
+            comment: ptr::null_mut(),
+            last_written: FileTime { low: 0, high: 0 },
+            blob_size,
+            blob: blob.as_mut_ptr(),
+            persist: CRED_PERSIST_LOCAL_MACHINE,
+            attribute_count: 0,
+            attributes: ptr::null_mut(),
+            target_alias: ptr::null_mut(),
+            user_name: user.as_mut_ptr(),
+        };
+        // SAFETY: `credential` matches CREDENTIALW and points at buffers that live until the call returns; the
+        // system copies what it needs.
+        let ok = unsafe { CredWriteW(&credential, 0) };
+        if ok != 0 {
+            Ok(())
+        } else {
+            Err(std::io::Error::last_os_error().to_string())
+        }
+    }
+
+    /// The saved key, if there is one.
+    pub fn load() -> Option<String> {
+        let target = wide(TARGET);
+        let mut found: *mut Credential = ptr::null_mut();
+        // SAFETY: `target` is NUL-terminated and `found` is a valid place for the pointer the system hands back.
+        let ok = unsafe { CredReadW(target.as_ptr(), CRED_TYPE_GENERIC, 0, &mut found) };
+        if ok == 0 || found.is_null() {
+            return None;
+        }
+        // SAFETY: on success `found` points at a credential whose blob is `blob_size` bytes; it is copied out and
+        // the system's buffer is released exactly once.
+        let key = unsafe {
+            let c = &*found;
+            let key = if c.blob.is_null() {
+                None
+            } else {
+                let bytes = std::slice::from_raw_parts(c.blob, c.blob_size as usize);
+                Some(String::from_utf8_lossy(bytes).into_owned())
+            };
+            CredFree(found.cast());
+            key
+        };
+        key.filter(|k| !k.is_empty())
+    }
+
+    /// Forgets the key (nothing happens when there is none).
+    pub fn forget() {
+        let target = wide(TARGET);
+        // SAFETY: `target` is NUL-terminated.
+        unsafe { CredDeleteW(target.as_ptr(), CRED_TYPE_GENERIC, 0) };
+    }
+}
+
+#[cfg(not(windows))]
+pub mod vault {
+    pub fn store(_key: &str) -> Result<(), String> {
+        Err("there is no credential store on this system".into())
+    }
+    pub fn load() -> Option<String> {
+        None
+    }
+    pub fn forget() {}
+}
+
 /// What Last.fm is told about a song.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Song {
@@ -134,11 +263,217 @@ fn song_of(t: &TrackDto) -> Option<Song> {
     if duration_ms.is_some_and(|d| d <= MIN_SONG_MS) {
         return None;
     }
+    let (title, artist) = clean_song(title, artist);
     Some(Song {
-        title: title.to_owned(),
-        artist: artist.to_owned(),
+        title,
+        artist,
         duration_ms,
     })
+}
+
+/// What YouTube adds after a channel's name that is not part of the artist's (compared without regard to case).
+const CHANNEL_SUFFIXES: &[&str] = &[
+    " - Topic",
+    " Official YouTube Channel",
+    " Official YouTube",
+    " Official Channel",
+    " Official",
+    " VEVO",
+    "VEVO",
+];
+/// What an uploader adds after a song's title.
+const TITLE_SUFFIXES: &[&str] = &[
+    " Official Music Video",
+    " Official Video",
+    " Official MV",
+    " Official Audio",
+    " Official Lyric Video",
+    " Lyric Video",
+    " Music Video",
+    " MV",
+];
+/// Words that mark `Title - Other` as a version of the song (so it is kept) and not a second name for it.
+const VERSION_WORDS: &[&str] = &[
+    "remix",
+    "ver",
+    "version",
+    "live",
+    "acoustic",
+    "instrumental",
+    "edit",
+    "mix",
+    "cover",
+    "reprise",
+    "remaster",
+];
+
+fn strip_suffix_ci<'a>(s: &'a str, suffix: &str) -> Option<&'a str> {
+    let at = s.len().checked_sub(suffix.len())?;
+    if !s.is_char_boundary(at) {
+        return None;
+    }
+    let (head, tail) = s.split_at(at);
+    tail.eq_ignore_ascii_case(suffix).then_some(head)
+}
+
+fn strip_prefix_ci<'a>(s: &'a str, prefix: &str) -> Option<&'a str> {
+    if prefix.is_empty() || s.len() < prefix.len() || !s.is_char_boundary(prefix.len()) {
+        return None;
+    }
+    let (head, tail) = s.split_at(prefix.len());
+    head.eq_ignore_ascii_case(prefix).then_some(tail)
+}
+
+/// The name Last.fm knows an artist by: the first of `A / B`, without a channel's " - Topic" or "Official YouTube
+/// Channel". Falls back to what was given when nothing is left.
+fn clean_artist(raw: &str) -> String {
+    let mut name = raw.split(" / ").next().unwrap_or(raw).trim();
+    loop {
+        let before = name.len();
+        for suffix in CHANNEL_SUFFIXES {
+            if let Some(rest) = strip_suffix_ci(name, suffix) {
+                name = rest.trim_end();
+            }
+        }
+        if name.len() == before {
+            break;
+        }
+    }
+    if name.is_empty() {
+        raw.trim().to_owned()
+    } else {
+        name.to_owned()
+    }
+}
+
+/// Whether text in brackets is something an uploader adds ("Official Video", "MV", "Lyric Video") and not part of the
+/// song's name ("feat. ...", "Remix").
+fn is_noise(inner: &str) -> bool {
+    let lower = inner.to_lowercase();
+    [
+        "official",
+        "music video",
+        "lyric",
+        "audio",
+        "visualizer",
+        "m/v",
+    ]
+    .iter()
+    .any(|w| lower.contains(w))
+        || lower
+            .split(|c: char| !c.is_alphanumeric())
+            .any(|w| w == "mv")
+}
+
+/// `title` without brackets that only hold noise.
+fn without_noise_brackets(title: &str) -> String {
+    const PAIRS: [(char, char); 4] = [
+        ('(', ')'),
+        ('[', ']'),
+        ('\u{3010}', '\u{3011}'),
+        ('\u{ff08}', '\u{ff09}'),
+    ];
+    let mut out = title.to_owned();
+    'again: loop {
+        for (open, close) in PAIRS {
+            let Some(start) = out.find(open) else {
+                continue;
+            };
+            let after = start + open.len_utf8();
+            let Some(len) = out[after..].find(close) else {
+                continue;
+            };
+            if is_noise(&out[after..after + len]) {
+                out.replace_range(start..after + len + close.len_utf8(), "");
+                continue 'again;
+            }
+        }
+        return out;
+    }
+}
+
+/// Whether one name is (part of) the other, ignoring case.
+fn names_overlap(a: &str, b: &str) -> bool {
+    let (a, b) = (a.trim().to_lowercase(), b.trim().to_lowercase());
+    !a.is_empty() && !b.is_empty() && (a.contains(&b) || b.contains(&a))
+}
+
+/// The title and artist as Last.fm will know them. YouTube titles carry the uploader's decoration: the artist
+/// again ("natori - Overdose"), a romanisation ("はいよろこんで - Hai Yorokonde"), a tag ("(Official Video)", "【MV】"),
+/// or the song inside brackets ("YOASOBI「アンコール」Official MV"). Last.fm matches a song by exact names, so all of
+/// that is taken off; a title that would be left empty is kept as it was.
+fn clean_song(title: &str, artist: &str) -> (String, String) {
+    let mut artist_out = clean_artist(artist);
+    let mut names: Vec<&str> = artist.split(" / ").map(str::trim).collect();
+    names.push(artist.trim());
+    let mut t = title.trim().to_owned();
+
+    // "Artist「Song」Official MV": the song is what is inside the brackets, the artist what is before them.
+    if let (Some(open), Some(close)) = (t.find('\u{300c}'), t.find('\u{300d}')) {
+        let inner_start = open + '\u{300c}'.len_utf8();
+        if inner_start < close {
+            let outside = t[..open].trim().to_owned();
+            if outside.is_empty() || names_overlap(&outside, artist) {
+                let inner = t[inner_start..close].trim().to_owned();
+                if !inner.is_empty() {
+                    if !outside.is_empty() {
+                        artist_out = outside;
+                    }
+                    t = inner;
+                }
+            }
+        }
+    }
+
+    t = without_noise_brackets(&t);
+    loop {
+        let before = t.len();
+        for suffix in TITLE_SUFFIXES {
+            if let Some(rest) = strip_suffix_ci(t.trim_end(), suffix) {
+                t = rest
+                    .trim_end()
+                    .trim_end_matches(['-', '\u{2013}', '|', '/', '\u{ff5c}', ' '])
+                    .to_owned();
+            }
+        }
+        if t.len() == before {
+            break;
+        }
+    }
+
+    // "Artist - Song" (also with a dash, colon or bar): the artist is already known.
+    for name in names
+        .iter()
+        .copied()
+        .chain(std::iter::once(artist_out.as_str()))
+    {
+        if let Some(rest) = strip_prefix_ci(&t, name) {
+            let rest = rest.trim_start();
+            if let Some(song) =
+                rest.strip_prefix(['-', '\u{2013}', '\u{2014}', ':', '|', '\u{ff5c}'])
+            {
+                if !song.trim().is_empty() {
+                    t = song.trim().to_owned();
+                    break;
+                }
+            }
+        }
+    }
+
+    // "はいよろこんで - Hai Yorokonde": the same name twice, in Japanese and in letters; Last.fm has the first.
+    if let Some((left, right)) = t.split_once(" - ") {
+        let lower = right.to_lowercase();
+        let is_version = lower
+            .split(|c: char| !c.is_alphanumeric())
+            .any(|w| VERSION_WORDS.contains(&w));
+        if !left.is_ascii() && right.is_ascii() && !is_version && !left.trim().is_empty() {
+            t = left.trim().to_owned();
+        }
+    }
+
+    let t = t.trim();
+    let title_out = if t.is_empty() { title.trim() } else { t };
+    (title_out.to_owned(), artist_out)
 }
 
 /// How much of the song has to be heard before it is scrobbled.
@@ -986,5 +1321,61 @@ mod tests {
             "https://www.last.fm/api/auth/?api_key=0123456789abcdef0123456789abcdef&token=cf45fe5a"
         );
         assert!(auth_page(&app, "a&b=c d").ends_with("token=a%26b%3Dc%20d"));
+    }
+
+    #[test]
+    fn titles_and_artists_are_cleaned_the_way_last_fm_knows_them() {
+        let clean = |title: &str, artist: &str| clean_song(title, artist);
+        let want = |title: &str, artist: &str| (title.to_owned(), artist.to_owned());
+        // The artist twice: in the title, and as "Name / romanised name" for the channel.
+        assert_eq!(
+            clean("natori - Overdose", "\u{306a}\u{3068}\u{308a} / natori"),
+            want("Overdose", "\u{306a}\u{3068}\u{308a}")
+        );
+        // The same name in Japanese and in letters.
+        assert_eq!(
+            clean(
+                "\u{306f}\u{3044}\u{3088}\u{308d}\u{3053}\u{3093}\u{3067} - Hai Yorokonde",
+                "Kocchi no Kento"
+            ),
+            want(
+                "\u{306f}\u{3044}\u{3088}\u{308d}\u{3053}\u{3093}\u{3067}",
+                "Kocchi no Kento"
+            )
+        );
+        // The song inside brackets, the artist before them.
+        assert_eq!(clean("YOASOBI\u{300c}\u{30a2}\u{30f3}\u{30b3}\u{30fc}\u{30eb}\u{300d}Official Music Video", "YOASOBI and Echoes"), want("\u{30a2}\u{30f3}\u{30b3}\u{30fc}\u{30eb}", "YOASOBI"));
+        // Tags and channel decoration.
+        assert_eq!(
+            clean("Gurenge (Official Video)", "LiSA Official YouTube"),
+            want("Gurenge", "LiSA")
+        );
+        assert_eq!(
+            clean(
+                "Silhouette\u{3010}MV\u{3011}",
+                "KANA-BOON Official YouTube Channel"
+            ),
+            want("Silhouette", "KANA-BOON")
+        );
+        assert_eq!(clean("Idol", "YOASOBI - Topic"), want("Idol", "YOASOBI"));
+        // What is part of the song stays.
+        assert_eq!(
+            clean("Neon Harbor", "Lowtide"),
+            want("Neon Harbor", "Lowtide")
+        );
+        assert_eq!(
+            clean("Neon Harbor (feat. Ana)", "Lowtide"),
+            want("Neon Harbor (feat. Ana)", "Lowtide")
+        );
+        assert_eq!(
+            clean("\u{591c}\u{306b}\u{99c6}\u{3051}\u{308b} - Live", "Band"),
+            want("\u{591c}\u{306b}\u{99c6}\u{3051}\u{308b} - Live", "Band")
+        );
+        // A title that would be left empty is kept.
+        assert_eq!(
+            clean("(Official Video)", "Lowtide"),
+            want("(Official Video)", "Lowtide")
+        );
+        assert_eq!(clean("Lowtide - ", "Lowtide"), want("Lowtide -", "Lowtide"));
     }
 }

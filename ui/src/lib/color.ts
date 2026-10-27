@@ -83,13 +83,27 @@ function sampleColor(source: CanvasImageSource): string | null {
   return dominantColor(ctx.getImageData(0, 0, 32, 32).data);
 }
 
+const colorCache = new Map<string, string>();
+const COLOR_CACHE_MAX = 64;
+
 /**
  * Loads a cover and returns its dominant colour, or null if it cannot be had. It asks for the same small images the
  * covers on screen use (https, the sized or still variant) and moves on to the next one when a picture is missing.
  * The page can only read an image's pixels when the image host allows it; when it does not, `fetchBytes` (the app
- * fetching the picture itself) is used instead.
+ * fetching the picture itself) is used instead. A cover's colour is remembered, so a song that comes round again costs nothing.
  */
-export async function accentFromImage(url: string, fetchBytes?: (url: string) => Promise<number[]>): Promise<string | null> {
+export async function accentFromImage(url: string, fetchBytes?: (url: string) => Promise<ArrayBuffer>): Promise<string | null> {
+  const known = colorCache.get(url);
+  if (known) return known;
+  const found = await readAccent(url, fetchBytes);
+  if (found) {
+    if (colorCache.size >= COLOR_CACHE_MAX) colorCache.delete(colorCache.keys().next().value as string);
+    colorCache.set(url, found);
+  }
+  return found;
+}
+
+async function readAccent(url: string, fetchBytes?: (url: string) => Promise<ArrayBuffer>): Promise<string | null> {
   for (const candidate of thumbCandidates(url, 64).filter((u) => !isKnownMissing(u))) {
     try {
       const img = new Image();
@@ -106,7 +120,7 @@ export async function accentFromImage(url: string, fetchBytes?: (url: string) =>
     }
     if (!fetchBytes) continue;
     try {
-      const bitmap = await createImageBitmap(new Blob([new Uint8Array(await fetchBytes(candidate))]));
+      const bitmap = await createImageBitmap(new Blob([await fetchBytes(candidate)]));
       try {
         if (isMissingStill(candidate, bitmap.width, bitmap.height)) {
           noteMissing(candidate);

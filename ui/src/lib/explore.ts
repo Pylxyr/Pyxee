@@ -1,4 +1,3 @@
-import type { AlbumDto } from './bindings/AlbumDto';
 import type { ExploreShelfDto } from './bindings/ExploreShelfDto';
 import type { HistoryItemDto } from './bindings/HistoryItemDto';
 import type { TrackDto } from './bindings/TrackDto';
@@ -7,16 +6,6 @@ import type { TrackDto } from './bindings/TrackDto';
 export interface Seed {
   track: TrackDto;
   reason: 'liked' | 'played';
-}
-
-/**
- * What to search for to find an album or single on YouTube Music's Explore page. Pyxee has no album page, so a cover
- * opens an ordinary songs search for it: the release's own songs come first.
- */
-export function albumQuery(album: AlbumDto): string {
-  const title = album.title.trim();
-  const artist = album.artist.trim();
-  return artist && artist !== 'Unknown artist' ? `${title} ${artist}` : title;
 }
 
 const norm = (s: string) => s.trim().toLowerCase();

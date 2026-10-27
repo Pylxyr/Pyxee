@@ -1,4 +1,5 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { nav } from './nav.svelte';
 import { MOTION, motionMs, motionPx, prefersReducedMotion, springOut, springPop, withViewTransition } from './motion';
 
 const original = window.matchMedia;
@@ -42,5 +43,50 @@ describe('motion', () => {
     let ran = 0;
     expect(withViewTransition(() => ran++)).toBe(false);
     expect(ran).toBe(1);
+  });
+
+  describe('with view transitions', () => {
+    const doc = document as unknown as { startViewTransition?: unknown };
+    const fake = () =>
+      vi.fn((cb: () => Promise<void>) => {
+        const done = Promise.resolve().then(cb);
+        return { ready: done, updateCallbackDone: done, finished: done };
+      });
+    function visible() {
+      Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true });
+    }
+    afterEach(() => {
+      delete doc.startViewTransition;
+      delete (document as unknown as { visibilityState?: string }).visibilityState;
+      nav.route = 'home';
+    });
+
+    it('runs the update inside it, between before and after', async () => {
+      system(false);
+      visible();
+      doc.startViewTransition = fake();
+      const order: string[] = [];
+      const started = withViewTransition(() => order.push('update'), {
+        before: () => order.push('before'),
+        during: () => order.push('during'),
+        after: () => order.push('after'),
+      });
+      expect(started).toBe(true);
+      await vi.waitFor(() => expect(order).toEqual(['before', 'update', 'during', 'after']));
+    });
+
+    it('a search while on the search page, or a playlist while on a playlist, slides nothing', () => {
+      system(false);
+      visible();
+      const start = fake();
+      doc.startViewTransition = start;
+      nav.route = 'search';
+      nav.search('lowtide');
+      expect(nav.query).toBe('lowtide');
+      expect(start).not.toHaveBeenCalled();
+      nav.route = 'home';
+      nav.search('lowtide');
+      expect(start).toHaveBeenCalledTimes(1);
+    });
   });
 });

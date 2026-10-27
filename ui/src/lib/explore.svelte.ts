@@ -79,7 +79,7 @@ export class ExploreStore {
 
     // The genre chips come first: one request, and they are the top of what the listener sees.
     let blocked: string | null = null;
-    if (!blocked && this.genresStatus !== 'ready') await this.loadGenres(backend);
+    if (this.genresStatus !== 'ready') await this.loadGenres(backend);
     if (seq !== this.#seq) return;
     if (this.selectedGenre) void this.selectGenre(backend, this.selectedGenre);
 

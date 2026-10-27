@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { theme } from '$lib/theme.svelte';
+  import { followArt, theme } from '$lib/theme.svelte';
+  import { player } from '$lib/player.svelte';
   import type { Backend } from '$lib/backend';
   import { bootSmallWindow } from './Boot';
   import Compact from './Compact.svelte';
@@ -8,6 +9,10 @@
   const booted: Promise<Backend> = bootSmallWindow();
   const withBackend = (f: (b: Backend) => Promise<void>) => void booted.then(f);
   $effect(() => theme.apply(document.documentElement));
+  // "Color from album art" in these windows too: they read the same setting and the cover of the song that plays.
+  let backend = $state.raw<Backend | null>(null);
+  void booted.then((b) => (backend = b));
+  followArt(() => player.shown?.track.thumbnail ?? null, () => backend);
 </script>
 
 <!-- The whole card drags the window; the buttons stay clickable because they are not part of the drag region. -->

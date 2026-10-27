@@ -562,6 +562,10 @@ fn song_keys(stdout: &str) -> HashSet<String> {
         .collect()
 }
 
+/// The most entries asked of a mix, and how many songs it needs for the rest to be dropped.
+const RELATED_FETCH_MAX: usize = 50;
+const RELATED_MIN_SONGS: usize = 3;
+
 fn artist_name(v: &Value) -> String {
     artist_of(v).unwrap_or_else(|| UNKNOWN_ARTIST.into())
 }
@@ -804,12 +808,12 @@ impl MusicSource for YtDlpSource {
     fn related(&self, key: &str, count: usize) -> Result<Vec<TrackInfo>, SourceError> {
         let id = video_id(key)?;
         let target = format!("https://www.youtube.com/watch?v={id}&list=RD{id}");
-        let out = self.run("related", &flat_args(target, count + 1))?;
-        // A mix lists its seed first, so the output says what the song that is playing is. When it is a song, only
-        // songs follow it: the mix also holds videos, animated shorts and other things that are not.
+        // Asks for more than is wanted: the mix also holds videos, animated shorts and other things that are not
+        // songs, and they are dropped below.
+        let wanted = (count * 3 + 1).min(RELATED_FETCH_MAX);
+        let out = self.run("related", &flat_args(target, wanted))?;
         let songs = song_keys(&out);
-        let only_songs = songs.contains(key);
-        Ok(parse_entries(&out)?
+        let tracks: Vec<TrackInfo> = parse_entries(&out)?
             .into_iter()
             .filter_map(|i| {
                 if let SearchItem::Track(t) = i {
@@ -819,6 +823,13 @@ impl MusicSource for YtDlpSource {
                 }
             })
             .filter(|t| t.key != key)
+            .collect();
+        // Songs only, whatever the seed is: a music video that plays gets songs after it too. A mix with almost no
+        // songs in it (an obscure video) is used as it is, so autoplay does not dry up.
+        let song_count = tracks.iter().filter(|t| songs.contains(&t.key)).count();
+        let only_songs = songs.contains(key) || song_count >= RELATED_MIN_SONGS.min(count);
+        Ok(tracks
+            .into_iter()
             .filter(|t| !only_songs || songs.contains(&t.key))
             .take(count)
             .collect())
@@ -1563,6 +1574,46 @@ esac"#,
                     .replace("abc12345678", "def12345678")
                     .replace("Neon Harbor", "Paper Planes"),
             )
+        }
+
+        #[test]
+        fn related_keeps_to_songs_when_the_song_that_plays_is_a_music_video() {
+            let entry = |id: &str, title: &str, channel: &str| {
+                TRACK
+                    .replace("abc12345678", id)
+                    .replace("Neon Harbor", title)
+                    .replace("Lowtide - Topic", channel)
+            };
+            let list = |lines: &[String]| {
+                let quoted: Vec<String> = lines.iter().map(|l| format!("'{l}'")).collect();
+                format!("printf '%s\\n' {}", quoted.join(" "))
+            };
+            let seed = entry("mv000000001", "Overdose", "Natori");
+            let video = entry("vid00000002", "Some Video", "Other");
+            let songs: Vec<String> = [
+                ("son00000003", "Song A"),
+                ("son00000004", "Song B"),
+                ("son00000005", "Song C"),
+            ]
+            .iter()
+            .map(|(id, title)| entry(id, title, "Lowtide - Topic"))
+            .collect();
+
+            let mut lines = vec![seed.clone(), video.clone()];
+            lines.extend(songs.clone());
+            let (script, _log) = fake("video-seed", &list(&lines));
+            let related = quick(&script).related("yt:mv000000001", 5).unwrap();
+            let titles: Vec<&str> = related.iter().map(|t| t.title.as_str()).collect();
+            assert_eq!(
+                titles,
+                ["Song A", "Song B", "Song C"],
+                "the video is left out"
+            );
+
+            // A mix with hardly any songs is used as it is, so autoplay does not run dry.
+            let (script, _log) = fake("video-mix", &list(&[seed, video, songs[0].clone()]));
+            let related = quick(&script).related("yt:mv000000001", 5).unwrap();
+            assert_eq!(related.len(), 2);
         }
 
         #[test]

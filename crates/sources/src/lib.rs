@@ -152,8 +152,8 @@ pub struct StreamMeta {
 pub trait MusicSource: Send + Sync {
     fn search(&self, query: &str, filter: SearchFilter) -> Result<Vec<SearchItem>, SourceError>;
     fn resolve_stream(&self, key: &str) -> Result<StreamInfo, SourceError>;
-    /// Similar songs (a YouTube "mix"), used by autoplay radio. Excludes the seed itself. When the seed is a song,
-    /// so is everything returned: no videos or other media.
+    /// Similar songs (a YouTube "mix"), used by autoplay radio. Excludes the seed itself. Songs only: no videos or
+    /// other media, whatever the seed is (a music video seed gets songs too), unless the mix holds hardly any songs.
     fn related(&self, key: &str, count: usize) -> Result<Vec<TrackInfo>, SourceError>;
     /// Live search suggestions for a partial query.
     fn suggest(&self, prefix: &str) -> Result<Vec<String>, SourceError>;

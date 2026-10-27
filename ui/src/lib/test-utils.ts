@@ -20,7 +20,6 @@ export const noLibrary: LibraryBackend = {
   historyRestore: async () => {},
   homeGet: async () => ({ quickPicks: [], recent: [], likedCount: 0 }),
   relatedGet: async () => [],
-  exploreGet: async () => [],
   genresGet: async () => [],
   genreGet: async () => [],
   playlistTracksGet: async () => [],
@@ -43,7 +42,7 @@ export const noDiagnostics = {
 
 /** Lyrics, sleep timer, tray and shell-settings methods for test backends that do not care about them. */
 export const noShell = {
-  coverBytes: async (): Promise<number[]> => {
+  coverBytes: async (): Promise<ArrayBuffer> => {
     throw new Error('no cover');
   },
   lyricsGet: async () => ({ kind: 'notFound' as const }),
