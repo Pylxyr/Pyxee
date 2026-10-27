@@ -176,15 +176,9 @@ pub fn unsigned_notice(required: bool) -> Result<&'static str, &'static str> {
     }
 }
 
-/// The installer formats to build. A pre-release version such as `0.1.1-rc1` cannot be an MSI (its version numbers
-/// must be numeric), so candidates are NSIS only; a final release gets both.
-pub fn bundles_for(version: &str) -> &'static str {
-    if version.contains('-') {
-        "nsis"
-    } else {
-        "nsis,msi"
-    }
-}
+/// The installer formats to build: the NSIS installer only (there is no MSI; it could not carry a pre-release
+/// version such as `0.1.1-rc1`, so candidates and final releases were built differently).
+pub const BUNDLES: &str = "nsis";
 
 // ---------------------------------------------------------------------------------------- portable
 
@@ -487,9 +481,8 @@ mod tests {
     }
 
     #[test]
-    fn a_release_candidate_is_built_as_nsis_only() {
-        assert_eq!(bundles_for("0.1.1-rc1"), "nsis");
-        assert_eq!(bundles_for("0.2.0"), "nsis,msi");
+    fn every_release_is_built_as_nsis_only() {
+        assert_eq!(BUNDLES, "nsis");
     }
 
     #[test]

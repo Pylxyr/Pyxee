@@ -116,15 +116,10 @@ pub fn load(path: &Path) -> Loaded {
     }
 }
 
-/// Writes next to the target and renames over it, so a crash never leaves a half-written file.
+/// Saved through [`crate::atomic::write`], so a crash never leaves a half-written file.
 pub fn save(path: &Path, s: &ShellSettings) -> std::io::Result<()> {
-    if let Some(dir) = path.parent() {
-        std::fs::create_dir_all(dir)?;
-    }
-    let tmp = path.with_extension("json.tmp");
     let json = serde_json::to_string_pretty(s).map_err(std::io::Error::other)?;
-    std::fs::write(&tmp, json)?;
-    std::fs::rename(&tmp, path)
+    crate::atomic::write(path, json.as_bytes())
 }
 
 #[cfg(test)]
@@ -207,10 +202,12 @@ mod tests {
         };
         save(&p, &s).unwrap();
         assert_eq!(load(&p).settings, s);
-        assert!(
-            !p.with_extension("json.tmp").exists(),
-            "no temporary file is left"
-        );
+        let left: Vec<_> = std::fs::read_dir(p.parent().unwrap())
+            .unwrap()
+            .flatten()
+            .filter(|e| e.file_name().to_string_lossy().ends_with(".tmp"))
+            .collect();
+        assert!(left.is_empty(), "no temporary file is left: {left:?}");
     }
 
     #[test]

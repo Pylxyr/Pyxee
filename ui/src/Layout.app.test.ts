@@ -88,6 +88,17 @@ describe('Now Playing layout: only the list scrolls', () => {
     expect(root.querySelectorAll('.overflow-y-auto').length).toBe(1);
   });
 
+  it('the cover and title column is not centred with justify-center, which cuts off its top when the window is short', async () => {
+    await openApp();
+    await player.playTracks([DEMO_TRACKS[0]!]);
+    await waitFor(() => expect(player.shown).not.toBeNull());
+    nav.openNowPlaying();
+    const controls = within(await screen.findByTestId('np-root')).getByTestId('np-controls');
+    expect(controls.classList.contains('justify-center')).toBe(false);
+    expect(controls.className).toContain('[&>:first-child]:mt-auto');
+    expect(controls.className).toContain('[&>:last-child]:mb-auto');
+  });
+
   it('the art scales with its box instead of being cropped to a fixed size', async () => {
     await openApp();
     await player.playTracks([{ ...DEMO_TRACKS[0]!, thumbnail: 'https://example.invalid/a.jpg' }]);

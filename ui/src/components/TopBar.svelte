@@ -12,6 +12,10 @@
   let active = $state(-1);
   const open = $derived(search.suggestions.length > 0);
 
+  // The suggestions go a moment after the box loses focus. Coming back to the box inside that moment keeps them:
+  // the late clear must not wipe what was typed since.
+  let blurTimer: ReturnType<typeof setTimeout> | undefined;
+
   function go(q: string) {
     text = q;
     active = -1;
@@ -58,7 +62,8 @@
         bind:value={text}
         {oninput}
         {onkeydown}
-        onblur={() => setTimeout(() => search.clearSuggestions(), 120)}
+        onfocus={() => clearTimeout(blurTimer)}
+        onblur={() => (blurTimer = setTimeout(() => search.clearSuggestions(), 120))}
         class="search-input min-w-0 flex-1 bg-transparent text-fg outline-none placeholder:text-muted"
         placeholder="Search songs, albums, artists"
         aria-label="Search"

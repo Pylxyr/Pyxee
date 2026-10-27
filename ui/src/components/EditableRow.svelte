@@ -2,6 +2,7 @@
   import type { Snippet } from 'svelte';
   import type { HTMLLiAttributes } from 'svelte/elements';
   import { formatTime } from '$lib/format';
+  import { nav } from '$lib/nav.svelte';
   import type { TrackDto } from '$lib/bindings/TrackDto';
   import Thumb from './Thumb.svelte';
 
@@ -23,9 +24,16 @@
 
   // The row of the queue, of Up next in Now Playing and of a playlist: a handle, the song, and its own buttons.
   let { track, index, status = '', current = false, over = null, dragging = false, onplay, handle, actions, coverSize = 40, ...rest }: Props = $props();
+
+  // Right-click (or the menu key) on the row opens the song's menu, as the "more" button of a list row does.
+  function openMenu(e: MouseEvent) {
+    e.preventDefault();
+    nav.menuTrack = track;
+  }
 </script>
 
-<li class="row-edit" data-current={current} data-over={over} data-dragging={dragging} {...rest}>
+<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+<li class="row-edit" data-current={current} data-over={over} data-dragging={dragging} oncontextmenu={openMenu} {...rest}>
   {@render handle?.()}
   <button class="row-edit-main" onclick={onplay}>
     {#if index !== undefined}<span class="t-caption muted nums w-6 shrink-0 text-center" aria-hidden="true">{index + 1}</span>{/if}

@@ -6,6 +6,7 @@
   import { updates } from '$lib/updates.svelte';
   import { onMount } from 'svelte';
   import Button from './Button.svelte';
+  import UpdateProgress from './UpdateProgress.svelte';
 
   let { backend }: { backend: Backend } = $props();
 
@@ -31,16 +32,6 @@
       off();
     };
   });
-
-  const mb = (n: number) => (n / (1024 * 1024)).toFixed(1);
-  /** "Downloading 0.3.6: 12.3 of 18.4 MB (67%)" and the steps after it. */
-  function progressText(p: UpdateProgressDto, what: string): string {
-    if (p.phase === 'verifying') return `Checking ${what}…`;
-    if (p.phase === 'testing') return `Testing ${what}…`;
-    if (p.phase === 'starting') return 'Starting the installer…';
-    if (p.total) return `Downloading ${what}: ${mb(p.received)} of ${mb(p.total)} MB (${Math.min(100, Math.floor((p.received / p.total) * 100))}%)`;
-    return `Downloading ${what}: ${mb(p.received)} MB`;
-  }
 
   async function checkTool() {
     toolPhase = 'checking';
@@ -84,14 +75,7 @@
       {:else}Looks at the GitHub releases. The installer's SHA-256 is checked before it runs; it is not code-signed yet, so Windows SmartScreen may ask.{/if}
     </p>
     {#if updates.phase === 'installing' && updates.progress}
-      <div role="status" aria-live="polite" data-testid="app-update-progress">
-        {#if updates.progress.phase === 'downloading' && updates.progress.total}
-          <progress class="mt-2 w-full" value={updates.progress.received} max={updates.progress.total}></progress>
-        {:else}
-          <progress class="mt-2 w-full"></progress>
-        {/if}
-        <p class="muted mt-1">{progressText(updates.progress, updates.info?.latest ?? 'Pyxee')}</p>
-      </div>
+      <UpdateProgress class="mt-3" progress={updates.progress} what={updates.info?.latest ?? 'Pyxee'} testid="app-update-progress" />
     {/if}
     {#if updates.info?.available && updates.info.portable}
       <p class="t-caption muted mt-1 break-all" data-testid="portable-update">This is a portable copy. Download the new zip from {updates.info.notesUrl} and unpack it over this folder; your data folder stays.</p>
@@ -121,14 +105,7 @@
       {:else}Downloads are checked against yt-dlp's published SHA-256 and test-run before they replace the current one; if anything fails, nothing changes.{/if}
     </p>
     {#if toolPhase === 'installing' && toolProgress}
-      <div role="status" aria-live="polite" data-testid="ytdlp-update-progress">
-        {#if toolProgress.phase === 'downloading' && toolProgress.total}
-          <progress class="mt-2 w-full" value={toolProgress.received} max={toolProgress.total}></progress>
-        {:else}
-          <progress class="mt-2 w-full"></progress>
-        {/if}
-        <p class="muted mt-1">{progressText(toolProgress, 'yt-dlp')}</p>
-      </div>
+      <UpdateProgress class="mt-3" progress={toolProgress} what="yt-dlp" testid="ytdlp-update-progress" />
     {/if}
     {#if toolError}<p class="accent-text mt-1" role="alert">{toolError}</p>{/if}
     <div class="mt-2 flex flex-wrap gap-2">

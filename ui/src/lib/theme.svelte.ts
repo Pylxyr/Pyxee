@@ -1,5 +1,5 @@
 import type { Backend } from './backend';
-import { accentFromImage, paletteFromArt } from './color';
+import { accentFromImage, paletteFromArt, windowTint, type WindowTint } from './color';
 import {
   BUILTIN_THEMES, DEFAULT_DARK_ID, DEFAULT_LIGHT_ID, MAX_CUSTOM_THEMES, sanitizeTheme, themeVars,
   type ThemeColors, type ThemeDef,
@@ -168,6 +168,11 @@ export class ThemeStore {
     while (this.all.some((t) => t.id === id));
     return id;
   }
+
+  /** The colours for the native window frame, while the palette comes from the cover; `null` leaves the system's. */
+  nativeTint = $derived<WindowTint | null>(
+    this.settings.dynamicColor && this.art && !this.preview ? windowTint(this.colors) : null,
+  );
 
   /** Writes the active theme onto <html> so the CSS variables take over. */
   apply(root: HTMLElement) {

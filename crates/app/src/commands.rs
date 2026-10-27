@@ -310,6 +310,25 @@ pub fn set_window_theme(window: tauri::WebviewWindow, theme: Option<String>) -> 
         .map_err(|e| e.to_string())
 }
 
+/// Colours the window's border (and the Windows title bar and its text) like the cover-tinted theme: `#rrggbb`
+/// values, or `None` to give a part back to the system.
+#[tauri::command]
+pub fn set_window_tint(
+    window: tauri::WebviewWindow,
+    border: Option<String>,
+    caption: Option<String>,
+    text: Option<String>,
+) -> Result<(), String> {
+    let parse = |v: Option<String>| match v {
+        None => Ok(None),
+        Some(hex) => crate::window::colorref(&hex)
+            .map(Some)
+            .ok_or_else(|| format!("not a #rrggbb colour: {hex}")),
+    };
+    crate::window::set_tint(&window, parse(border)?, parse(caption)?, parse(text)?);
+    Ok(())
+}
+
 fn parse_window_theme(theme: Option<&str>) -> Result<Option<tauri::Theme>, String> {
     match theme {
         None => Ok(None),

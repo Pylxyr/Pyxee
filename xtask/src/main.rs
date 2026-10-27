@@ -6,8 +6,8 @@
 mod release;
 
 use release::{
-    bundles_for, check_portable_entries, portable_entries, portable_folder_name, portable_zip_name,
-    redacted, signed_tauri_config, unsigned_notice, write_zip, zip_names, Cert, Signing,
+    check_portable_entries, portable_entries, portable_folder_name, portable_zip_name, redacted,
+    signed_tauri_config, unsigned_notice, write_zip, zip_names, Cert, Signing, BUNDLES,
     PORTABLE_MARKER, PORTABLE_README,
 };
 use sha2::{Digest, Sha256};
@@ -77,7 +77,7 @@ pub fn verify(what: &str, bytes: &[u8], expected: &str) -> Res<()> {
     if got == expected.to_ascii_lowercase() {
         Ok(())
     } else {
-        Err(format!("{what}: checksum mismatch (expected {expected}, got {got}). The download is corrupt or was tampered with; nothing was installed."))
+        Err(format!("{what}: checksum mismatch (expected {expected}, got {got}). The download is corrupt or is not the file the release lists; nothing was installed."))
     }
 }
 
@@ -601,7 +601,7 @@ fn installer() -> Res<()> {
             .args([
                 "build",
                 "--bundles",
-                bundles_for(env!("CARGO_PKG_VERSION")),
+                BUNDLES,
                 "--config",
             ])
             .arg(&conf)
@@ -611,16 +611,13 @@ fn installer() -> Res<()> {
     let bundle = p.root.join("target/release/bundle");
     println!("\nInstallers are in {}:", bundle.display());
     let mut built = Vec::new();
-    for sub in ["nsis", "msi"] {
-        if let Ok(rd) = std::fs::read_dir(bundle.join(sub)) {
-            for e in rd.flatten().filter(|e| {
-                e.path()
-                    .extension()
-                    .is_some_and(|x| x == "exe" || x == "msi")
-            }) {
-                println!("  {}", e.path().display());
-                built.push(e.path());
-            }
+    if let Ok(rd) = std::fs::read_dir(bundle.join("nsis")) {
+        for e in rd
+            .flatten()
+            .filter(|e| e.path().extension().is_some_and(|x| x == "exe"))
+        {
+            println!("  {}", e.path().display());
+            built.push(e.path());
         }
     }
     if p.signing.is_some() {

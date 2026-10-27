@@ -174,6 +174,8 @@ fn main() {
                 data_dir.as_ref().map(|d| d.join("shell.json")),
             ));
             runner::spawn(app.handle().clone(), rx);
+            // Installers that earlier updates downloaded are no longer needed.
+            std::thread::spawn(updater::clear_leftovers);
             shell::init(app.handle(), &std::env::args().collect::<Vec<_>>());
             Ok(())
         })
@@ -222,6 +224,7 @@ fn main() {
             advanced::env_get,
             advanced::env_set,
             commands::set_window_theme,
+            commands::set_window_tint,
             shell::commands::lyrics_get,
             shell::commands::cover_bytes,
             shell::commands::sleep_set,

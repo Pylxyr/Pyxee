@@ -912,7 +912,7 @@ if ($Installer) {
   # An ffmpeg program or a libav DLL (libav is linked in statically). FFmpeg-LGPL-2.1.txt is meant to be there.
   $leak = @(Get-ChildItem $rel -Recurse -File -ErrorAction SilentlyContinue | Where-Object { $_.Name -match '^(ffmpeg|ffprobe|ffplay)\.exe$|^(avcodec|avformat|avutil|swresample)(-\d+)?\.dll$' -and $_.FullName -notlike "*\deps\*" -and $_.FullName -notlike "*\build\*" })
   if ($leak.Count -eq 0) { Add-Result 'PASS' 'installer-has-no-ffmpeg' 'no ffmpeg program or libav DLL under target\release' } else { Add-Result 'FAIL' 'installer-has-no-ffmpeg' (($leak | ForEach-Object { $_.Name }) -join ', ') }
-  $setup = @(Get-ChildItem (Join-Path $rel 'bundle') -Recurse -Include '*.exe', '*.msi' -ErrorAction SilentlyContinue)
+  $setup = @(Get-ChildItem (Join-Path $rel 'bundle') -Recurse -Include '*.exe' -ErrorAction SilentlyContinue)
   foreach ($s in $setup) { Add-Result 'INFO' 'installer-file' ("{0}  {1:N1} MB" -f $s.Name, ($s.Length / 1MB)) }
   Add-TripResult 'installer-build' $before
   # F8: the installer carries Microsoft's WebView2 bootstrapper in non-silent mode. Its progress window only shows on a PC

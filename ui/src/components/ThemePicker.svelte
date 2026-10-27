@@ -50,7 +50,7 @@
     {#each g.items as t (t.id)}
       <button class="theme-chip" aria-label={t.name} aria-pressed={active === t.id} title={t.description ?? 'Custom theme'} onclick={() => theme.select(t.id)}>
         <span class="flex shrink-0 overflow-hidden r-full border border-line" aria-hidden="true">
-          {#each swatches(t) as c}<span class="h-5 w-2.5" style="background:{c}"></span>{/each}
+          {#each swatches(t) as c, i (i)}<span class="h-5 w-2.5" style="background:{c}"></span>{/each}
         </span>
         <span class="min-w-0 leading-tight">{t.name}</span>
       </button>

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { contrast, paletteFromArt } from './color';
+import { contrast, mixHex, paletteFromArt, windowTint } from './color';
 import { ThemeStore } from './theme.svelte';
 import { BUILTIN_THEMES, MAX_CUSTOM_THEMES, contrastChecks, type ThemeDef } from './themes';
 
@@ -97,11 +97,44 @@ describe('ThemeStore', () => {
   });
 
   it('a palette from any cover colour reads, in both schemes', () => {
-    for (const art of ['#ff0000', '#00ff00', '#0000ff', '#fff200', '#808080', '#101030', '#f5e6c8', '#d9c9b0']) {
+    for (const art of ['#ff0000', '#00ff00', '#0000ff', '#fff200', '#808080', '#101030', '#f5e6c8', '#d9c9b0', '#e03060', '#00ffd0', '#7a2cff', '#ff7a00']) {
       for (const scheme of ['dark', 'light'] as const) {
         expect(contrastChecks(paletteFromArt(art, scheme)).filter((c) => !c.ok), `${art} ${scheme}`).toEqual([]);
       }
     }
+  });
+
+  it('a coloured cover tints the surfaces clearly: deep in dark mode, pale in light mode, grey stays grey', () => {
+    const dark = paletteFromArt('#e03060', 'dark');
+    const light = paletteFromArt('#e03060', 'light');
+    expect(contrast(dark.bg, '#000000')).toBeGreaterThan(1.3);
+    expect(contrast(dark.bg, '#000000')).toBeLessThan(3);
+    expect(contrast(light.bg, '#ffffff')).toBeGreaterThan(1.05);
+    expect(contrast(light.bg, '#ffffff')).toBeLessThan(1.5);
+    expect(contrast(dark.fg, dark.surface2)).toBeGreaterThanOrEqual(7);
+    expect(contrast(light.fg, light.surface2)).toBeGreaterThanOrEqual(7);
+    const grey = paletteFromArt('#808080', 'dark');
+    expect(grey.bg.slice(1, 3)).toBe(grey.bg.slice(3, 5));
+    expect(grey.bg.slice(3, 5)).toBe(grey.bg.slice(5, 7));
+  });
+
+  it('the native window takes a border and title bar colour from the palette only while the cover colours the app', () => {
+    const t = new ThemeStore(memory(), fakeMq(true).mq);
+    t.art = '#e03060';
+    expect(t.nativeTint).toBeNull();
+    t.update({ dynamicColor: true });
+    expect(t.nativeTint).toEqual(windowTint(t.colors));
+    expect(t.nativeTint?.caption).toBe(t.colors.bg);
+    expect(t.nativeTint?.text).toBe(t.colors.fg);
+    expect(t.nativeTint?.border).not.toBe(t.colors.line);
+    t.art = null;
+    expect(t.nativeTint).toBeNull();
+  });
+
+  it('mixes two colours', () => {
+    expect(mixHex('#000000', '#ffffff', 0)).toBe('#000000');
+    expect(mixHex('#000000', '#ffffff', 1)).toBe('#ffffff');
+    expect(mixHex('#000000', '#ffffff', 0.5)).toMatch(/^#(7f|80){3}$/);
   });
 
   it('writes the scheme, backdrop and every colour to the root element', () => {

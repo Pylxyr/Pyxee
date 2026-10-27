@@ -174,34 +174,61 @@ function fromHsl(h: number, s: number, l: number): string {
 
 const clamp = (n: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, n));
 
+/** `a` moved `t` (0-1) of the way to `b`, in sRGB. */
+export function mixHex(a: string, b: string, t: number): string {
+  const [ar, ag, ab] = parseHex(a);
+  const [br, bg, bb] = parseHex(b);
+  return toHex(ar + (br - ar) * t, ag + (bg - ag) * t, ab + (bb - ab) * t);
+}
+
+/** How much of a cover's colour the surfaces take: a grey cover stays grey, a coloured one is clearly tinted. */
+const surfaceTint = (s: number, ceiling: number) => (s < 0.08 ? s : clamp(s * 0.8, 0.22, ceiling));
+
 /**
- * A whole theme from one colour (the cover's): background, panels, lines, text and accent all take its hue. Dark or
- * light follows `scheme`. The text and the accent are nudged until they read, as the built-in themes do.
+ * A whole theme from one colour (the cover's): background, panels, lines, text and accent all take its hue, and the
+ * surfaces are visibly tinted by it. Dark or light follows `scheme`: a deep shade of the colour in dark mode, a pale
+ * one in light mode. The text and the accent are nudged until they read on the background and on the raised panels,
+ * as the built-in themes do.
  */
 export function paletteFromArt(art: string, scheme: 'dark' | 'light'): ThemeColors {
   const [h, s, l] = toHsl(art);
   if (scheme === 'dark') {
-    const n = clamp(s * 0.45, 0.1, 0.4);
-    const bg = fromHsl(h, n, 0.075);
+    const n = surfaceTint(s, 0.6);
+    const bg = fromHsl(h, n, 0.115);
+    const surface = fromHsl(h, n, 0.155);
+    const surface2 = fromHsl(h, n, 0.21);
     return {
       bg,
-      surface: fromHsl(h, n, 0.115),
-      surface2: fromHsl(h, n, 0.165),
-      line: fromHsl(h, n * 0.9, 0.23),
-      fg: fromHsl(h, n * 0.5, 0.94),
-      muted: ensureContrastOn(fromHsl(h, n * 0.8, 0.66), bg, 'dark', 4.5),
-      accent: ensureContrastOn(fromHsl(h, clamp(s, 0.55, 0.95), clamp(l, 0.55, 0.72)), bg, 'dark', 3),
+      surface,
+      surface2,
+      line: fromHsl(h, n * 0.9, 0.3),
+      fg: fromHsl(h, n * 0.4, 0.95),
+      muted: ensureContrastOn(fromHsl(h, n * 0.8, 0.7), surface2, 'dark', 4.5),
+      accent: ensureContrastOn(fromHsl(h, clamp(s, 0.6, 0.95), clamp(l, 0.58, 0.74)), surface2, 'dark', 3),
     };
   }
-  const n = clamp(s * 0.35, 0.08, 0.3);
-  const bg = fromHsl(h, n, 0.955);
+  const n = surfaceTint(s, 0.5);
+  const bg = fromHsl(h, n, 0.935);
+  const surface = fromHsl(h, n, 0.9);
+  const surface2 = fromHsl(h, n, 0.855);
   return {
     bg,
-    surface: fromHsl(h, n, 0.925),
-    surface2: fromHsl(h, n, 0.885),
-    line: fromHsl(h, n * 0.9, 0.8),
+    surface,
+    surface2,
+    line: fromHsl(h, n * 0.9, 0.72),
     fg: fromHsl(h, n * 0.6, 0.1),
-    muted: ensureContrastOn(fromHsl(h, n * 0.7, 0.36), bg, 'light', 4.5),
-    accent: ensureContrastOn(fromHsl(h, clamp(s, 0.55, 0.95), clamp(l, 0.3, 0.42)), bg, 'light', 3),
+    muted: ensureContrastOn(fromHsl(h, n * 0.7, 0.34), surface2, 'light', 4.5),
+    accent: ensureContrastOn(fromHsl(h, clamp(s, 0.6, 0.95), clamp(l, 0.28, 0.4)), surface2, 'light', 3),
   };
+}
+
+/** What the native window frame wears: its border, and (with the Windows title bar) the bar and its text. */
+export interface WindowTint {
+  border: string;
+  caption: string;
+  text: string;
+}
+
+export function windowTint(c: ThemeColors): WindowTint {
+  return { border: mixHex(c.line, c.accent, 0.55), caption: c.bg, text: c.fg };
 }

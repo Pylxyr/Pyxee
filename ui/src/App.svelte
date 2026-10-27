@@ -79,6 +79,12 @@
     if (player.ready) void backendRef?.setWindowTheme(wanted);
   });
 
+  // With "Color from album art" the native window border (and the Windows title bar) wear the cover's colour too.
+  $effect(() => {
+    const tint = theme.nativeTint;
+    if (player.ready) void backendRef?.setWindowTint(tint);
+  });
+
   // Overlays start below the title bar, not over it, so its buttons stay usable.
   $effect(() => {
     document.documentElement.toggleAttribute('data-titlebar', showTitleBar);

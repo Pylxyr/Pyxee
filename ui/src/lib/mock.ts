@@ -1,3 +1,4 @@
+import type { WindowTint } from './color';
 import type { Backend } from './backend';
 import { MockLibrary } from './mock-library';
 import type { CommandDto } from './bindings/CommandDto';
@@ -81,6 +82,9 @@ export class MockBackend extends MockLibrary implements Backend {
   /** The last window theme the UI asked for (`null` = follow the system), so tests can check it arrived. */
   windowTheme: 'dark' | 'light' | null | undefined = undefined;
   async setWindowTheme(theme: 'dark' | 'light' | null) { this.windowTheme = theme; }
+  /** The last native window tint the UI asked for (`null` = the system's), so tests can check it arrived. */
+  windowTint: WindowTint | null | undefined = undefined;
+  async setWindowTint(tint: WindowTint | null) { this.windowTint = tint; }
   /** The last volume the UI asked for (0-100), so tests can check it arrived. */
   volume = 100;
   async setVolume(percent: number) { this.volume = percent; }

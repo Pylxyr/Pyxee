@@ -164,38 +164,49 @@ button {
 }
 
 /*
- * Scroll bars: thin, rounded, tinted from the text colour so they follow every theme (and Mica's veil). Quiet at rest,
- * clearer when the pointer is over the list, accent while dragged. WebView2 is Chromium, so the -webkit- parts apply;
- * the standard properties cover any engine that ignores them. Lists with this look: Queue, Now Playing, pages, sheets.
+ * Scroll bars, drawn to match the app: a slim rounded thumb tinted from the text colour at rest, so it follows every
+ * theme (and Mica's veil); over a list it takes the accent and grows, over the thumb itself it grows again, and while
+ * dragged it is the full accent. Native scrolling is kept (wheel, touch pad, keyboard, drag), only the look is ours.
+ * WebView2 is Chromium: since Chrome 121 `scrollbar-width` and `scrollbar-color` replace the -webkit- parts wherever
+ * they are set, so the standard properties are only used by an engine that has no -webkit- scroll bars at all.
  */
-* {
-  scrollbar-width: thin;
-  scrollbar-color: color-mix(in srgb, var(--fg) 22%, transparent) transparent;
+@supports not selector(::-webkit-scrollbar) {
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: color-mix(in srgb, var(--accent) 45%, transparent) transparent;
+  }
 }
 ::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
+  width: 14px;
+  height: 14px;
 }
 ::-webkit-scrollbar-track,
 ::-webkit-scrollbar-corner {
   background: transparent;
 }
+::-webkit-scrollbar-track:hover {
+  background: color-mix(in srgb, var(--fg) 6%, transparent);
+}
 ::-webkit-scrollbar-thumb {
-  min-height: 36px;
-  border: 3px solid transparent;
+  min-width: 40px;
+  min-height: 40px;
+  border: 5px solid transparent;
   border-radius: 999px;
-  background: color-mix(in srgb, var(--fg) 20%, transparent);
+  background: color-mix(in srgb, var(--fg) 24%, transparent);
   background-clip: content-box;
 }
 :hover::-webkit-scrollbar-thumb {
-  background: color-mix(in srgb, var(--fg) 34%, transparent);
+  border-width: 4px;
+  background: color-mix(in srgb, var(--accent) 42%, transparent);
   background-clip: content-box;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: color-mix(in srgb, var(--fg) 52%, transparent);
+  border-width: 3px;
+  background: color-mix(in srgb, var(--accent) 72%, transparent);
   background-clip: content-box;
 }
 ::-webkit-scrollbar-thumb:active {
+  border-width: 3px;
   background: var(--accent);
   background-clip: content-box;
 }
@@ -423,6 +434,70 @@ input[type='range'].slider:active {
   }
 }
 
+/* Update progress: the same track as the seek bar, filled with the accent. The fill glides between the events;
+   when the size is not known a band of accent slides across instead of a made-up percentage. */
+.uprog {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.uprog-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 0.8125rem;
+  color: var(--fg);
+}
+.uprog-pct,
+.uprog-amount {
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+}
+.uprog-pct {
+  color: var(--fg);
+  font-weight: 600;
+}
+.uprog-amount {
+  margin: 0;
+  font-size: 0.75rem;
+}
+.uprog-track {
+  position: relative;
+  height: 6px;
+  overflow: hidden;
+  border-radius: 3px;
+  background: var(--surface-2);
+  box-shadow: inset 0 0 0 1px var(--rule);
+}
+.uprog-fill {
+  height: 100%;
+  width: var(--pct);
+  min-width: 6px;
+  border-radius: inherit;
+  background: var(--accent);
+  box-shadow: 0 0 10px var(--glow);
+  transition: width 260ms linear;
+}
+.uprog-track.indeterminate .uprog-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 38%;
+  min-width: 0;
+  background: linear-gradient(90deg, transparent, var(--accent) 40%, var(--accent) 60%, transparent);
+  box-shadow: none;
+  transition: none;
+  animation: uprog-slide 1.3s var(--ease) infinite;
+}
+@keyframes uprog-slide {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(263%);
+  }
+}
+
 @keyframes eq {
   0%,
   100% {
@@ -437,6 +512,7 @@ input[type='range'].slider:active {
 @media (prefers-reduced-motion: reduce) {
   .skeleton::after,
   .seek-unknown,
+  .uprog-track.indeterminate .uprog-fill,
   .eq i,
   .spinner,
   .route-in,
@@ -459,8 +535,15 @@ input[type='range'].slider:active {
     --dur-slow: 0ms;
     transition: none;
   }
-  input[type='range'].slider {
+  input[type='range'].slider,
+  .uprog-fill {
     transition: none;
+  }
+  /* A band frozen at the left would read as "38% done": with no motion, the whole track is dimly filled instead. */
+  .uprog-track.indeterminate .uprog-fill {
+    width: 100%;
+    background: var(--accent);
+    opacity: 0.35;
   }
   .tab-indicator {
     transition: none !important;

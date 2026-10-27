@@ -1,4 +1,5 @@
 import type { CommandDto } from './bindings/CommandDto';
+import type { WindowTint } from './color';
 import type { AddResultDto } from './bindings/AddResultDto';
 import type { ExploreShelfDto } from './bindings/ExploreShelfDto';
 import type { GenreDto } from './bindings/GenreDto';
@@ -67,6 +68,8 @@ export interface Backend extends LibraryBackend {
   setVolume(percent: number): Promise<void>;
   /** Makes the native window frame and backdrop follow the chosen theme; `null` follows the system again. */
   setWindowTheme(theme: 'dark' | 'light' | null): Promise<void>;
+  /** Colours the native window's border (and the Windows title bar) like the cover-tinted theme; `null` goes back to the system's. */
+  setWindowTint(tint: WindowTint | null): Promise<void>;
   /** Where the log file is, for the Diagnostics section. */
   logInfo(): Promise<LogInfoDto>;
   openLogFolder(): Promise<void>;
@@ -145,6 +148,12 @@ export async function tauriBackend(): Promise<Backend> {
     windowInfo: () => invoke<WindowInfoDto>('window_info'),
     setVolume: (percent) => invoke<void>('set_volume', { percent: Math.round(percent) }),
     setWindowTheme: (theme) => invoke<void>('set_window_theme', { theme }).catch(() => {}),
+    setWindowTint: (tint) =>
+      invoke<void>('set_window_tint', {
+        border: tint?.border ?? null,
+        caption: tint?.caption ?? null,
+        text: tint?.text ?? null,
+      }).catch(() => {}),
     logInfo: () => invoke<LogInfoDto>('get_log_info'),
     openLogFolder: () => invoke<void>('open_log_folder'),
     envGet: () => invoke<EnvSettingsDto>('env_get'),

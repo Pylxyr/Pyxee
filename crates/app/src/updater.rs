@@ -263,6 +263,27 @@ fn check_app_blocking() -> Result<AppUpdateDto, String> {
 }
 
 /// Downloads and verifies the installer; returns where it is and the checksum it was verified against.
+/// Where downloaded installers wait to be started.
+fn update_dir() -> PathBuf {
+    std::env::temp_dir().join("pyxee-update")
+}
+
+/// Empties `dir` (and removes it). A file that is still in use, such as an installer that is only now finishing,
+/// stays; it goes the next time.
+fn clear_dir(dir: &Path) {
+    if let Err(e) = std::fs::remove_dir_all(dir) {
+        if e.kind() != std::io::ErrorKind::NotFound {
+            log::debug!("update: could not clear {}: {e}", dir.display());
+        }
+    }
+}
+
+/// Removes the installers earlier updates downloaded. Run once at start-up: by then the installer that started
+/// this copy has done its work.
+pub fn clear_leftovers() {
+    clear_dir(&update_dir());
+}
+
 fn fetch_installer(app: &AppHandle) -> Result<(PathBuf, String), String> {
     if portable_dir().is_some() {
         return Err("This is a portable copy: download the new zip from the release page and unpack it over this folder (your data folder stays).".into());
@@ -297,7 +318,9 @@ fn fetch_installer(app: &AppHandle) -> Result<(PathBuf, String), String> {
         Some(size),
     );
     update::verify(&bytes, &expected).map_err(|e| e.to_string())?;
-    let dir = std::env::temp_dir().join("pyxee-update");
+    let dir = update_dir();
+    // Whatever an earlier update left here goes first, so only this installer is kept.
+    clear_dir(&dir);
     std::fs::create_dir_all(&dir)
         .map_err(|e| format!("Could not create {}: {e}", dir.display()))?;
     // The name comes from the release; keep only its file name so it can never point outside the folder.
@@ -394,17 +417,8 @@ fn recheck_installer(path: &Path, expected: &str) -> Result<(), String> {
 
 fn launch_installer(path: &Path, expected: &str) -> Result<(), String> {
     recheck_installer(path, expected)?;
-    let msi = path
-        .extension()
-        .is_some_and(|e| e.eq_ignore_ascii_case("msi"));
-    let mut cmd = if msi {
-        let mut c = Command::new("msiexec");
-        c.arg("/i").arg(path);
-        c
-    } else {
-        Command::new(path)
-    };
-    cmd.spawn()
+    Command::new(path)
+        .spawn()
         .map(|_| ())
         .map_err(|e| format!("Could not start the installer: {e}"))
 }
@@ -576,6 +590,16 @@ mod tests {
     }
 
     use super::*;
+
+    #[test]
+    fn clearing_the_update_folder_removes_what_is_in_it_and_is_fine_when_it_is_not_there() {
+        let dir = std::env::temp_dir().join(format!("pyxee-clear-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("Pyxee_0.1.0_x64-setup.exe"), b"MZ").unwrap();
+        clear_dir(&dir);
+        assert!(!dir.exists());
+        clear_dir(&dir); // nothing there: no error, no panic
+    }
 
     #[test]
     fn only_https_addresses_are_fetched() {

@@ -13,6 +13,8 @@
   let backend = $state.raw<Backend | null>(null);
   void booted.then((b) => (backend = b));
   followArt(() => player.shown?.track.thumbnail ?? null, () => backend);
+  // This window's own border takes the cover's colour too.
+  $effect(() => void backend?.setWindowTint(theme.nativeTint));
 </script>
 
 <!-- The whole card drags the window; the buttons stay clickable because they are not part of the drag region. -->

@@ -14,10 +14,17 @@
   const liked = $derived(library.isLiked(track.key));
   // The song that is playing is marked in every list it appears in, not only in the queue.
   const current = $derived(player.shown?.track.key === track.key);
+
+  // Right-click (or the menu key) anywhere on the row opens the same menu as its "more" button.
+  function openMenu(e: MouseEvent) {
+    e.preventDefault();
+    nav.menuTrack = track;
+  }
 </script>
 
 <!-- A table row: place, small cover, title, artist (its own column when the list is wide), length. -->
-<li class="trow" data-current={current}>
+<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+<li class="trow" data-current={current} oncontextmenu={openMenu}>
   <button class="trow-main" onclick={onplay}>
     <span class="trow-idx" aria-hidden="true">
       {#if current}

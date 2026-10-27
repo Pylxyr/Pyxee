@@ -78,7 +78,7 @@ cargo xtask installer
 ```
 Downloads the tools if missing, builds the UI, then runs `tauri build` with `crates/app/tauri.bundle.conf.json`, which
 bundles yt-dlp as a sidecar (installed next to `pyxee-app.exe`) and the licence notices, and makes the installer
-download the WebView2 runtime when a machine lacks it. Installers (NSIS `.exe` and `.msi`) end up in `target/release/bundle/`.
+download the WebView2 runtime when a machine lacks it. The NSIS installer (`.exe`) ends up in `target/release/bundle/`. Its icon and the two pictures it shows (`crates/app/icons/installer/header.bmp` and `sidebar.bmp`) come from the app icon: after changing `icons/icon.png`, run `python scripts/make_installer_art.py` (needs Pillow) and commit the result.
 Until a code-signing certificate is configured they are unsigned, so Windows SmartScreen warns on first run: choose "More info", then "Run anyway". `cargo xtask portable` builds a portable zip (everything stays in a `data` folder beside `Pyxee.exe`). Both are described in `releasing.md`, which also says how signing is switched on.
 
 ## Release

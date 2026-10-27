@@ -2,20 +2,12 @@
 
 use pyxee_core::Persisted;
 use std::fs;
-use std::io::Write;
 use std::path::Path;
 
-/// Writes atomically (temp file + rename) so a crash never leaves a half-written session.
+/// Writes atomically (flushed temp file + rename) so a crash never leaves a half-written session.
 pub fn save(path: &Path, p: &Persisted) -> std::io::Result<()> {
     let json = serde_json::to_vec(p).map_err(std::io::Error::other)?;
-    if let Some(dir) = path.parent() {
-        fs::create_dir_all(dir)?;
-    }
-    let tmp = path.with_extension("json.tmp");
-    let mut f = fs::File::create(&tmp)?;
-    f.write_all(&json)?;
-    f.sync_all()?;
-    fs::rename(&tmp, path)
+    pyxee_shell::atomic::write(path, &json)
 }
 
 /// A missing or unreadable file is not an error: the app just starts empty.

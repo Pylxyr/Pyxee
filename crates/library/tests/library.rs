@@ -389,6 +389,28 @@ fn everything_survives_closing_and_reopening_the_file() {
 }
 
 #[test]
+fn a_library_from_a_newer_version_is_refused_and_left_untouched() {
+    let dir = std::env::temp_dir().join(format!("pyxee-lib-newer-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let path = dir.join("library.db");
+    {
+        let mut l = Library::open(&path).unwrap();
+        l.like(&t("a"), 1).unwrap();
+    }
+    {
+        let raw = rusqlite::Connection::open(&path).unwrap();
+        raw.pragma_update(None, "user_version", 99).unwrap();
+    }
+    let err = Library::open(&path).err().expect("must not open");
+    assert!(matches!(err, LibraryError::NewerVersion { found: 99, .. }), "{err}");
+    assert!(err.to_string().contains("newer Pyxee"), "{err}");
+    let raw = rusqlite::Connection::open(&path).unwrap();
+    let v: i64 = raw.pragma_query_value(None, "user_version", |r| r.get(0)).unwrap();
+    assert_eq!(v, 99, "the file must not be changed");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
 fn a_file_that_is_not_a_database_is_a_clear_error_not_a_panic() {
     let dir = std::env::temp_dir().join(format!("pyxee-lib-bad-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();

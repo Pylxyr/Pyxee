@@ -16,7 +16,7 @@ use std::path::{Path, PathBuf};
 pub enum UpdateError {
     #[error("{0} is not listed in the published checksums, so it was not installed.")]
     NotListed(String),
-    #[error("The download does not match its published checksum (expected {expected}, got {got}). It is corrupt or was tampered with; nothing was installed.")]
+    #[error("The download does not match its published checksum (expected {expected}, got {got}). It is corrupt or is not the file the release lists; nothing was installed.")]
     ChecksumMismatch { expected: String, got: String },
     #[error("The download is not a Windows program; nothing was installed.")]
     NotAnExecutable,
@@ -169,7 +169,8 @@ struct RawAsset {
     browser_download_url: String,
 }
 
-/// The installer to offer: the NSIS `-setup.exe` first, then any other `.exe`, then an `.msi`.
+/// The installer to offer: the NSIS `-setup.exe` first, then any other `.exe`. Releases carry no MSI any more, and an
+/// MSI left on an older release is not offered.
 fn pick_installer(assets: &[RawAsset]) -> Option<Asset> {
     let find = |f: &dyn Fn(&str) -> bool| {
         assets
@@ -182,7 +183,6 @@ fn pick_installer(assets: &[RawAsset]) -> Option<Asset> {
     };
     find(&|n| n.ends_with("-setup.exe"))
         .or_else(|| find(&|n| n.ends_with(".exe")))
-        .or_else(|| find(&|n| n.ends_with(".msi")))
 }
 
 /// Picks the newest release from GitHub's `/releases` list. Drafts never count; pre-releases count only when
@@ -390,8 +390,8 @@ pub trait SignatureChecker {
 /// What the publisher check decided.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PublisherCheck {
-    /// The running program is not validly signed, so there is no publisher to compare with: the checksum alone
-    /// decides, exactly as before signing existed.
+    /// The running program is known not to be validly signed, so there is no publisher to compare with: the
+    /// checksum alone decides, exactly as before signing existed.
     NotRequired,
     /// The running program is validly signed and the installer is validly signed by the same subject.
     Matched { subject: String },
@@ -417,7 +417,16 @@ pub fn check_publisher(
 ) -> Result<PublisherCheck, UpdateError> {
     let expected = match checker.signature(running) {
         Ok(Signature::Valid { subject }) => subject,
-        Ok(_) | Err(_) => return Ok(PublisherCheck::NotRequired),
+        // Not signed (a portable build, a development build, a copy whose certificate has expired): there is no
+        // publisher to compare with, so the checksum alone decides.
+        Ok(_) => return Ok(PublisherCheck::NotRequired),
+        // Not knowing is not the same as "not signed": a signed copy must not lose its publisher check because
+        // Windows could not be asked. The release page has the installer for anyone this stops.
+        Err(e) => {
+            return Err(UpdateError::SignatureCheck(format!(
+                "this copy's own signature could not be read: {e}"
+            )))
+        }
     };
     match checker.signature(installer) {
         Ok(Signature::Valid { subject }) if same_subject(&subject, &expected) => {
@@ -540,9 +549,18 @@ mod tests {
         assert_eq!(
             r.installer.unwrap().name,
             "Pyxee_0.2.0_x64-setup.exe",
-            "the NSIS installer beats the MSI"
+            "an MSI on an older release is never the one offered"
         );
         assert_eq!(r.sums_url.as_deref(), Some("https://x/020.sums"));
+    }
+
+    #[test]
+    fn a_release_with_only_an_msi_offers_no_installer() {
+        let json = r#"[{"tag_name":"v0.2.0","html_url":"https://x","draft":false,"prerelease":false,"assets":[
+          {"name":"Pyxee_0.2.0_x64_en-US.msi","browser_download_url":"https://x/a.msi"},
+          {"name":"SHA256SUMS.txt","browser_download_url":"https://x/s"}]}]"#;
+        let r = newest_release(json, false).unwrap().unwrap();
+        assert!(r.installer.is_none());
     }
 
     #[test]
@@ -817,11 +835,14 @@ mod tests {
     }
 
     #[test]
-    fn a_running_copy_whose_signature_cannot_be_read_is_treated_as_unsigned() {
-        assert_eq!(
-            gate(&checker(Err("no".into()), valid(ME))),
-            Ok(PublisherCheck::NotRequired)
-        );
+    fn a_running_copy_whose_signature_cannot_be_read_does_not_skip_the_check() {
+        let err = gate(&checker(Err("no".into()), valid(ME))).unwrap_err();
+        assert!(matches!(err, UpdateError::SignatureCheck(_)));
+        assert!(err.to_string().contains("nothing was installed"));
+    }
+
+    #[test]
+    fn a_running_copy_with_an_untrusted_or_missing_signature_has_no_publisher_to_match() {
         assert_eq!(
             gate(&checker(
                 Ok(Signature::Invalid("NotTrusted".into())),

@@ -17,6 +17,8 @@ const QUICK_PICK_WINDOW_DAYS: i64 = 30;
 pub enum LibraryError {
     #[error("The library could not be read or written: {0}")]
     Db(#[from] rusqlite::Error),
+    #[error("This library was made by a newer Pyxee (database version {found}; this one understands up to {supported}). It was left exactly as it is; update Pyxee to use it.")]
+    NewerVersion { found: i64, supported: i64 },
     #[error("Playlist names must be 1 to {MAX_NAME_LEN} characters.")]
     InvalidName,
     #[error("That {0} no longer exists.")]
@@ -91,6 +93,9 @@ pub struct HomeData {
 pub struct Library {
     conn: Connection,
 }
+
+/// The schema version this build understands (`PRAGMA user_version`).
+const SCHEMA_VERSION: i64 = 1;
 
 const SCHEMA_V1: &str = "
 CREATE TABLE tracks (
@@ -194,12 +199,24 @@ impl Library {
 
     fn init(conn: Connection) -> Result<Self> {
         conn.pragma_update(None, "foreign_keys", true)?;
-        let _ = conn.pragma_update(None, "journal_mode", "WAL"); // not supported for in-memory databases
         let version: i64 = conn.pragma_query_value(None, "user_version", |r| r.get(0))?;
+        // A database from a newer Pyxee may have tables and columns this one does not know: writing to it could
+        // damage it, so it is not opened at all (the app then runs on an empty library and says why).
+        if version > SCHEMA_VERSION {
+            return Err(LibraryError::NewerVersion {
+                found: version,
+                supported: SCHEMA_VERSION,
+            });
+        }
+        let _ = conn.pragma_update(None, "journal_mode", "WAL"); // not supported for in-memory databases
         if version < 1 {
-            conn.execute_batch(&format!(
+            if let Err(e) = conn.execute_batch(&format!(
                 "BEGIN; {SCHEMA_V1} PRAGMA user_version = 1; COMMIT;"
-            ))?;
+            )) {
+                // A batch that stops half way leaves its transaction open: close it, so nothing is half made.
+                let _ = conn.execute_batch("ROLLBACK");
+                return Err(e.into());
+            }
         }
         Ok(Self { conn })
     }

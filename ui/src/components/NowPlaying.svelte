@@ -51,7 +51,10 @@
     </div>
 
     <div class="grid min-h-0 w-full flex-1 grid-cols-[minmax(0,1fr)] grid-rows-[auto_minmax(0,1fr)] gap-4 px-6 pb-4 lg:grid-cols-[minmax(0,1fr)_28rem] lg:grid-rows-1 lg:gap-10 lg:pb-8 xl:grid-cols-[minmax(0,1fr)_34rem] 2xl:grid-cols-[minmax(0,1fr)_44rem] 2xl:gap-16 2xl:px-10">
-      <section class="flex min-h-0 flex-col items-center justify-center gap-3 lg:gap-5 lg:overflow-y-auto" data-testid="np-controls">
+      <!-- Centred with auto margins on the first and last child, not `justify-center`: when the window is too short for
+           everything, a centred column overflows at both ends and the top (the cover, the title) is cut off and cannot be
+           scrolled to. With auto margins it centres while there is room and starts at the top when there is not. -->
+      <section class="flex min-h-0 flex-col items-center gap-3 lg:gap-5 lg:overflow-y-auto [&>:first-child]:mt-auto [&>:last-child]:mb-auto" data-testid="np-controls">
         <div class="stage-art aspect-square w-[min(56vw,26vh)] shrink-0 lg:w-[min(22rem,48vh)] xl:w-[min(30rem,50vh)] 2xl:w-[min(40rem,56vh)]" data-testid="np-art">
           <Thumb src={entry.track.thumbnail} seed={entry.track.key} size={352} fill rounded="r-lg" />
         </div>

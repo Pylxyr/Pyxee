@@ -145,7 +145,7 @@ if (Test-Path -LiteralPath $exe) {
 if ($Installer) {
   Step 'cargo xtask installer' { cargo xtask installer }
   $bundle = Join-Path $root 'target\release\bundle'
-  $files = @(Get-ChildItem -LiteralPath $bundle -Recurse -Include *-setup.exe, *.msi -ErrorAction SilentlyContinue)
+  $files = @(Get-ChildItem -LiteralPath $bundle -Recurse -Include *-setup.exe -ErrorAction SilentlyContinue)
   if ($files.Count -gt 0) { foreach ($f in $files) { Add-Result 'PASS' 'installer' $f.FullName } }
   else { Add-Result 'FAIL' 'installer' "no installer found under $bundle" }
 }

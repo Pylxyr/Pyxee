@@ -13,6 +13,8 @@
   let backend = $state.raw<Backend | null>(null);
   void booted.then((b) => (backend = b));
   followArt(() => player.shown?.track.thumbnail ?? null, () => backend);
+  // This window's own border takes the cover's colour too.
+  $effect(() => void backend?.setWindowTint(theme.nativeTint));
 
   // Esc closes it; so does clicking anywhere else (the window hides itself when it loses focus).
   function onkeydown(e: KeyboardEvent) {

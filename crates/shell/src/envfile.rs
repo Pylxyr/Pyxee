@@ -113,12 +113,7 @@ pub fn render(text: &str, values: &[(&str, &str)]) -> String {
     out
 }
 
-/// Writes next to the target and renames over it, so a crash never leaves a half-written file.
+/// Saved through [`crate::atomic::write`], so a crash never leaves a half-written file.
 pub fn write(path: &Path, text: &str) -> std::io::Result<()> {
-    if let Some(dir) = path.parent() {
-        std::fs::create_dir_all(dir)?;
-    }
-    let tmp = path.with_extension("tmp");
-    std::fs::write(&tmp, text)?;
-    std::fs::rename(&tmp, path)
+    crate::atomic::write(path, text.as_bytes())
 }

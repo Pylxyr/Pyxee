@@ -2,6 +2,7 @@
 //! detection, taskbar progress, settings). No Windows or Tauri calls live here, so all of it is tested on any OS.
 
 pub mod anchor;
+pub mod atomic;
 pub mod audiodev;
 pub mod cli;
 pub mod datadir;
