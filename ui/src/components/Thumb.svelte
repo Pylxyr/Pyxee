@@ -1,7 +1,7 @@
 <script lang="ts">
   import { hueFor } from '$lib/format';
   import { network } from '$lib/network.svelte';
-  import { isKnownMissing, isMissingStill, noteMissing, thumbCandidates } from '$lib/thumb';
+  import { deviceSize, isKnownMissing, isMissingStill, noteMissing, thumbCandidates } from '$lib/thumb';
   import { viewport } from '$lib/viewport.svelte';
   import Icon from './Icon.svelte';
 
@@ -19,10 +19,46 @@
   const RETRY_DELAYS = [2_000, 8_000, 30_000];
   viewport.watch();
   network.watch();
-  const candidates = $derived(src ? thumbCandidates(src, size, viewport.dpr).filter((u) => !isKnownMissing(u)) : []);
+  // A box that fills its parent (`fill`) is as big as the layout makes it, which is not `size`: in a window that is
+  // not full screen the grid columns, the player art and the like are smaller. A picture much larger than its box
+  // is shrunk by the browser into something harsh, so the picture is asked for at the size the box really has. The
+  // size is measured by the element itself and only taken over once it has stopped changing (dragging a window edge
+  // does not request a new picture at every step).
+  let boxW = $state(0);
+  let boxH = $state(0);
+  let settled = $state(0);
+  let el = $state<HTMLImageElement | null>(null);
+  $effect(() => {
+    // Where there is no ResizeObserver (a test environment) the nominal `size` is used.
+    if (!fill || !el || typeof ResizeObserver === 'undefined') return;
+    const node = el;
+    const read = () => {
+      boxW = node.clientWidth;
+      boxH = node.clientHeight;
+    };
+    read();
+    const observer = new ResizeObserver(read);
+    observer.observe(node);
+    return () => observer.disconnect();
+  });
+  $effect(() => {
+    const measured = Math.max(boxW, boxH);
+    if (!fill || measured <= 0) return;
+    const timer = setTimeout(() => (settled = measured), 150);
+    return () => clearTimeout(timer);
+  });
+  const wanted = $derived(fill && settled > 0 ? settled : size);
+  const bucket = $derived(deviceSize(wanted, viewport.dpr));
+  const candidates = $derived(src ? thumbCandidates(src, wanted, viewport.dpr).filter((u) => !isKnownMissing(u)) : []);
   const current = $derived(candidates[tried] ?? null);
   // Every candidate has been tried and none gave a picture.
   const gaveUp = $derived(!!src && current === null);
+  // A different size class (the window or layout changed) starts again from the best candidate for it; what is on
+  // screen stays until the new picture has loaded.
+  $effect(() => {
+    bucket;
+    tried = 0;
+  });
   // A different picture (another song in a reused row) starts the search for a working URL again.
   $effect(() => {
     src;
@@ -86,6 +122,7 @@
     decoding="async"
     class="shrink-0 object-cover {rounded} {fill ? 'h-full w-full' : ''}"
     style={fill ? undefined : `width:${size}px;height:${size}px`}
+    bind:this={el}
     onload={onloaded}
     onerror={onfailed}
   />

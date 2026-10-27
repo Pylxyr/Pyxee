@@ -13,7 +13,7 @@ use pyxee_audio::AudioError;
 use pyxee_core::{Command, Effect, EngineEvent, EntryId, Failure, Heard, Track, TrackDetails};
 use pyxee_sources::{MusicSource, SourceError, StreamInfo, StreamMeta, TrackInfo};
 use std::collections::{HashMap, HashSet};
-use std::sync::atomic::AtomicBool;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -144,6 +144,9 @@ pub struct Engine {
     cache: UrlCache,
     /// Bumped by anything that flushes the pipeline; older worker results are stale.
     generation: u64,
+    /// `generation`, readable from the workers: one still waiting for yt-dlp's turn for a song the listener has since
+    /// left drops out of the line instead of running (see `pyxee_sources::gate::abandon_when`).
+    live_generation: Arc<AtomicU64>,
     /// Bumped when the wanted prefetch changes or is cancelled.
     prefetch_token: u64,
     start_id: Option<EntryId>,
@@ -191,6 +194,7 @@ impl Engine {
             work_rx,
             cache: Arc::new(Mutex::new(HashMap::new())),
             generation: 0,
+            live_generation: Arc::new(AtomicU64::new(0)),
             prefetch_token: 0,
             start_id: None,
             start_queued: false,
@@ -235,7 +239,7 @@ impl Engine {
             .as_ref()
             .map(|(id, _)| self.last_heard_ms.get(id).copied().unwrap_or(0));
         let (pipe_tx, pipe_rx) = channel();
-        self.generation += 1;
+        self.bump_generation();
         self.rate = rate;
         self.pipeline = Pipeline::new(rate, pipe_tx, self.volume.clone());
         self.pipe_rx = pipe_rx;
@@ -288,7 +292,7 @@ impl Engine {
             }
             Effect::Stop => {
                 log::info!("stop");
-                self.generation += 1;
+                self.bump_generation();
                 self.current = None;
                 self.known.clear();
                 self.prefetch_req = None;
@@ -324,7 +328,7 @@ impl Engine {
     }
 
     fn start(&mut self, id: EntryId, track: &Track, start_ms: u64, is_seek: bool) {
-        self.generation += 1;
+        self.bump_generation();
         self.pipeline.flush();
         if !is_seek {
             // A new song starts playing even if the previous one was paused.
@@ -349,6 +353,12 @@ impl Engine {
         self.spawn_prepare(id, track.key.clone(), start_ms, Purpose::Start);
     }
 
+    fn bump_generation(&mut self) {
+        self.generation += 1;
+        self.live_generation
+            .store(self.generation, Ordering::SeqCst);
+    }
+
     fn spawn_prefetch(&mut self, id: EntryId, key: String) {
         self.prefetch_token += 1;
         self.offsets.insert(id, 0);
@@ -364,6 +374,7 @@ impl Engine {
             self.pipeline.cancel_token(),
         );
         let (generation, token) = (self.generation, self.prefetch_token);
+        let live = Arc::clone(&self.live_generation);
         thread::spawn(move || {
             let details_tx = tx.clone();
             let on_meta = move |meta: StreamMeta| {
@@ -376,6 +387,14 @@ impl Engine {
                 start_ms,
             };
             let run = || prepare(&*source, &cache, rate, &job, &cancel, &on_meta);
+            // A song the listener skipped while it waited for its turn is not resolved at all: the one they landed on
+            // would otherwise wait behind a yt-dlp run for every song they passed.
+            let run = || {
+                pyxee_sources::gate::abandon_when(
+                    move || live.load(Ordering::SeqCst) != generation,
+                    run,
+                )
+            };
             let result = if purpose == Purpose::Prefetch {
                 pyxee_sources::gate::background(run)
             } else {

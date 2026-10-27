@@ -13,13 +13,17 @@
 //!   The cooldown **doubles** each time the next run after one is rate limited again (up to
 //!   `max_cooldown`), and starts over from `cooldown` after a run that succeeds. A flagged IP is
 //!   therefore probed less and less often instead of every two minutes for as long as it lasts.
-//! * **Newest waiter first.** The engine never cancels a worker for a song the listener has
-//!   already skipped, it only discards the result. Serving the newest request first means the
-//!   song they landed on is resolved before the stale ones, instead of behind all of them.
+//! * **Newest waiter first.** Serving the newest request first means the song the listener landed
+//!   on is resolved before the stale ones, instead of behind all of them.
+//! * **Skipped songs leave the line.** A caller that registered [`abandon_when`] and is still
+//!   waiting leaves the line once the condition holds (the listener moved on), without ever
+//!   running yt-dlp: skipping through songs does not make the one landed on wait behind a run
+//!   for every song passed. A run that has started is never interrupted.
 //!
 //! Each `YtDlpSource` owns its gate (not a global), so tests cannot affect one another.
 
 use crate::SourceError;
+use std::cell::RefCell;
 use std::sync::{Condvar, Mutex, MutexGuard, PoisonError};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -83,6 +87,32 @@ pub fn background<T>(f: impl FnOnce() -> T) -> T {
     }
     let _restore = Restore(CURRENT.with(|c| c.replace(Priority::Background)));
     f()
+}
+
+type Abandon = Box<dyn Fn() -> bool>;
+
+thread_local! {
+    static ABANDON: RefCell<Option<Abandon>> = const { RefCell::new(None) };
+}
+
+/// How often a caller waiting in line looks at its [`abandon_when`] condition.
+const ABANDON_POLL: Duration = Duration::from_millis(100);
+
+/// Runs `f`; a gated run it starts on this thread leaves the line, with an error and without running, when `stale()`
+/// holds while it is still waiting for its turn.
+pub fn abandon_when<T>(stale: impl Fn() -> bool + 'static, f: impl FnOnce() -> T) -> T {
+    struct Restore(Option<Abandon>);
+    impl Drop for Restore {
+        fn drop(&mut self) {
+            ABANDON.with(|a| *a.borrow_mut() = self.0.take());
+        }
+    }
+    let _restore = Restore(ABANDON.with(|a| a.borrow_mut().replace(Box::new(stale))));
+    f()
+}
+
+fn abandoned() -> bool {
+    ABANDON.with(|a| a.borrow().as_ref().is_some_and(|stale| stale()))
 }
 
 fn current_priority() -> Priority {
@@ -261,7 +291,16 @@ impl Gate {
             st.waiting.push((me, current_priority()));
             ahead = st.waiting.len();
             while st.granted != Some(me) {
-                st = self.turn.wait(st).unwrap_or_else(PoisonError::into_inner);
+                let (guard, _) = self
+                    .turn
+                    .wait_timeout(st, ABANDON_POLL)
+                    .unwrap_or_else(PoisonError::into_inner);
+                st = guard;
+                if st.granted != Some(me) && abandoned() {
+                    st.waiting.retain(|(ticket, _)| *ticket != me);
+                    log::debug!("yt-dlp {what} left the line: no longer wanted");
+                    return Err(SourceError::Failed("no longer needed".into()));
+                }
             }
             st.granted = None;
         } else {
@@ -482,6 +521,52 @@ mod tests {
     }
 
     // ---- the gate itself, with real threads and no pacing -----------------------------------
+
+    #[test]
+    fn a_waiting_caller_that_is_no_longer_wanted_leaves_without_running() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+        use std::sync::Arc;
+        let gate = Arc::new(Gate::new(GateConfig::NONE));
+        let stale = Arc::new(AtomicBool::new(false));
+        let ran = Arc::new(AtomicBool::new(false));
+        let (started_tx, started_rx) = std::sync::mpsc::channel::<()>();
+        let (go_tx, go_rx) = std::sync::mpsc::channel::<()>();
+        let holder = {
+            let gate = Arc::clone(&gate);
+            thread::spawn(move || {
+                let _ = gate.run("holder", || {
+                    started_tx.send(()).unwrap();
+                    go_rx.recv().unwrap();
+                    Ok(())
+                });
+            })
+        };
+        started_rx.recv().unwrap();
+        let waiter = {
+            let (gate, stale, ran) = (Arc::clone(&gate), Arc::clone(&stale), Arc::clone(&ran));
+            thread::spawn(move || {
+                abandon_when(
+                    move || stale.load(Ordering::SeqCst),
+                    || {
+                        gate.run("waiter", || {
+                            ran.store(true, Ordering::SeqCst);
+                            Ok(())
+                        })
+                    },
+                )
+            })
+        };
+        while gate.queued() == 0 {
+            thread::sleep(Duration::from_millis(5));
+        }
+        stale.store(true, Ordering::SeqCst);
+        let result = waiter.join().unwrap();
+        assert!(result.is_err());
+        assert!(!ran.load(Ordering::SeqCst), "it never ran yt-dlp");
+        assert_eq!(gate.queued(), 0, "and it left the line");
+        go_tx.send(()).unwrap();
+        holder.join().unwrap();
+    }
 
     #[test]
     fn runs_never_overlap() {

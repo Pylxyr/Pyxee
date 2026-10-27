@@ -25,8 +25,10 @@ export function thumbCandidates(src: string, px: number, dpr = 1): string[] {
   const still = YT_STILL.exec(secure);
   if (still) {
     const [, base, ext] = still;
-    // A square crop of a 16:9 still is as tall as the still: 180 px for mqdefault, 720 for the others.
-    if (size <= 180) return [`${base}mqdefault${ext}`];
+    // A square crop of a 16:9 still is as tall as the still: 180 px for mqdefault, 720 for the others. A 720 px picture
+    // shown in a much smaller box is shrunk by a large factor and looks harsh and jagged, so the small still is kept
+    // up to a box a little larger than it (a mild upscale is soft, not harsh).
+    if (size <= 256) return [`${base}mqdefault${ext}`];
     return [`${base}maxresdefault${ext}`, `${base}hq720${ext}`, `${base}mqdefault${ext}`];
   }
 
