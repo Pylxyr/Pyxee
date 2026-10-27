@@ -7,9 +7,8 @@
   import { library } from '$lib/library.svelte';
   import { prefs } from '$lib/prefs.svelte';
   import { nav } from '$lib/nav.svelte';
-  import { theme } from '$lib/theme.svelte';
+  import { followArt, theme } from '$lib/theme.svelte';
   import { snackbar } from '$lib/snackbar.svelte';
-  import { accentFromImage } from '$lib/color';
   import { actionForKey } from '$lib/shortcuts';
   import { lyricsStore } from '$lib/lyrics.svelte';
   import { relatedStore } from '$lib/related.svelte';
@@ -103,18 +102,8 @@
   // Keep <html> in sync with theme, backdrop and accent.
   $effect(() => theme.apply(document.documentElement));
 
-  // Optional dynamic accent from the current artwork.
-  $effect(() => {
-    const url = player.shown?.track.thumbnail ?? null;
-    if (!theme.settings.dynamicColor || !url) {
-      theme.art = null;
-      return;
-    }
-    let live = true;
-    const backend = library.backend;
-    accentFromImage(url, backend ? (u) => backend.coverBytes(u) : undefined).then((c) => live && (theme.art = c));
-    return () => (live = false);
-  });
+  // "Color from album art": the palette follows the cover of the song that is playing.
+  followArt(() => player.shown?.track.thumbnail ?? null, () => library.backend);
 
   function onkeydown(e: KeyboardEvent) {
     const a = actionForKey(e, {

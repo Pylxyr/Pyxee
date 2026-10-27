@@ -48,8 +48,6 @@ export interface LibraryBackend {
   homeGet(): Promise<HomeDto>;
   /** Songs similar to `key` (for Explore). Rejects with a `SearchErrorDto` like `search` does. */
   relatedGet(key: string, count: number): Promise<TrackDto[]>;
-  /** The shelves of YouTube Music's Explore page (trending songs, new releases...). Rejects with a `SearchErrorDto` like `search` does. */
-  exploreGet(): Promise<ExploreShelfDto[]>;
   /** The genres and moods of YouTube Music's "Moods & genres" page. Rejects with a `SearchErrorDto`. */
   genresGet(): Promise<GenreDto[]>;
   /** The shelves of one genre (`params` from `genresGet`): playlists and songs. Rejects with a `SearchErrorDto`. */
@@ -97,7 +95,7 @@ export interface Backend extends LibraryBackend {
   devCatalog(): Promise<TrackDto[]>;
 
   /** The bytes of a cover (YouTube or Google image hosts only), for the colour of the album art; rejects when it cannot be fetched. */
-  coverBytes(url: string): Promise<number[]>;
+  coverBytes(url: string): Promise<ArrayBuffer>;
   /** Lyrics from LRCLIB; never rejects (a failed lookup is `{ kind: 'error' }`). */
   lyricsGet(track: TrackDto): Promise<LyricsDto>;
   sleepSet(setting: SleepSettingDto): Promise<void>;
@@ -178,12 +176,11 @@ export async function tauriBackend(): Promise<Backend> {
     historyRestore: (items) => invoke<void>('history_restore', { items }),
     homeGet: () => invoke<HomeDto>('home_get'),
     relatedGet: (key, count) => invoke<TrackDto[]>('related_get', { key, count }),
-    exploreGet: () => invoke<ExploreShelfDto[]>('explore_get'),
     genresGet: () => invoke<GenreDto[]>('genres_get'),
     genreGet: (params) => invoke<ExploreShelfDto[]>('genre_get', { params }),
     playlistTracksGet: (id) => invoke<TrackDto[]>('playlist_tracks_get', { id }),
     devCatalog: () => invoke<TrackDto[]>('dev_catalog'),
-    coverBytes: (url) => invoke<number[]>('cover_bytes', { url }),
+    coverBytes: (url) => invoke<ArrayBuffer>('cover_bytes', { url }),
     lyricsGet: (t) =>
       invoke<LyricsDto>('lyrics_get', { key: t.key, title: t.title, artist: t.artist, durationMs: t.durationMs }).catch(
         (e): LyricsDto => ({ kind: 'error', message: messageOf(e) }),

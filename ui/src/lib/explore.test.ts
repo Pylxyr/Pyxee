@@ -1,9 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import type { HistoryItemDto } from './bindings/HistoryItemDto';
 import type { TrackDto } from './bindings/TrackDto';
-import type { AlbumDto } from './bindings/AlbumDto';
 import type { ExploreShelfDto } from './bindings/ExploreShelfDto';
-import { albumQuery, freshTracks, isJunk, jumpBackIn, pickSeeds, shelfTitle, withoutJunk } from './explore';
+import { freshTracks, isJunk, jumpBackIn, pickSeeds, shelfTitle, withoutJunk } from './explore';
 
 const t = (n: number, artist = `Artist ${n}`): TrackDto => ({ key: `k${n}`, title: `Song ${n}`, artist, durationMs: 1000, thumbnail: null });
 const h = (track: TrackDto, playedAt = 1): HistoryItemDto => ({ track, playedAt });
@@ -33,12 +32,6 @@ describe('shelf helpers', () => {
     const seen = new Set(['k1']);
     expect(freshTracks([t(1), t(2), t(2), t(3)], seen).map((x) => x.key)).toEqual(['k2', 'k3']);
     expect(freshTracks([t(3), t(4)], seen).map((x) => x.key)).toEqual(['k4']);
-  });
-  it('an album is searched for by its title and artist, or by its title alone when the artist is unknown', () => {
-    const album = (artist: string): AlbumDto => ({ id: 'MPREb_x', title: ' Night Shift ', artist, thumbnail: null });
-    expect(albumQuery(album('Lowtide'))).toBe('Night Shift Lowtide');
-    expect(albumQuery(album('Unknown artist'))).toBe('Night Shift');
-    expect(albumQuery(album('  '))).toBe('Night Shift');
   });
 });
 

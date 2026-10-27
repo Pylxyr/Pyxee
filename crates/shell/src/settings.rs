@@ -27,7 +27,9 @@ pub struct ShellSettings {
     /// tells a third party what is played. Only does anything when the build has a Last.fm application key and secret
     /// baked in (`PYXEE_LASTFM_API_KEY` and `PYXEE_LASTFM_API_SECRET` at build time).
     pub lastfm_scrobbling: bool,
-    /// The Last.fm session key from signing in, kept so that signing in happens once. Never sent to the window.
+    /// The Last.fm session key from signing in, kept so that signing in happens once. Never sent to the window. It now
+    /// lives in the Windows Credential Manager; this is only where an older version left it (moved on first sight) and
+    /// where it is kept on a system with no such store.
     pub lastfm_session: Option<String>,
     /// The main window has no Windows title bar: Pyxee draws its own slim bar (on by default). Off gives the
     /// window the standard Windows frame.

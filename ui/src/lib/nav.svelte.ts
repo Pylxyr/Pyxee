@@ -39,6 +39,10 @@ class NavStore {
 
   /** Shows a page, sliding it past the old one along the axis the pages are ordered on. */
   #show(route: Route, before?: () => void) {
+    if (route === this.route) {
+      before?.();
+      return;
+    }
     const dir = ORDER.indexOf(route) >= ORDER.indexOf(this.route) ? 1 : -1;
     const host = () => document.querySelector<HTMLElement>('.page-host');
     withViewTransition(

@@ -1,4 +1,5 @@
-import { paletteFromArt } from './color';
+import type { Backend } from './backend';
+import { accentFromImage, paletteFromArt } from './color';
 import {
   BUILTIN_THEMES, DEFAULT_DARK_ID, DEFAULT_LIGHT_ID, MAX_CUSTOM_THEMES, sanitizeTheme, themeVars,
   type ThemeColors, type ThemeDef,
@@ -183,3 +184,24 @@ export const theme = new ThemeStore(
   typeof localStorage !== 'undefined' ? localStorage : null,
   typeof matchMedia === 'function' ? matchMedia('(prefers-color-scheme: dark)') : null,
 );
+
+/**
+ * Keeps `theme.art` in step with the cover of the song that is playing, for "Color from album art". Call it while a
+ * component is being set up: the main window and the small windows (flyout, mini player) all do, so all of them wear the
+ * same palette.
+ */
+export function followArt(thumbnail: () => string | null, backend: () => Backend | null): void {
+  $effect(() => {
+    const url = thumbnail();
+    if (!theme.settings.dynamicColor || !url) {
+      theme.art = null;
+      return;
+    }
+    let live = true;
+    const b = backend();
+    void accentFromImage(url, b ? (u) => b.coverBytes(u) : undefined).then((c) => {
+      if (live) theme.art = c;
+    });
+    return () => (live = false);
+  });
+}

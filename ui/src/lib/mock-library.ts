@@ -162,7 +162,6 @@ export class MockLibrary implements LibraryBackend {
   /** Related songs: the demo backend overrides this; the bare library mock knows no catalogue. */
   async relatedGet(_key: string, _count: number): Promise<TrackDto[]> { return []; }
   /** YouTube Music's Explore shelves: the demo backend overrides this. */
-  async exploreGet(): Promise<ExploreShelfDto[]> { return []; }
   /** Genres, a genre's shelves and a playlist's songs: the demo backend overrides these. */
   async genresGet(): Promise<GenreDto[]> { return []; }
   async genreGet(_params: string): Promise<ExploreShelfDto[]> { return []; }

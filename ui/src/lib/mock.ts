@@ -135,7 +135,7 @@ export class MockBackend extends MockLibrary implements Backend {
   /** Lyrics a test wants for a song key; otherwise demo lines every 5 s. Keys containing "nolyrics" / "instrumental" / "lyricsfail" give those answers. */
   lyricsFor = new Map<string, LyricsDto>();
   lyricsRequests: string[] = [];
-  async coverBytes(): Promise<number[]> {
+  async coverBytes(): Promise<ArrayBuffer> {
     throw new Error('no cover in the demo');
   }
   async lyricsGet(track: TrackDto): Promise<LyricsDto> {
@@ -220,27 +220,6 @@ export class MockBackend extends MockLibrary implements Backend {
     this.relatedCalls.push(key);
     if (this.relatedFailure) throw this.relatedFailure;
     return DEMO_TRACKS.filter((t) => t.key !== key).slice(0, count);
-  }
-  /** Set to make `exploreGet` reject, e.g. `{ kind: 'offline', message: '...' }`. */
-  exploreFailure: unknown = null;
-  exploreCalls = 0;
-  /** What `exploreGet` answers; the default is a songs shelf and an albums shelf, like YouTube Music's Explore page. */
-  exploreShelves: ExploreShelfDto[] = [
-    { kind: 'songs', id: 'explore-1', title: 'Trending', tracks: DEMO_TRACKS.slice(0, 4) },
-    {
-      kind: 'albums',
-      id: 'explore-2',
-      title: 'New albums & singles',
-      albums: [
-        { id: 'MPREb_demo1', title: 'Night Shift', artist: 'Lowtide', thumbnail: null },
-        { id: 'MPREb_demo2', title: 'Tidal', artist: 'Kestrel Hall', thumbnail: null },
-      ],
-    },
-  ];
-  async exploreGet(): Promise<ExploreShelfDto[]> {
-    this.exploreCalls++;
-    if (this.exploreFailure) throw this.exploreFailure;
-    return clone(this.exploreShelves);
   }
   /** Set to make `genresGet`, `genreGet` or `playlistTracksGet` reject, e.g. `{ kind: 'offline', message: '...' }`. */
   genreFailure: unknown = null;

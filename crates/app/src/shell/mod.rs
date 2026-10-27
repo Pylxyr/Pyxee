@@ -222,9 +222,10 @@ pub fn sync_discord(app: &AppHandle) {
 /// Safe to call at any time.
 pub fn sync_lastfm(app: &AppHandle, announce: bool) {
     let shell = app.state::<ShellState>();
-    let (want, session) = shell.settings.lock().map_or((false, None), |s| {
+    let (want, legacy) = shell.settings.lock().map_or((false, None), |s| {
         (s.lastfm_scrobbling, s.lastfm_session.clone())
     });
+    let session = lastfm_session(app, legacy);
     let mut refused = None;
     let stopped = {
         let Ok(mut slot) = shell.lastfm.lock() else {
@@ -275,12 +276,40 @@ fn on_lastfm_event(app: &AppHandle, e: lastfm::Event) {
     }
 }
 
+/// The saved Last.fm session key, from the Windows Credential Manager. An older version kept it in the settings file:
+/// it is moved into the vault the first time it is seen there, and the file forgets it.
+fn lastfm_session(app: &AppHandle, legacy: Option<String>) -> Option<String> {
+    let Some(key) = legacy else {
+        return lastfm::vault::load();
+    };
+    if lastfm::vault::store(&key).is_ok() {
+        if let Some(shell) = app.try_state::<ShellState>() {
+            if let Ok(mut s) = shell.settings.lock() {
+                s.lastfm_session = None;
+            }
+            shell.save_settings();
+        }
+    }
+    Some(key)
+}
+
 fn set_lastfm_session(app: &AppHandle, key: Option<String>) {
     let Some(shell) = app.try_state::<ShellState>() else {
         return;
     };
+    // The key goes into the vault; only where that is not possible does it stay in the settings file.
+    let in_settings = match key {
+        Some(k) => match lastfm::vault::store(&k) {
+            Ok(()) => None,
+            Err(_) => Some(k),
+        },
+        None => {
+            lastfm::vault::forget();
+            None
+        }
+    };
     if let Ok(mut s) = shell.settings.lock() {
-        s.lastfm_session = key;
+        s.lastfm_session = in_settings;
     }
     shell.save_settings();
 }
