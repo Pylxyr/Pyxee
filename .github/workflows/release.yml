@@ -183,20 +183,18 @@ jobs:
           "PYXEE_SIGN_CERT_PASSWORD=$env:PFX_PASSWORD" >> $env:GITHUB_ENV
           "PYXEE_REQUIRE_SIGNING=1" >> $env:GITHUB_ENV
           "signed=true" >> $env:GITHUB_OUTPUT
-      # Same as `cargo xtask installer`, with the bundle list chosen here: Windows Installer (MSI) only accepts a
-      # numeric pre-release suffix, so a release candidate such as 0.2.0-rc1 gets the NSIS installer alone.
+      # Same as `cargo xtask installer`: the NSIS installer only.
       - name: Build the installer
         working-directory: crates/app
         shell: pwsh
         run: |
-          $bundles = if ($env:VERSION -match '-') { "nsis" } else { "nsis,msi" }
           # The plain bundle config, or the one that signs everything when a certificate is configured.
           $conf = (cargo xtask signing-config | Select-Object -Last 1)
           if ($LASTEXITCODE -ne 0) { throw "cargo xtask signing-config failed" }
-          & "$env:GITHUB_WORKSPACE/ui/node_modules/.bin/tauri.cmd" build --config $conf --bundles $bundles
+          & "$env:GITHUB_WORKSPACE/ui/node_modules/.bin/tauri.cmd" build --config $conf --bundles nsis
           if ($LASTEXITCODE -ne 0) { throw "tauri build failed ($LASTEXITCODE)" }
           if ($env:PYXEE_SIGN_CERT_FILE) {
-            foreach ($f in @(Get-ChildItem "$env:GITHUB_WORKSPACE/target/release/bundle/nsis/*-setup.exe") + @(Get-ChildItem "$env:GITHUB_WORKSPACE/target/release/bundle/msi/*.msi" -ErrorAction SilentlyContinue)) {
+            foreach ($f in @(Get-ChildItem "$env:GITHUB_WORKSPACE/target/release/bundle/nsis/*-setup.exe")) {
               $st = (Get-AuthenticodeSignature -LiteralPath $f.FullName).Status
               if ($st -ne 'Valid') { throw "$($f.Name) is not validly signed ($st)" }
             }
@@ -242,7 +240,6 @@ jobs:
         run: |
           New-Item -ItemType Directory -Force -Path release | Out-Null
           $files = @(Get-ChildItem "target/release/bundle/nsis/*-setup.exe")
-          if ($env:VERSION -notmatch '-') { $files += @(Get-ChildItem "target/release/bundle/msi/*.msi") }
           $files += @(Get-ChildItem "target/portable/*_x64-portable.zip")
           if ($files.Count -eq 0) { throw "No installers were built" }
           foreach ($f in $files) {
@@ -291,7 +288,7 @@ jobs:
       - name: Checksums
         run: |
           cd release
-          sha256sum $(ls | grep -E '\.(exe|msi|zip)$') > SHA256SUMS.txt
+          sha256sum $(ls | grep -E '\.(exe|zip)$') > SHA256SUMS.txt
           cat SHA256SUMS.txt
       # Needs a public repo, or GitHub Enterprise Cloud for a private one. Never blocks the release.
       - name: Attest build provenance
@@ -301,7 +298,6 @@ jobs:
         with:
           subject-path: |
             release/*.exe
-            release/*.msi
             release/*.zip
       - name: Write release notes
         env:
