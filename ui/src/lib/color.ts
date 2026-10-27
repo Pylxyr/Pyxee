@@ -1,24 +1,35 @@
 import type { ThemeColors } from './themes';
 import { isKnownMissing, isMissingStill, noteMissing, thumbCandidates } from './thumb';
-/** Picks a vivid representative colour from RGBA pixel data (for the optional dynamic accent). */
-export function dominantColor(data: Uint8ClampedArray): string | null {
-  const buckets = new Map<number, { w: number; r: number; g: number; b: number }>();
+type Bucket = { w: number; r: number; g: number; b: number };
+
+/** The heaviest colour bucket of the pixels whose lightness is within [lo, hi]; null when none qualifies. */
+function heaviest(data: Uint8ClampedArray, lo: number, hi: number, greyWeight: number): string | null {
+  const buckets = new Map<number, Bucket>();
   for (let i = 0; i + 3 < data.length; i += 4) {
     const r = data[i]!, g = data[i + 1]!, b = data[i + 2]!, a = data[i + 3]!;
     if (a < 128) continue;
     const max = Math.max(r, g, b), min = Math.min(r, g, b);
     const light = (max + min) / 510;
-    if (light < 0.12 || light > 0.9) continue; // near-black / near-white are poor accents
+    if (light < lo || light > hi) continue;
     const sat = max === min ? 0 : (max - min) / (255 - Math.abs(max + min - 255));
     const key = ((r >> 5) << 6) | ((g >> 5) << 3) | (b >> 5);
-    const weight = 0.15 + sat; // prefer colourful pixels over grey ones
+    const weight = greyWeight + sat; // prefer colourful pixels over grey ones
     const e = buckets.get(key) ?? { w: 0, r: 0, g: 0, b: 0 };
     e.w += weight; e.r += r * weight; e.g += g * weight; e.b += b * weight;
     buckets.set(key, e);
   }
-  let best: { w: number; r: number; g: number; b: number } | null = null;
+  let best: Bucket | null = null;
   for (const e of buckets.values()) if (!best || e.w > best.w) best = e;
   return best ? toHex(best.r / best.w, best.g / best.w, best.b / best.w) : null;
+}
+
+/**
+ * Picks a vivid representative colour from RGBA pixel data (for the optional dynamic accent). Near-black and
+ * near-white pixels are poor accents, so they are left out first; a cover made only of them (a dark or a white
+ * sleeve) would then have no colour at all, so it is read again with those allowed rather than giving up.
+ */
+export function dominantColor(data: Uint8ClampedArray): string | null {
+  return heaviest(data, 0.12, 0.9, 0.15) ?? heaviest(data, 0.03, 0.97, 0.05);
 }
 
 export function toHex(r: number, g: number, b: number): string {
@@ -114,7 +125,9 @@ async function readAccent(url: string, fetchBytes?: (url: string) => Promise<Arr
         noteMissing(candidate);
         continue;
       }
-      return sampleColor(img);
+      const found = sampleColor(img);
+      if (found) return found;
+      continue;
     } catch {
       /* not readable from the page (no CORS answer) or not there: ask the app for the picture */
     }
@@ -126,7 +139,9 @@ async function readAccent(url: string, fetchBytes?: (url: string) => Promise<Arr
           noteMissing(candidate);
           continue;
         }
-        return sampleColor(bitmap);
+        const found = sampleColor(bitmap);
+        if (found) return found;
+        continue;
       } finally {
         bitmap.close();
       }

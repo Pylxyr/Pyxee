@@ -190,6 +190,9 @@ export const theme = new ThemeStore(
  * component is being set up: the main window and the small windows (flyout, mini player) all do, so all of them wear the
  * same palette.
  */
+/** Waits before asking for a cover's colour again after a miss: a picture that did not load a moment ago often does now. */
+export const ART_RETRY_MS = [1500, 4000];
+
 export function followArt(thumbnail: () => string | null, backend: () => Backend | null): void {
   $effect(() => {
     const url = thumbnail();
@@ -198,10 +201,25 @@ export function followArt(thumbnail: () => string | null, backend: () => Backend
       return;
     }
     let live = true;
+    let timer: ReturnType<typeof setTimeout> | undefined;
     const b = backend();
-    void accentFromImage(url, b ? (u) => b.coverBytes(u) : undefined).then((c) => {
-      if (live) theme.art = c;
-    });
-    return () => (live = false);
+    const fetchBytes = b ? (u: string) => b.coverBytes(u) : undefined;
+    const attempt = (n: number) => {
+      void accentFromImage(url, fetchBytes).then((c) => {
+        if (!live) return;
+        if (c) {
+          theme.art = c;
+        } else if (n < ART_RETRY_MS.length) {
+          timer = setTimeout(() => attempt(n + 1), ART_RETRY_MS[n]);
+        } else {
+          theme.art = null;
+        }
+      });
+    };
+    attempt(0);
+    return () => {
+      live = false;
+      clearTimeout(timer);
+    };
   });
 }
