@@ -28,6 +28,7 @@ export const noLibrary: LibraryBackend = {
 /** Diagnostics methods for test backends that do not care about them. */
 export const noDiagnostics = {
   setWindowTheme: async () => {},
+  setWindowTint: async () => {},
   logInfo: async () => ({ dir: '', file: '', error: null }),
   openLogFolder: async () => {},
   onNotice: async () => () => {},
