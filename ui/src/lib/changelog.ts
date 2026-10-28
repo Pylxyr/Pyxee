@@ -67,3 +67,8 @@ export function parseChangelog(markdown: string): ChangelogBlock[] {
   endList();
   return blocks.filter((b) => (b.kind === 'list' ? b.items.some(Boolean) : b.text !== ''));
 }
+
+/** A heading that is only a version number: the sections `Pyxee` adds when an update spans several releases. */
+export function isVersionHeading(text: string): boolean {
+  return /^v?\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/.test(text.trim());
+}

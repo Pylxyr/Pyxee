@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { Backend } from '$lib/backend';
-  import { parseChangelog } from '$lib/changelog';
+  import { isVersionHeading, parseChangelog } from '$lib/changelog';
   import { updates } from '$lib/updates.svelte';
   import Button from './Button.svelte';
   import Sheet from './Sheet.svelte';
@@ -11,17 +11,23 @@
   const info = $derived(updates.info);
   const blocks = $derived(parseChangelog(info?.notes ?? ''));
   const installing = $derived(updates.phase === 'installing');
+  /** How many releases the notes cover, when the update spans more than one (the notes then have a heading each). */
+  const releaseCount = $derived(blocks.filter((b) => b.kind === 'heading' && isVersionHeading(b.text)).length);
 </script>
 
 <Sheet open={updates.changelogOpen && !!info?.available} title="What's new" onclose={() => updates.closeChangelog()}>
   {#if info}
     <p class="t-strong px-3" data-testid="changelog-version">Pyxee {info.latest} is available</p>
-    <p class="muted mt-1 px-3">You have {info.current}.</p>
+    <p class="muted mt-1 px-3">
+      You have {info.current}.{#if releaseCount > 1} Below is what changed in each of the {releaseCount} releases since.{/if}
+    </p>
 
     <div class="well mt-3" data-testid="changelog-notes">
       {#if blocks.length}
         {#each blocks as b, i (i)}
-          {#if b.kind === 'heading'}
+          {#if b.kind === 'heading' && isVersionHeading(b.text)}
+            <h3 class="changelog-release {i > 0 ? 'changelog-release-next' : ''}" data-testid="changelog-release">Pyxee {b.text}</h3>
+          {:else if b.kind === 'heading'}
             <h3 class="t-strong {i > 0 ? 'mt-3' : ''}">{b.text}</h3>
           {:else if b.kind === 'list'}
             <ul class="mt-1 list-disc space-y-1 pl-5">

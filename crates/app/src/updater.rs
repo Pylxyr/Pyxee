@@ -223,12 +223,22 @@ fn text(url: &str) -> Result<String, String> {
 
 // ------------------------------------------------------------------ Pyxee
 
-fn latest_release(current: &str) -> Result<Option<update::Release>, String> {
+/// The newest release, with the changelog of everything since `current` (not only the newest release's own notes: a
+/// copy several versions behind should read what changed in all of them).
+fn latest_release(current: &str) -> Result<Option<(update::Release, String)>, String> {
     let beta = update::Version::parse(current).is_some_and(|v| v.is_prerelease());
+    // 100 is the most GitHub gives in one request; it reaches far back.
     let json = text(&format!(
-        "https://api.github.com/repos/{REPO}/releases?per_page=20"
+        "https://api.github.com/repos/{REPO}/releases?per_page=100"
     ))?;
-    update::newest_release(&json, beta).map_err(|e| e.to_string())
+    let Some(release) = update::newest_release(&json, beta).map_err(|e| e.to_string())? else {
+        return Ok(None);
+    };
+    let notes = update::changelog_since(&json, current, beta)
+        .ok()
+        .filter(|n| !n.is_empty())
+        .unwrap_or_else(|| release.notes.clone());
+    Ok(Some((release, notes)))
 }
 
 /// The data folder of a portable copy, or `None` for an installed one (see `pyxee_shell::datadir::portable_dir`).
@@ -241,11 +251,11 @@ fn check_app_blocking() -> Result<AppUpdateDto, String> {
     let current = env!("CARGO_PKG_VERSION").to_string();
     let portable = portable_dir().is_some();
     Ok(match latest_release(&current)? {
-        Some(r) => AppUpdateDto {
+        Some((r, notes)) => AppUpdateDto {
             available: update::is_newer(&current, &r.tag),
             latest: r.version_text(),
             notes_url: r.page_url.clone(),
-            notes: r.notes.clone(),
+            notes,
             installable: !portable && r.installer.is_some() && r.sums_url.is_some(),
             portable,
             current,
@@ -289,7 +299,7 @@ fn fetch_installer(app: &AppHandle) -> Result<(PathBuf, String), String> {
         return Err("This is a portable copy: download the new zip from the release page and unpack it over this folder (your data folder stays).".into());
     }
     let current = env!("CARGO_PKG_VERSION");
-    let release = latest_release(current)?.ok_or("No release was found.")?;
+    let (release, _) = latest_release(current)?.ok_or("No release was found.")?;
     if !update::is_newer(current, &release.tag) {
         return Err("Pyxee is already up to date.".into());
     }

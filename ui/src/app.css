@@ -1672,6 +1672,16 @@ input[type='range'].slider:active {
     border-radius: var(--r-md);
     background: transparent;
   }
+  /* One release's section of a changelog that spans several: its version, set apart from the one before. */
+  .changelog-release {
+    font-weight: 600;
+    color: var(--accent);
+  }
+  .changelog-release-next {
+    margin-top: 16px;
+    padding-top: 12px;
+    border-top: 1px solid var(--rule);
+  }
   .sheet-panel {
     position: relative;
     overflow-y: auto;

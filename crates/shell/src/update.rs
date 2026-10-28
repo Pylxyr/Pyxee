@@ -184,15 +184,13 @@ fn pick_installer(assets: &[RawAsset]) -> Option<Asset> {
     find(&|n| n.ends_with("-setup.exe")).or_else(|| find(&|n| n.ends_with(".exe")))
 }
 
-/// Picks the newest release from GitHub's `/releases` list. Drafts never count; pre-releases count only when
-/// `include_prereleases` (the running build is itself one), so a stable user is not moved onto a release candidate.
-pub fn newest_release(
-    json: &str,
-    include_prereleases: bool,
-) -> Result<Option<Release>, UpdateError> {
+/// Every usable release of GitHub's `/releases` list, in the order GitHub gave them. Drafts never count; pre-releases
+/// count only when `include_prereleases` (the running build is itself one), so a stable user is not moved onto a
+/// release candidate.
+fn usable_releases(json: &str, include_prereleases: bool) -> Result<Vec<Release>, UpdateError> {
     let raw: Vec<RawRelease> =
         serde_json::from_str(json).map_err(|e| UpdateError::BadRelease(e.to_string()))?;
-    let mut best: Option<Release> = None;
+    let mut out = Vec::new();
     for r in raw {
         if r.draft || (r.prerelease && !include_prereleases) {
             continue;
@@ -203,15 +201,12 @@ pub fn newest_release(
         if version.is_prerelease() && !include_prereleases {
             continue;
         }
-        if best.as_ref().is_some_and(|b| b.version >= version) {
-            continue;
-        }
         let sums_url = r
             .assets
             .iter()
             .find(|a| a.name.eq_ignore_ascii_case("SHA256SUMS.txt"))
             .map(|a| a.browser_download_url.clone());
-        best = Some(Release {
+        out.push(Release {
             installer: pick_installer(&r.assets),
             version,
             tag: r.tag_name,
@@ -220,7 +215,65 @@ pub fn newest_release(
             sums_url,
         });
     }
-    Ok(best)
+    Ok(out)
+}
+
+/// Picks the newest release from GitHub's `/releases` list (see `usable_releases` for what counts).
+pub fn newest_release(
+    json: &str,
+    include_prereleases: bool,
+) -> Result<Option<Release>, UpdateError> {
+    Ok(usable_releases(json, include_prereleases)?
+        .into_iter()
+        .reduce(|best, r| if r.version > best.version { r } else { best }))
+}
+
+/// What a version-by-version changelog allows each release, and all of them together: someone updating from far back
+/// gets every release in between, but the panel stays readable (the release pages have the rest).
+const MAX_SECTION_CHARS: usize = 6_000;
+const MAX_TOTAL_CHARS: usize = 60_000;
+
+/// The changelog of an update from `current`: the notes of every release newer than it, newest first, each under a
+/// `## <version>` heading. With just one newer release that is its notes alone, as written. Empty when nothing is
+/// newer; when `current` cannot be read only the newest release's notes are given.
+pub fn changelog_since(
+    json: &str,
+    current: &str,
+    include_prereleases: bool,
+) -> Result<String, UpdateError> {
+    let mut all = usable_releases(json, include_prereleases)?;
+    all.sort_by(|a, b| b.version.cmp(&a.version));
+    let newer: Vec<&Release> = match Version::parse(current) {
+        Some(c) => all.iter().filter(|r| r.version > c).collect(),
+        None => all.iter().take(1).collect(),
+    };
+    match newer.as_slice() {
+        [] => Ok(String::new()),
+        [only] => Ok(only.notes.clone()),
+        many => {
+            let mut text = String::new();
+            for (i, r) in many.iter().enumerate() {
+                let notes = if r.notes.is_empty() {
+                    "No written notes for this release.".to_string()
+                } else {
+                    clip_chars(r.notes.clone(), MAX_SECTION_CHARS)
+                };
+                let section = format!("## {}\n\n{notes}", r.version_text());
+                if text.chars().count() + section.chars().count() > MAX_TOTAL_CHARS {
+                    text.push_str(&format!(
+                        "\n\n## Earlier releases\n\n{} more, on the releases page.",
+                        many.len() - i
+                    ));
+                    break;
+                }
+                if !text.is_empty() {
+                    text.push_str("\n\n");
+                }
+                text.push_str(&section);
+            }
+            Ok(text)
+        }
+    }
 }
 
 /// A changelog longer than this is cut (at a character boundary): it only has to be readable in a panel, and the
@@ -228,9 +281,13 @@ pub fn newest_release(
 const MAX_NOTES_CHARS: usize = 20_000;
 
 fn clip_notes(body: String) -> String {
+    clip_chars(body, MAX_NOTES_CHARS)
+}
+
+fn clip_chars(body: String, max: usize) -> String {
     let body = body.replace("\r\n", "\n");
     let body = body.trim();
-    match body.char_indices().nth(MAX_NOTES_CHARS) {
+    match body.char_indices().nth(max) {
         Some((cut, _)) => format!("{}…", body[..cut].trim_end()),
         None => body.to_string(),
     }
@@ -616,6 +673,75 @@ mod tests {
         let clipped = clip_notes(long);
         assert_eq!(clipped.chars().count(), MAX_NOTES_CHARS + 1);
         assert!(clipped.ends_with('…'));
+    }
+
+    fn feed() -> String {
+        let release = |tag: &str, pre: bool, draft: bool, body: &str| {
+            format!(
+                r#"{{"tag_name":"{tag}","html_url":"https://x/{tag}","prerelease":{pre},"draft":{draft},"body":"{body}","assets":[]}}"#
+            )
+        };
+        format!(
+            "[{}]",
+            [
+                release("v0.4.3", false, false, "- three"),
+                release("v0.4.2-rc1", true, false, "- candidate"),
+                release("v0.4.1", false, false, "- one"),
+                release("v0.4.9", false, true, "- draft"),
+                release("v0.4.0", false, false, ""),
+                release("v0.3.8", false, false, "- old"),
+            ]
+            .join(",")
+        )
+    }
+
+    #[test]
+    fn someone_far_behind_gets_every_release_since_theirs_newest_first() {
+        let text = changelog_since(&feed(), "0.3.8", false).unwrap();
+        let (a, b, c) = (
+            text.find("## 0.4.3").unwrap(),
+            text.find("## 0.4.1").unwrap(),
+            text.find("## 0.4.0").unwrap(),
+        );
+        assert!(a < b && b < c, "{text}");
+        assert!(text.contains("- three") && text.contains("- one"));
+        assert!(text.contains("No written notes for this release."));
+        assert!(!text.contains("candidate") && !text.contains("draft") && !text.contains("old"));
+        assert!(!text.contains("## 0.3.8"));
+    }
+
+    #[test]
+    fn a_candidate_build_also_sees_the_candidates_in_between() {
+        let text = changelog_since(&feed(), "0.4.0", true).unwrap();
+        assert!(text.contains("## 0.4.2-rc1") && text.contains("- candidate"), "{text}");
+    }
+
+    #[test]
+    fn one_newer_release_is_just_its_notes_and_none_is_empty() {
+        assert_eq!(changelog_since(&feed(), "0.4.1", false).unwrap(), "- three");
+        assert_eq!(changelog_since(&feed(), "0.4.3", false).unwrap(), "");
+        assert_eq!(changelog_since(&feed(), "1.0.0", false).unwrap(), "");
+    }
+
+    #[test]
+    fn an_unreadable_current_version_gets_the_newest_notes_only() {
+        assert_eq!(changelog_since(&feed(), "dev", false).unwrap(), "- three");
+    }
+
+    #[test]
+    fn a_long_history_is_cut_short_with_a_pointer_to_the_releases_page() {
+        let body = "x".repeat(MAX_SECTION_CHARS);
+        let releases: Vec<String> = (1..=30)
+            .map(|n| {
+                format!(
+                    r#"{{"tag_name":"v0.5.{n}","html_url":"u","body":"{body}","assets":[]}}"#
+                )
+            })
+            .collect();
+        let text = changelog_since(&format!("[{}]", releases.join(",")), "0.4.0", false).unwrap();
+        assert!(text.chars().count() <= MAX_TOTAL_CHARS + 200);
+        assert!(text.contains("## Earlier releases"));
+        assert!(text.contains("## 0.5.30"));
     }
 
     const SUMS: &str =
