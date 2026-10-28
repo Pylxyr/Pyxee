@@ -713,7 +713,10 @@ mod tests {
     #[test]
     fn a_candidate_build_also_sees_the_candidates_in_between() {
         let text = changelog_since(&feed(), "0.4.0", true).unwrap();
-        assert!(text.contains("## 0.4.2-rc1") && text.contains("- candidate"), "{text}");
+        assert!(
+            text.contains("## 0.4.2-rc1") && text.contains("- candidate"),
+            "{text}"
+        );
     }
 
     #[test]
@@ -733,9 +736,7 @@ mod tests {
         let body = "x".repeat(MAX_SECTION_CHARS);
         let releases: Vec<String> = (1..=30)
             .map(|n| {
-                format!(
-                    r#"{{"tag_name":"v0.5.{n}","html_url":"u","body":"{body}","assets":[]}}"#
-                )
+                format!(r#"{{"tag_name":"v0.5.{n}","html_url":"u","body":"{body}","assets":[]}}"#)
             })
             .collect();
         let text = changelog_since(&format!("[{}]", releases.join(",")), "0.4.0", false).unwrap();
