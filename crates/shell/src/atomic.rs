@@ -89,7 +89,11 @@ mod tests {
         fs::create_dir_all(blocked.join("inner")).unwrap();
         assert!(write(&blocked, b"nope").is_err());
         assert_eq!(fs::read(&file).unwrap(), b"keep");
-        assert!(names(&d).iter().all(|n| !n.ends_with(".tmp")), "{:?}", names(&d));
+        assert!(
+            names(&d).iter().all(|n| !n.ends_with(".tmp")),
+            "{:?}",
+            names(&d)
+        );
         let _ = fs::remove_dir_all(&d);
     }
 }

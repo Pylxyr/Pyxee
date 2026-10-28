@@ -181,8 +181,7 @@ fn pick_installer(assets: &[RawAsset]) -> Option<Asset> {
                 url: a.browser_download_url.clone(),
             })
     };
-    find(&|n| n.ends_with("-setup.exe"))
-        .or_else(|| find(&|n| n.ends_with(".exe")))
+    find(&|n| n.ends_with("-setup.exe")).or_else(|| find(&|n| n.ends_with(".exe")))
 }
 
 /// Picks the newest release from GitHub's `/releases` list. Drafts never count; pre-releases count only when

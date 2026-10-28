@@ -71,8 +71,10 @@ describe('scroll bars', () => {
   it('are thin and tinted from theme tokens, never a fixed colour', () => {
     const bars = css.slice(css.indexOf('::-webkit-scrollbar {'));
     expect(css).toMatch(/scrollbar-width:\s*thin/);
-    expect(css).toMatch(/scrollbar-color:\s*color-mix\(in srgb, var\(--fg\)/);
+    // The standard properties are only a fallback for an engine without ::-webkit-scrollbar (they would override it).
+    expect(css).toMatch(/@supports not selector\(::-webkit-scrollbar\)\s*\{[^}]*scrollbar-color:\s*color-mix\(in srgb, var\(--accent\)/);
     expect(bars).toContain('::-webkit-scrollbar-thumb');
+    expect(bars).toMatch(/::-webkit-scrollbar-thumb \{[^}]*color-mix\(in srgb, var\(--fg\)/);
     const block = css.slice(css.indexOf('/*\n * Scroll bars'), css.indexOf('[data-scroll]:focus-visible'));
     expect(block).not.toMatch(/#[0-9a-f]{3,8}\b/i);
   });

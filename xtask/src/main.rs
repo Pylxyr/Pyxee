@@ -598,12 +598,7 @@ fn installer() -> Res<()> {
     let conf = bundle_config(&p.root, &p.signing)?;
     run(
         Command::new(&p.cli)
-            .args([
-                "build",
-                "--bundles",
-                BUNDLES,
-                "--config",
-            ])
+            .args(["build", "--bundles", BUNDLES, "--config"])
             .arg(&conf)
             .current_dir(p.root.join("crates/app")),
         "tauri build (installer with yt-dlp bundled)",

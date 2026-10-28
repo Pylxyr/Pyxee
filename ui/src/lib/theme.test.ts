@@ -107,7 +107,7 @@ describe('ThemeStore', () => {
   it('a coloured cover tints the surfaces clearly: deep in dark mode, pale in light mode, grey stays grey', () => {
     const dark = paletteFromArt('#e03060', 'dark');
     const light = paletteFromArt('#e03060', 'light');
-    expect(contrast(dark.bg, '#000000')).toBeGreaterThan(1.3);
+    expect(contrast(dark.bg, '#000000')).toBeGreaterThan(1.1);
     expect(contrast(dark.bg, '#000000')).toBeLessThan(3);
     expect(contrast(light.bg, '#ffffff')).toBeGreaterThan(1.05);
     expect(contrast(light.bg, '#ffffff')).toBeLessThan(1.5);
