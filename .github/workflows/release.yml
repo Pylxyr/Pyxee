@@ -119,6 +119,9 @@ jobs:
       # repository *secrets* for the same reason. Both unset or empty means the release has scrobbling unavailable.
       PYXEE_LASTFM_API_KEY: ${{ secrets.PYXEE_LASTFM_API_KEY }}
       PYXEE_LASTFM_API_SECRET: ${{ secrets.PYXEE_LASTFM_API_SECRET }}
+      # The public half of the update-signing key (a repository *variable*: it is not secret). Built into the program,
+      # which then installs only releases whose checksum list is signed with the matching key. Unset: no check.
+      PYXEE_UPDATE_PUBLIC_KEY: ${{ vars.PYXEE_UPDATE_PUBLIC_KEY }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -290,6 +293,21 @@ jobs:
           cd release
           sha256sum $(ls | grep -E '\.(exe|zip)$') > SHA256SUMS.txt
           cat SHA256SUMS.txt
+      # The checksum list proves the download is intact; this signature proves it was made by the project (see
+      # docs/releasing.md, "Signing the update list").
+      - name: Sign the checksum list
+        env:
+          PYXEE_UPDATE_SIGNING_SEED: ${{ secrets.PYXEE_UPDATE_SIGNING_SEED }}
+          PYXEE_UPDATE_PUBLIC_KEY: ${{ vars.PYXEE_UPDATE_PUBLIC_KEY }}
+        run: |
+          if [ -n "$PYXEE_UPDATE_SIGNING_SEED" ]; then
+            cargo xtask sign-sums release/SHA256SUMS.txt
+          elif [ -n "$PYXEE_UPDATE_PUBLIC_KEY" ]; then
+            echo "::error::PYXEE_UPDATE_PUBLIC_KEY is set, so the program only installs signed releases, but the PYXEE_UPDATE_SIGNING_SEED secret is missing. Refusing to publish a release nobody could update to."
+            exit 1
+          else
+            echo "::warning::No update signing key is configured: in-app updates are protected by the checksum list only."
+          fi
       # Needs a public repo, or GitHub Enterprise Cloud for a private one. Never blocks the release.
       - name: Attest build provenance
         id: attest
