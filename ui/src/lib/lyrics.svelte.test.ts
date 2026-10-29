@@ -67,4 +67,26 @@ describe('LyricsStore', () => {
     await store.load(null);
     expect(store.state).toEqual({ kind: 'idle' });
   });
+  it('turns a failed request into the usual error state instead of loading forever', async () => {
+    const backend = { lyricsGet: () => Promise.reject(new Error('ipc closed')) } as unknown as Backend;
+    const store = new LyricsStore();
+    store.init(backend);
+    await store.load(track('a'));
+    expect(store.state).toMatchObject({ kind: 'ready', key: 'a', lyrics: { kind: 'error' } });
+    // A failure for a song the user already left must not touch the song they are on.
+    let fail!: (e: Error) => void;
+    const slow = {
+      lyricsGet: (t: TrackDto) =>
+        t.key === 'x'
+          ? new Promise<LyricsDto>((_, reject) => (fail = reject))
+          : Promise.resolve<LyricsDto>({ kind: 'plain', text: 'Y words' }),
+    } as unknown as Backend;
+    const other = new LyricsStore();
+    other.init(slow);
+    const x = other.load(track('x'));
+    await other.load(track('y'));
+    fail(new Error('late'));
+    await x;
+    expect(other.state).toEqual({ kind: 'ready', key: 'y', lyrics: { kind: 'plain', text: 'Y words' } });
+  });
 });

@@ -197,6 +197,9 @@ pub fn fetch_genres(endpoint: &str) -> Result<Vec<GenreInfo>, SourceError> {
 
 /// Asks YouTube Music for the page of one genre (`params` as `parse_genres` found it).
 pub fn fetch_genre(endpoint: &str, params: &str) -> Result<Vec<ExploreShelf>, SourceError> {
+    if !is_token(params) {
+        return Err(SourceError::Failed("that is not a genre token".into()));
+    }
     let body = post(endpoint, &genre_body(params, SystemTime::now()), "genre")?;
     parse_genre(&body)
 }
@@ -706,11 +709,26 @@ fn best_cover(thumbnails: Option<&Value>) -> Option<String> {
         .map(|(u, _)| enlarge(&u.replacen("http://", "https://", 1)))
 }
 
+/// The host of an `http(s)` address, lower-cased, without user info or port.
+fn host_of(url: &str) -> Option<String> {
+    let rest = url
+        .strip_prefix("https://")
+        .or_else(|| url.strip_prefix("http://"))?;
+    let authority = rest.split(['/', '?', '#']).next()?;
+    let host = authority.rsplit('@').next()?;
+    let host = host.split(':').next()?;
+    (!host.is_empty()).then(|| host.to_ascii_lowercase())
+}
+
 /// Google's image hosts take the size from the URL (`...=w60-h60-l90-rj`): ask for a larger square. Anything
 /// else is returned unchanged.
 fn enlarge(url: &str) -> String {
     const SIZE: u32 = 544;
-    let hosted = url.contains("googleusercontent.com") || url.contains("ggpht.com");
+    let hosted = host_of(url).is_some_and(|h| {
+        ["googleusercontent.com", "ggpht.com"]
+            .iter()
+            .any(|d| h == *d || h.strip_suffix(d).is_some_and(|p| p.ends_with('.')))
+    });
     let Some(at) = url.rfind("=w").filter(|_| hosted) else {
         return url.to_string();
     };
@@ -1693,5 +1711,35 @@ mod tests {
             Err(SourceError::Failed(_))
         ));
         assert!(request.try_recv().is_err(), "nothing was sent");
+    }
+
+    #[test]
+    fn a_genre_token_that_is_not_a_plain_token_is_refused_before_any_request() {
+        // The playlist id is checked the same way (see the test above); the token comes from the page, but it also
+        // arrives from the webview (`genre_get`), so it is held to the same shape `parse_genres` accepts.
+        let (url, request) = testserver::once(200, &explore_answer(vec![]));
+        for bad in ["", "a b", "x\"y", "{}", &"a".repeat(513)] {
+            assert!(
+                matches!(fetch_genre(&url, bad), Err(SourceError::Failed(_))),
+                "{bad:?}"
+            );
+        }
+        assert!(request.try_recv().is_err(), "nothing was sent");
+    }
+
+    #[test]
+    fn covers_are_enlarged_by_host_not_by_a_piece_of_the_address() {
+        for same in [
+            "https://example.com/p?u=googleusercontent.com=w60-h60",
+            "https://example.com/ggpht.com=w60-h60",
+            "https://evil-googleusercontent.com/x=w60-h60",
+            "https://googleusercontent.com.evil.example/x=w60-h60",
+        ] {
+            assert_eq!(enlarge(same), same);
+        }
+        assert_eq!(
+            enlarge("https://lh3.googleusercontent.com:443/x=w60-h60"),
+            "https://lh3.googleusercontent.com:443/x=w544-h544"
+        );
     }
 }

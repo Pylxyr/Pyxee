@@ -373,10 +373,12 @@ impl Library {
 
     /// Brings a deleted playlist back with its original id, order and timestamps.
     pub fn restore_playlist(&mut self, s: &PlaylistSnapshot) -> Result<()> {
+        // The snapshot comes back from the UI: the name rule of `create_playlist` applies to it too.
+        let name = clean_name(&s.name)?;
         let tx = self.conn.transaction()?;
         tx.execute(
             "INSERT INTO playlists (id, name, created_at, updated_at) VALUES (?1, ?2, ?3, ?4)",
-            params![s.id, s.name, s.created_at, s.updated_at],
+            params![s.id, name, s.created_at, s.updated_at],
         )?;
         for (i, t) in s.tracks.iter().enumerate() {
             upsert_track(&tx, t)?;

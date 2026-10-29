@@ -138,7 +138,7 @@ pub fn pick_best(mut list: Vec<Candidate>, duration_secs: Option<f64>) -> Option
         _ => true, // unknown length on either side: cannot rule it out
     };
     list.retain(close);
-    let rank = |c: &Candidate| {
+    let rank = |c: &Candidate| -> u8 {
         let synced = c
             .synced_lyrics
             .as_deref()
@@ -154,9 +154,22 @@ pub fn pick_best(mut list: Vec<Candidate>, duration_secs: Option<f64>) -> Option
             _ => 0,
         }
     };
-    list.into_iter()
-        .max_by_key(|c| rank(c))
-        .filter(|c| rank(c) > 0)
+    // Best rank first; among equals the length closest to the song's, then the service's own order.
+    let gap = |c: &Candidate| match (duration_secs, c.duration) {
+        (Some(want), Some(have)) => ((want - have).abs() * 1000.0) as u64,
+        _ => u64::MAX,
+    };
+    let mut best: Option<(u8, u64, Candidate)> = None;
+    for c in list {
+        let (r, g) = (rank(&c), gap(&c));
+        let better = best
+            .as_ref()
+            .is_none_or(|(br, bg, _)| (r, std::cmp::Reverse(g)) > (*br, std::cmp::Reverse(*bg)));
+        if r > 0 && better {
+            best = Some((r, g, c));
+        }
+    }
+    best.map(|(_, _, c)| c)
 }
 
 /// Lyrics from a service answer: one object (`/api/get`) or a list (`/api/search`).
@@ -164,11 +177,23 @@ pub fn from_lrclib(json: &str, duration_secs: Option<f64>) -> Result<Lyrics, Lyr
     let value: serde_json::Value =
         serde_json::from_str(json).map_err(|e| LyricsError::Parse(e.to_string()))?;
     let list: Vec<Candidate> = match value {
-        serde_json::Value::Array(_) => serde_json::from_value(value),
-        serde_json::Value::Object(_) => serde_json::from_value(value).map(|c| vec![c]),
+        // One odd entry (a field of the wrong type) must not hide the good ones.
+        serde_json::Value::Array(items) => {
+            let total = items.len();
+            let ok: Vec<Candidate> = items
+                .into_iter()
+                .filter_map(|v| serde_json::from_value(v).ok())
+                .collect();
+            if ok.is_empty() && total > 0 {
+                return Err(LyricsError::Parse("no usable entry in the list".into()));
+            }
+            ok
+        }
+        serde_json::Value::Object(_) => serde_json::from_value(value)
+            .map(|c| vec![c])
+            .map_err(|e| LyricsError::Parse(e.to_string()))?,
         _ => return Err(LyricsError::Parse("not an object or a list".into())),
-    }
-    .map_err(|e| LyricsError::Parse(e.to_string()))?;
+    };
     Ok(pick_best(list, duration_secs).map_or(Lyrics::None, Candidate::into_lyrics))
 }
 

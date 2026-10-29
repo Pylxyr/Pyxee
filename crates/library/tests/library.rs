@@ -499,3 +499,26 @@ fn a_version_1_library_gains_the_history_index_and_keeps_its_data() {
     assert_eq!(n, 1, "the index exists after the upgrade");
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+#[test]
+fn a_restored_playlist_keeps_the_name_rule_of_a_created_one() {
+    let mut l = lib();
+    let id = l.create_playlist("Keep me", &[t("a")], 5).unwrap();
+    let good = l.delete_playlist(id).unwrap();
+    for bad in ["", "   ", &"x".repeat(MAX_NAME_LEN + 1)] {
+        let mut snap = good.clone();
+        snap.name = bad.to_string();
+        assert!(
+            matches!(l.restore_playlist(&snap), Err(LibraryError::InvalidName)),
+            "{bad:?}"
+        );
+    }
+    assert!(
+        l.playlists().unwrap().is_empty(),
+        "a refused restore adds nothing"
+    );
+    let mut padded = good;
+    padded.name = "  Keep me  ".into();
+    l.restore_playlist(&padded).unwrap();
+    assert_eq!(l.playlist(id).unwrap().name, "Keep me");
+}

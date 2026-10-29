@@ -151,7 +151,8 @@ pub fn clean_title(title: &str) -> String {
 pub fn clean_artist(artist: &str) -> String {
     let a = artist.trim().trim_end_matches(" - Topic");
     let a = a.strip_suffix("VEVO").map_or(a, str::trim_end);
-    let lower = a.to_lowercase();
+    // ASCII-only: the separators are ASCII, and this keeps every byte offset valid for `a` too.
+    let lower = a.to_ascii_lowercase();
     let cut = [", ", " & ", " feat. ", " feat ", " ft. ", " x ", " and "]
         .iter()
         .filter_map(|sep| lower.find(sep))

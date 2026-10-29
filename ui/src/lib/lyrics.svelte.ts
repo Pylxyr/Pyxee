@@ -1,4 +1,4 @@
-import type { Backend } from './backend';
+import { messageOf, type Backend } from './backend';
 import type { LyricsDto } from './bindings/LyricsDto';
 import type { TrackDto } from './bindings/TrackDto';
 
@@ -28,7 +28,14 @@ export class LyricsStore {
     if (!this.#backend) return;
     this.#wanted = track.key;
     this.state = { kind: 'loading', key: track.key };
-    const lyrics = await this.#backend.lyricsGet(track);
+    let lyrics: LyricsDto;
+    try {
+      lyrics = await this.#backend.lyricsGet(track);
+    } catch (e) {
+      // A request that never answers (the call itself failed) must not leave the panel loading for good: show the
+      // same error state as a service failure, which offers Retry.
+      lyrics = { kind: 'error', message: messageOf(e) };
+    }
     if (this.#wanted !== track.key) return; // the song changed while we waited
     this.state = { kind: 'ready', key: track.key, lyrics };
   }

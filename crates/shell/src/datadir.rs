@@ -87,41 +87,35 @@ fn migrate(old: &Path, new: &Path, notes: &mut Vec<Note>) -> bool {
         );
         return false;
     }
-    let mut copied = Vec::new();
+    // `library.db` is the commit marker for the whole move (once it exists the old folder is never looked at again),
+    // so everything else goes first, and a failure anywhere undoes what this run copied and keeps the old folder:
+    // the next start tries again, and nothing (settings included) is silently left behind.
+    let mut copied: Vec<&str> = Vec::new();
+    let mut names: Vec<&str> = STATE_FILES.to_vec();
     if old.join(DB).is_file() {
-        for name in DB_FILES {
-            let src = old.join(name);
-            if !src.is_file() {
-                continue;
-            }
-            match copy_atomic(&src, &new.join(name)) {
-                Ok(()) => copied.push(name),
-                Err(e) => {
-                    // Undo the side files so a later, different database is never opened with this one's journal.
-                    for done in &copied {
-                        let _ = fs::remove_file(new.join(done));
-                    }
-                    warn(
-                        notes,
-                        format!(
-                            "could not copy {name} to {}: {e}; keeping the library and settings in {}",
-                            new.display(),
-                            old.display()
-                        ),
-                    );
-                    return false;
-                }
-            }
-        }
+        names.extend(DB_FILES);
     }
-    for name in STATE_FILES {
+    for name in names {
         let (src, dst) = (old.join(name), new.join(name));
-        if src.is_file() && !dst.exists() {
-            match copy_atomic(&src, &dst) {
-                Ok(()) => copied.push(name),
-                Err(e) => warn(notes, format!("could not copy {name}: {e}")),
-            }
+        if !src.is_file() || (STATE_FILES.contains(&name) && dst.exists()) {
+            continue;
         }
+        if let Err(e) = copy_atomic(&src, &dst) {
+            // A journal without its database, or a stale copy of a file the old folder keeps changing, must not stay.
+            for done in &copied {
+                let _ = fs::remove_file(new.join(done));
+            }
+            warn(
+                notes,
+                format!(
+                    "could not copy {name} to {}: {e}; keeping the library and settings in {}",
+                    new.display(),
+                    old.display()
+                ),
+            );
+            return false;
+        }
+        copied.push(name);
     }
     if !copied.is_empty() {
         notes.push(Note {
@@ -137,18 +131,23 @@ fn migrate(old: &Path, new: &Path, notes: &mut Vec<Note>) -> bool {
     true
 }
 
-/// Copies `src` to `dst` through `<dst>.tmp`, checking the size, so `dst` is either complete or absent.
+/// Copies `src` to `dst` through `<dst>.tmp`, checking the size and flushing it to disk, so `dst` is either complete or absent.
 fn copy_atomic(src: &Path, dst: &Path) -> std::io::Result<()> {
     let mut tmp = dst.as_os_str().to_owned();
     tmp.push(".tmp");
     let tmp = PathBuf::from(tmp);
     let result = (|| {
-        let n = fs::copy(src, &tmp)?;
-        if n != fs::metadata(src)?.len() {
+        let mut from = fs::File::open(src)?;
+        let mut to = fs::File::create(&tmp)?;
+        let n = std::io::copy(&mut from, &mut to)?;
+        if n != from.metadata()?.len() {
             return Err(std::io::Error::other(
                 "the copy is not the size of the original",
             ));
         }
+        // Flushed before it takes its name, like `atomic::write`: after a power cut `dst` is complete or absent.
+        to.sync_all()?;
+        drop(to);
         fs::rename(&tmp, dst)
     })();
     if result.is_err() {
@@ -384,6 +383,39 @@ mod tests {
         fs::remove_dir_all(new.join("library.db.tmp")).unwrap();
         let retry = resolve(Some(&old), Some(&new));
         assert_eq!(retry.dir.as_deref(), Some(new.as_path()));
+        assert_eq!(read(&new, "library.db").as_deref(), Some("LIB"));
+    }
+
+    #[test]
+    fn a_state_file_that_cannot_be_copied_keeps_the_old_folder_and_the_move_is_retried() {
+        let t = Tmp::new();
+        let old = old_with_everything(&t);
+        let new = t.path("local");
+        // shell.json's temporary name is taken by a folder, so that copy fails.
+        fs::create_dir_all(new.join("shell.json.tmp")).unwrap();
+        let r = resolve(Some(&old), Some(&new));
+        assert_eq!(
+            r.dir.as_deref(),
+            Some(old.as_path()),
+            "nothing is left behind"
+        );
+        assert!(!new.join("library.db").exists(), "no commit marker");
+        assert_eq!(
+            read(&new, "session.json"),
+            None,
+            "no stale half of the move"
+        );
+        assert!(
+            r.notes
+                .iter()
+                .any(|n| n.warn && n.text.contains("shell.json")),
+            "{:?}",
+            r.notes
+        );
+        fs::remove_dir_all(new.join("shell.json.tmp")).unwrap();
+        let retry = resolve(Some(&old), Some(&new));
+        assert_eq!(retry.dir.as_deref(), Some(new.as_path()));
+        assert_eq!(read(&new, "shell.json").as_deref(), Some("SHELL"));
         assert_eq!(read(&new, "library.db").as_deref(), Some("LIB"));
     }
 }

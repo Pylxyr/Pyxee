@@ -36,12 +36,16 @@ pub fn parse(body: &str) -> Result<Vec<String>, SourceError> {
         .get(1)
         .and_then(|x| x.as_array())
         .ok_or_else(|| SourceError::Parse("no suggestion list".into()))?;
-    Ok(list
-        .iter()
-        .filter_map(|s| s.as_str())
-        .map(str::to_string)
-        .take(8)
-        .collect())
+    let mut out: Vec<String> = Vec::new();
+    for s in list.iter().filter_map(|s| s.as_str()) {
+        if out.len() == 8 {
+            break;
+        }
+        if !out.iter().any(|x| x == s) {
+            out.push(s.to_string());
+        }
+    }
+    Ok(out)
 }
 
 /// One request for the suggestions of `prefix`, with no caching and no pause. Prefer [`Suggester`].
@@ -229,6 +233,13 @@ mod tests {
         assert_eq!(parse(&many).unwrap().len(), 8);
         assert!(matches!(parse("<html>"), Err(SourceError::Parse(_))));
         assert!(matches!(parse(r#"["q"]"#), Err(SourceError::Parse(_))));
+    }
+
+    #[test]
+    fn a_suggestion_the_answer_repeats_is_listed_once() {
+        // The search box keys its list by the text, so a repeat would be two rows with one key.
+        let body = r#"["q",["a","b","a","c","b"]]"#;
+        assert_eq!(parse(body).unwrap(), ["a", "b", "c"]);
     }
 
     #[test]
