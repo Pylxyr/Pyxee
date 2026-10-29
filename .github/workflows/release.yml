@@ -49,6 +49,9 @@ on:
       AI_API_KEY:
         description: "Key for the AI release notes (other provider); unset means notes without AI"
         required: false
+      PYXEE_UPDATE_SIGNING_SEED:
+        description: "Ed25519 seed (hex) that signs SHA256SUMS.txt; unset means an unsigned update list"
+        required: false
 
 concurrency:
   group: release-${{ github.ref }}
