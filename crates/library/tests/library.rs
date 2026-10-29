@@ -464,3 +464,38 @@ fn refreshing_never_adds_a_song_and_a_later_unknown_artist_never_erases_a_known_
     l.record_play(&again, 2).unwrap();
     assert_eq!(l.liked().unwrap()[0].artist, "Artist a");
 }
+
+#[test]
+fn a_version_1_library_gains_the_history_index_and_keeps_its_data() {
+    let dir = std::env::temp_dir().join(format!("pyxee-lib-v1-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("library.db");
+    {
+        let mut l = Library::open(&path).unwrap();
+        l.record_play(&t("a"), 5).unwrap();
+    }
+    {
+        // Take it back to what a 0.4.7 build wrote: version 1 and no index.
+        let raw = rusqlite::Connection::open(&path).unwrap();
+        raw.execute_batch("DROP INDEX idx_history_track;").unwrap();
+        raw.pragma_update(None, "user_version", 1).unwrap();
+    }
+    let l = Library::open(&path).unwrap();
+    assert_eq!(l.history_count().unwrap(), 1, "nothing is lost");
+    drop(l);
+    let raw = rusqlite::Connection::open(&path).unwrap();
+    let v: i64 = raw
+        .pragma_query_value(None, "user_version", |r| r.get(0))
+        .unwrap();
+    assert_eq!(v, 2);
+    let n: i64 = raw
+        .query_row(
+            "SELECT COUNT(*) FROM sqlite_master WHERE name = 'idx_history_track'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(n, 1, "the index exists after the upgrade");
+    let _ = std::fs::remove_dir_all(&dir);
+}

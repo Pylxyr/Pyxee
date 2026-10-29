@@ -11,7 +11,7 @@ use crate::AudioError;
 use std::collections::BTreeMap;
 use std::io::{self, Read, Seek, SeekFrom};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Condvar, Mutex, MutexGuard, PoisonError};
+use std::sync::{Arc, Condvar, Mutex, MutexGuard, OnceLock, PoisonError};
 use std::time::{Duration, Instant};
 
 const CHUNK: u64 = 512 * 1024;
@@ -88,8 +88,24 @@ impl std::fmt::Display for Cancelled {
 
 impl std::error::Error for Cancelled {}
 
+/// A status that means this stream address is no good any more (expired, refused, or gone), so the song must be
+/// resolved again. 404 counts: a signed stream URL that was valid a moment ago and now answers "not found" is gone.
 pub(crate) fn is_expired(code: u16) -> bool {
-    matches!(code, 401 | 403 | 410)
+    matches!(code, 401 | 403 | 404 | 410)
+}
+
+/// One agent for every stream: its connection pool keeps the TLS connection to the stream host alive across songs and
+/// seeks, instead of a new handshake each time a song is (re)opened.
+fn agent() -> ureq::Agent {
+    static AGENT: OnceLock<ureq::Agent> = OnceLock::new();
+    AGENT
+        .get_or_init(|| {
+            ureq::AgentBuilder::new()
+                .timeout_connect(Duration::from_secs(10))
+                .timeout_read(Duration::from_secs(20))
+                .build()
+        })
+        .clone()
 }
 
 /// The player client YouTube recorded in a stream URL (`c=ANDROID_VR`, `c=WEB`, ...), for the log only.
@@ -158,7 +174,10 @@ impl Fetcher {
                     Err(e) => Err(FetchError::Transient(e.to_string())),
                 }
             }
-            Err(ureq::Error::Status(c, _)) if (400..500).contains(&c) => Err(FetchError::Fatal(c)),
+            // 408 (the server gave up waiting) and 429 are about this moment, not about the address.
+            Err(ureq::Error::Status(c, _)) if (400..500).contains(&c) && c != 408 => {
+                Err(FetchError::Fatal(c))
+            }
             Err(ureq::Error::Status(c, _)) => Err(FetchError::Transient(format!("HTTP {c}"))),
             Err(e) => Err(FetchError::Transient(e.to_string())),
         }
@@ -258,10 +277,7 @@ impl HttpRangeSource {
         headers: &[(String, String)],
         cancel: Arc<AtomicBool>,
     ) -> Result<Self, AudioError> {
-        let agent = ureq::AgentBuilder::new()
-            .timeout_connect(Duration::from_secs(10))
-            .timeout_read(Duration::from_secs(20))
-            .build();
+        let agent = agent();
         let first = with_headers(agent.get(url), headers).set("Range", "bytes=0-0");
         let resp = match first.call() {
             Ok(r) => r,
@@ -409,6 +425,17 @@ impl crate::decode::ByteSource for HttpRangeSource {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_statuses_that_condemn_the_address_make_the_song_resolve_again() {
+        for c in [401, 403, 404, 410] {
+            assert!(is_expired(c), "{c}");
+        }
+        // Timeouts and rate limits are about the moment, not the address.
+        for c in [408, 416, 429, 500, 503] {
+            assert!(!is_expired(c), "{c}");
+        }
+    }
 
     #[test]
     fn client_and_host_come_from_the_url_without_leaking_the_query() {

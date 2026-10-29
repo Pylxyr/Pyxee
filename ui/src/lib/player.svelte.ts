@@ -7,7 +7,7 @@ import type { RepeatDto } from './bindings/RepeatDto';
 import type { TrackDto } from './bindings/TrackDto';
 
 export const EMPTY_STATE: PlayerStateDto = {
-  transport: { state: 'idle' }, audible: null, loading: null, positionMs: 0, repeat: 'off',
+  seq: 0, transport: { state: 'idle' }, audible: null, loading: null, positionMs: 0, repeat: 'off',
   shuffle: false, autoplay: true, canUndo: false, queue: [], current: null, upcoming: [],
 };
 
@@ -51,7 +51,14 @@ export class PlayerStore {
   async init(backend: Backend) {
     this.#unlisten?.();
     this.#backend = backend;
-    this.#unlisten = await backend.onState((s) => (this.state = s));
+    const stopState = await backend.onState((s) => this.#apply(s));
+    const stopPosition = await backend.onPosition((p) => {
+      if (p.seq >= this.state.seq) this.state = { ...this.state, seq: p.seq, positionMs: p.positionMs };
+    });
+    this.#unlisten = () => {
+      stopState();
+      stopPosition();
+    };
     if (typeof document !== 'undefined') {
       document.removeEventListener('visibilitychange', this.#wake);
       document.addEventListener('visibilitychange', this.#wake);
@@ -61,11 +68,19 @@ export class PlayerStore {
     this.catalog = await backend.devCatalog().catch(() => []);
   }
 
+  /**
+   * Keeps the newest state. Two threads publish, and a slow answer to `getState` can land after a push, so an arrival
+   * is not necessarily the latest: the highest `seq` wins and an older one is dropped.
+   */
+  #apply(s: PlayerStateDto) {
+    if (s.seq >= this.state.seq) this.state = s;
+  }
+
   /** Takes the backend's state again (what is shown stays if it cannot be read). */
   async resync() {
     try {
       const s = await this.#backend?.getState();
-      if (s) this.state = s;
+      if (s) this.#apply(s);
     } catch {
       /* keep what is shown; the next push replaces it */
     }

@@ -223,22 +223,12 @@ fn text(url: &str) -> Result<String, String> {
 
 // ------------------------------------------------------------------ Pyxee
 
-/// The newest release, with the changelog of everything since `current` (not only the newest release's own notes: a
-/// copy several versions behind should read what changed in all of them).
-fn latest_release(current: &str) -> Result<Option<(update::Release, String)>, String> {
+fn latest_release(current: &str) -> Result<Option<update::Release>, String> {
     let beta = update::Version::parse(current).is_some_and(|v| v.is_prerelease());
-    // 100 is the most GitHub gives in one request; it reaches far back.
     let json = text(&format!(
-        "https://api.github.com/repos/{REPO}/releases?per_page=100"
+        "https://api.github.com/repos/{REPO}/releases?per_page=20"
     ))?;
-    let Some(release) = update::newest_release(&json, beta).map_err(|e| e.to_string())? else {
-        return Ok(None);
-    };
-    let notes = update::changelog_since(&json, current, beta)
-        .ok()
-        .filter(|n| !n.is_empty())
-        .unwrap_or_else(|| release.notes.clone());
-    Ok(Some((release, notes)))
+    update::newest_release(&json, beta).map_err(|e| e.to_string())
 }
 
 /// The data folder of a portable copy, or `None` for an installed one (see `pyxee_shell::datadir::portable_dir`).
@@ -251,12 +241,16 @@ fn check_app_blocking() -> Result<AppUpdateDto, String> {
     let current = env!("CARGO_PKG_VERSION").to_string();
     let portable = portable_dir().is_some();
     Ok(match latest_release(&current)? {
-        Some((r, notes)) => AppUpdateDto {
+        Some(r) => AppUpdateDto {
             available: update::is_newer(&current, &r.tag),
             latest: r.version_text(),
             notes_url: r.page_url.clone(),
-            notes,
-            installable: !portable && r.installer.is_some() && r.sums_url.is_some(),
+            notes: r.notes.clone(),
+            installable: !portable
+                && r.installer.is_some()
+                && r.sums_url.is_some()
+                && (update::sums_trust(UPDATE_PUBLIC_KEY) == update::SumsTrust::ChecksumOnly
+                    || r.sums_signature_url.is_some()),
             portable,
             current,
         },
@@ -294,12 +288,33 @@ pub fn clear_leftovers() {
     clear_dir(&update_dir());
 }
 
+/// The public half of the project's update-signing key (64 hex characters), fixed when the release is built from the
+/// `PYXEE_UPDATE_PUBLIC_KEY` variable. A build that has it installs only releases whose checksum list is signed with the
+/// matching private key; a build without it (a local one) keeps the checksum-only check.
+const UPDATE_PUBLIC_KEY: Option<&str> = option_env!("PYXEE_UPDATE_PUBLIC_KEY");
+
+/// Believes the checksum list only if it is signed (when this build has a key to check with).
+fn check_sums_signature(release: &update::Release, sums: &str) -> Result<(), String> {
+    let Some(key) = UPDATE_PUBLIC_KEY
+        .filter(|_| update::sums_trust(UPDATE_PUBLIC_KEY) == update::SumsTrust::MustVerify)
+    else {
+        log::warn!("update: this build has no update signing key, so the checksum list was not authenticated");
+        return Ok(());
+    };
+    let sig_url = release
+        .sums_signature_url
+        .as_ref()
+        .ok_or_else(|| update::UpdateError::SumsNotSigned.to_string())?;
+    let signature = text(sig_url)?;
+    update::verify_sums_signature(sums.as_bytes(), &signature, key).map_err(|e| e.to_string())
+}
+
 fn fetch_installer(app: &AppHandle) -> Result<(PathBuf, String), String> {
     if portable_dir().is_some() {
         return Err("This is a portable copy: download the new zip from the release page and unpack it over this folder (your data folder stays).".into());
     }
     let current = env!("CARGO_PKG_VERSION");
-    let (release, _) = latest_release(current)?.ok_or("No release was found.")?;
+    let release = latest_release(current)?.ok_or("No release was found.")?;
     if !update::is_newer(current, &release.tag) {
         return Err("Pyxee is already up to date.".into());
     }
@@ -308,6 +323,7 @@ fn fetch_installer(app: &AppHandle) -> Result<(PathBuf, String), String> {
         return Err("This release has no installer with a checksum list attached. Open the release page to download it yourself.".into());
     };
     let sums = text(sums_url)?;
+    check_sums_signature(&release, &sums)?;
     let expected = update::parse_sums(&sums, &installer.name)
         .ok_or_else(|| update::UpdateError::NotListed(installer.name.clone()).to_string())?;
     let bytes = download(&installer.url, &mut |received, total| {

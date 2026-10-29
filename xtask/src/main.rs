@@ -39,12 +39,76 @@ fn main() {
         Some("portable") => portable(),
         Some("sign-file") => sign_file(&args[1..]),
         Some("signing-config") => signing_config(),
-        _ => Err("usage:\n  cargo xtask tools [--update] [--dir <folder>]   download the pinned yt-dlp (--update: download it again)\n  cargo xtask ffmpeg                              build the minimal static FFmpeg (once per FFmpeg change)\n  cargo xtask installer                           build the Windows installer (signed when a certificate is configured)\n  cargo xtask portable                            build the portable zip (signed program when a certificate is configured)\n  cargo xtask signing-config                      print the tauri bundle config to use (CI builds the installer with it)\n  cargo xtask sign-file <file>                    sign one file with the configured certificate (used by tauri build)".into()),
+        Some("update-keygen") => update_keygen(),
+        Some("sign-sums") => sign_sums(&args[1..]),
+        _ => Err("usage:\n  cargo xtask tools [--update] [--dir <folder>]   download the pinned yt-dlp (--update: download it again)\n  cargo xtask ffmpeg                              build the minimal static FFmpeg (once per FFmpeg change)\n  cargo xtask installer                           build the Windows installer (signed when a certificate is configured)\n  cargo xtask portable                            build the portable zip (signed program when a certificate is configured)\n  cargo xtask signing-config                      print the tauri bundle config to use (CI builds the installer with it)\n  cargo xtask sign-file <file>                    sign one file with the configured certificate (used by tauri build)\n  cargo xtask update-keygen                       make the key pair that signs release checksum lists (once; see docs/releasing.md)\n  cargo xtask sign-sums <SHA256SUMS.txt>          write <file>.sig, signed with PYXEE_UPDATE_SIGNING_SEED (used by the release workflow)".into()),
     };
     if let Err(e) = result {
         eprintln!("\nerror: {e}");
         std::process::exit(1);
     }
+}
+
+// ------------------------------------------------------------------ update signing
+
+fn to_hex(bytes: &[u8]) -> String {
+    bytes.iter().map(|b| format!("{b:02x}")).collect()
+}
+
+fn from_hex(text: &str) -> Option<Vec<u8>> {
+    let text = text.trim();
+    if !text.len().is_multiple_of(2) || !text.is_ascii() {
+        return None;
+    }
+    (0..text.len())
+        .step_by(2)
+        .map(|i| u8::from_str_radix(&text[i..i + 2], 16).ok())
+        .collect()
+}
+
+/// The key pair the release workflow signs `SHA256SUMS.txt` with: the seed (64 hex characters) is the secret, the
+/// public key (64 hex characters) is built into the program.
+pub fn keypair_from_seed(seed_hex: &str) -> Res<ring::signature::Ed25519KeyPair> {
+    let seed = from_hex(seed_hex)
+        .filter(|s| s.len() == 32)
+        .ok_or("the signing seed must be 64 hex characters")?;
+    ring::signature::Ed25519KeyPair::from_seed_unchecked(&seed)
+        .map_err(|_| "the signing seed was rejected".to_string())
+}
+
+/// The detached signature of `message`, in hex.
+pub fn sign_hex(seed_hex: &str, message: &[u8]) -> Res<String> {
+    Ok(to_hex(keypair_from_seed(seed_hex)?.sign(message).as_ref()))
+}
+
+fn update_keygen() -> Res<()> {
+    use ring::signature::KeyPair;
+    let mut seed = [0u8; 32];
+    ring::rand::SecureRandom::fill(&ring::rand::SystemRandom::new(), &mut seed)
+        .map_err(|_| "no random numbers available")?;
+    let seed_hex = to_hex(&seed);
+    let public = to_hex(keypair_from_seed(&seed_hex)?.public_key().as_ref());
+    println!("Signing seed (SECRET: store it as the repository secret PYXEE_UPDATE_SIGNING_SEED, then delete this output):");
+    println!("{seed_hex}\n");
+    println!("Public key (store it as the repository variable PYXEE_UPDATE_PUBLIC_KEY; it is built into releases):");
+    println!("{public}");
+    Ok(())
+}
+
+fn sign_sums(args: &[String]) -> Res<()> {
+    let file = args
+        .first()
+        .ok_or("usage: cargo xtask sign-sums <SHA256SUMS.txt>")?;
+    let seed = std::env::var("PYXEE_UPDATE_SIGNING_SEED")
+        .map_err(|_| "PYXEE_UPDATE_SIGNING_SEED is not set")?;
+    // The exact bytes that are published: the app verifies the file as downloaded.
+    let bytes = std::fs::read(file).map_err(|e| format!("could not read {file}: {e}"))?;
+    let signature = sign_hex(&seed, &bytes)?;
+    let out = format!("{file}.sig");
+    std::fs::write(&out, format!("{signature}\n"))
+        .map_err(|e| format!("could not write {out}: {e}"))?;
+    println!("signed {file} -> {out}");
+    Ok(())
 }
 
 fn workspace_root() -> PathBuf {
@@ -704,6 +768,26 @@ fn portable() -> Res<()> {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn a_signed_checksum_list_verifies_with_the_public_key_and_not_after_a_change() {
+        use ring::signature::{KeyPair, UnparsedPublicKey, ED25519};
+        let seed = "07".repeat(32);
+        let public = keypair_from_seed(&seed)
+            .unwrap()
+            .public_key()
+            .as_ref()
+            .to_vec();
+        let sums = b"abc  Pyxee_1.0.0_x64-setup.exe\n";
+        let sig = from_hex(&sign_hex(&seed, sums).unwrap()).unwrap();
+        let key = UnparsedPublicKey::new(&ED25519, &public);
+        assert!(key.verify(sums, &sig).is_ok());
+        assert!(key
+            .verify(b"abd  Pyxee_1.0.0_x64-setup.exe\n", &sig)
+            .is_err());
+        assert!(keypair_from_seed("zz").is_err());
+        assert!(keypair_from_seed(&"07".repeat(31)).is_err());
+    }
     use super::*;
 
     const SUMS: &str = "AAAA1111  yt-dlp\nbbbb2222  yt-dlp.exe\ncccc3333 *tool-win64.zip\n\ndddd4444  tool-win64-shared.zip\n";

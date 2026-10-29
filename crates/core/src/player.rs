@@ -706,6 +706,21 @@ impl Player {
                     return;
                 }
                 self.skip.remove(&id);
+                // The user paused while this track was already on its way (a gapless hand-over whose report
+                // arrives after the Pause): the audio is paused, so the player stays paused on the new song.
+                if matches!(self.transport, Transport::Paused { loaded: true, .. }) {
+                    if self.queue.current_id() != Some(id) {
+                        self.queue.jump_to(id);
+                        self.position_ms = 0;
+                    }
+                    if matches!(self.prefetch, Some((p, _)) if p == id) {
+                        self.prefetch = None;
+                    }
+                    self.transport = Transport::Paused { id, loaded: true };
+                    self.no_prefetch_for = None;
+                    self.dirty = true;
+                    return;
+                }
                 let resumed_here =
                     matches!(self.transport, Transport::Loading { id: l } if l == id);
                 if self.queue.current_id() != Some(id) {

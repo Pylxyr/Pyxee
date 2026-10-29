@@ -5,9 +5,23 @@ use std::fs;
 use std::path::Path;
 
 /// Writes atomically (flushed temp file + rename) so a crash never leaves a half-written session.
+#[cfg(test)]
 pub fn save(path: &Path, p: &Persisted) -> std::io::Result<()> {
     let json = serde_json::to_vec(p).map_err(std::io::Error::other)?;
     pyxee_shell::atomic::write(path, &json)
+}
+
+/// Like `save`, but writes nothing when the session is exactly what `last` holds (what was written last time). The
+/// 5-second autosave would otherwise rewrite and flush the same file all day while the player sits paused or idle.
+/// `last` is updated only after a successful write, so a failed write is tried again next time.
+pub fn save_if_changed(path: &Path, p: &Persisted, last: &mut Vec<u8>) -> std::io::Result<bool> {
+    let json = serde_json::to_vec(p).map_err(std::io::Error::other)?;
+    if json == *last {
+        return Ok(false);
+    }
+    pyxee_shell::atomic::write(path, &json)?;
+    *last = json;
+    Ok(true)
 }
 
 /// A missing or unreadable file is not an error: the app just starts empty.
@@ -24,6 +38,26 @@ mod tests {
         let d = std::env::temp_dir().join(format!("pyxee-session-{}-{name}", std::process::id()));
         let _ = fs::remove_dir_all(&d);
         d
+    }
+
+    #[test]
+    fn an_unchanged_session_is_not_written_again() {
+        let d = dir("unchanged");
+        fs::create_dir_all(&d).unwrap();
+        let path = d.join("session.json");
+        let p = Player::new(1);
+        let mut last = Vec::new();
+        assert!(save_if_changed(&path, &p.persisted(), &mut last).unwrap());
+        fs::remove_file(&path).unwrap();
+        // Same content: nothing is written (the file stays gone).
+        assert!(!save_if_changed(&path, &p.persisted(), &mut last).unwrap());
+        assert!(!path.exists());
+        // A change is written.
+        let mut q = Player::new(1);
+        q.command(Command::SetShuffle(true));
+        assert!(save_if_changed(&path, &q.persisted(), &mut last).unwrap());
+        assert!(path.exists());
+        let _ = fs::remove_dir_all(&d);
     }
 
     #[test]

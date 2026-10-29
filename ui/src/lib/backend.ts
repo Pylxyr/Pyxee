@@ -25,6 +25,7 @@ import type { SearchErrorDto } from './bindings/SearchErrorDto';
 import type { SearchFilterDto } from './bindings/SearchFilterDto';
 import type { SearchResponseDto } from './bindings/SearchResponseDto';
 import type { PlayerStateDto } from './bindings/PlayerStateDto';
+import type { PositionDto } from './bindings/PositionDto';
 import type { TrackDto } from './bindings/TrackDto';
 import type { WindowInfoDto } from './bindings/WindowInfoDto';
 
@@ -63,6 +64,8 @@ export interface Backend extends LibraryBackend {
   dispatch(command: CommandDto): Promise<void>;
   /** Subscribes to state pushes; resolves to an unsubscribe function. */
   onState(cb: (state: PlayerStateDto) => void): Promise<() => void>;
+  /** Subscribes to position-only pushes, sent instead of a full state while nothing but the position moved. */
+  onPosition(cb: (p: PositionDto) => void): Promise<() => void>;
   windowInfo(): Promise<WindowInfoDto>;
   /** Output volume, 0-100. */
   setVolume(percent: number): Promise<void>;
@@ -123,6 +126,7 @@ export function toSearchError(e: unknown): SearchErrorDto {
 }
 
 export const STATE_EVENT = 'player-state';
+export const POSITION_EVENT = 'player-position';
 export const LIBRARY_EVENT = 'library-changed';
 export const NOTICE_EVENT = 'notice';
 export const UPDATE_PROGRESS_EVENT = 'update-progress';
@@ -145,6 +149,7 @@ export async function tauriBackend(): Promise<Backend> {
     getState: () => invoke<PlayerStateDto>('get_state'),
     dispatch: (command) => invoke<void>('dispatch', { command }),
     onState: async (cb) => listen<PlayerStateDto>(STATE_EVENT, (e) => cb(e.payload)),
+    onPosition: async (cb) => listen<PositionDto>(POSITION_EVENT, (e) => cb(e.payload)),
     windowInfo: () => invoke<WindowInfoDto>('window_info'),
     setVolume: (percent) => invoke<void>('set_volume', { percent: Math.round(percent) }),
     setWindowTheme: (theme) => invoke<void>('set_window_theme', { theme }).catch(() => {}),

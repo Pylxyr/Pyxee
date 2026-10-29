@@ -160,6 +160,9 @@ fn main() {
                 data_dir.as_ref().map(|d| d.join("library.db")).as_deref(),
             );
             app.manage(AppState {
+                seq: std::sync::atomic::AtomicU64::new(0),
+                last_published: std::sync::Mutex::new(None),
+                last_saved: std::sync::Mutex::new(Vec::new()),
                 log,
                 log_error,
                 volume: pyxee_audio::pipeline::Volume::default(),

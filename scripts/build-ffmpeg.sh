@@ -13,6 +13,13 @@ FFMPEG_COMMIT="1041abdc962f4cc4f394aa8de9dc5236c0c3b9e7"
 FFMPEG_URL="https://github.com/FFmpeg/FFmpeg.git"
 
 prefix="${1:?usage: build-ffmpeg.sh <install-prefix> [work-dir]}"
+# FFmpeg's configure stops with a long message when these are missing; say it up front (Linux: apt install nasm make).
+for tool in nasm make git; do
+  if ! command -v "$tool" >/dev/null 2>&1; then
+    echo "error: '$tool' is required to build FFmpeg but was not found on PATH." >&2
+    exit 1
+  fi
+done
 work="${2:-}"
 # MSYS2: turn Windows paths (D:/repo/...) into MSYS ones (/d/repo/...), which configure and make handle best.
 if command -v cygpath >/dev/null 2>&1; then

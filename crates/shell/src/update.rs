@@ -32,6 +32,10 @@ pub enum UpdateError {
     PublisherMismatch { expected: String, got: String },
     #[error("The installer's signature could not be checked ({0}); nothing was installed.")]
     SignatureCheck(String),
+    #[error("This release has no signature for its checksum list, and this copy of Pyxee only installs signed releases; nothing was installed.")]
+    SumsNotSigned,
+    #[error("The signature of the release's checksum list is not valid for this copy of Pyxee; nothing was installed.")]
+    SumsSignatureInvalid,
 }
 
 // ------------------------------------------------------------------ versions
@@ -141,7 +145,12 @@ pub struct Release {
     pub notes: String,
     pub installer: Option<Asset>,
     pub sums_url: Option<String>,
+    /// The detached signature of the checksum list (`SUMS_SIGNATURE_NAME`), when the release has one.
+    pub sums_signature_url: Option<String>,
 }
+
+/// The asset holding the Ed25519 signature (hex) of `SHA256SUMS.txt`, exactly as published.
+pub const SUMS_SIGNATURE_NAME: &str = "SHA256SUMS.txt.sig";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Asset {
@@ -184,13 +193,15 @@ fn pick_installer(assets: &[RawAsset]) -> Option<Asset> {
     find(&|n| n.ends_with("-setup.exe")).or_else(|| find(&|n| n.ends_with(".exe")))
 }
 
-/// Every usable release of GitHub's `/releases` list, in the order GitHub gave them. Drafts never count; pre-releases
-/// count only when `include_prereleases` (the running build is itself one), so a stable user is not moved onto a
-/// release candidate.
-fn usable_releases(json: &str, include_prereleases: bool) -> Result<Vec<Release>, UpdateError> {
+/// Picks the newest release from GitHub's `/releases` list. Drafts never count; pre-releases count only when
+/// `include_prereleases` (the running build is itself one), so a stable user is not moved onto a release candidate.
+pub fn newest_release(
+    json: &str,
+    include_prereleases: bool,
+) -> Result<Option<Release>, UpdateError> {
     let raw: Vec<RawRelease> =
         serde_json::from_str(json).map_err(|e| UpdateError::BadRelease(e.to_string()))?;
-    let mut out = Vec::new();
+    let mut best: Option<Release> = None;
     for r in raw {
         if r.draft || (r.prerelease && !include_prereleases) {
             continue;
@@ -201,79 +212,30 @@ fn usable_releases(json: &str, include_prereleases: bool) -> Result<Vec<Release>
         if version.is_prerelease() && !include_prereleases {
             continue;
         }
+        if best.as_ref().is_some_and(|b| b.version >= version) {
+            continue;
+        }
         let sums_url = r
             .assets
             .iter()
             .find(|a| a.name.eq_ignore_ascii_case("SHA256SUMS.txt"))
             .map(|a| a.browser_download_url.clone());
-        out.push(Release {
+        let sums_signature_url = r
+            .assets
+            .iter()
+            .find(|a| a.name.eq_ignore_ascii_case(SUMS_SIGNATURE_NAME))
+            .map(|a| a.browser_download_url.clone());
+        best = Some(Release {
             installer: pick_installer(&r.assets),
             version,
             tag: r.tag_name,
             page_url: r.html_url,
             notes: clip_notes(r.body.unwrap_or_default()),
             sums_url,
+            sums_signature_url,
         });
     }
-    Ok(out)
-}
-
-/// Picks the newest release from GitHub's `/releases` list (see `usable_releases` for what counts).
-pub fn newest_release(
-    json: &str,
-    include_prereleases: bool,
-) -> Result<Option<Release>, UpdateError> {
-    Ok(usable_releases(json, include_prereleases)?
-        .into_iter()
-        .reduce(|best, r| if r.version > best.version { r } else { best }))
-}
-
-/// What a version-by-version changelog allows each release, and all of them together: someone updating from far back
-/// gets every release in between, but the panel stays readable (the release pages have the rest).
-const MAX_SECTION_CHARS: usize = 6_000;
-const MAX_TOTAL_CHARS: usize = 60_000;
-
-/// The changelog of an update from `current`: the notes of every release newer than it, newest first, each under a
-/// `## <version>` heading. With just one newer release that is its notes alone, as written. Empty when nothing is
-/// newer; when `current` cannot be read only the newest release's notes are given.
-pub fn changelog_since(
-    json: &str,
-    current: &str,
-    include_prereleases: bool,
-) -> Result<String, UpdateError> {
-    let mut all = usable_releases(json, include_prereleases)?;
-    all.sort_by(|a, b| b.version.cmp(&a.version));
-    let newer: Vec<&Release> = match Version::parse(current) {
-        Some(c) => all.iter().filter(|r| r.version > c).collect(),
-        None => all.iter().take(1).collect(),
-    };
-    match newer.as_slice() {
-        [] => Ok(String::new()),
-        [only] => Ok(only.notes.clone()),
-        many => {
-            let mut text = String::new();
-            for (i, r) in many.iter().enumerate() {
-                let notes = if r.notes.is_empty() {
-                    "No written notes for this release.".to_string()
-                } else {
-                    clip_chars(r.notes.clone(), MAX_SECTION_CHARS)
-                };
-                let section = format!("## {}\n\n{notes}", r.version_text());
-                if text.chars().count() + section.chars().count() > MAX_TOTAL_CHARS {
-                    text.push_str(&format!(
-                        "\n\n## Earlier releases\n\n{} more, on the releases page.",
-                        many.len() - i
-                    ));
-                    break;
-                }
-                if !text.is_empty() {
-                    text.push_str("\n\n");
-                }
-                text.push_str(&section);
-            }
-            Ok(text)
-        }
-    }
+    Ok(best)
 }
 
 /// A changelog longer than this is cut (at a character boundary): it only has to be readable in a panel, and the
@@ -281,13 +243,9 @@ pub fn changelog_since(
 const MAX_NOTES_CHARS: usize = 20_000;
 
 fn clip_notes(body: String) -> String {
-    clip_chars(body, MAX_NOTES_CHARS)
-}
-
-fn clip_chars(body: String, max: usize) -> String {
     let body = body.replace("\r\n", "\n");
     let body = body.trim();
-    match body.char_indices().nth(max) {
+    match body.char_indices().nth(MAX_NOTES_CHARS) {
         Some((cut, _)) => format!("{}…", body[..cut].trim_end()),
         None => body.to_string(),
     }
@@ -297,6 +255,56 @@ impl Release {
     /// The version as people write it: `0.2.0` or `0.2.0-rc1`, without the tag's `v`.
     pub fn version_text(&self) -> String {
         self.tag.trim_start_matches(['v', 'V']).to_string()
+    }
+}
+
+// ----------------------------------------------------- signed checksum list
+
+/// The checksum list comes from the same place as the installer, so on its own it only proves the download is intact,
+/// not who made it. A release signed with the project's key proves that: the key's public half is built into the
+/// program, so whoever can change the release page still cannot make an installer this copy accepts.
+///
+/// `message` is the checksum list exactly as downloaded; `signature_hex` and `public_key_hex` are Ed25519 values in
+/// hex (128 and 64 characters; surrounding whitespace is ignored).
+pub fn verify_sums_signature(
+    message: &[u8],
+    signature_hex: &str,
+    public_key_hex: &str,
+) -> Result<(), UpdateError> {
+    let (Some(sig), Some(key)) = (
+        decode_hex(signature_hex.trim()),
+        decode_hex(public_key_hex.trim()),
+    ) else {
+        return Err(UpdateError::SumsSignatureInvalid);
+    };
+    ring::signature::UnparsedPublicKey::new(&ring::signature::ED25519, key)
+        .verify(message, &sig)
+        .map_err(|_| UpdateError::SumsSignatureInvalid)
+}
+
+fn decode_hex(text: &str) -> Option<Vec<u8>> {
+    if !text.len().is_multiple_of(2) || !text.is_ascii() {
+        return None;
+    }
+    (0..text.len())
+        .step_by(2)
+        .map(|i| u8::from_str_radix(&text[i..i + 2], 16).ok())
+        .collect()
+}
+
+/// What to do about the signature, given whether this build has a key and whether the release has a signature.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SumsTrust {
+    /// This build has no key: only the checksum protects the download (today's behaviour).
+    ChecksumOnly,
+    /// This build has a key: the signature at this address must verify before the checksum list is believed.
+    MustVerify,
+}
+
+pub fn sums_trust(public_key: Option<&str>) -> SumsTrust {
+    match public_key {
+        Some(k) if !k.trim().is_empty() => SumsTrust::MustVerify,
+        _ => SumsTrust::ChecksumOnly,
     }
 }
 
@@ -552,6 +560,99 @@ pub fn parse_signature_output(out: &str) -> Signature {
 
 #[cfg(test)]
 mod tests {
+
+    // ---- signed checksum list
+
+    fn keypair(seed_byte: u8) -> (ring::signature::Ed25519KeyPair, String) {
+        use ring::signature::KeyPair;
+        let kp = ring::signature::Ed25519KeyPair::from_seed_unchecked(&[seed_byte; 32]).unwrap();
+        let hex = kp
+            .public_key()
+            .as_ref()
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect();
+        (kp, hex)
+    }
+
+    fn sign(kp: &ring::signature::Ed25519KeyPair, msg: &[u8]) -> String {
+        kp.sign(msg)
+            .as_ref()
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect()
+    }
+
+    #[test]
+    fn a_checksum_list_signed_with_the_projects_key_verifies() {
+        let (kp, public) = keypair(7);
+        let sums = b"abc123  Pyxee_0.5.0_x64-setup.exe\n";
+        let sig = sign(&kp, sums);
+        assert_eq!(sig.len(), 128);
+        assert_eq!(verify_sums_signature(sums, &sig, &public), Ok(()));
+        // The published file ends with a newline; so may the .sig and the key in the build.
+        assert_eq!(
+            verify_sums_signature(sums, &format!("{sig}\n"), &format!(" {public}\n")),
+            Ok(())
+        );
+    }
+
+    #[test]
+    fn a_changed_list_a_foreign_key_or_garbage_is_rejected() {
+        let (kp, public) = keypair(7);
+        let (other, other_public) = keypair(8);
+        let sums = b"abc123  Pyxee_0.5.0_x64-setup.exe\n";
+        let sig = sign(&kp, sums);
+        let bad = UpdateError::SumsSignatureInvalid;
+        // Someone swapped the installer and its checksum.
+        let forged = b"fff999  Pyxee_0.5.0_x64-setup.exe\n";
+        assert_eq!(
+            verify_sums_signature(forged, &sig, &public),
+            Err(bad.clone())
+        );
+        // Signed by a different key (an attacker with their own key pair).
+        assert_eq!(
+            verify_sums_signature(forged, &sign(&other, forged), &public),
+            Err(bad.clone())
+        );
+        assert_eq!(
+            verify_sums_signature(sums, &sig, &other_public),
+            Err(bad.clone())
+        );
+        for junk in ["", "zz", "abc", &sig[..126], &"é".repeat(64)] {
+            assert_eq!(
+                verify_sums_signature(sums, junk, &public),
+                Err(bad.clone()),
+                "{junk}"
+            );
+        }
+        assert_eq!(verify_sums_signature(sums, &sig, "not hex"), Err(bad));
+    }
+
+    #[test]
+    fn a_build_with_a_key_demands_the_signature_and_one_without_does_not() {
+        assert_eq!(sums_trust(None), SumsTrust::ChecksumOnly);
+        assert_eq!(sums_trust(Some("  ")), SumsTrust::ChecksumOnly);
+        assert_eq!(
+            sums_trust(Some("ab".repeat(32).as_str())),
+            SumsTrust::MustVerify
+        );
+    }
+
+    #[test]
+    fn the_release_lists_the_signature_asset_when_there_is_one() {
+        let json = r#"[{"tag_name":"v9.0.0","html_url":"u","assets":[
+            {"name":"P-setup.exe","browser_download_url":"https://x/i"},
+            {"name":"SHA256SUMS.txt","browser_download_url":"https://x/s"},
+            {"name":"SHA256SUMS.txt.sig","browser_download_url":"https://x/g"}]},
+            {"tag_name":"v8.0.0","html_url":"u","assets":[]}]"#;
+        let r = newest_release(json, false).unwrap().unwrap();
+        assert_eq!(r.sums_signature_url.as_deref(), Some("https://x/g"));
+        let older = newest_release(&json.replace("v9.0.0", "v7.0.0"), false)
+            .unwrap()
+            .unwrap();
+        assert_eq!(older.sums_signature_url, None);
+    }
     use super::*;
 
     fn v(s: &str) -> Version {
@@ -673,76 +774,6 @@ mod tests {
         let clipped = clip_notes(long);
         assert_eq!(clipped.chars().count(), MAX_NOTES_CHARS + 1);
         assert!(clipped.ends_with('…'));
-    }
-
-    fn feed() -> String {
-        let release = |tag: &str, pre: bool, draft: bool, body: &str| {
-            format!(
-                r#"{{"tag_name":"{tag}","html_url":"https://x/{tag}","prerelease":{pre},"draft":{draft},"body":"{body}","assets":[]}}"#
-            )
-        };
-        format!(
-            "[{}]",
-            [
-                release("v0.4.3", false, false, "- three"),
-                release("v0.4.2-rc1", true, false, "- candidate"),
-                release("v0.4.1", false, false, "- one"),
-                release("v0.4.9", false, true, "- draft"),
-                release("v0.4.0", false, false, ""),
-                release("v0.3.8", false, false, "- old"),
-            ]
-            .join(",")
-        )
-    }
-
-    #[test]
-    fn someone_far_behind_gets_every_release_since_theirs_newest_first() {
-        let text = changelog_since(&feed(), "0.3.8", false).unwrap();
-        let (a, b, c) = (
-            text.find("## 0.4.3").unwrap(),
-            text.find("## 0.4.1").unwrap(),
-            text.find("## 0.4.0").unwrap(),
-        );
-        assert!(a < b && b < c, "{text}");
-        assert!(text.contains("- three") && text.contains("- one"));
-        assert!(text.contains("No written notes for this release."));
-        assert!(!text.contains("candidate") && !text.contains("draft") && !text.contains("old"));
-        assert!(!text.contains("## 0.3.8"));
-    }
-
-    #[test]
-    fn a_candidate_build_also_sees_the_candidates_in_between() {
-        let text = changelog_since(&feed(), "0.4.0", true).unwrap();
-        assert!(
-            text.contains("## 0.4.2-rc1") && text.contains("- candidate"),
-            "{text}"
-        );
-    }
-
-    #[test]
-    fn one_newer_release_is_just_its_notes_and_none_is_empty() {
-        assert_eq!(changelog_since(&feed(), "0.4.1", false).unwrap(), "- three");
-        assert_eq!(changelog_since(&feed(), "0.4.3", false).unwrap(), "");
-        assert_eq!(changelog_since(&feed(), "1.0.0", false).unwrap(), "");
-    }
-
-    #[test]
-    fn an_unreadable_current_version_gets_the_newest_notes_only() {
-        assert_eq!(changelog_since(&feed(), "dev", false).unwrap(), "- three");
-    }
-
-    #[test]
-    fn a_long_history_is_cut_short_with_a_pointer_to_the_releases_page() {
-        let body = "x".repeat(MAX_SECTION_CHARS);
-        let releases: Vec<String> = (1..=30)
-            .map(|n| {
-                format!(r#"{{"tag_name":"v0.5.{n}","html_url":"u","body":"{body}","assets":[]}}"#)
-            })
-            .collect();
-        let text = changelog_since(&format!("[{}]", releases.join(",")), "0.4.0", false).unwrap();
-        assert!(text.chars().count() <= MAX_TOTAL_CHARS + 200);
-        assert!(text.contains("## Earlier releases"));
-        assert!(text.contains("## 0.5.30"));
     }
 
     const SUMS: &str =

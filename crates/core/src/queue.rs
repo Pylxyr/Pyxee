@@ -261,16 +261,6 @@ impl Queue {
         self.push_undo(undo);
     }
 
-    /// Removes radio-suggested entries other than the current one (used when the user starts something new).
-    pub fn drop_radio(&mut self) {
-        let cur = self.current;
-        self.entries
-            .retain(|e| e.origin == Origin::User || Some(e.id) == cur);
-        let keep: Vec<EntryId> = self.entries.iter().map(|e| e.id).collect();
-        self.order.retain(|i| keep.contains(i));
-        self.history.retain(|i| keep.contains(i));
-    }
-
     fn push_undo(&mut self, u: Undo) {
         self.undo.push(u);
         if self.undo.len() > UNDO_CAP {
@@ -704,19 +694,6 @@ mod tests {
         assert_eq!(q.current_id(), Some(start));
         assert_eq!(q.previous(NO_SKIP), None);
         assert_eq!(names(&q), ["a", "b", "c"]);
-    }
-
-    #[test]
-    fn drop_radio_keeps_user_entries_and_current() {
-        let mut q = Queue::new(1);
-        let a = q.add(t("a"), Origin::User);
-        let r1 = q.add(t("r1"), Origin::Radio);
-        q.add(t("r2"), Origin::Radio);
-        q.jump_to(r1);
-        q.drop_radio();
-        assert_eq!(names(&q), ["a", "r1"]);
-        assert_eq!(q.current_id(), Some(r1));
-        assert!(q.contains(a));
     }
 
     #[test]

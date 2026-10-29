@@ -95,7 +95,7 @@ pub struct Library {
 }
 
 /// The schema version this build understands (`PRAGMA user_version`).
-const SCHEMA_VERSION: i64 = 1;
+const SCHEMA_VERSION: i64 = 2;
 
 const SCHEMA_V1: &str = "
 CREATE TABLE tracks (
@@ -121,6 +121,12 @@ CREATE TABLE history (
     track_key TEXT NOT NULL REFERENCES tracks(key), played_at INTEGER NOT NULL
 );
 CREATE INDEX idx_history_time ON history(played_at);
+";
+
+/// Version 2: `home()` and `recent_tracks()` look history up by track. Without this index each lookup scans the whole
+/// history, so `home()` took 13 s with 3,000 songs and 63,000 plays (19 ms with it).
+const SCHEMA_V2: &str = "
+CREATE INDEX IF NOT EXISTS idx_history_track ON history(track_key, played_at);
 ";
 
 fn track_from_row(r: &rusqlite::Row<'_>, at: usize) -> rusqlite::Result<Track> {
@@ -209,13 +215,17 @@ impl Library {
             });
         }
         let _ = conn.pragma_update(None, "journal_mode", "WAL"); // not supported for in-memory databases
-        if version < 1 {
-            if let Err(e) = conn.execute_batch(&format!(
-                "BEGIN; {SCHEMA_V1} PRAGMA user_version = 1; COMMIT;"
-            )) {
-                // A batch that stops half way leaves its transaction open: close it, so nothing is half made.
-                let _ = conn.execute_batch("ROLLBACK");
-                return Err(e.into());
+                                                                 // With WAL, NORMAL cannot corrupt the file; a power cut can only lose the last few plays, not break the library.
+        let _ = conn.pragma_update(None, "synchronous", "NORMAL");
+        for (target, schema) in [(1, SCHEMA_V1), (2, SCHEMA_V2)] {
+            if version < target {
+                if let Err(e) = conn.execute_batch(&format!(
+                    "BEGIN; {schema} PRAGMA user_version = {target}; COMMIT;"
+                )) {
+                    // A batch that stops half way leaves its transaction open: close it, so nothing is half made.
+                    let _ = conn.execute_batch("ROLLBACK");
+                    return Err(e.into());
+                }
             }
         }
         Ok(Self { conn })

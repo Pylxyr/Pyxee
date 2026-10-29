@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { Backend } from './backend';
 import type { CommandDto } from './bindings/CommandDto';
 import type { PlayerStateDto } from './bindings/PlayerStateDto';
+import type { PositionDto } from './bindings/PositionDto';
 import { DEMO_TRACKS, MockBackend } from './mock';
 import { EMPTY_STATE, PlayerStore, describeFailure } from './player.svelte';
 import { noDiagnostics, noLibrary, noShell } from './test-utils';
@@ -17,6 +18,7 @@ function stub(initial: PlayerStateDto = EMPTY_STATE) {
     getState: async () => initial,
     dispatch: async (c) => void sent.push(c),
     onState: async (cb) => ((push = cb), () => {}),
+    onPosition: async () => () => {},
     windowInfo: async () => ({ backdrop: 'none' }),
     setVolume: async () => {},
     devCatalog: async () => DEMO_TRACKS,
@@ -164,5 +166,43 @@ describe('describeFailure', () => {
     expect(describeFailure({ kind: 'other', message: 'boom' })).toBe('boom');
     expect(describeFailure({ kind: 'expired', status: 403 })).toBe('YouTube refused to send it (HTTP 403).');
     expect(describeFailure({ kind: 'expired', status: null })).toBe('YouTube refused to send it.');
+  });
+});
+
+describe('stale player states', () => {
+  it('a state that arrives after a newer one is dropped', async () => {
+    let pushed: (s: PlayerStateDto) => void = () => {};
+    const state = (seq: number, positionMs: number): PlayerStateDto => ({ ...EMPTY_STATE, seq, positionMs });
+    const backend = {
+      onState: async (cb: (s: PlayerStateDto) => void) => ((pushed = cb), () => {}),
+      onPosition: async () => () => {},
+      getState: async () => state(3, 300),
+      devCatalog: async () => [],
+    } as unknown as Backend;
+    const store = new PlayerStore();
+    await store.init(backend);
+    pushed(state(5, 500));
+    pushed(state(4, 400)); // published earlier by another thread, delivered later
+    expect(store.state.positionMs).toBe(500);
+  });
+});
+
+describe('position-only pushes', () => {
+  it('move the position, keep the rest, and obey the same ordering', async () => {
+    let pushState: (s: PlayerStateDto) => void = () => {};
+    let pushPos: (p: PositionDto) => void = () => {};
+    const backend = {
+      onState: async (cb: (s: PlayerStateDto) => void) => ((pushState = cb), () => {}),
+      onPosition: async (cb: (p: PositionDto) => void) => ((pushPos = cb), () => {}),
+      getState: async () => ({ ...EMPTY_STATE, seq: 1 }),
+      devCatalog: async () => [],
+    } as unknown as Backend;
+    const store = new PlayerStore();
+    await store.init(backend);
+    pushState({ ...EMPTY_STATE, seq: 5, shuffle: true, positionMs: 100 });
+    pushPos({ seq: 6, positionMs: 350 });
+    expect(store.state).toMatchObject({ seq: 6, positionMs: 350, shuffle: true });
+    pushPos({ seq: 4, positionMs: 50 }); // older than what is shown
+    expect(store.state.positionMs).toBe(350);
   });
 });

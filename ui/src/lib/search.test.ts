@@ -18,6 +18,7 @@ function controllable() {
     getState: async () => EMPTY_STATE,
     dispatch: async () => {},
     onState: async () => () => {},
+    onPosition: async () => () => {},
     windowInfo: async () => ({ backdrop: 'none' }),
     setVolume: async () => {},
     devCatalog: async () => [],

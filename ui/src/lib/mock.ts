@@ -50,7 +50,7 @@ export const DEMO_TRACKS: TrackDto[] = [
  */
 export class MockBackend extends MockLibrary implements Backend {
   #s: PlayerStateDto = {
-    transport: { state: 'idle' }, audible: null, loading: null, positionMs: 0, repeat: 'off',
+    seq: 0, transport: { state: 'idle' }, audible: null, loading: null, positionMs: 0, repeat: 'off',
     shuffle: false, autoplay: true, canUndo: false, queue: [], current: null, upcoming: [],
   };
   #next = 1;
@@ -290,6 +290,10 @@ export class MockBackend extends MockLibrary implements Backend {
     }
     return { items };
   }
+  /** The mock always pushes whole states. */
+  async onPosition() {
+    return () => {};
+  }
   async onState(cb: (s: PlayerStateDto) => void) {
     this.#listeners.add(cb);
     return () => void this.#listeners.delete(cb);
@@ -335,6 +339,7 @@ export class MockBackend extends MockLibrary implements Backend {
     const i = this.#index(s.current);
     s.upcoming = i < 0 ? s.queue.map((e) => e.id) : s.queue.slice(i + 1).map((e) => e.id);
     s.canUndo = this.#undo.length > 0;
+    s.seq += 1;
     const snapshot = clone(s);
     for (const cb of this.#listeners) cb(snapshot);
   }

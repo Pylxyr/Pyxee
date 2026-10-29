@@ -84,7 +84,7 @@ fn guarded<T>(
     fail: T,
     f: impl FnOnce(&mut IoCtx) -> Result<T, std::io::Error>,
 ) -> T {
-    // SAFETY: `ctx` is the `IoCtx` box owned by the `LibavSource` that owns the decoder; libav only
+    // SAFETY: `ctx` is the leaked `IoCtx` owned by the `LibavSource` that owns the decoder; libav only
     // calls back while that source is inside `px_open`/`px_read`/`px_seek_ms`, so it is live and
     // not aliased.
     let ctx = unsafe { &mut *(ctx as *mut IoCtx) };
@@ -182,8 +182,9 @@ const QUIET: f32 = 1e-3;
 /// (Opus pre-skip and end trim, MP3/AAC gapless data), so no edge heuristics are needed here.
 pub struct LibavSource {
     dec: *mut ffi::PxDec,
-    // Boxed so its address is stable for the C callbacks; dropped after `dec` is closed.
-    ctx: Box<IoCtx>,
+    // Owned through a raw pointer (from `Box::into_raw`) because the C side holds the same address: a `Box` that is
+    // moved while C keeps a pointer derived from it is a provenance violation. Freed in `Drop`, after `dec` is closed.
+    ctx: std::ptr::NonNull<IoCtx>,
     rate: u32,
     /// Frames to drop from the output (used by `skip_ms` for streams that cannot seek in place).
     skip_frames: u64,
@@ -206,17 +207,19 @@ impl LibavSource {
     }
 
     pub fn open(source: Box<dyn ByteSource>) -> Result<Self, AudioError> {
-        let mut ctx = Box::new(IoCtx {
+        let ctx = std::ptr::NonNull::from(Box::leak(Box::new(IoCtx {
             src: source,
             err: None,
-        });
+        })));
         let (mut err, mut io_failed) = (0 as c_int, 0 as c_int);
-        let opaque = (&mut *ctx as *mut IoCtx).cast::<c_void>();
-        // SAFETY: `opaque` points at `ctx`, which outlives the decoder (see `Drop`); the callbacks
-        // match the declared C signatures.
+        let opaque = ctx.as_ptr().cast::<c_void>();
+        // SAFETY: `opaque` points at the leaked `IoCtx`, which is freed only after the decoder is closed (see `Drop`
+        // and the failure path below); the callbacks match the declared C signatures.
         let dec =
             unsafe { ffi::px_open(opaque, read_cb, seek_cb, size_cb, &mut err, &mut io_failed) };
         if dec.is_null() {
+            // SAFETY: `px_open` failed and closed everything, so nothing else uses the context any more.
+            let mut ctx = unsafe { Box::from_raw(ctx.as_ptr()) };
             if let Some(e) = ctx.err.take() {
                 return Err(map_io_err(e));
             }
@@ -258,8 +261,18 @@ impl LibavSource {
         self.lead_pending = false; // the quiet start is inside what is being dropped
     }
 
+    /// The context the C callbacks use. Only reached through `&mut self`, and libav calls back only while one of this
+    /// type's methods is inside a `px_*` call, so there is no other live reference.
+    fn ctx_mut(&mut self) -> &mut IoCtx {
+        // SAFETY: `ctx` came from `Box::into_raw`-style leaking in `open` and lives until `Drop`.
+        unsafe { self.ctx.as_mut() }
+    }
+
+    // Note: a recorded I/O error is deliberately kept until it is reported. libav may swallow a failed read and report
+    // a plain end of stream; the error recorded here is how a cut-off stream is told from a song that really ended
+    // (`an_expired_stream_url_mid_song_is_re_resolved...` in the app's engine tests depends on it).
     fn fail(&mut self, code: c_int) -> AudioError {
-        match self.ctx.err.take() {
+        match self.ctx_mut().err.take() {
             Some(e) => map_io_err(e),
             None => AudioError::Decode(describe(code)),
         }
@@ -300,8 +313,12 @@ impl LibavSource {
 
 impl Drop for LibavSource {
     fn drop(&mut self) {
-        // SAFETY: `dec` came from `px_open` and is closed exactly once, before `ctx` is freed.
-        unsafe { ffi::px_close(self.dec) };
+        // SAFETY: `dec` came from `px_open` and is closed exactly once, before `ctx` is freed; after the close
+        // libav makes no more callbacks, so nothing uses `ctx`, which is the pointer `open` leaked.
+        unsafe {
+            ffi::px_close(self.dec);
+            drop(Box::from_raw(self.ctx.as_ptr()));
+        }
     }
 }
 
@@ -319,7 +336,7 @@ impl SampleSource for LibavSource {
         // SAFETY: `dec` is a live decoder.
         let r = unsafe { ffi::px_seek_ms(self.dec, ms) };
         if r < 0 {
-            return Err(match self.ctx.err.take() {
+            return Err(match self.ctx_mut().err.take() {
                 Some(e) => map_io_err(e),
                 None => AudioError::Decode(format!("seek failed: {}", describe(r))),
             });

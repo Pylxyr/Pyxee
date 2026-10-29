@@ -1010,3 +1010,26 @@ fn playing_an_empty_list_changes_nothing() {
     assert_eq!(p.queue().len(), 2);
     assert_eq!(p.snapshot().transport, Transport::Playing { id: ids[0] });
 }
+
+#[test]
+fn a_late_audible_after_pause_leaves_the_player_paused_on_the_new_song() {
+    let (mut p, ids, _) = started(3);
+    p.engine(E::Audible { id: ids[0] });
+    p.engine(E::Prefetched { id: ids[1] });
+    // The gapless hand-over was already reported by the pipeline when the listener paused.
+    p.command(Command::Pause);
+    p.engine(E::Audible { id: ids[1] });
+    assert_eq!(
+        p.snapshot().transport,
+        Transport::Paused {
+            id: ids[1],
+            loaded: true
+        },
+        "the audio is paused, so the player must not claim to be playing"
+    );
+    assert_eq!(p.snapshot().audible, Some(ids[1]));
+    // Resume really resumes the engine.
+    let fx = p.command(Command::Resume);
+    assert!(has(&fx, |e| *e == Effect::Resume));
+    assert_eq!(p.snapshot().transport, Transport::Playing { id: ids[1] });
+}

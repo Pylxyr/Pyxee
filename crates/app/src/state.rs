@@ -1,16 +1,19 @@
 //! Shared app state and the one place that turns player changes into UI events and engine work.
 
-use crate::dto::{state_dto, BackdropDto};
+use crate::dto::{state_dto, BackdropDto, PlayerStateDto, PositionDto};
 use crate::library_service::LibraryService;
 use crate::session;
 use pyxee_core::{Effect, Player};
 use pyxee_sources::MusicSource;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::Sender;
 use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, Manager};
 
 pub const STATE_EVENT: &str = "player-state";
+/// Carries only `seq` and the position while nothing else about the player changed (see `publish`).
+pub const POSITION_EVENT: &str = "player-position";
 pub const LIBRARY_EVENT: &str = "library-changed";
 pub const NOTICE_EVENT: &str = "notice";
 
@@ -21,9 +24,16 @@ pub struct AppState {
     pub library: Mutex<LibraryService>,
     pub source: Arc<dyn MusicSource>,
     pub player: Mutex<Player>,
+    /// Number of the last state published; only changed while `player` is locked.
+    pub seq: AtomicU64,
+    /// The last state published, with `seq` and the position zeroed: what a new state is compared with to see whether
+    /// only the position moved. Only changed while `player` is locked.
+    pub last_published: Mutex<Option<PlayerStateDto>>,
     pub engine: Mutex<Sender<Effect>>,
     pub backdrop: BackdropDto,
     pub session_path: Option<PathBuf>,
+    /// The bytes of the session file as last written, so an unchanged session is not written again.
+    pub last_saved: Mutex<Vec<u8>>,
 }
 
 impl AppState {
@@ -35,7 +45,10 @@ impl AppState {
             Ok(p) => p.persisted(),
             Err(_) => return,
         };
-        if let Err(e) = session::save(path, &persisted) {
+        let Ok(mut last) = self.last_saved.lock() else {
+            return;
+        };
+        if let Err(e) = session::save_if_changed(path, &persisted, &mut last) {
             log::warn!("could not save session: {e}");
         }
     }
@@ -45,13 +58,15 @@ impl AppState {
 /// session for `Persist`), and pushes the new state to the UI.
 pub fn publish(app: &AppHandle, f: impl FnOnce(&mut Player) -> Vec<Effect>) {
     let state = app.state::<AppState>();
-    let (effects, dto) = match state.player.lock() {
-        Ok(mut p) => {
-            let fx = f(&mut p);
-            (fx, state_dto(&p))
-        }
-        Err(_) => return, // a panic elsewhere poisoned the lock; nothing sensible to do
+    // Effects go to the engine while the player is still locked: two threads publishing at once must reach the
+    // engine in the order their changes were made to the player (a Pause must not overtake the Resume before it).
+    // Lock order is always player, then engine; nothing locks them the other way round.
+    let Ok(mut p) = state.player.lock() else {
+        return; // a panic elsewhere poisoned the lock; nothing sensible to do
     };
+    let effects = f(&mut p);
+    let mut dto = state_dto(&p);
+    dto.seq = state.seq.fetch_add(1, Ordering::SeqCst) + 1;
     let mut save = false;
     if let Ok(tx) = state.engine.lock() {
         for e in effects {
@@ -62,11 +77,33 @@ pub fn publish(app: &AppHandle, f: impl FnOnce(&mut Player) -> Vec<Effect>) {
             }
         }
     }
+    // Only the position moved (the 4 Hz tick): the queue, with every title and thumbnail, does not need to travel.
+    let mut key = dto.clone();
+    key.seq = 0;
+    key.position_ms = 0;
+    let only_position = match state.last_published.lock() {
+        Ok(mut last) => {
+            let same = last.as_ref() == Some(&key);
+            *last = Some(key);
+            same
+        }
+        Err(_) => false,
+    };
+    drop(p);
     if save {
         state.save_session();
     }
     crate::shell::on_state(app, &dto);
-    if let Err(e) = crate::shell::emit_awake(app, STATE_EVENT, dto) {
+    let sent = if only_position {
+        let light = PositionDto {
+            seq: dto.seq,
+            position_ms: dto.position_ms,
+        };
+        crate::shell::emit_awake(app, POSITION_EVENT, light)
+    } else {
+        crate::shell::emit_awake(app, STATE_EVENT, dto)
+    };
+    if let Err(e) = sent {
         log::warn!("could not emit state: {e}");
     }
 }

@@ -6,7 +6,12 @@ import type { TransportDto } from "./TransportDto";
 /**
  * Everything the UI needs to draw the player and the queue.
  */
-export type PlayerStateDto = { transport: TransportDto, 
+export type PlayerStateDto = { 
+/**
+ * Order of publication, assigned while the player is locked. Events can reach the UI out of order (two threads
+ * publish), so the UI keeps the state with the highest `seq` and drops a lower one that arrives late.
+ */
+seq: number, transport: TransportDto, 
 /**
  * What the user can hear right now.
  */

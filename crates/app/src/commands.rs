@@ -19,7 +19,9 @@ pub fn get_state(state: State<AppState>) -> Result<PlayerStateDto, String> {
         .player
         .lock()
         .map_err(|_| "player state unavailable".to_string())?;
-    Ok(state_dto(&p))
+    let mut dto = state_dto(&p);
+    dto.seq = state.seq.load(std::sync::atomic::Ordering::SeqCst);
+    Ok(dto)
 }
 
 #[tauri::command]

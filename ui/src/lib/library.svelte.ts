@@ -24,20 +24,29 @@ export class LibraryStore {
   async init(backend: Backend) {
     this.#unlisten?.();
     this.#backend = backend;
-    this.#unlisten = await backend.onLibrary((s) => (this.snapshot = s));
+    this.#unlisten = await backend.onLibrary((s) => this.#apply(s));
     if (typeof document !== 'undefined') {
       document.removeEventListener('visibilitychange', this.#wake);
       document.addEventListener('visibilitychange', this.#wake);
     }
-    this.snapshot = await backend.getLibrary();
+    this.snapshot = EMPTY;
+    this.#apply(await backend.getLibrary());
     this.ready = true;
+  }
+
+  /**
+   * Keeps the newest snapshot. A push and an answer to `getLibrary` can arrive in either order (the window waking up
+   * asks again while a change is being pushed), and an older one arriving last must not replace a newer one.
+   */
+  #apply(s: LibrarySnapshotDto) {
+    if (s.revision >= this.snapshot.revision) this.snapshot = s;
   }
 
   /** Takes the library summary again (what is shown stays if it cannot be read). */
   async resync() {
     try {
       const s = await this.#backend?.getLibrary();
-      if (s) this.snapshot = s;
+      if (s) this.#apply(s);
     } catch {
       /* keep what is shown; the next push replaces it */
     }

@@ -3,6 +3,8 @@ import { groupByDay } from './format';
 import { LibraryStore } from './library.svelte';
 import { MockBackend } from './mock';
 import { snackbar } from './snackbar.svelte';
+import type { Backend } from './backend';
+import type { LibrarySnapshotDto } from './bindings/LibrarySnapshotDto';
 import type { TrackDto } from './bindings/TrackDto';
 
 const t = (n: string): TrackDto => ({ key: `yt:${n}`, title: `Title ${n}`, artist: 'A', durationMs: 1000, thumbnail: null });
@@ -116,5 +118,25 @@ describe('groupByDay', () => {
 
   it('returns nothing for no items', () => {
     expect(groupByDay([], () => 0, now)).toEqual([]);
+  });
+});
+
+describe('stale library snapshots', () => {
+  it('an older snapshot arriving after a newer one does not replace it', async () => {
+    let push: (s: LibrarySnapshotDto) => void = () => {};
+    const snap = (revision: number, likedKeys: string[]): LibrarySnapshotDto => ({ revision, likedKeys, playlists: [], historyCount: 0, error: null });
+    const b = {
+      onLibrary: async (cb: (s: LibrarySnapshotDto) => void) => {
+        push = cb;
+        return () => {};
+      },
+      getLibrary: async () => snap(5, ['a']),
+    } as unknown as Backend;
+    const lib = new LibraryStore();
+    await lib.init(b);
+    push(snap(7, ['a', 'b']));
+    push(snap(6, ['a'])); // a slow answer from before the change
+    expect(lib.snapshot.revision).toBe(7);
+    expect(lib.isLiked('b')).toBe(true);
   });
 });

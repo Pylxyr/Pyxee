@@ -95,3 +95,16 @@ Last.fm scrobbling works the same way: releases are built with the Last.fm API a
 Settings > Updates asks `api.github.com/repos/Pylxyr/Pyxee/releases` for the newest release (drafts never count; pre-releases count only when the running build is one). "Download and install" fetches the `-setup.exe`, checks it against the release's `SHA256SUMS.txt` (written by the workflow above), starts it and quits Pyxee. The installer is kept in `%TEMP%\pyxee-update` while it runs and removed at the next start. A copy of Pyxee that is signed also refuses to update when it cannot read its own signature (Windows could not be asked), since it could not then compare the publisher; the release page has the installer. The checksum list is published with the installer in the same release, so it proves the download is intact, not that the release itself is trustworthy: that is what the publisher check (once signing is on) and the build attestation are for. A release without an installer and checksum list is reported with its page instead. The installers are unsigned until a certificate is configured (see Code signing), so SmartScreen may still ask. The decisions are in `pyxee_shell::update` (unit tested); the network and process calls are in `crates/app/src/updater.rs`.
 
 yt-dlp is updated separately: its published `SHA2-256SUMS` is compared with the copy in use, a newer one is downloaded, verified, test-run (`--version`) and only then renamed over `<data folder>\tools\yt-dlp.exe`, which `YtDlpSource` prefers over the installed copy (so no restart). If any step fails the working copy is untouched; no backup copy is kept. `PYXEE_YTDLP` pins a copy and disables the updater. A Linux or macOS build is deliberately not part of this.
+
+
+## Signing the update list
+
+The in-app updater downloads the installer and `SHA256SUMS.txt` from the same release, so the checksum alone only proves the download is intact, not who published it. To close that gap the release also carries `SHA256SUMS.txt.sig`, an Ed25519 signature of that exact file, and a program built with the public key installs nothing whose list does not verify.
+
+One-time setup:
+
+1. `cargo xtask update-keygen` prints a seed and a public key. Keep the seed secret.
+2. Store the seed as the repository **secret** `PYXEE_UPDATE_SIGNING_SEED` and the public key as the repository **variable** `PYXEE_UPDATE_PUBLIC_KEY`.
+3. The next release is built with the key (the `build` job reads the variable) and signs its list (the `release` job reads the secret). A release that sets the variable but not the secret fails instead of publishing something users could not update to.
+
+Rules: the first release that carries the key cannot be installed by older programs through a signed check (they have none), and every release after it must be signed, so keep the seed safe. Losing it means users must install a new program by hand once. Builds without the variable (local builds) keep the checksum-only check and log a warning. This is independent of the Windows code-signing certificate, which still protects the installer on the machine.

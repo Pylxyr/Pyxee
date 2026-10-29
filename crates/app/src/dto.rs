@@ -124,11 +124,27 @@ pub enum RepeatDto {
     One,
 }
 
+/// Sent instead of the whole state when only the playback position moved (about four times a second while playing).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct PositionDto {
+    /// The `seq` the full state would have had; same ordering rule as `PlayerStateDto::seq`.
+    #[ts(type = "number")]
+    pub seq: u64,
+    #[ts(type = "number")]
+    pub position_ms: u64,
+}
+
 /// Everything the UI needs to draw the player and the queue.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
 pub struct PlayerStateDto {
+    /// Order of publication, assigned while the player is locked. Events can reach the UI out of order (two threads
+    /// publish), so the UI keeps the state with the highest `seq` and drops a lower one that arrives late.
+    #[ts(type = "number")]
+    pub seq: u64,
     pub transport: TransportDto,
     /// What the user can hear right now.
     #[ts(type = "number | null")]
@@ -722,6 +738,7 @@ pub fn state_dto(p: &Player) -> PlayerStateDto {
     let s = p.snapshot();
     let q = p.queue();
     PlayerStateDto {
+        seq: 0, // set by whoever publishes or reads it, under the player lock (see `state::publish`)
         transport: transport_dto(&s.transport),
         audible: s.audible.map(|i| i.0),
         loading: s.loading.map(|i| i.0),
