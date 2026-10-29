@@ -1,7 +1,7 @@
 # Pyxee
 
 A music player for Windows 10 (22H2) and Windows 11. Search for songs, queue them up, keep the ones you love, and let
-them play gapless. Pyxee plays music found online. (Playing audio files from your PC is not available yet.)
+them play gapless. Pyxee plays music found online.
 
 Pyxee is a hobby project and is not affiliated with YouTube or Google. It finds music on YouTube using the open-source
 tool yt-dlp.
