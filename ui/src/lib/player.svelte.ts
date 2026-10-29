@@ -51,6 +51,7 @@ export class PlayerStore {
   async init(backend: Backend) {
     this.#unlisten?.();
     this.#backend = backend;
+    this.state = EMPTY_STATE; // a new backend counts its states from the start
     const stopState = await backend.onState((s) => this.#apply(s));
     const stopPosition = await backend.onPosition((p) => {
       if (p.seq >= this.state.seq) this.state = { ...this.state, seq: p.seq, positionMs: p.positionMs };
@@ -63,7 +64,8 @@ export class PlayerStore {
       document.removeEventListener('visibilitychange', this.#wake);
       document.addEventListener('visibilitychange', this.#wake);
     }
-    this.state = await backend.getState();
+    // Not a plain assignment: a state pushed while this answer was on its way is newer than the answer.
+    this.#apply(await backend.getState());
     this.ready = true;
     this.catalog = await backend.devCatalog().catch(() => []);
   }

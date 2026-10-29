@@ -206,3 +206,23 @@ describe('position-only pushes', () => {
     expect(store.state.positionMs).toBe(350);
   });
 });
+
+describe('init and a late getState', () => {
+  it('does not replace a state that was pushed while the answer was on its way', async () => {
+    let pushState: (s: PlayerStateDto) => void = () => {};
+    let answer: ((s: PlayerStateDto) => void) | null = null;
+    const backend = {
+      onState: async (cb: (s: PlayerStateDto) => void) => ((pushState = cb), () => {}),
+      onPosition: async () => () => {},
+      getState: () => new Promise<PlayerStateDto>((resolve) => (answer = resolve)),
+      devCatalog: async () => [],
+    } as unknown as Backend;
+    const store = new PlayerStore();
+    const started = store.init(backend);
+    await vi.waitFor(() => expect(answer).not.toBe(null)); // init is now waiting for getState
+    pushState({ ...EMPTY_STATE, seq: 9, positionMs: 900 });
+    answer!({ ...EMPTY_STATE, seq: 4, positionMs: 400 }); // read before the push, delivered after it
+    await started;
+    expect(store.state.positionMs).toBe(900);
+  });
+});

@@ -26,7 +26,11 @@ pub fn parse_lrc(text: &str) -> Vec<Line> {
         }
         let words = strip_word_marks(rest);
         for ms in stamps {
-            let t = (ms as i64 - offset).max(0) as u64;
+            // Saturating: the text comes from a web service, and a huge timestamp or offset must not wrap around.
+            let t = i64::try_from(ms)
+                .unwrap_or(i64::MAX)
+                .saturating_sub(offset)
+                .max(0) as u64;
             out.push(Line {
                 time_ms: t,
                 text: words.clone(),
@@ -64,7 +68,8 @@ fn timestamp_ms(tag: &str) -> Option<u64> {
             }
         }
     };
-    Some(min * 60_000 + sec * 1000 + frac_ms)
+    // Checked: a timestamp too large to be a time is not a timestamp (it is then treated as text, like any other tag).
+    min.checked_mul(60_000)?.checked_add(sec * 1000 + frac_ms)
 }
 
 /// Removes enhanced-LRC word marks such as `<00:12.34>` and squeezes the spaces they leave.
@@ -153,4 +158,24 @@ pub fn clean_artist(artist: &str) -> String {
         .min()
         .unwrap_or(a.len());
     a[..cut].trim().to_string()
+}
+
+#[cfg(test)]
+mod hostile_input {
+    use super::*;
+
+    #[test]
+    fn absurd_minutes_do_not_overflow() {
+        let lines =
+            parse_lrc("[99999999999999999999:00.00]x\n[307445734561825861:00.00]y\n[00:01.00]ok");
+        assert!(lines.iter().any(|l| l.text == "ok"));
+    }
+
+    #[test]
+    fn an_extreme_offset_does_not_overflow() {
+        let lines = parse_lrc(
+            "[offset:-9223372036854775808]\n[00:01.00]a\n[offset:9223372036854775807]\n[00:02.00]b",
+        );
+        assert_eq!(lines.len(), 2);
+    }
 }

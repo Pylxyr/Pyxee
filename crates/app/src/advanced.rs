@@ -46,6 +46,11 @@ fn check(name: &str, value: &str) -> Result<(), String> {
     let problem = match name {
         _ if value.is_empty() => None,
         "PYXEE_COOKIES" if !Path::new(value).is_file() => Some("that file was not found"),
+        // A bare name (`yt-dlp`) is looked up on PATH; anything with a folder in it has to be there now, so a typo is
+        // said here instead of showing up later as "yt-dlp not found" in the middle of a search.
+        "PYXEE_YTDLP" if value.contains(['/', '\\']) && !Path::new(value).is_file() => {
+            Some("that file was not found")
+        }
         "PYXEE_JS_RUNTIME" => match pyxee_sources::jsruntime::parse_setting(value) {
             Err(e) => return Err(format!("{name}: {e}.")),
             Ok(pyxee_sources::jsruntime::Setting::Runtime { path: Some(p), .. })
@@ -121,6 +126,21 @@ mod tests {
         assert!(check("PYXEE_JS_RUNTIME", "node:/no/such/place/node")
             .unwrap_err()
             .contains("not found"));
+    }
+
+    #[test]
+    fn the_ytdlp_setting_takes_a_command_name_or_a_file_that_exists() {
+        for ok in ["yt-dlp", "yt-dlp.exe", ""] {
+            assert_eq!(check("PYXEE_YTDLP", ok), Ok(()), "{ok}");
+        }
+        let missing = std::env::temp_dir()
+            .join("pyxee-no-such-dir")
+            .join("yt-dlp.exe");
+        assert!(check("PYXEE_YTDLP", &missing.display().to_string())
+            .unwrap_err()
+            .contains("not found"));
+        let exe = std::env::current_exe().unwrap().display().to_string();
+        assert_eq!(check("PYXEE_YTDLP", &exe), Ok(()));
     }
 
     #[test]

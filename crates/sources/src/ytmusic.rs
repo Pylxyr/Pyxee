@@ -1527,6 +1527,154 @@ mod tests {
         assert!(matches!(parse_playlist("{}"), Err(SourceError::Parse(_))));
     }
 
+    // ------------------------------------------------------------- hostile answers
+
+    struct Rng(u64);
+    impl Rng {
+        fn next(&mut self) -> u64 {
+            self.0 ^= self.0 << 13;
+            self.0 ^= self.0 >> 7;
+            self.0 ^= self.0 << 17;
+            self.0
+        }
+        fn below(&mut self, n: usize) -> usize {
+            (self.next() % n as u64) as usize
+        }
+    }
+
+    /// Every place in `v` (as a path of keys/indices), so one can be picked at random.
+    fn paths(v: &Value, here: &mut Vec<String>, out: &mut Vec<Vec<String>>) {
+        out.push(here.clone());
+        match v {
+            Value::Object(m) => {
+                for (k, c) in m {
+                    here.push(k.clone());
+                    paths(c, here, out);
+                    here.pop();
+                }
+            }
+            Value::Array(a) => {
+                for (i, c) in a.iter().enumerate() {
+                    here.push(i.to_string());
+                    paths(c, here, out);
+                    here.pop();
+                }
+            }
+            _ => {}
+        }
+    }
+
+    fn replace_at(v: &mut Value, path: &[String], with: Value) {
+        let Some((first, rest)) = path.split_first() else {
+            *v = with;
+            return;
+        };
+        let child = match v {
+            Value::Object(m) => m.get_mut(first),
+            Value::Array(a) => first.parse::<usize>().ok().and_then(|i| a.get_mut(i)),
+            _ => None,
+        };
+        if let Some(c) = child {
+            replace_at(c, rest, with);
+        }
+    }
+
+    #[test]
+    fn no_parser_panics_on_answers_with_wrong_types_or_odd_values() {
+        use std::panic::{catch_unwind, AssertUnwindSafe};
+        let songs = answer(vec![
+            song("song0000001", "Idol", "YOASOBI", "THE BOOK", "3:33"),
+            row(Some("song0000002"), "No artist", vec![]),
+        ]);
+        let explore = explore_answer(vec![
+            carousel(
+                "Trending",
+                vec![
+                    page_row("song0000003", "Page song", "Artist", "1M views"),
+                    album_card(
+                        "MPREb_x",
+                        "Album",
+                        vec![text_run("Album"), text_run(" • "), link_run("A")],
+                    ),
+                    video_card(
+                        "vid00000001",
+                        "Video",
+                        vec![link_run("A"), text_run(" • "), text_run("2M views")],
+                    ),
+                    album_card("VLPLabc123", "A playlist", vec![text_run("Playlist")]),
+                ],
+            ),
+            json!({ "musicShelfRenderer": { "contents": [ song("song0000004", "Shelf", "B", "C", "1:02:03") ] } }),
+        ]);
+        let genres = explore_answer(vec![grid(vec![
+            genre_button("Pop", "ggMPOg"),
+            genre_button("Rock", "ggMPOh"),
+        ])]);
+        let rows = vec![playlist_row(Some("song0000005"), "Row", "Artist", "3:57")];
+        let playlist = json!({ "contents": { "twoColumnBrowseResultsRenderer": {
+            "tabs": [ { "tabRenderer": { "content": { "sectionListRenderer": { "contents": [ { "musicResponsiveHeaderRenderer": {} } ] } } } } ],
+            "secondaryContents": { "sectionListRenderer": { "contents": [ { "musicShelfRenderer": { "contents": rows } } ] } }
+        } } })
+        .to_string();
+
+        let odd = || -> Vec<Value> {
+            vec![
+                Value::Null,
+                json!(0),
+                json!(-1),
+                json!(u64::MAX),
+                json!(1.0e308),
+                json!(""),
+                json!("x"),
+                json!(" • "),
+                json!("9".repeat(5_000)),
+                json!("é\u{0}\u{10FFFF}=w1-h1"),
+                json!("https://lh3.googleusercontent.com/=w=h-h=w9999999999999999999-h1"),
+                json!([]),
+                json!({}),
+                json!([null, [], {}]),
+                json!({ "text": null, "runs": [null], "url": 5, "width": "wide" }),
+            ]
+        };
+
+        let mut rng = Rng(0x9E37_79B9_7F4A_7C15);
+        let mut worst = Vec::new();
+        for (name, body) in [
+            ("songs", &songs),
+            ("explore", &explore),
+            ("genres", &genres),
+            ("playlist", &playlist),
+        ] {
+            let original: Value = serde_json::from_str(body).unwrap();
+            let mut all = Vec::new();
+            paths(&original, &mut Vec::new(), &mut all);
+            for round in 0..1_500 {
+                let mut v = original.clone();
+                for _ in 0..=rng.below(3) {
+                    let at = &all[rng.below(all.len())];
+                    let options = odd();
+                    let pick = options[rng.below(options.len())].clone();
+                    replace_at(&mut v, at, pick);
+                }
+                let text = v.to_string();
+                let outcome = catch_unwind(AssertUnwindSafe(|| {
+                    let _ = parse_songs(&text);
+                    let _ = parse_explore(&text);
+                    let _ = parse_genres(&text);
+                    let _ = parse_genre(&text);
+                    let _ = parse_playlist(&text);
+                }));
+                if outcome.is_err() {
+                    worst.push(format!("{name} round {round}: {text}"));
+                    if worst.len() >= 3 {
+                        break;
+                    }
+                }
+            }
+        }
+        assert!(worst.is_empty(), "a parser panicked on: {worst:#?}");
+    }
+
     #[test]
     fn genre_and_playlist_requests_name_the_page_and_refuse_an_odd_id() {
         let (url, request) = testserver::once(200, &explore_answer(vec![]));

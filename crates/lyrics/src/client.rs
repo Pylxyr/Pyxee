@@ -3,7 +3,12 @@ use serde::Deserialize;
 use std::time::Duration;
 
 pub const LRCLIB: &str = "https://lrclib.net";
-const USER_AGENT: &str = "Pyxee/0.0.1 (https://github.com/Pylxyr/Pyxee)";
+/// LRCLIB asks clients to say who they are, with a version.
+const USER_AGENT: &str = concat!(
+    "Pyxee/",
+    env!("CARGO_PKG_VERSION"),
+    " (https://github.com/Pylxyr/Pyxee)"
+);
 /// A match whose length differs by more than this is probably another recording.
 const DURATION_SLACK_SECS: f64 = 4.0;
 
@@ -215,5 +220,14 @@ pub fn fetch(base: &str, q: &Query) -> Result<Lyrics, LyricsError> {
     match get(&agent, &search)? {
         Some(body) => from_lrclib(&body, q.duration_secs),
         None => Ok(Lyrics::None),
+    }
+}
+
+#[cfg(test)]
+mod user_agent {
+    #[test]
+    fn says_which_version_of_pyxee_is_asking() {
+        assert!(super::USER_AGENT.starts_with(&format!("Pyxee/{}", env!("CARGO_PKG_VERSION"))));
+        assert!(!super::USER_AGENT.contains("0.0.1"));
     }
 }
