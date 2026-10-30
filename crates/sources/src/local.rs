@@ -32,6 +32,9 @@ impl MusicSource for LocalSource {
         let Some(crate::key::TrackKey::File(path)) = crate::key::parse(key) else {
             return Err(SourceError::Failed(format!("not a local key: {key}")));
         };
+        if !Path::new(path).is_absolute() {
+            return Err(SourceError::Failed("not a local file path".into()));
+        }
         if !Path::new(path).is_file() {
             return Err(SourceError::Unavailable(format!(
                 "the file {path} is missing"
@@ -77,5 +80,21 @@ mod tests {
             .unwrap_err();
         assert!(matches!(err, SourceError::Unavailable(m) if m.contains("missing")));
         assert_eq!(track_for(&f).title, "Song One");
+    }
+
+    #[test]
+    fn a_relative_or_network_path_is_refused_before_it_is_touched() {
+        for key in [
+            "file:relative/a.mp3",
+            "file:a.mp3",
+            r"file:\\attacker\share\a.mp3",
+            "file://attacker/share/a.mp3",
+            "file:",
+        ] {
+            assert!(
+                matches!(LocalSource.resolve_stream(key), Err(SourceError::Failed(_))),
+                "{key:?}"
+            );
+        }
     }
 }

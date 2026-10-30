@@ -261,12 +261,12 @@ pub fn sync_lastfm(app: &AppHandle, announce: bool) {
     }
     // Outside the lock: sending what is left can take a moment and `on_state` must not be held up by it.
     if let Some(lastfm) = stopped {
-        lastfm.shutdown();
-        // Turned off in Settings: what could not be sent is not kept for a later start (the listener said no).
-        if !want {
-            if let Some(file) = lastfm_queue_file(app) {
-                let _ = std::fs::remove_file(file);
-            }
+        // Turned off in Settings: what could not be sent is not kept for a later start (the listener said no). The
+        // thread deletes it itself, in order with its other messages; the file is also removed here at once, in case
+        // the thread is busy with a slow request and does not get to it for a while.
+        lastfm.forget();
+        if let Some(file) = lastfm_queue_file(app) {
+            let _ = std::fs::remove_file(file);
         }
     }
 }

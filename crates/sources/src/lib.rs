@@ -1,6 +1,7 @@
 //! Music sources. Everything the app needs from "where music comes from" goes through
 //! `MusicSource`, so yt-dlp can be swapped or supplemented without touching the player.
 
+mod cover;
 pub mod gate;
 pub mod jsruntime;
 pub mod key;
@@ -11,6 +12,7 @@ pub mod suggest;
 pub mod ytdlp;
 pub mod ytmusic;
 
+pub use cover::is_cover_host;
 pub use scrub::scrub;
 
 use serde::{Deserialize, Serialize};

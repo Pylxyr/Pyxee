@@ -946,6 +946,8 @@ enum Msg {
     NowPlaying(Song),
     Scrobble(Scrobble),
     Shutdown(Sender<()>),
+    /// Scrobbling was turned off: drop what is waiting, on disk too, and stop.
+    Forget(Sender<()>),
 }
 
 /// Waiting for the user to allow Pyxee in the browser.
@@ -1209,6 +1211,18 @@ impl<F: Fn(Event)> Worker<F> {
         self.flush();
     }
 
+    /// Scrobbling was turned off: what is waiting is not kept, not even for a later start. Done by this thread, in the
+    /// order of its messages, so a listen that was queued behind a slow request cannot write the file again after it
+    /// has been removed.
+    fn forget(&mut self) {
+        self.stopped = true;
+        self.auth = None;
+        self.pending.clear();
+        if let Some(path) = &self.queue_file {
+            let _ = std::fs::remove_file(path);
+        }
+    }
+
     /// One last try at sending what is waiting, before the app quits.
     fn finish(&mut self) {
         self.retry_at = None;
@@ -1244,6 +1258,11 @@ fn run(
             Some(Msg::Scrobble(s)) => worker.enqueue(s),
             Some(Msg::Shutdown(done)) => {
                 worker.finish();
+                let _ = done.send(());
+                return;
+            }
+            Some(Msg::Forget(done)) => {
+                worker.forget();
                 let _ = done.send(());
                 return;
             }
@@ -1326,6 +1345,14 @@ impl Lastfm {
     }
 
     /// Sends what is still waiting before the app exits, waiting only briefly.
+    /// Stops the thread and has it delete the waiting scrobbles (scrobbling was turned off).
+    pub fn forget(&self) {
+        let (done_tx, done_rx) = mpsc::channel();
+        if self.tx.send(Msg::Forget(done_tx)).is_ok() {
+            let _ = done_rx.recv_timeout(SHUTDOWN_WAIT);
+        }
+    }
+
     pub fn shutdown(&self) {
         let (done_tx, done_rx) = mpsc::channel();
         if self.tx.send(Msg::Shutdown(done_tx)).is_ok() {
@@ -1544,5 +1571,25 @@ mod tests {
             want("(Official Video)", "Lowtide")
         );
         assert_eq!(clean("Lowtide - ", "Lowtide"), want("Lowtide -", "Lowtide"));
+    }
+
+    #[test]
+    fn turning_scrobbling_off_forgets_the_waiting_scrobbles_and_nothing_writes_them_back() {
+        let path = queue_path("forget");
+        let now = now_secs();
+        save_queue(&path, &[scrobble("waiting", now - 60)].into());
+        let app = App {
+            key: "0".repeat(32),
+            secret: "1".repeat(32),
+        };
+        let mut w = Worker::new(app, Some("session".into()), |_| {}, Some(path.clone()));
+        assert_eq!(w.pending.len(), 1, "it was brought back from the file");
+        w.forget();
+        assert!(!path.exists());
+        // A listen that was queued behind a slow request is handled after the others: it must not recreate the file.
+        w.enqueue(scrobble("late", now));
+        assert!(w.pending.is_empty());
+        assert!(!path.exists(), "nothing is kept after the listener said no");
+        let _ = std::fs::remove_dir_all(path.parent().unwrap());
     }
 }

@@ -12,6 +12,7 @@
   import type { Snippet } from 'svelte';
   import { MOTION, motionMs, motionPx } from '$lib/motion';
   import IconButton from './IconButton.svelte';
+  import { focusables } from '$lib/focus';
 
   // `bottom` (the default) is a card that rises from the bottom, centred on wide windows. `left` and `right` are tabs
   // that slide in from that edge and take half of the window (all of it when the window is narrow); Settings uses
@@ -31,7 +32,7 @@
   $effect(() => {
     if (open) {
       restore = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-      queueMicrotask(() => panel?.querySelector<HTMLElement>('button, [href], input, select, textarea, summary')?.focus());
+      queueMicrotask(() => (panel ? focusables(panel)[0] : undefined)?.focus());
     } else {
       restore?.focus();
       restore = null;
@@ -44,9 +45,11 @@
       onclose();
     } else if (e.key === 'Tab' && panel) {
       // Keep focus inside the sheet while it is open.
-      const f = [...panel.querySelectorAll<HTMLElement>('button, [href], input, select, textarea, summary')].filter((x) => !x.hasAttribute('disabled'));
+      const f = focusables(panel);
       const first = f[0], last = f[f.length - 1];
-      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last?.focus(); }
+      // Focus that has got outside the sheet (to the page behind it) is brought back in.
+      if (!panel.contains(document.activeElement) && f.length) { e.preventDefault(); (e.shiftKey ? last : first)?.focus(); }
+      else if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last?.focus(); }
       else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first?.focus(); }
     }
   }

@@ -528,22 +528,27 @@ fn text(v: &Value, key: &str) -> Option<String> {
 /// The largest thumbnail yt-dlp lists (by area, then by its own preference), else the top-level
 /// `thumbnail`, else YouTube's standard still for `id`. Plain `http` is upgraded to `https`.
 fn thumbnail(v: &Value, id: Option<&str>) -> Option<String> {
+    // Only covers the window can show are kept (see `cover`); a foreign one is passed over, not shown as nothing.
+    let usable = |u: &str| {
+        let u = u.replacen("http://", "https://", 1);
+        crate::cover::is_cover_host(&u).then_some(u)
+    };
     let list = v.get("thumbnails").and_then(Value::as_array);
     let best = list.and_then(|l| {
         l.iter()
             .filter_map(|t| {
                 let url = t.get("url")?.as_str().filter(|u| !u.is_empty())?;
+                let url = usable(url)?;
                 let w = t.get("width").and_then(Value::as_u64).unwrap_or(0);
                 let h = t.get("height").and_then(Value::as_u64).unwrap_or(w);
                 let pref = t.get("preference").and_then(Value::as_i64).unwrap_or(0);
                 Some((url, (w * h, pref)))
             })
             .max_by_key(|(_, rank)| *rank)
-            .map(|(u, _)| u.to_string())
+            .map(|(u, _)| u)
     });
-    best.or_else(|| text(v, "thumbnail"))
+    best.or_else(|| text(v, "thumbnail").and_then(|u| usable(&u)))
         .or_else(|| id.map(|i| format!("https://i.ytimg.com/vi/{i}/hqdefault.jpg")))
-        .map(|u| u.replacen("http://", "https://", 1))
 }
 
 /// The performer: music metadata when yt-dlp has it (`artists`, `artist`), else the uploader or
@@ -899,6 +904,8 @@ impl MusicSource for YtDlpSource {
         let Some(endpoint) = &self.browse_endpoint else {
             return Err(SourceError::Unsupported("Genres".into()));
         };
+        // Refused before it takes a turn in the gate: a bad argument must not hold up (or space out) real requests.
+        ytmusic::check_genre_token(params)?;
         let shelves = self
             .gate
             .run("genre", || ytmusic::fetch_genre(endpoint, params))?;
@@ -910,6 +917,7 @@ impl MusicSource for YtDlpSource {
         let Some(endpoint) = &self.browse_endpoint else {
             return Err(SourceError::Unsupported("Playlists".into()));
         };
+        ytmusic::check_playlist_id(id)?;
         let tracks = self
             .gate
             .run("playlist", || ytmusic::fetch_playlist(endpoint, id))?;
@@ -1022,23 +1030,40 @@ mod tests {
     #[test]
     fn the_largest_thumbnail_wins_over_the_smallest_and_over_a_made_up_url() {
         let t = track_of(
-            r#"{"id":"s5","title":"T","thumbnails":[{"url":"http://a/small.jpg","width":120,"height":90},{"url":"https://a/max.jpg","width":1280,"height":720},{"url":"https://a/mid.jpg","width":480,"height":360}]}"#,
+            r#"{"id":"s5","title":"T","thumbnails":[{"url":"http://i.ytimg.com/small.jpg","width":120,"height":90},{"url":"https://i.ytimg.com/max.jpg","width":1280,"height":720},{"url":"https://i.ytimg.com/mid.jpg","width":480,"height":360}]}"#,
         );
-        assert_eq!(t.thumbnail.as_deref(), Some("https://a/max.jpg"));
+        assert_eq!(t.thumbnail.as_deref(), Some("https://i.ytimg.com/max.jpg"));
         // Without any list the plain `thumbnail` is used, and http becomes https.
-        let t = track_of(r#"{"id":"s6","title":"T","thumbnail":"http://a/one.jpg"}"#);
-        assert_eq!(t.thumbnail.as_deref(), Some("https://a/one.jpg"));
+        let t = track_of(r#"{"id":"s6","title":"T","thumbnail":"http://i.ytimg.com/one.jpg"}"#);
+        assert_eq!(t.thumbnail.as_deref(), Some("https://i.ytimg.com/one.jpg"));
+    }
+
+    #[test]
+    fn a_cover_on_a_foreign_host_is_passed_over_for_one_that_can_be_shown() {
+        let t = track_of(
+            r#"{"id":"s7","title":"T","thumbnails":[{"url":"https://tracker.example/big.jpg","width":4000,"height":4000},{"url":"https://i.ytimg.com/vi/s7/mq.jpg","width":320,"height":180}]}"#,
+        );
+        assert_eq!(
+            t.thumbnail.as_deref(),
+            Some("https://i.ytimg.com/vi/s7/mq.jpg")
+        );
+        // Nothing usable in the answer: the cover YouTube is known to serve for the id.
+        let t = track_of(r#"{"id":"s8","title":"T","thumbnail":"https://tracker.example/x.jpg"}"#);
+        assert_eq!(
+            t.thumbnail.as_deref(),
+            Some("https://i.ytimg.com/vi/s8/hqdefault.jpg")
+        );
     }
 
     #[test]
     fn resolving_reports_artist_length_and_cover_so_the_ui_can_fill_what_search_left_out() {
         let r = parse_dump(
-            r#"{"id":"abc","title":"S","channel":"Lowtide - Topic","duration":200.0,"url":"https://x/y","ext":"webm","acodec":"opus","abr":139.0,"http_headers":{"User-Agent":"UA/1","Accept-Language":"en-us"},"thumbnails":[{"url":"https://a/s.jpg","width":120},{"url":"https://a/max.jpg","width":1280,"height":720}]}"#,
+            r#"{"id":"abc","title":"S","channel":"Lowtide - Topic","duration":200.0,"url":"https://x/y","ext":"webm","acodec":"opus","abr":139.0,"http_headers":{"User-Agent":"UA/1","Accept-Language":"en-us"},"thumbnails":[{"url":"https://i.ytimg.com/s.jpg","width":120},{"url":"https://i.ytimg.com/max.jpg","width":1280,"height":720}]}"#,
         )
         .unwrap();
         assert_eq!(r.artist.as_deref(), Some("Lowtide"));
         assert_eq!(r.duration_secs, Some(200.0));
-        assert_eq!(r.thumbnail.as_deref(), Some("https://a/max.jpg"));
+        assert_eq!(r.thumbnail.as_deref(), Some("https://i.ytimg.com/max.jpg"));
         assert_eq!(
             r.headers,
             vec![
@@ -1479,6 +1504,32 @@ mod tests {
             assert!(request.try_recv().is_ok() || request.recv().is_ok());
             let off = source(&url).without_music_search();
             assert!(matches!(off.explore(), Err(SourceError::Unsupported(_))));
+        }
+
+        #[test]
+        fn a_refused_argument_does_not_take_a_turn_in_the_gate() {
+            // A long quiet gap: if the bad calls ran through the gate, the good one would wait for it.
+            let gate = GateConfig {
+                min_gap: std::time::Duration::from_secs(3),
+                ..GateConfig::NONE
+            };
+            let (url, _) = testserver::once(200, r#"{"contents":{}}"#);
+            let s = YtDlpSource::new("yt-dlp-that-is-never-started")
+                .with_gate(gate)
+                .with_music_endpoint("http://127.0.0.1:9/unused")
+                .with_browse_endpoint(&url);
+            assert!(matches!(s.genre("a b"), Err(SourceError::Failed(_))));
+            assert!(matches!(
+                s.playlist_tracks("a\"b"),
+                Err(SourceError::Failed(_))
+            ));
+            let started = std::time::Instant::now();
+            let _ = s.genre("ggMPkpop");
+            assert!(
+                started.elapsed() < std::time::Duration::from_secs(2),
+                "{:?}",
+                started.elapsed()
+            );
         }
 
         #[test]

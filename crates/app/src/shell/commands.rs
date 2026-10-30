@@ -14,18 +14,7 @@ const COVER_MAX_BYTES: u64 = 512 * 1024;
 
 /// True for an https address on YouTube's or Google's image hosts, the only places covers come from.
 fn cover_host_ok(url: &str) -> bool {
-    let Some(rest) = url.strip_prefix("https://") else {
-        return false;
-    };
-    let host = rest.split(['/', '?', '#']).next().unwrap_or("");
-    let plain = !host.is_empty()
-        && host
-            .bytes()
-            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'.' || b == b'-');
-    plain
-        && [".ytimg.com", ".googleusercontent.com", ".ggpht.com"]
-            .iter()
-            .any(|suffix| host.ends_with(suffix))
+    pyxee_sources::is_cover_host(url)
 }
 
 /// The bytes of a cover, for the colour of the album art. The page cannot read the pixels of an image from another

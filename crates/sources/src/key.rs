@@ -25,13 +25,19 @@ pub fn is_video_id(id: &str) -> bool {
             .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
 }
 
-/// Reads a key. `None` for anything that is neither a valid `yt:` key nor a `file:` key with a path.
+/// A path that is on this computer: not a network path (`\\host\share`, `//host/x`), which Windows would contact with
+/// the person's credentials just to look for the file, not a device path (`\\?\`, `\\.\`), and without a NUL.
+fn is_local_path(path: &str) -> bool {
+    !path.is_empty() && !path.starts_with("\\\\") && !path.starts_with("//") && !path.contains('\0')
+}
+
+/// Reads a key. `None` for anything that is neither a valid `yt:` key nor a `file:` key with a local path.
 pub fn parse(key: &str) -> Option<TrackKey<'_>> {
     if let Some(id) = key.strip_prefix(YOUTUBE) {
         return is_video_id(id).then_some(TrackKey::Youtube(id));
     }
     key.strip_prefix(FILE)
-        .filter(|p| !p.is_empty())
+        .filter(|p| is_local_path(p))
         .map(TrackKey::File)
 }
 
@@ -83,5 +89,21 @@ mod tests {
     fn a_file_key_keeps_every_character_of_the_path() {
         let p = "C:\\Users\\me\\Music\\a:b #1.mp3";
         assert_eq!(parse(&format!("file:{p}")), Some(TrackKey::File(p)));
+    }
+
+    #[test]
+    fn a_network_or_device_path_is_not_a_file_key() {
+        // The webview can send any key; naming a network share must not get as far as touching it.
+        for bad in [
+            r"file:\\attacker\share\a.mp3",
+            "file://attacker/share/a.mp3",
+            r"file:\\?\C:\a.mp3",
+            r"file:\\.\pipe\x",
+            "file:/tmp/a\0.mp3",
+        ] {
+            assert_eq!(parse(bad), None, "{bad:?}");
+        }
+        assert!(parse("file:/tmp/a.mp3").is_some());
+        assert!(parse(r"file:C:\Music\a.mp3").is_some());
     }
 }

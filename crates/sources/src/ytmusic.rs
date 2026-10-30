@@ -558,6 +558,7 @@ pub fn parse_playlist(body: &str) -> Result<Vec<TrackInfo>, SourceError> {
         ));
     }
     let mut out: Vec<TrackInfo> = Vec::new();
+    let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
     for shelf in shelves {
         let Some(rows) = shelf.get("contents").and_then(Value::as_array) else {
             continue;
@@ -569,12 +570,16 @@ pub fn parse_playlist(body: &str) -> Result<Vec<TrackInfo>, SourceError> {
             else {
                 continue;
             };
-            if !out.iter().any(|x| x.key == song.key) {
+            if !seen.contains(&song.key) {
+                seen.insert(song.key.clone());
                 out.push(song);
+                if out.len() >= PLAYLIST_MAX {
+                    // The first page is all that is used; the rest of a (possibly huge) answer is not even read.
+                    return Ok(out);
+                }
             }
         }
     }
-    out.truncate(PLAYLIST_MAX);
     Ok(out)
 }
 
@@ -640,6 +645,20 @@ fn album_from_card(card: &Value) -> Option<AlbumInfo> {
             card.pointer("/thumbnailRenderer/musicThumbnailRenderer/thumbnail/thumbnails"),
         ),
     })
+}
+
+/// A genre token (`genre_get`'s argument) in the shape `parse_genres` hands out; anything else is refused.
+pub fn check_genre_token(params: &str) -> Result<(), SourceError> {
+    is_token(params)
+        .then_some(())
+        .ok_or_else(|| SourceError::Failed("that is not a genre token".into()))
+}
+
+/// A playlist id in the shape YouTube uses; anything else is refused.
+pub fn check_playlist_id(id: &str) -> Result<(), SourceError> {
+    plain_video_id(id)
+        .map(drop)
+        .ok_or_else(|| SourceError::Failed("that is not a playlist id".into()))
 }
 
 /// A plain video id (see `key::is_video_id`): it goes into a URL later, so nothing else is let through.
@@ -720,6 +739,7 @@ fn best_cover(thumbnails: Option<&Value>) -> Option<String> {
         })
         .max_by_key(|(_, w)| *w)
         .map(|(u, _)| enlarge(&u.replacen("http://", "https://", 1)))
+        .filter(|u| crate::cover::is_cover_host(u))
 }
 
 /// The host of an `http(s)` address, lower-cased, without user info or port.
@@ -1767,5 +1787,24 @@ mod tests {
             enlarge("https://lh3.googleusercontent.com:443/x=w60-h60"),
             "https://lh3.googleusercontent.com:443/x=w544-h544"
         );
+    }
+
+    #[test]
+    fn a_playlist_keeps_the_first_hundred_distinct_songs_in_order_however_long_the_answer_is() {
+        // Every song twice in a row, over 300 distinct ones: the first 100 distinct, once each, in order.
+        let rows: Vec<Value> = (0..300)
+            .flat_map(|i| {
+                let id = format!("v{i:010}");
+                [
+                    song(&id, &format!("T{i}"), "A", "Al", "3:20"),
+                    song(&id, &format!("T{i}"), "A", "Al", "3:20"),
+                ]
+            })
+            .collect();
+        let body = answer(rows).replace("musicShelfRenderer", "musicPlaylistShelfRenderer");
+        let kept = parse_playlist(&body).unwrap();
+        let keys: Vec<&str> = kept.iter().map(|t| t.key.as_str()).collect();
+        let want: Vec<String> = (0..100).map(|i| format!("yt:v{i:010}")).collect();
+        assert_eq!(keys, want);
     }
 }

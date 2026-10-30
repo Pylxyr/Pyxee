@@ -13,6 +13,9 @@ const CACHE_MAX: usize = 64;
 const PAUSE_BASE: Duration = Duration::from_secs(60);
 const PAUSE_MAX: Duration = Duration::from_secs(15 * 60);
 
+/// Text longer than this is not asked about: it is a paste, not a search, and it would only be handed to Google.
+const ASK_MAX_CHARS: usize = 80;
+
 pub const ENDPOINT: &str = "https://suggestqueries.google.com/complete/search";
 
 /// Percent-encodes everything except unreserved characters.
@@ -26,6 +29,19 @@ pub fn encode(s: &str) -> String {
         }
     }
     out
+}
+
+/// Whether `q` is worth sending to Google. Typed search words are; a pasted address, a file path or a long paste is
+/// not (no suggestion list would come of it, and it would tell Google what the person is about to open).
+pub fn worth_asking(q: &str) -> bool {
+    let q = q.trim();
+    !q.is_empty()
+        && q.chars().count() <= ASK_MAX_CHARS
+        && !q.contains("://")
+        && !q.to_ascii_lowercase().starts_with("www.")
+        && !q.contains('\\')
+        && !q.contains(":/")
+        && !q.chars().any(char::is_control)
 }
 
 /// Response shape: `["query", ["suggestion 1", "suggestion 2", ...]]`.
@@ -54,7 +70,7 @@ pub fn fetch(prefix: &str) -> Result<Vec<String>, SourceError> {
 }
 
 fn fetch_from(endpoint: &str, prefix: &str) -> Result<Vec<String>, SourceError> {
-    if prefix.trim().is_empty() {
+    if !worth_asking(prefix) {
         return Ok(Vec::new());
     }
     let url = format!(
@@ -167,7 +183,7 @@ impl Suggester {
 
     pub fn get(&self, prefix: &str) -> Result<Vec<String>, SourceError> {
         let q = prefix.trim();
-        if q.is_empty() {
+        if !worth_asking(q) {
             return Ok(Vec::new());
         }
         let key = q.to_lowercase();
@@ -234,6 +250,47 @@ mod tests {
         assert_eq!(parse(&many).unwrap().len(), 8);
         assert!(matches!(parse("<html>"), Err(SourceError::Parse(_))));
         assert!(matches!(parse(r#"["q"]"#), Err(SourceError::Parse(_))));
+    }
+
+    #[test]
+    fn only_typed_search_words_are_sent_to_google() {
+        for yes in ["lowtide", "  lo  ", "ça va", "daft punk around the", "a:b"] {
+            assert!(worth_asking(yes), "{yes:?}");
+        }
+        for no in [
+            "",
+            "   ",
+            "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+            "http://x",
+            "WWW.example.com/a",
+            r"C:\Users\me\Music\a.mp3",
+            "C:/Users/me/a.mp3",
+            "line one\nline two",
+            &"a".repeat(81),
+        ] {
+            assert!(!worth_asking(no), "{no:?}");
+        }
+        assert!(worth_asking(&"a".repeat(80)));
+    }
+
+    #[test]
+    fn such_text_makes_no_request_even_through_the_suggester() {
+        let (url, request) = testserver::once(200, r#"["q",["x"]]"#);
+        let s = Suggester::with_endpoint(url);
+        assert_eq!(s.get("https://example.com/private"), Ok(vec![]));
+        assert_eq!(s.get(&"z".repeat(500)), Ok(vec![]));
+        assert!(request.try_recv().is_err(), "nothing was sent");
+    }
+
+    #[test]
+    fn the_request_carries_the_typed_text_and_nothing_that_identifies_the_person() {
+        let (url, request) = testserver::once(200, r#"["lo",["low tide"]]"#);
+        assert_eq!(fetch_from(&url, "lo"), Ok(vec!["low tide".to_string()]));
+        let sent = request.recv().unwrap().to_ascii_lowercase();
+        assert!(sent.contains("q=lo"), "{sent}");
+        for header in ["cookie:", "authorization:", "referer:", "x-"] {
+            assert!(!sent.contains(header), "{header} in {sent}");
+        }
     }
 
     #[test]

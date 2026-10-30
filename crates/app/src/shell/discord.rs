@@ -75,13 +75,14 @@ pub struct Spec {
     pub mode: Mode,
 }
 
-/// Discord loads the large image itself, so it must be a short `https` URL. Local files, `data:` URIs and anything
-/// else are left out (Discord then shows the application's own icon).
+/// Discord loads the large image itself, so it must be a short `https` URL on YouTube's or Google's image hosts (the
+/// only places covers come from; any other host would be asked for the picture by Discord's servers). Local files,
+/// `data:` URIs and anything else are left out (Discord then shows the application's own icon).
 fn cover_url(thumbnail: Option<&str>) -> Option<String> {
     let t = thumbnail?.trim();
     let ok = t.len() <= 256
         && t.len() > "https://".len()
-        && t.starts_with("https://")
+        && pyxee_sources::is_cover_host(t)
         && !t.chars().any(char::is_whitespace);
     ok.then(|| t.to_owned())
 }
@@ -567,6 +568,8 @@ mod tests {
         let ok = "https://i.ytimg.com/vi/abc/hqdefault.jpg";
         assert_eq!(cover_url(Some(ok)), Some(ok.to_owned()));
         assert_eq!(cover_url(Some("http://example.com/a.jpg")), None);
+        // Discord's servers would fetch this: only the image hosts of YouTube and Google are passed on.
+        assert_eq!(cover_url(Some("https://tracker.example/a.jpg?u=1")), None);
         assert_eq!(cover_url(Some(r"C:\Music\cover.jpg")), None);
         assert_eq!(cover_url(Some("data:image/png;base64,AAAA")), None);
         assert_eq!(cover_url(Some("https://")), None);
