@@ -30,7 +30,7 @@ window-vibrancy = "0.8"
 # Tells WebView2 when a window is hidden (shell/webview_power.rs). These are the versions Tauri itself uses, so the
 # types are the same ones `with_webview` hands out.
 webview2-com = "0.39"
-windows-core = "0.62"
+windows-core = "0.100"
 windows = { version = "0.61", optional = true, features = [
   "Win32_Foundation",
   "Win32_Storage_EnhancedStorage",
