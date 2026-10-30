@@ -59,6 +59,7 @@ pub struct PreparedTrack {
     id: u64,
     src: Box<dyn SampleSource>,
     rs: StreamResampler,
+    out_rate: u32,
     pending: Vec<f32>,
     pos: usize,
     src_done: bool,
@@ -86,6 +87,7 @@ impl PreparedTrack {
             id,
             src,
             rs,
+            out_rate,
             pending: Vec::new(),
             pos: 0,
             src_done: false,
@@ -101,6 +103,19 @@ impl PreparedTrack {
 
     pub fn id(&self) -> u64 {
         self.id
+    }
+
+    /// Jumps to `ms` in the same open source: what was decoded ahead is dropped and the resampler starts over (a
+    /// seek is a discontinuity anyway). Counting of `emitted` starts again, as it does for a track opened at an offset.
+    /// On an error the track is in an unknown state and must be thrown away (the caller re-opens it).
+    fn seek(&mut self, ms: u64) -> Result<(), AudioError> {
+        self.src.seek_ms(ms)?;
+        self.rs = StreamResampler::new(self.src.sample_rate(), self.out_rate)?;
+        self.pending.clear();
+        self.pos = 0;
+        self.src_done = false;
+        self.emitted = 0;
+        Ok(())
     }
 
     fn decode_more(&mut self) -> Result<(), AudioError> {
@@ -160,6 +175,22 @@ impl GaplessSource {
     /// Drops tracks waiting behind the current one (a cancelled prefetch) without touching what is playing.
     pub fn clear_queued(&mut self) {
         self.queue.clear();
+    }
+
+    /// Seeks the track that is playing now (`id`) inside its open source, keeping whatever is queued behind it.
+    /// The output timeline starts again at 0 and the track is announced as started there, which is what a track
+    /// opened at the offset would do. Errors when `id` is not the track playing (it may be queued, or over) or the
+    /// source cannot seek in place; the caller then re-opens the track.
+    pub fn seek_current(&mut self, id: u64, ms: u64) -> Result<(), AudioError> {
+        let Some(track) = self.current.as_mut().filter(|t| t.id == id) else {
+            return Err(AudioError::Unsupported(
+                "that track is not the one playing".into(),
+            ));
+        };
+        track.seek(ms)?;
+        self.total_frames = 0;
+        self.events.push(Event::Started { id, at_frame: 0 });
+        Ok(())
     }
 
     pub fn queued(&self) -> usize {

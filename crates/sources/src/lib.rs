@@ -3,7 +3,9 @@
 
 pub mod gate;
 pub mod jsruntime;
+pub mod key;
 pub mod local;
+mod net;
 mod scrub;
 pub mod suggest;
 pub mod ytdlp;
@@ -20,6 +22,10 @@ pub enum SourceError {
     Offline,
     #[error("The music service is limiting requests right now. Try again in a moment.")]
     RateLimited,
+    /// YouTube answered HTTP 403: it refused this request (this song, this player client, or this network). Unlike a
+    /// rate limit it says nothing about the requests that follow, so the gate waits for several in a row.
+    #[error("YouTube refused the request (HTTP 403). Try again; if it keeps happening, update yt-dlp or sign in with cookies in Settings.")]
+    Forbidden,
     #[error("This track isn't available: {0}")]
     Unavailable(String),
     #[error("{0} was not found. Check that it is installed or set its path.")]
@@ -189,14 +195,14 @@ impl MusicSource for CompositeSource {
         self.remote.search(query, filter)
     }
     fn resolve_stream(&self, key: &str) -> Result<StreamInfo, SourceError> {
-        if key.starts_with("file:") {
+        if key::is_file(key) {
             self.local.resolve_stream(key)
         } else {
             self.remote.resolve_stream(key)
         }
     }
     fn related(&self, key: &str, count: usize) -> Result<Vec<TrackInfo>, SourceError> {
-        if key.starts_with("file:") {
+        if key::is_file(key) {
             Ok(Vec::new())
         } else {
             self.remote.related(key, count)
@@ -269,8 +275,9 @@ pub fn classify_stderr(tool: &str, stderr: &str) -> SourceError {
         )
     } else if has(&["http error 403", "403: forbidden"]) {
         // After the permanent causes above: YouTube refusing this client or IP (often fixed by
-        // cookies, or by waiting) is not a property of the song, so it must not skip through the queue.
-        SourceError::RateLimited
+        // cookies, or by waiting) is not a property of the song, so it must not skip through the queue. It is not a
+        // rate limit either (see `SourceError::Forbidden`).
+        SourceError::Forbidden
     } else if has(&[
         "http error 500",
         "http error 502",

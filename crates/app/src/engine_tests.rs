@@ -372,6 +372,56 @@ fn seeking_restarts_at_the_offset_and_the_position_follows() {
 }
 
 #[test]
+fn a_seek_reuses_the_open_stream_instead_of_asking_the_server_again() {
+    let resolves = Arc::new(AtomicUsize::new(0));
+    // Five requests are what the whole download takes (the probe and four 512 KiB chunks). After that the server
+    // refuses everything, as an expired address does: a seek that opened the stream again would be refused at its
+    // first request and the song would be resolved a second time.
+    let url = serve(
+        make_wav(10),
+        5,
+        Arc::new(AtomicBool::new(false)),
+        Duration::ZERO,
+    );
+    let mut r = Rig::new(resolving_in_turn(vec![url], resolves.clone()));
+    r.cmd(Command::SetAutoplay(false));
+    let mut t = Track::new("yt:seekinplace", "Long song", "x");
+    t.duration_ms = Some(10_000);
+    r.cmd(Command::PlayTracks {
+        tracks: vec![t],
+        start: 0,
+    });
+    let id = r.entry_ids()[0];
+    assert!(
+        r.run_until(30, |r| r.snapshot().position_ms >= 1_500),
+        "{:?}",
+        r.snapshot()
+    );
+    r.cmd(Command::Seek(6_000));
+    let before = r.samples.len();
+    assert!(
+        r.run_until(30, |r| r.snapshot().transport == Transport::Idle),
+        "{:?}",
+        r.snapshot()
+    );
+    let after_seek = (r.samples.len() - before) / 2;
+    assert!(
+        (3.9..4.4).contains(&(after_seek as f64 / 48_000.0)),
+        "about 4 s of the song remain after seeking to 6 s, got {after_seek} frames"
+    );
+    assert_eq!(
+        resolves.load(Ordering::SeqCst),
+        1,
+        "the seek went on in the open stream: nothing was resolved or requested again"
+    );
+    assert_eq!(
+        r.audible_log.iter().filter(|a| **a == Some(id)).count(),
+        1,
+        "a seek is not a new track"
+    );
+}
+
+#[test]
 fn an_unplayable_track_is_skipped_and_the_next_one_plays() {
     let mut r = Rig::new(TestSource::local());
     r.cmd(Command::SetAutoplay(false));

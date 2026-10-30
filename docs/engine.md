@@ -23,7 +23,10 @@
 3. "Now playing" changes only when the device has consumed the audio (see docs/core.md).
 4. A stream URL that is rejected mid-song (403/410) makes the track stop producing audio; when the listener reaches that
    point the engine reports `UrlExpired` at the exact frame it died, the player re-resolves, and playback resumes there.
-5. Seek re-opens the current track at the offset; the pre-decoded next track is re-queued.
+5. Seek jumps inside the open source of the current track (`Pipeline::seek_in_place`): nothing is resolved or downloaded again
+   and the queued next track stays queued. Only when that is not possible (the source cannot seek in place, the track is no
+   longer the one in the pipeline, or the producer is waiting on the network for more than 200 ms) the track is re-opened at the
+   offset and the pre-decoded next track is re-queued.
 
 ## Verified here (automated, no network)
 Gapless order and zero silence, skip, pause (clock and audio freeze), seek, unplayable track skipped, offline stays on the
@@ -51,7 +54,8 @@ so changing it never clicks. While nothing is playing the gain simply follows th
 at the start of the next track (this bug was caught by a test). Muting keeps tracks advancing and announced; only the sound stops.
 
 ## Seeking
-A seek re-opens the current track at the offset. Over a network that is slow, while the already-known next track is prepared
+A seek normally jumps inside the open source (see the engine steps above), so none of this applies. When it cannot, the
+track is re-opened at the offset. Over a network that is slow, while the already-known next track is prepared
 quickly; the first version let the next track win that race, so a forward seek played the next song instead. A prefetched
 track now waits until the track being re-opened is queued, then follows it. `seeking_never_lets_the_next_track_play_first`
 reproduces this with a slow local HTTP server (0.02 s of the seeked song before the next one cut in, before the fix).

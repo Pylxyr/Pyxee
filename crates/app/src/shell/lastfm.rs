@@ -20,6 +20,7 @@ use pyxee_core::UNKNOWN_ARTIST;
 use pyxee_shell::progress::Phase;
 use serde_json::Value;
 use std::collections::VecDeque;
+use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
 use std::sync::Mutex;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
@@ -249,6 +250,66 @@ pub struct Song {
 struct Scrobble {
     song: Song,
     timestamp: i64,
+}
+
+/// Last.fm does not accept a listen older than two weeks.
+const MAX_AGE_SECS: i64 = 14 * 24 * 60 * 60;
+
+/// How a waiting scrobble is kept on disk.
+#[derive(serde::Serialize, serde::Deserialize)]
+struct SavedScrobble {
+    title: String,
+    artist: String,
+    duration_ms: Option<u64>,
+    timestamp: i64,
+}
+
+/// What was waiting when the app last ended (listens made offline, say), without what Last.fm would refuse as too
+/// old, and never more than `PENDING_MAX`. A missing or unreadable file is an empty queue, not an error.
+fn load_queue(path: &Path, now: i64) -> VecDeque<Scrobble> {
+    let Ok(text) = std::fs::read_to_string(path) else {
+        return VecDeque::new();
+    };
+    let saved: Vec<SavedScrobble> = serde_json::from_str(&text).unwrap_or_default();
+    let mut queue: VecDeque<Scrobble> = saved
+        .into_iter()
+        .filter(|s| s.timestamp > now - MAX_AGE_SECS && s.timestamp <= now + 60)
+        .map(|s| Scrobble {
+            song: Song {
+                title: s.title,
+                artist: s.artist,
+                duration_ms: s.duration_ms,
+            },
+            timestamp: s.timestamp,
+        })
+        .collect();
+    while queue.len() > PENDING_MAX {
+        queue.pop_front();
+    }
+    queue
+}
+
+/// Writes the waiting scrobbles (an empty queue removes the file).
+fn save_queue(path: &Path, queue: &VecDeque<Scrobble>) {
+    if queue.is_empty() {
+        let _ = std::fs::remove_file(path);
+        return;
+    }
+    let saved: Vec<SavedScrobble> = queue
+        .iter()
+        .map(|s| SavedScrobble {
+            title: s.song.title.clone(),
+            artist: s.song.artist.clone(),
+            duration_ms: s.song.duration_ms,
+            timestamp: s.timestamp,
+        })
+        .collect();
+    let Ok(json) = serde_json::to_vec(&saved) else {
+        return;
+    };
+    if let Err(e) = pyxee_shell::atomic::write(path, &json) {
+        log::debug!("last.fm: could not save the waiting scrobbles: {e}");
+    }
 }
 
 /// The song for a track, or `None` when Last.fm should not hear about it: no title, no known artist (it would
@@ -900,6 +961,8 @@ struct Worker<F: Fn(Event)> {
     session: Option<String>,
     auth: Option<PendingAuth>,
     pending: VecDeque<Scrobble>,
+    /// Where `pending` is kept between runs, so scrobbles made offline survive closing the app.
+    queue_file: Option<PathBuf>,
     retry_at: Option<Instant>,
     backoff: Duration,
     /// After a failure that trying again cannot fix everything is dropped until the next start.
@@ -909,13 +972,24 @@ struct Worker<F: Fn(Event)> {
 }
 
 impl<F: Fn(Event)> Worker<F> {
-    fn new(app: App, session: Option<String>, emit: F) -> Self {
+    fn new(app: App, session: Option<String>, emit: F, queue_file: Option<PathBuf>) -> Self {
+        let pending = queue_file
+            .as_deref()
+            .map(|p| load_queue(p, now_secs()))
+            .unwrap_or_default();
+        if !pending.is_empty() {
+            log::info!(
+                "last.fm: {} scrobbles were waiting from the last run",
+                pending.len()
+            );
+        }
         Self {
             api: Api::new(app),
             emit,
             session,
             auth: None,
-            pending: VecDeque::new(),
+            pending,
+            queue_file,
             retry_at: None,
             backoff: BACKOFF_MIN,
             stopped: false,
@@ -936,6 +1010,13 @@ impl<F: Fn(Event)> Worker<F> {
         self.stopped = true;
         self.auth = None;
         self.pending.clear();
+        self.save_pending();
+    }
+
+    fn save_pending(&self) {
+        if let Some(path) = &self.queue_file {
+            save_queue(path, &self.pending);
+        }
     }
 
     /// Asks for a request token, again after a short wait when the failure may be temporary.
@@ -1032,6 +1113,7 @@ impl<F: Fn(Event)> Worker<F> {
             self.pending.pop_front();
         }
         self.pending.push_back(s);
+        self.save_pending();
     }
 
     fn now_playing(&mut self, song: &Song) {
@@ -1064,6 +1146,7 @@ impl<F: Fn(Event)> Worker<F> {
         match result {
             Ok((accepted, ignored)) => {
                 self.pending.drain(..count);
+                self.save_pending();
                 self.backoff = BACKOFF_MIN;
                 self.warned = false;
                 self.retry_at = None;
@@ -1133,8 +1216,14 @@ impl<F: Fn(Event)> Worker<F> {
     }
 }
 
-fn run(app: App, session: Option<String>, emit: impl Fn(Event), rx: &Receiver<Msg>) {
-    let mut worker = Worker::new(app, session, emit);
+fn run(
+    app: App,
+    session: Option<String>,
+    emit: impl Fn(Event),
+    queue_file: Option<PathBuf>,
+    rx: &Receiver<Msg>,
+) {
+    let mut worker = Worker::new(app, session, emit, queue_file);
     if worker.session.is_none() {
         worker.begin_auth();
     }
@@ -1179,6 +1268,7 @@ pub struct Lastfm {
 /// Never fails the app.
 pub fn init(
     session: Option<String>,
+    queue_file: Option<PathBuf>,
     emit: impl Fn(Event) + Send + 'static,
 ) -> Result<Lastfm, String> {
     let app = resolve_app(
@@ -1196,7 +1286,7 @@ pub fn init(
     let (tx, rx) = mpsc::channel();
     std::thread::Builder::new()
         .name("pyxee-lastfm".into())
-        .spawn(move || run(app, session, emit, &rx))
+        .spawn(move || run(app, session, emit, queue_file, &rx))
         .map_err(|e| {
             log::warn!("last.fm: off (could not start its thread: {e})");
             "Last.fm scrobbling could not be started.".to_string()
@@ -1247,6 +1337,83 @@ impl Lastfm {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn scrobble(title: &str, timestamp: i64) -> Scrobble {
+        Scrobble {
+            song: Song {
+                title: title.into(),
+                artist: "Artist".into(),
+                duration_ms: Some(200_000),
+            },
+            timestamp,
+        }
+    }
+
+    fn queue_path(name: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("pyxee-lfm-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        dir.join("lastfm-queue.json")
+    }
+
+    #[test]
+    fn waiting_scrobbles_survive_a_restart_in_order() {
+        let path = queue_path("roundtrip");
+        let now = 1_800_000_000;
+        let q: VecDeque<Scrobble> = [scrobble("a", now - 300), scrobble("b", now - 200)].into();
+        save_queue(&path, &q);
+        assert_eq!(load_queue(&path, now), q);
+        let _ = std::fs::remove_dir_all(path.parent().unwrap());
+    }
+
+    #[test]
+    fn what_last_fm_would_refuse_as_too_old_is_not_brought_back() {
+        let path = queue_path("old");
+        let now = 1_800_000_000;
+        let q: VecDeque<Scrobble> = [
+            scrobble("three weeks ago", now - 21 * 24 * 3600),
+            scrobble("yesterday", now - 24 * 3600),
+            scrobble("from the future", now + 3 * 3600),
+        ]
+        .into();
+        save_queue(&path, &q);
+        let back = load_queue(&path, now);
+        assert_eq!(back.len(), 1);
+        assert_eq!(back[0].song.title, "yesterday");
+        let _ = std::fs::remove_dir_all(path.parent().unwrap());
+    }
+
+    #[test]
+    fn an_empty_queue_removes_the_file_and_a_damaged_or_missing_one_is_just_empty() {
+        let path = queue_path("empty");
+        save_queue(&path, &[scrobble("a", 1_800_000_000 - 5)].into());
+        assert!(path.exists());
+        save_queue(&path, &VecDeque::new());
+        assert!(!path.exists(), "nothing waiting, nothing kept");
+        assert!(load_queue(&path, 1_800_000_000).is_empty(), "missing file");
+        std::fs::write(&path, b"{ not json").unwrap();
+        assert!(load_queue(&path, 1_800_000_000).is_empty(), "damaged file");
+        let _ = std::fs::remove_dir_all(path.parent().unwrap());
+    }
+
+    #[test]
+    fn a_saved_queue_longer_than_the_limit_keeps_the_newest() {
+        let path = queue_path("cap");
+        let now = 1_800_000_000;
+        let q: VecDeque<Scrobble> = (0..PENDING_MAX as i64 + 10)
+            .map(|i| scrobble(&format!("s{i}"), now - 10_000 + i))
+            .collect();
+        // `save_queue` keeps what it is given; the limit is enforced on loading.
+        save_queue(&path, &q);
+        let back = load_queue(&path, now);
+        assert_eq!(back.len(), PENDING_MAX);
+        assert_eq!(
+            back.back().unwrap().song.title,
+            format!("s{}", PENDING_MAX + 9)
+        );
+        assert_eq!(back.front().unwrap().song.title, "s10");
+        let _ = std::fs::remove_dir_all(path.parent().unwrap());
+    }
 
     #[test]
     fn an_error_code_is_read_as_a_number_or_a_numeric_string() {

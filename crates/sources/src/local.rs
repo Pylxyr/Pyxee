@@ -7,7 +7,7 @@ use std::path::Path;
 pub struct LocalSource;
 
 pub fn key_for(path: &Path) -> String {
-    format!("file:{}", path.display())
+    crate::key::file(path)
 }
 
 /// A track entry for a local file, titled from its file name until tag reading arrives.
@@ -29,9 +29,9 @@ impl MusicSource for LocalSource {
     }
 
     fn resolve_stream(&self, key: &str) -> Result<StreamInfo, SourceError> {
-        let path = key
-            .strip_prefix("file:")
-            .ok_or_else(|| SourceError::Failed(format!("not a local key: {key}")))?;
+        let Some(crate::key::TrackKey::File(path)) = crate::key::parse(key) else {
+            return Err(SourceError::Failed(format!("not a local key: {key}")));
+        };
         if !Path::new(path).is_file() {
             return Err(SourceError::Unavailable(format!(
                 "the file {path} is missing"

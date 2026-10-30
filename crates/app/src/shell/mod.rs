@@ -220,6 +220,13 @@ pub fn sync_discord(app: &AppHandle) {
 /// session), and sends what is still waiting and stops it when it is off. `announce` says why it cannot start (a
 /// build without a Last.fm application) to the listener, which is only wanted right after they turned it on.
 /// Safe to call at any time.
+/// Where scrobbles that could not be sent yet are kept (next to the settings), if there is a data folder.
+fn lastfm_queue_file(app: &AppHandle) -> Option<std::path::PathBuf> {
+    let shell = app.state::<ShellState>();
+    let dir = shell.settings_path.as_deref()?.parent()?.to_path_buf();
+    Some(dir.join("lastfm-queue.json"))
+}
+
 pub fn sync_lastfm(app: &AppHandle, announce: bool) {
     let shell = app.state::<ShellState>();
     let (want, legacy) = shell.settings.lock().map_or((false, None), |s| {
@@ -234,7 +241,9 @@ pub fn sync_lastfm(app: &AppHandle, announce: bool) {
         match (want, slot.is_some()) {
             (true, false) => {
                 let handle = app.clone();
-                match lastfm::init(session, move |e| on_lastfm_event(&handle, e)) {
+                match lastfm::init(session, lastfm_queue_file(app), move |e| {
+                    on_lastfm_event(&handle, e)
+                }) {
                     Ok(l) => *slot = Some(l),
                     Err(why) => refused = announce.then_some(why),
                 }
@@ -253,6 +262,12 @@ pub fn sync_lastfm(app: &AppHandle, announce: bool) {
     // Outside the lock: sending what is left can take a moment and `on_state` must not be held up by it.
     if let Some(lastfm) = stopped {
         lastfm.shutdown();
+        // Turned off in Settings: what could not be sent is not kept for a later start (the listener said no).
+        if !want {
+            if let Some(file) = lastfm_queue_file(app) {
+                let _ = std::fs::remove_file(file);
+            }
+        }
     }
 }
 

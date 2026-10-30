@@ -50,6 +50,26 @@ pub fn direct_requests_allowed_from_env() -> bool {
     direct_requests_allowed(std::env::var(ENV_VAR).ok().as_deref())
 }
 
+/// The setting that turns the search-box suggestions off (they ask Google for completions of what is being typed).
+pub const SUGGESTIONS_ENV_VAR: &str = "PYXEE_SUGGESTIONS";
+
+/// Whether the search box may ask for suggestions: on unless the setting says off (an empty or unreadable value keeps
+/// the default, which is on).
+pub fn suggestions_allowed(setting: Option<&str>) -> bool {
+    match setting.map(str::trim).filter(|v| !v.is_empty()) {
+        None => true,
+        Some(v) => parse_switch(v).unwrap_or_else(|e| {
+            log::warn!("{SUGGESTIONS_ENV_VAR}: {e}; leaving the suggestions on");
+            true
+        }),
+    }
+}
+
+/// [`suggestions_allowed`] for the environment.
+pub fn suggestions_allowed_from_env() -> bool {
+    suggestions_allowed(std::env::var(SUGGESTIONS_ENV_VAR).ok().as_deref())
+}
+
 /// The website's request for a page (Explore here).
 pub const BROWSE_ENDPOINT: &str = "https://music.youtube.com/youtubei/v1/browse?prettyPrint=false";
 /// The page behind the website's Explore tab.
@@ -146,12 +166,10 @@ pub fn playlist_body(id: &str, now: SystemTime) -> String {
 
 /// One POST to the website's own API, answered with the body text. `what` names the request in an error.
 fn post(endpoint: &str, body: &str, what: &str) -> Result<String, SourceError> {
-    let agent = ureq::AgentBuilder::new()
-        .timeout(TIMEOUT)
-        .user_agent(USER_AGENT)
-        .build();
-    let answer = agent
+    let answer = crate::net::agent()
         .post(endpoint)
+        .timeout(TIMEOUT)
+        .set("User-Agent", USER_AGENT)
         .set("Content-Type", "application/json")
         .set("Origin", "https://music.youtube.com")
         // The consent cookie the website sets once its banner is answered; without it some regions get a page.
@@ -591,7 +609,7 @@ fn video_from_card(card: &Value) -> Option<TrackInfo> {
         })
         .map_or_else(|| UNKNOWN_ARTIST.to_string(), |(t, _)| t.trim().to_string());
     Some(TrackInfo {
-        key: format!("yt:{id}"),
+        key: crate::key::youtube(id),
         title: title.to_string(),
         artist,
         duration_ms: None,
@@ -624,14 +642,9 @@ fn album_from_card(card: &Value) -> Option<AlbumInfo> {
     })
 }
 
-/// A plain video id: it goes into a URL later, so nothing else is let through.
+/// A plain video id (see `key::is_video_id`): it goes into a URL later, so nothing else is let through.
 fn plain_video_id(id: &str) -> Option<&str> {
-    (!id.is_empty()
-        && id.len() <= 64
-        && id
-            .bytes()
-            .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-'))
-    .then_some(id)
+    crate::key::is_video_id(id).then_some(id)
 }
 
 /// Where a list row keeps the song it plays. Search rows say it in `playlistItemData`; rows on a page (Explore) link
@@ -684,7 +697,7 @@ fn song_from_row(row: &Value) -> Option<TrackInfo> {
         .filter(|t| !t.is_empty() && clock_ms(t).is_none())
         .map_or_else(|| UNKNOWN_ARTIST.to_string(), str::to_string);
     Some(TrackInfo {
-        key: format!("yt:{id}"),
+        key: crate::key::youtube(id),
         title: title.to_string(),
         artist,
         duration_ms,
@@ -1595,6 +1608,19 @@ mod tests {
         if let Some(c) = child {
             replace_at(c, rest, with);
         }
+    }
+
+    #[test]
+    fn suggestions_are_on_unless_the_setting_says_off() {
+        assert!(suggestions_allowed(None));
+        assert!(suggestions_allowed(Some("")));
+        assert!(suggestions_allowed(Some(" 1 ")));
+        assert!(!suggestions_allowed(Some("0")));
+        assert!(!suggestions_allowed(Some("Off")));
+        assert!(
+            suggestions_allowed(Some("maybe")),
+            "an unreadable value keeps the default"
+        );
     }
 
     #[test]

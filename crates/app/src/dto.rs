@@ -301,7 +301,7 @@ impl From<&SourceError> for SearchErrorDto {
     fn from(e: &SourceError) -> Self {
         let kind = match e {
             SourceError::Offline => SearchErrorKind::Offline,
-            SourceError::RateLimited => SearchErrorKind::RateLimited,
+            SourceError::RateLimited | SourceError::Forbidden => SearchErrorKind::RateLimited,
             SourceError::ToolMissing(_) => SearchErrorKind::ToolMissing,
             SourceError::Unsupported(_) => SearchErrorKind::Unsupported,
             _ => SearchErrorKind::Other,

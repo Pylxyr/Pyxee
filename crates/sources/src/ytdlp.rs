@@ -173,6 +173,8 @@ pub struct YtDlpSource {
     gate: Gate,
     /// Search-box suggestions: cached, and paused after a rate limit (they are not yt-dlp runs, so not the gate's).
     suggester: Suggester,
+    /// Off: the search box never asks for suggestions (nothing typed leaves the app until a search is run).
+    suggestions: bool,
     cookies: Cookies,
     /// What `--js-runtimes` gets (nothing by default; the app sets it from `PATH` and `PYXEE_JS_RUNTIME`).
     js_runtime: JsRuntime,
@@ -194,6 +196,7 @@ impl YtDlpSource {
             timeout: Duration::from_secs(40),
             gate: Gate::new(GateConfig::DEFAULT),
             suggester: Suggester::new(),
+            suggestions: true,
             cookies: Cookies::None,
             js_runtime: JsRuntime::Off,
             search_cache: Mutex::new(HashMap::new()),
@@ -201,6 +204,12 @@ impl YtDlpSource {
             music_endpoint: Some(ytmusic::ENDPOINT.to_string()),
             browse_endpoint: Some(ytmusic::BROWSE_ENDPOINT.to_string()),
         }
+    }
+
+    /// The search box shows no suggestions, so nothing is asked of anyone while typing.
+    pub fn without_suggestions(mut self) -> Self {
+        self.suggestions = false;
+        self
     }
 
     /// Songs searches go to yt-dlp only, never to YouTube Music directly, and there is no Explore page.
@@ -376,6 +385,24 @@ impl YtDlpSource {
     }
 }
 
+/// Stops `child` and, on Windows, everything it started. The official `yt-dlp.exe` is a PyInstaller "onefile" program:
+/// the process we start only unpacks and launches the real one, and ending it leaves that one running (holding the
+/// pipes, so the reader threads would wait for it too). `taskkill /T` ends the whole tree.
+fn kill_tree(child: &mut std::process::Child) {
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        let _ = Command::new("taskkill")
+            .args(["/PID", &child.id().to_string(), "/T", "/F"])
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .creation_flags(0x0800_0000) // CREATE_NO_WINDOW
+            .status();
+    }
+    let _ = child.kill();
+}
+
 pub(crate) fn run_tool(
     path: &Path,
     args: &[String],
@@ -411,7 +438,7 @@ pub(crate) fn run_tool(
     let (Some(child_out), Some(child_err)) = (child.stdout.take(), child.stderr.take()) else {
         // Both pipes were requested above, so this should not happen; if it does, do not leave a
         // running child behind and report it instead of panicking a worker thread.
-        let _ = child.kill();
+        kill_tree(&mut child);
         let _ = child.wait();
         return Err(SourceError::Failed(format!(
             "could not read the output of {name}"
@@ -424,7 +451,7 @@ pub(crate) fn run_tool(
         match child.try_wait() {
             Ok(Some(s)) => break s,
             Ok(None) if start.elapsed() > timeout => {
-                let _ = child.kill();
+                kill_tree(&mut child);
                 let _ = child.wait();
                 log::warn!("{name} was stopped after {timeout:?}");
                 // A stall means the service cannot be reached right now: transient, so the player
@@ -558,7 +585,7 @@ fn song_keys(stdout: &str) -> HashSet<String> {
         .filter_map(|l| serde_json::from_str::<Value>(l).ok())
         .filter(is_song_entry)
         .filter_map(|v| text(&v, "id"))
-        .map(|id| format!("yt:{id}"))
+        .map(|id| crate::key::youtube(&id))
         .collect()
 }
 
@@ -642,7 +669,7 @@ pub fn item_from_entry(v: &Value) -> Option<SearchItem> {
     let id = id?;
     let artist = artist_of(v).unwrap_or_else(|| UNKNOWN_ARTIST.into());
     Some(SearchItem::Track(TrackInfo {
-        key: format!("yt:{id}"),
+        key: crate::key::youtube(&id),
         title,
         artist,
         duration_ms: duration_secs(v).map(|s| (s * 1000.0) as u64),
@@ -743,16 +770,12 @@ pub fn resolve_query(ytdlp: &Path, query: &str) -> Result<Resolved, SourceError>
     parse_dump(line)
 }
 
-/// The id after `yt:`: at most 64 of letters, digits, `_` and `-`. It goes into a URL, so nothing else is let through.
+/// The id of a `yt:` key (see `key::parse`: it goes into a URL, so nothing but a plain id is let through).
 fn video_id(key: &str) -> Result<&str, SourceError> {
-    key.strip_prefix("yt:")
-        .filter(|i| {
-            !i.is_empty()
-                && i.len() <= 64
-                && i.bytes()
-                    .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
-        })
-        .ok_or_else(|| SourceError::Failed(format!("not a YouTube key: {key}")))
+    match crate::key::parse(key) {
+        Some(crate::key::TrackKey::Youtube(id)) => Ok(id),
+        _ => Err(SourceError::Failed(format!("not a YouTube key: {key}"))),
+    }
 }
 
 impl MusicSource for YtDlpSource {
@@ -836,6 +859,9 @@ impl MusicSource for YtDlpSource {
     }
 
     fn suggest(&self, prefix: &str) -> Result<Vec<String>, SourceError> {
+        if !self.suggestions {
+            return Ok(Vec::new());
+        }
         self.suggester.get(prefix)
     }
 
@@ -1240,12 +1266,20 @@ mod tests {
     }
 
     #[test]
+    fn with_suggestions_off_nothing_is_asked_while_typing() {
+        // Would reach the network if it were on; off answers at once and empty.
+        let s = YtDlpSource::new("yt-dlp").without_suggestions();
+        assert_eq!(s.suggest("neon l"), Ok(Vec::new()));
+    }
+
+    #[test]
     fn a_403_or_a_5xx_from_youtube_is_transient_and_a_missing_video_is_not() {
         let c = |s: &str| classify_stderr("yt-dlp", s);
-        // Blocked client or IP: transient (stay on the song, cooldown), not "this song is bad".
+        // Blocked client or IP: transient (stay on the song), not "this song is bad", and not a rate limit either
+        // (the gate only waits when several in a row are refused).
         assert_eq!(
             c("ERROR: unable to download video data: HTTP Error 403: Forbidden"),
-            SourceError::RateLimited
+            SourceError::Forbidden
         );
         // YouTube's servers failing: transient.
         for e in [

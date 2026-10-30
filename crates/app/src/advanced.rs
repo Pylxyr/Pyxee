@@ -60,10 +60,12 @@ fn check(name: &str, value: &str) -> Result<(), String> {
             }
             Ok(_) => None,
         },
-        "PYXEE_YTMUSIC_DIRECT" => match pyxee_sources::ytmusic::parse_switch(value) {
-            Err(e) => return Err(format!("{name}: {e}.")),
-            Ok(_) => None,
-        },
+        "PYXEE_YTMUSIC_DIRECT" | "PYXEE_SUGGESTIONS" => {
+            match pyxee_sources::ytmusic::parse_switch(value) {
+                Err(e) => return Err(format!("{name}: {e}.")),
+                Ok(_) => None,
+            }
+        }
         "PYXEE_LOG" if !LOG_LEVELS.contains(&value.to_ascii_lowercase().as_str()) => {
             Some("use error, warn, info, debug or trace")
         }
@@ -145,12 +147,15 @@ mod tests {
 
     #[test]
     fn the_ytmusic_switch_takes_zero_or_one() {
-        for ok in ["0", "1", "off", "ON", ""] {
-            assert_eq!(check("PYXEE_YTMUSIC_DIRECT", ok), Ok(()), "{ok}");
+        for name in ["PYXEE_YTMUSIC_DIRECT", "PYXEE_SUGGESTIONS"] {
+            for ok in ["0", "1", "off", "ON", ""] {
+                assert_eq!(check(name, ok), Ok(()), "{name} {ok}");
+            }
+            assert!(
+                check(name, "maybe").unwrap_err().contains("0 or 1"),
+                "{name}"
+            );
         }
-        assert!(check("PYXEE_YTMUSIC_DIRECT", "maybe")
-            .unwrap_err()
-            .contains("0 or 1"));
     }
 
     #[test]

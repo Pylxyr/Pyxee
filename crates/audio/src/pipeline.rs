@@ -12,9 +12,9 @@ use pyxee_core::{EntryId, Heard, HeardTracker};
 use std::collections::VecDeque;
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, AtomicUsize, Ordering};
 use std::sync::mpsc::Sender;
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::sync::{Arc, Mutex, MutexGuard, TryLockError};
 use std::thread::{self, JoinHandle};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 /// Output volume, 0-100, shared between the UI side (which sets it) and the audio callback.
 /// The slider is perceptual, so the gain follows a curve (percent squared): 50% is a quarter of the
@@ -203,6 +203,39 @@ impl Pipeline {
         inner.consumed = 0;
         inner.tracker.reset(0);
         self.shared.queued_tracks.store(0, Ordering::Relaxed);
+    }
+
+    /// Seeks the track that is playing inside its open source, without re-opening it: the decoded-ahead audio is
+    /// dropped, tracks queued behind it stay queued, and the track is announced as started again at the new position.
+    /// `false` (nothing was changed that a flush does not repair): the track is not the one playing, its source cannot
+    /// seek in place, or the producer is busy (a stalled stream), and the caller flushes and re-opens it instead.
+    pub fn seek_in_place(&self, id: EntryId, ms: u64) -> bool {
+        // Not `cancel`: unlike a flush this must not break the read that is under way. A producer that is waiting for
+        // the network holds the lock for as long as that takes, so give up after a moment.
+        let deadline = Instant::now() + Duration::from_millis(200);
+        let mut src = loop {
+            match self.shared.source.try_lock() {
+                Ok(guard) => break guard,
+                Err(TryLockError::Poisoned(e)) => break e.into_inner(),
+                Err(TryLockError::WouldBlock) => {
+                    if Instant::now() >= deadline {
+                        return false;
+                    }
+                    thread::sleep(Duration::from_millis(2));
+                }
+            }
+        };
+        if let Err(e) = src.seek_current(id.0, ms) {
+            log::debug!("seek in place not possible: {e}");
+            return false;
+        }
+        // The producer holds the source lock while it adds to the buffer and the tracker, so with it held here no
+        // sample of the old position can be added after this clear. Lock order: source, then inner (as everywhere).
+        let mut inner = lock(&self.shared.inner);
+        inner.buf.clear();
+        inner.consumed = 0;
+        inner.tracker.reset(0);
+        true
     }
 
     /// While paused the device gets silence and nothing is consumed, so nothing "plays".

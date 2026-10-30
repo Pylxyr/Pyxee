@@ -11,6 +11,36 @@ pub fn save(path: &Path, p: &Persisted) -> std::io::Result<()> {
     pyxee_shell::atomic::write(path, &json)
 }
 
+/// "The session should be saved soon": the writer thread sleeps on this, so the thread that asks (the engine's, which
+/// also reports playback, or the UI's) never waits for the disk. Asking again before the writer has looked is the
+/// same as asking once.
+#[derive(Default)]
+pub struct SaveSignal {
+    wanted: std::sync::Mutex<bool>,
+    wake: std::sync::Condvar,
+}
+
+impl SaveSignal {
+    pub fn request(&self) {
+        *self.wanted.lock().unwrap_or_else(|e| e.into_inner()) = true;
+        self.wake.notify_one();
+    }
+
+    /// Blocks until a save was asked for, and takes the request (a request made while the writer is busy saving
+    /// makes it save once more). `timeout` bounds the wait so the thread can notice that the app is ending.
+    pub fn wait(&self, timeout: std::time::Duration) -> bool {
+        let mut wanted = self.wanted.lock().unwrap_or_else(|e| e.into_inner());
+        if !*wanted {
+            wanted = self
+                .wake
+                .wait_timeout(wanted, timeout)
+                .unwrap_or_else(|e| e.into_inner())
+                .0;
+        }
+        std::mem::take(&mut *wanted)
+    }
+}
+
 /// Like `save`, but writes nothing when the session is exactly what `last` holds (what was written last time). The
 /// 5-second autosave would otherwise rewrite and flush the same file all day while the player sits paused or idle.
 /// `last` is updated only after a successful write, so a failed write is tried again next time.
@@ -38,6 +68,46 @@ mod tests {
         let d = std::env::temp_dir().join(format!("pyxee-session-{}-{name}", std::process::id()));
         let _ = fs::remove_dir_all(&d);
         d
+    }
+
+    #[test]
+    fn many_requests_before_the_writer_looks_make_one_save() {
+        use std::time::Duration;
+        let signal = SaveSignal::default();
+        assert!(
+            !signal.wait(Duration::from_millis(5)),
+            "nothing asked: times out"
+        );
+        for _ in 0..50 {
+            signal.request();
+        }
+        assert!(
+            signal.wait(Duration::from_millis(5)),
+            "one wake for all of them"
+        );
+        assert!(
+            !signal.wait(Duration::from_millis(5)),
+            "and the request was taken"
+        );
+    }
+
+    #[test]
+    fn a_request_wakes_a_waiting_writer_at_once() {
+        use std::sync::Arc;
+        use std::time::{Duration, Instant};
+        let signal = Arc::new(SaveSignal::default());
+        let writer = {
+            let signal = Arc::clone(&signal);
+            std::thread::spawn(move || {
+                let t = Instant::now();
+                (signal.wait(Duration::from_secs(10)), t.elapsed())
+            })
+        };
+        std::thread::sleep(Duration::from_millis(50));
+        signal.request();
+        let (woken, waited) = writer.join().unwrap();
+        assert!(woken);
+        assert!(waited < Duration::from_secs(5), "{waited:?}");
     }
 
     #[test]

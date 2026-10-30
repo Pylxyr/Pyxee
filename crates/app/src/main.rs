@@ -66,6 +66,16 @@ fn with_updated_ytdlp(source: YtDlpSource, data_dir: Option<&std::path::Path>) -
     }
 }
 
+/// `PYXEE_SUGGESTIONS=0` keeps the search box from asking for completions of what is typed (on by default).
+fn with_suggestions_setting(source: YtDlpSource, allowed: bool) -> YtDlpSource {
+    if allowed {
+        source
+    } else {
+        log::info!("search suggestions are off (PYXEE_SUGGESTIONS)");
+        source.without_suggestions()
+    }
+}
+
 /// `PYXEE_YTMUSIC_DIRECT=0` keeps Pyxee from asking YouTube Music's own API (songs search, Explore): songs searches then
 /// use the yt-dlp flow and there is no Explore page. On (the default) changes nothing.
 fn with_music_search_setting(source: YtDlpSource, direct_allowed: bool) -> YtDlpSource {
@@ -146,11 +156,14 @@ fn main() {
             log::info!("yt-dlp audio format preference: {FORMAT_SELECTOR}");
             let source: Arc<dyn MusicSource> = Arc::new(CompositeSource {
                 remote: with_updated_ytdlp(
-                    with_music_search_setting(
-                        YtDlpSource::new(tools::locate("yt-dlp", "PYXEE_YTDLP"))
-                            .with_cookies(Cookies::from_env())
-                            .with_js_runtime(JsRuntime::from_env()),
-                        ytmusic::direct_requests_allowed_from_env(),
+                    with_suggestions_setting(
+                        with_music_search_setting(
+                            YtDlpSource::new(tools::locate("yt-dlp", "PYXEE_YTDLP"))
+                                .with_cookies(Cookies::from_env())
+                                .with_js_runtime(JsRuntime::from_env()),
+                            ytmusic::direct_requests_allowed_from_env(),
+                        ),
+                        ytmusic::suggestions_allowed_from_env(),
                     ),
                     data_dir.as_deref(),
                 ),
@@ -159,10 +172,12 @@ fn main() {
             let library = library_service::LibraryService::open_or_memory(
                 data_dir.as_ref().map(|d| d.join("library.db")).as_deref(),
             );
+            let save_signal = std::sync::Arc::new(session::SaveSignal::default());
             app.manage(AppState {
                 seq: std::sync::atomic::AtomicU64::new(0),
                 last_published: std::sync::Mutex::new(None),
                 last_saved: std::sync::Mutex::new(Vec::new()),
+                save_signal: save_signal.clone(),
                 log,
                 log_error,
                 volume: pyxee_audio::pipeline::Volume::default(),
@@ -177,6 +192,20 @@ fn main() {
                 data_dir.as_ref().map(|d| d.join("shell.json")),
             ));
             runner::spawn(app.handle().clone(), rx);
+            // The session is written here, off the thread that reports playback; a burst of requests (every pause,
+            // skip and seek asks) becomes one write a moment later. Quitting saves on its own thread.
+            {
+                let handle = app.handle().clone();
+                std::thread::Builder::new()
+                    .name("session-writer".into())
+                    .spawn(move || loop {
+                        if save_signal.wait(std::time::Duration::from_secs(3600)) {
+                            std::thread::sleep(std::time::Duration::from_millis(250));
+                            handle.state::<AppState>().save_session();
+                        }
+                    })
+                    .ok();
+            }
             // Installers that earlier updates downloaded are no longer needed.
             std::thread::spawn(updater::clear_leftovers);
             shell::init(app.handle(), &std::env::args().collect::<Vec<_>>());

@@ -114,7 +114,8 @@ type UrlCache = Arc<Mutex<HashMap<String, (StreamInfo, Instant)>>>;
 pub fn failure_from_source(e: &SourceError) -> Failure {
     match e {
         SourceError::Offline => Failure::Offline,
-        SourceError::RateLimited => Failure::RateLimited,
+        // A refused request is as temporary as a rate limit: stay on the song, offer Try again.
+        SourceError::RateLimited | SourceError::Forbidden => Failure::RateLimited,
         SourceError::Unavailable(_) => Failure::Unavailable,
         SourceError::ToolMissing(_) | SourceError::Parse(_) | SourceError::ToolBroken(_) => {
             Failure::Tool(e.to_string())
@@ -304,12 +305,24 @@ impl Engine {
                 self.paused = false;
             }
             Effect::Seek { ms } => {
-                // Re-open the song that is playing now at the offset. Its "audible again" is not a new track.
+                // Jump inside the song that is playing now. Its "audible again" is not a new track.
                 if let Some((id, track)) = self.current.clone() {
                     log::info!("seek: \"{}\" ({}) to {} ms", track.title, track.key, ms);
-                    self.start(id, &track, ms, true);
-                    if let Some((pid, pkey)) = self.prefetch_req.clone() {
-                        self.spawn_prefetch(pid, pkey);
+                    if self.pipeline.seek_in_place(id, ms) {
+                        // The song stays open: nothing is resolved, opened or downloaded again, the connection and
+                        // everything already downloaded are reused, and a song queued behind it stays queued.
+                        self.suppress_heard = false;
+                        self.skip_audible_for = Some(id);
+                        self.offsets.insert(id, ms);
+                        self.audible.remove(&id);
+                        self.stalled_since = None;
+                    } else {
+                        // Not possible (the song is not the one in the pipeline any more, its source cannot seek
+                        // in place, or the producer is waiting on the network): open it again at the offset.
+                        self.start(id, &track, ms, true);
+                        if let Some((pid, pkey)) = self.prefetch_req.clone() {
+                            self.spawn_prefetch(pid, pkey);
+                        }
                     }
                 } else {
                     log::warn!("seek to {ms} ms ignored: no song is playing");

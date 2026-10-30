@@ -126,6 +126,10 @@ pub(crate) fn escalate(base: Duration, max: Duration, strikes: u32) -> Duration 
         .min(max.max(base))
 }
 
+/// How many refused requests (HTTP 403) in a row, with no success between them, count as YouTube refusing this
+/// client or network altogether: from then on the gate behaves as after a rate limit.
+const FORBIDDEN_LIMIT: u32 = 3;
+
 /// How one gated run ended, as far as the pacing cares.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Outcome {
@@ -133,6 +137,9 @@ enum Outcome {
     Succeeded,
     /// YouTube said slow down: a cooldown starts (or grows).
     RateLimited,
+    /// YouTube refused one request (HTTP 403). One such answer can be about that song alone, so it starts no
+    /// cooldown; `FORBIDDEN_LIMIT` in a row, with no success between, are treated like a rate limit.
+    Forbidden,
     /// Any other error (offline, song unavailable, ...): says nothing about whether the limit has lifted.
     Failed,
 }
@@ -152,6 +159,8 @@ struct State {
     cooldown_until: Option<Instant>,
     /// Rate limits in a row, with no successful run between them. Sets how long the next cooldown is.
     strikes: u32,
+    /// Refused requests (403) in a row, with no successful run between them.
+    forbidden_in_a_row: u32,
 }
 
 impl State {
@@ -171,6 +180,21 @@ impl State {
     /// A run ended: record the gap (and the cooldown after a rate limit, returning how long it is).
     fn finished(&mut self, now: Instant, cfg: GateConfig, outcome: Outcome) -> Option<Duration> {
         self.quiet_until = Some(now + cfg.min_gap);
+        let outcome = match outcome {
+            Outcome::Forbidden => {
+                self.forbidden_in_a_row = self.forbidden_in_a_row.saturating_add(1);
+                if self.forbidden_in_a_row >= FORBIDDEN_LIMIT {
+                    Outcome::RateLimited
+                } else {
+                    Outcome::Failed
+                }
+            }
+            Outcome::Succeeded => {
+                self.forbidden_in_a_row = 0;
+                Outcome::Succeeded
+            }
+            other => other,
+        };
         match outcome {
             Outcome::RateLimited if !cfg.cooldown.is_zero() => {
                 let pause = escalate(cfg.cooldown, cfg.max_cooldown, self.strikes);
@@ -273,6 +297,7 @@ impl Gate {
         permit.outcome = match &out {
             Ok(_) => Outcome::Succeeded,
             Err(SourceError::RateLimited) => Outcome::RateLimited,
+            Err(SourceError::Forbidden) => Outcome::Forbidden,
             Err(_) => Outcome::Failed,
         };
         out
@@ -400,6 +425,66 @@ mod tests {
             escalate(base, Duration::ZERO, 5),
             base,
             "a cap below the base means no growth"
+        );
+    }
+
+    #[test]
+    fn one_or_two_refused_requests_start_no_cooldown_but_three_in_a_row_do() {
+        let t0 = Instant::now();
+        let c = cfg(0, 120_000);
+        let mut st = State::default();
+        for _ in 0..(FORBIDDEN_LIMIT - 1) {
+            assert_eq!(st.finished(t0, c, Outcome::Forbidden), None);
+            assert_eq!(
+                st.cooling(t0),
+                None,
+                "one song's 403 must not lock everything out"
+            );
+        }
+        assert_eq!(
+            st.finished(t0, c, Outcome::Forbidden),
+            Some(Duration::from_secs(120)),
+            "the third in a row is treated like a rate limit"
+        );
+        assert!(st.cooling(t0).is_some());
+    }
+
+    #[test]
+    fn a_success_or_a_different_failure_keeps_the_count_honest() {
+        let t0 = Instant::now();
+        let c = cfg(0, 120_000);
+        let mut st = State::default();
+        st.finished(t0, c, Outcome::Forbidden);
+        st.finished(t0, c, Outcome::Forbidden);
+        // A success in between: the next refusal is the first of a new run.
+        st.finished(t0, c, Outcome::Succeeded);
+        assert_eq!(st.finished(t0, c, Outcome::Forbidden), None);
+        assert_eq!(st.finished(t0, c, Outcome::Forbidden), None);
+        // An unrelated failure (offline, unavailable song) says nothing: it neither counts nor resets.
+        st.finished(t0, c, Outcome::Failed);
+        assert!(st.finished(t0, c, Outcome::Forbidden).is_some());
+    }
+
+    #[test]
+    fn a_run_that_returns_forbidden_is_counted_by_the_gate() {
+        let gate = Gate::new(cfg(0, 60_000));
+        for _ in 0..2 {
+            assert_eq!(
+                gate.run("t", || Err::<(), _>(SourceError::Forbidden)),
+                Err(SourceError::Forbidden)
+            );
+        }
+        // Still allowed to run: two refusals are not a block.
+        assert_eq!(gate.run("t", || Ok(1)), Ok(1));
+        for _ in 0..3 {
+            let _ = gate.run("t", || Err::<(), _>(SourceError::Forbidden));
+        }
+        // Now it is cooling down and refuses without calling the closure.
+        assert_eq!(
+            gate.run("t", || -> Result<(), SourceError> {
+                panic!("must not run")
+            }),
+            Err(SourceError::RateLimited)
         );
     }
 

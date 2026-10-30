@@ -34,9 +34,19 @@ pub struct AppState {
     pub session_path: Option<PathBuf>,
     /// The bytes of the session file as last written, so an unchanged session is not written again.
     pub last_saved: Mutex<Vec<u8>>,
+    /// Wakes the thread that writes the session (see `request_save`).
+    pub save_signal: Arc<session::SaveSignal>,
 }
 
 impl AppState {
+    /// Asks for the session to be saved soon, by the writer thread: nothing here waits for the disk, which is what
+    /// the thread that reports playback must not do (a write and flush can take a long time while an antivirus
+    /// scans it). Use `save_session` where it has to be on disk when the call returns (quitting).
+    pub fn request_save(&self) {
+        self.save_signal.request();
+    }
+
+    /// Saves the session now, on this thread.
     pub fn save_session(&self) {
         let Some(path) = &self.session_path else {
             return;
@@ -91,7 +101,7 @@ pub fn publish(app: &AppHandle, f: impl FnOnce(&mut Player) -> Vec<Effect>) {
     };
     drop(p);
     if save {
-        state.save_session();
+        state.request_save();
     }
     crate::shell::on_state(app, &dto);
     let sent = if only_position {

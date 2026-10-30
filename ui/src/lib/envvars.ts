@@ -58,6 +58,13 @@ export const ENV_VARS: EnvVarInfo[] = [
     placeholder: '0',
   },
   {
+    name: 'PYXEE_SUGGESTIONS',
+    title: 'Search suggestions',
+    about: 'While you type in the search box, Pyxee asks Google for completions of what you have typed so far (the same ones YouTube shows). Turn it off and nothing is sent until you run a search.',
+    fill: 'Type 0 to turn it off. Leave it empty (or 1) to keep it on.',
+    placeholder: '0',
+  },
+  {
     name: 'PYXEE_LOG',
     title: 'Log detail',
     about: 'How much Pyxee writes to its log file.',

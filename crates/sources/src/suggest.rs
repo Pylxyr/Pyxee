@@ -61,10 +61,11 @@ fn fetch_from(endpoint: &str, prefix: &str) -> Result<Vec<String>, SourceError> 
         "{endpoint}?client=firefox&ds=yt&q={}",
         encode(prefix.trim())
     );
-    let agent = ureq::AgentBuilder::new()
+    match crate::net::agent()
+        .get(&url)
         .timeout(Duration::from_secs(4))
-        .build();
-    match agent.get(&url).call() {
+        .call()
+    {
         Ok(r) => parse(
             &r.into_string()
                 .map_err(|e| SourceError::Failed(e.to_string()))?,

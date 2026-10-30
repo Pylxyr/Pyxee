@@ -230,7 +230,7 @@ fn spawn_real(app: AppHandle, rx: Receiver<Effect>) {
             }
             if last_save.elapsed() >= SAVE_EVERY {
                 last_save = Instant::now();
-                app.state::<AppState>().save_session();
+                app.state::<AppState>().request_save();
             }
         }
     });
@@ -258,7 +258,7 @@ fn spawn_sim(app: AppHandle, rx: Receiver<Effect>) {
                     }
                     if last_save.elapsed() >= SAVE_EVERY {
                         last_save = Instant::now();
-                        app.state::<AppState>().save_session();
+                        app.state::<AppState>().request_save();
                     }
                 }
             }
