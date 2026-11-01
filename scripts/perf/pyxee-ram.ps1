@@ -6,13 +6,15 @@
 #   powershell -ExecutionPolicy Bypass -File D:\Pyxee\scripts\perf\pyxee-ram.ps1 -Interval 0.5
 #
 # Play the song, leave the window in view for a minute or two, minimize it for a minute, restore it, repeat. Ctrl+C
-# prints a summary per state and kind. Every sample goes to pyxee-ram.csv on the Desktop (one row per process).
+# prints a summary per state and kind. Every sample is written to the CSV as it is taken (one row per process), in a new
+# file named with the start time, so nothing is lost if you stop it any way at all. Do not open that file in Excel while
+# it runs: if it is locked, the script carries on in a second file and says so.
 #
 # "PrivateWS" is the private working set: what Task Manager's Memory column shows. "WorkingSet" also counts pages shared
 # with other processes. All numbers are in MB.
 param(
   [double]$Interval = 1,
-  [string]$Csv = (Join-Path $env:USERPROFILE 'Desktop\pyxee-ram.csv')
+  [string]$Csv = (Join-Path $env:USERPROFILE ('Desktop\pyxee-ram-{0:yyyyMMdd-HHmmss}.csv' -f (Get-Date)))
 )
 
 Add-Type -TypeDefinition @'
@@ -73,6 +75,7 @@ try {
     Get-CimInstance Win32_PerfFormattedData_PerfProc_Process -Filter "Name LIKE 'msedgewebview2%' OR Name LIKE 'pyxee-app%'" |
       ForEach-Object { $perf[[int]$_.IDProcess] = $_ }
     $tick = @{}
+    $batch = New-Object System.Collections.ArrayList
     foreach ($p in $procs) {
       $pp = $perf[[int]$p.ProcessId]
       if (-not $pp) { continue }
@@ -83,7 +86,13 @@ try {
         PrivateWS = [math]::Round($pp.WorkingSetPrivate / 1MB, 1); WorkingSet = [math]::Round($pp.WorkingSet / 1MB, 1)
         PrivateBytes = [math]::Round($pp.PrivateBytes / 1MB, 1)
       }
-      [void]$rows.Add($row); $tick[$kind] += $row.PrivateWS
+      [void]$rows.Add($row); [void]$batch.Add($row); $tick[$kind] += $row.PrivateWS
+    }
+    try { $batch | Export-Csv $Csv -Append -NoTypeInformation -ErrorAction Stop }
+    catch {
+      $Csv = $Csv -replace '\.csv$', ('-b{0}.csv' -f (Get-Random -Maximum 1000))
+      Write-Host "Could not write the CSV (open in another program?). Carrying on in $Csv" -ForegroundColor Red
+      try { $batch | Export-Csv $Csv -Append -NoTypeInformation -ErrorAction Stop } catch { }
     }
     $total = 0; foreach ($v in $tick.Values) { $total += $v }
     $detail = ($tick.GetEnumerator() | Sort-Object Value -Descending | ForEach-Object { '{0} {1:N0}' -f $_.Key, $_.Value }) -join ' | '
@@ -94,7 +103,7 @@ try {
 }
 finally {
   if ($rows.Count -gt 0) {
-    $rows | Export-Csv $Csv -NoTypeInformation
+    Write-Host "`nSamples are in $Csv"
     Write-Host "`nPer process kind and window state: average and peak private working set, MB (per process, summed per sample):"
     $rows | Group-Object State, Time, Kind | ForEach-Object {
       [pscustomobject]@{ State = $_.Group[0].State; Kind = $_.Group[0].Kind; Sum = ($_.Group | Measure-Object PrivateWS -Sum).Sum }
