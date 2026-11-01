@@ -456,9 +456,14 @@ fn an_unplayable_track_is_skipped_and_the_next_one_plays() {
     let mut r = Rig::new(TestSource::local());
     r.cmd(Command::SetAutoplay(false));
     let missing = Track::new(
-    &format!("file:{}", std::env::temp_dir().join("definitely_missing.mp3").display()),
-    "Missing",
-    "x",
+        &format!(
+            "file:{}",
+            std::env::temp_dir()
+                .join("definitely_missing.mp3")
+                .display()
+        ),
+        "Missing",
+        "x",
     );
     r.cmd(Command::PlayTracks {
         tracks: vec![missing, file_track("b_48k.wav")],
@@ -1005,9 +1010,14 @@ fn a_skipped_song_is_announced_with_its_title_and_the_reason() {
     let mut r = Rig::new(TestSource::local());
     r.cmd(Command::SetAutoplay(false));
     let missing = Track::new(
-    &format!("file:{}", std::env::temp_dir().join("definitely_missing.mp3").display()),
-    "Gone Song",
-    "x",
+        &format!(
+            "file:{}",
+            std::env::temp_dir()
+                .join("definitely_missing.mp3")
+                .display()
+        ),
+        "Gone Song",
+        "x",
     );
     r.cmd(Command::PlayTracks {
         tracks: vec![missing, file_track("b_48k.wav")],
@@ -1032,9 +1042,14 @@ fn an_upcoming_song_that_cannot_play_is_announced_before_it_is_reached() {
     let mut r = Rig::new(TestSource::local());
     r.cmd(Command::SetAutoplay(false));
     let missing = Track::new(
-    &format!("file:{}", std::env::temp_dir().join("definitely_missing.mp3").display()),
-    "Later Song",
-    "x",
+        &format!(
+            "file:{}",
+            std::env::temp_dir()
+                .join("definitely_missing.mp3")
+                .display()
+        ),
+        "Later Song",
+        "x",
     );
     r.cmd(Command::PlayTracks {
         tracks: vec![file_track("a_44k.wav"), missing],
@@ -1186,8 +1201,10 @@ fn the_log_tells_the_story_of_a_song_including_why_it_failed() {
         t
     };
     let bad_key = format!(
-    "file:{}",
-    std::env::temp_dir().join("definitely_missing.mp3").display()
+        "file:{}",
+        std::env::temp_dir()
+            .join("definitely_missing.mp3")
+            .display()
     );
     let bad = Track::new(&bad_key, "LogProbe Bad", "x");
     r.cmd(Command::PlayTracks {
