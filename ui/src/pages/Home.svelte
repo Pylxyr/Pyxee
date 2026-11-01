@@ -4,6 +4,7 @@
   import { player } from '$lib/player.svelte';
   import type { HomeDto } from '$lib/bindings/HomeDto';
   import type { TrackDto } from '$lib/bindings/TrackDto';
+  import Backdrop from '../components/Backdrop.svelte';
   import Button from '../components/Button.svelte';
   import CoverGrid from '../components/CoverGrid.svelte';
   import EmptyState from '../components/EmptyState.svelte';
@@ -66,7 +67,7 @@
     {#if hero}
       {@const button = HERO_BUTTON[hero.action]}
       <div class="hero" data-testid="resume">
-        <div class="hero-bg" aria-hidden="true"><Thumb src={hero.track.thumbnail} seed={hero.track.key} size={96} fill rounded="r-sm" /></div>
+        <Backdrop class="hero-bg" src={hero.track.thumbnail} seed={hero.track.key} />
         <div class="hero-art"><Thumb src={hero.track.thumbnail} seed={hero.track.key} size={240} fill rounded="r-sm" /></div>
         <div class="min-w-0 flex-1">
           <p class="hero-label">{hero.label}</p>

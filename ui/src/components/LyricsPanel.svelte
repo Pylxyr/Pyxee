@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { player } from '$lib/player.svelte';
+  import { player, STALE_AFTER_MS } from '$lib/player.svelte';
   import { lyricsStore } from '$lib/lyrics.svelte';
   import { currentLine } from '$lib/lyrics';
 
@@ -14,7 +14,26 @@
   const st = $derived(lyricsStore.state);
   const lyrics = $derived(st.kind === 'ready' && st.key === track?.key ? st.lyrics : null);
   const loading = $derived(!lyrics && track != null && st.kind === 'loading');
-  const index = $derived(lyrics?.kind === 'synced' ? currentLine(lyrics.lines, player.state.positionMs) : -1);
+  // The line being sung. The position arrives once a second, so between reports the next change is timed here: one
+  // timer, set for the moment the next line starts (nothing runs in between, and nothing while paused).
+  let index = $state(-1);
+  let due = $state(0);
+  $effect(() => {
+    due;
+    if (lyrics?.kind !== 'synced') {
+      index = -1;
+      return;
+    }
+    void player.positionMs; // a new report re-aligns the clock
+    const now = player.estimatedPositionMs();
+    const lines = lyrics.lines;
+    index = currentLine(lines, now);
+    const next = lines[index + 1];
+    // Reports have stopped (the window was asleep): wait for the next one instead of timing off an old clock.
+    if (!player.isPlaying || !next || player.positionAgeMs() >= STALE_AFTER_MS) return;
+    const timer = setTimeout(() => due++, Math.max(0, next.timeMs - now));
+    return () => clearTimeout(timer);
+  });
 
   // Follow the song, unless the user has just scrolled by hand.
   let box = $state<HTMLElement>();

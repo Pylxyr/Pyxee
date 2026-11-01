@@ -37,12 +37,17 @@ struct Shared {
     notices: Mutex<Vec<String>>,
     player: Mutex<Player>,
     queue: Mutex<VecDeque<Effect>>,
+    /// Every position report the engine made, in ms.
+    positions: Mutex<Vec<u64>>,
 }
 
 struct TestHost(Arc<Shared>);
 
 impl Host for TestHost {
     fn engine_event(&self, e: EngineEvent) {
+        if let EngineEvent::Position { ms, .. } = &e {
+            self.0.positions.lock().unwrap().push(*ms);
+        }
         let fx = self.0.player.lock().unwrap().engine(e);
         self.0.queue.lock().unwrap().extend(fx);
     }
@@ -117,6 +122,7 @@ impl Rig {
             notices: Mutex::new(Vec::new()),
             player: Mutex::new(Player::new(3)),
             queue: Mutex::new(VecDeque::new()),
+            positions: Mutex::new(Vec::new()),
         });
         let engine = Engine::new(
             Arc::new(TestHost(shared.clone())),
@@ -286,24 +292,26 @@ fn skipping_stops_the_old_audio_and_the_old_track_never_returns() {
 #[test]
 fn pause_freezes_the_position_and_resume_continues() {
     let mut r = Rig::new(TestSource::local());
-    // Real-time device. At DEVICE_SPEED the 2 s fixture is consumed in ~330 ms, about one position
-    // tick (250 ms): the first update can land near the end of the track, and after Resume the
-    // last few ms play out before the next update (a coin flip on timer phase: ~40% failures).
-    // At 1x the track is nowhere near its end when this test is done with it.
+    // Real-time device: at DEVICE_SPEED the 2 s fixture would be over before the test is done with it.
     r.speed = 1.0;
     r.cmd(Command::SetAutoplay(false));
     r.cmd(Command::PlayTracks {
         tracks: vec![file_track("a_44k.wav")],
         start: 0,
     });
-    assert!(r.run_until(10, |r| r.snapshot().position_ms >= 250));
+    // Positions are reported once per whole second of the song, so pause early: the next report is a second away.
+    assert!(r.run_until(10, |r| r.snapshot().audible.is_some()));
+    r.run_for(150);
     r.cmd(Command::Pause);
     r.step();
-    // The last position update before the pause can be up to 250 ms old (one POSITION_EVERY plus a
-    // coarse Windows timer tick); let one more update land first, with margin.
-    r.run_for(600);
+    // The pause itself reports exactly where it stopped; after that nothing moves.
+    r.run_for(100);
     let (at, played) = (r.snapshot().position_ms, r.samples.len());
-    r.run_for(500);
+    assert!(
+        at >= 100,
+        "the pause reports the heard position, not the last second's ({at} ms)"
+    );
+    r.run_for(1_200);
     assert_eq!(
         r.snapshot().position_ms,
         at,
@@ -316,8 +324,28 @@ fn pause_freezes_the_position_and_resume_continues() {
     );
     r.cmd(Command::Resume);
     assert!(
-        r.run_until(10, |r| r.snapshot().position_ms > at + 200),
+        r.run_until(10, |r| r.snapshot().position_ms >= 1_000),
         "the position advances again after Resume (was {at} ms)"
+    );
+}
+
+#[test]
+fn the_position_is_reported_once_per_whole_second_and_not_while_paused() {
+    let mut r = Rig::new(TestSource::local());
+    r.cmd(Command::SetAutoplay(false));
+    r.cmd(Command::PlayTracks {
+        tracks: vec![file_track("a_44k.wav")], // 2 s
+        start: 0,
+    });
+    assert!(r.run_until(10, |r| r.snapshot().transport == Transport::Idle));
+    let reports = r.shared.positions.lock().unwrap().clone();
+    let seconds: Vec<u64> = reports.iter().map(|ms| ms / 1000).collect();
+    let mut distinct = seconds.clone();
+    distinct.dedup();
+    assert_eq!(seconds, distinct, "never twice in one second: {reports:?}");
+    assert!(
+        reports.len() <= 3 && reports.windows(2).all(|w| w[0] < w[1]),
+        "about one report per second of a 2 s song, in order: {reports:?}"
     );
 }
 
@@ -353,7 +381,9 @@ fn seeking_restarts_at_the_offset_and_the_position_follows() {
         tracks: vec![file_track("a_44k.wav")],
         start: 0,
     });
-    assert!(r.run_until(10, |r| r.snapshot().position_ms >= 250));
+    // Playing (the first position report, at 0 s, comes with it).
+    assert!(r.run_until(10, |r| r.snapshot().audible.is_some()));
+    r.run_for(100);
     let id = r.entry_ids()[0];
     r.cmd(Command::Seek(1500));
     let before = r.samples.len();

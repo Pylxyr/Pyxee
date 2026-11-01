@@ -94,7 +94,7 @@ describe('lyrics', () => {
     const box = await screen.findByTestId('lyrics');
     const line = await within(box).findByRole('button', { name: 'Neon Harbor, line 3' });
     await fireEvent.click(line);
-    await waitFor(() => expect(player.state.positionMs).toBe(12_000));
+    await waitFor(() => expect(player.positionMs).toBe(12_000));
   });
 
   it('says so when a song has no lyrics, is instrumental, or the lookup failed (and the lookup can be retried)', async () => {
@@ -284,7 +284,7 @@ describe('tray flyout and mini player', () => {
     mock.tick(600);
     await started(Flyout);
     mock.tick(18_400);
-    const expected = () => String(Math.round((player.state.positionMs / 38_000) * 100));
+    const expected = () => String(Math.round((player.positionMs / 38_000) * 100));
     await waitFor(() => expect(screen.getByRole('progressbar', { name: 'Progress' }).getAttribute('aria-valuenow')).toBe(expected()));
     expect(Number(expected())).toBeGreaterThan(40);
   });

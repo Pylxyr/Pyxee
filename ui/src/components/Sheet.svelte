@@ -65,7 +65,7 @@
       aria-label={title}
       data-side={side}
       transition:fly={tab ? { x: motionPx(right ? 640 : -640), duration: motionMs(MOTION.base + 80), easing: expoOut } : { y: motionPx(40), duration: motionMs(MOTION.base), easing: cubicOut }}
-      class="sheet-panel bg-solid-2 backdrop-blur {right
+      class="sheet-panel bg-solid-2 {right
         ? 'h-full w-1/2 max-w-full min-w-[min(26rem,100vw)] rounded-l-xl border-r-0 px-4 pb-6'
         : tab
           ? 'h-full w-1/2 max-w-full min-w-[min(26rem,100vw)] rounded-r-xl border-l-0 px-4 pb-6'

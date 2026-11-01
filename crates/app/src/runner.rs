@@ -157,7 +157,7 @@ fn spawn_real(app: AppHandle, rx: Receiver<Effect>) {
         let mut last_save = Instant::now();
         let mut last_check = Instant::now();
         loop {
-            match rx.recv_timeout(Duration::from_millis(20)) {
+            match rx.recv_timeout(engine.poll_interval()) {
                 Ok(effect) => {
                     if matches!(
                         effect,

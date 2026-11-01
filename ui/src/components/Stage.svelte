@@ -65,7 +65,7 @@
   <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_noninteractive_element_interactions -->
   <section class="deck" aria-label="Player" data-testid="player-bar" onclick={openQueue}>
     <div class="deck-seek">
-      <Seek positionMs={player.state.positionMs} durationMs={player.durationMs} onseek={player.seek} accent label="Seek" />
+      <Seek positionMs={player.positionMs} durationMs={player.durationMs} onseek={player.seek} accent label="Seek" />
     </div>
     {#key entry.track.key}
     <div class="deck-now track-in">
@@ -90,7 +90,7 @@
       <IconButton icon="prev" label="Previous" size="lg" strong iconSize={24} onclick={player.previous} />
       <PlayButton />
       <IconButton icon="next" label="Next" size="lg" strong iconSize={24} onclick={player.next} />
-      <span class="deck-time nums">{formatTime(player.state.positionMs)} / {player.durationMs ? formatTime(player.durationMs) : '--:--'}</span>
+      <span class="deck-time nums">{formatTime(player.positionMs)} / {player.durationMs ? formatTime(player.durationMs) : '--:--'}</span>
     </div>
     <div class="deck-extra">
       <div class="w-32"><VolumeSlider /></div>

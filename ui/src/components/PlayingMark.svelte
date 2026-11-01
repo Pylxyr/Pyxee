@@ -1,5 +1,5 @@
 <script lang="ts">
-  /** Three bars that move while the song plays and stand still while it is paused. Decorative: the row says the rest. */
+  /** Three bars that stand at different heights while the song plays and are lower while it is paused. Decorative: the row says the rest. */
   let { playing = false }: { playing?: boolean } = $props();
 </script>
 

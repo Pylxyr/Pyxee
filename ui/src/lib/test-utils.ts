@@ -37,6 +37,8 @@ export const noDiagnostics = {
   updateInstallApp: async () => {},
   updateCheckYtdlp: async () => ({ available: false, currentVersion: null }),
   updateInstallYtdlp: async () => '',
+  perfEnabled: async () => false,
+  perfLog: async () => {},
   envGet: async () => ({ file: null, vars: [] }),
   envSet: async () => ({ file: null, vars: [] }),
 };

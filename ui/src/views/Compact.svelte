@@ -16,7 +16,7 @@
 
   const entry = $derived(player.shown);
   const percent = $derived(
-    player.durationMs ? Math.min(100, (player.state.positionMs / player.durationMs) * 100) : 0,
+    player.durationMs ? Math.min(100, (player.positionMs / player.durationMs) * 100) : 0,
   );
 </script>
 

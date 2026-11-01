@@ -22,6 +22,7 @@
   import Dock from './components/Dock.svelte';
   import Stage from './components/Stage.svelte';
   import NowPlaying from './components/NowPlaying.svelte';
+  import { startPerfIfEnabled } from '$lib/perf';
   import Snackbar from './components/Snackbar.svelte';
   import TrackMenu from './components/TrackMenu.svelte';
   import SettingsSheet from './components/SettingsSheet.svelte';
@@ -60,6 +61,7 @@
       lyricsStore.init(backend);
       relatedStore.init(backend);
       void sleep.init(backend);
+      void startPerfIfEnabled(backend);
       void shellSettings.init(backend);
       // Look for a newer Pyxee once, now; the changelog opens by itself if there is one.
       void updates.init(backend).catch(() => {}).then(() => updates.checkAtStartup(backend));
@@ -113,7 +115,7 @@
 
   function onkeydown(e: KeyboardEvent) {
     const a = actionForKey(e, {
-      positionMs: player.state.positionMs,
+      positionMs: player.positionMs,
       durationMs: player.durationMs,
       nowPlayingOpen: nav.nowPlayingOpen,
       hasTrack: player.shown != null,
@@ -136,7 +138,7 @@
 
 <div class="frame">
 {#if controls && showTitleBar}<TitleBar {controls} showBrand={!wide.current} />{/if}
-<div class="shell" data-layout={wide.current ? 'wide' : 'narrow'} data-lane={wide.current && lane.current ? '' : undefined}>
+<div class="shell" inert={nav.npCovering} data-covered={nav.npCovering ? '' : undefined} data-layout={wide.current ? 'wide' : 'narrow'} data-lane={wide.current && lane.current ? '' : undefined}>
   {#if wide.current}
     <div class="masthead"><Navigation layout="tabs" /><TopBar showSettings /></div>
   {/if}

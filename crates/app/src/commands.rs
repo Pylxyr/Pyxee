@@ -1,8 +1,8 @@
 use crate::dto::{
     state_dto, AddResultDto, CommandDto, ExploreShelfDto, FilterInfoDto, GenreDto, HistoryItemDto,
-    HomeDto, LibrarySnapshotDto, LogInfoDto, PlayerStateDto, PlaylistDto, PlaylistSnapshotDto,
-    RemovedEntryDto, SearchErrorDto, SearchFilterDto, SearchItemDto, SearchResponseDto, TrackDto,
-    WindowInfoDto,
+    HomeDto, LibrarySnapshotDto, LogInfoDto, PerfReportDto, PlayerStateDto, PlaylistDto,
+    PlaylistSnapshotDto, RemovedEntryDto, SearchErrorDto, SearchFilterDto, SearchItemDto,
+    SearchResponseDto, TrackDto, WindowInfoDto,
 };
 use crate::sim::catalog;
 use crate::state::{now_ms, publish, with_library, AppState};
@@ -289,6 +289,45 @@ pub fn set_volume(state: State<AppState>, percent: u8) {
     state.volume.set_percent(percent);
 }
 
+/// Whether the app was started with `PYXEE_PERF=1` (the window then reports what it does; see `perf_log`).
+fn perf_on() -> bool {
+    std::env::var("PYXEE_PERF")
+        .ok()
+        .is_some_and(|v| pyxee_sources::ytmusic::parse_switch(&v) == Ok(true))
+}
+
+#[tauri::command]
+pub fn perf_enabled() -> bool {
+    perf_on()
+}
+
+/// Writes one interval of the window's own counts to the log. Only when `PYXEE_PERF=1`; each number is capped so a
+/// page cannot write more than a line of plain digits.
+#[tauri::command]
+pub fn perf_log(report: PerfReportDto) {
+    if !perf_on() {
+        return;
+    }
+    log::info!("{}", perf_line(&report));
+}
+
+/// The log line for a report: digits only, each number capped.
+fn perf_line(report: &PerfReportDto) -> String {
+    let c = |n: u32| n.min(10_000_000);
+    format!(
+        "perf: {}s state={} position={} other={} dom-changes={} animations={} long-tasks={} long-frames={} hidden={}",
+        report.seconds.clamp(1, 3600),
+        c(report.state_events),
+        c(report.position_events),
+        c(report.other_events),
+        c(report.dom_mutations),
+        c(report.running_animations),
+        c(report.long_tasks),
+        c(report.long_frames),
+        report.hidden
+    )
+}
+
 #[tauri::command]
 pub fn get_log_info(state: State<AppState>) -> LogInfoDto {
     LogInfoDto {
@@ -343,6 +382,26 @@ fn parse_window_theme(theme: Option<&str>) -> Result<Option<tauri::Theme>, Strin
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_performance_line_is_plain_numbers_each_capped() {
+        let line = perf_line(&PerfReportDto {
+            seconds: 0,
+            state_events: 2,
+            position_events: 10,
+            other_events: 1,
+            dom_mutations: u32::MAX,
+            running_animations: 0,
+            long_tasks: 3,
+            long_frames: 4,
+            hidden: true,
+        });
+        assert_eq!(
+            line,
+            "perf: 1s state=2 position=10 other=1 dom-changes=10000000 animations=0 long-tasks=3 long-frames=4 hidden=true"
+        );
+        assert!(!line.contains('\n'));
+    }
 
     #[test]
     fn the_window_theme_is_dark_light_or_the_system() {

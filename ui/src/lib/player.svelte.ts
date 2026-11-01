@@ -1,10 +1,14 @@
 import type { Backend } from './backend';
+import { perfCounters } from './perf';
 import type { CommandDto } from './bindings/CommandDto';
 import type { EntryDto } from './bindings/EntryDto';
 import type { FailureDto } from './bindings/FailureDto';
 import type { PlayerStateDto } from './bindings/PlayerStateDto';
 import type { RepeatDto } from './bindings/RepeatDto';
 import type { TrackDto } from './bindings/TrackDto';
+
+/** A position report older than this is not extended by the clock: reports have stopped (the window was asleep). */
+export const STALE_AFTER_MS = 1500;
 
 export const EMPTY_STATE: PlayerStateDto = {
   seq: 0, transport: { state: 'idle' }, audible: null, loading: null, positionMs: 0, repeat: 'off',
@@ -26,12 +30,42 @@ const NEXT_REPEAT: Record<RepeatDto, RepeatDto> = { off: 'all', all: 'one', one:
 
 /** UI-side view of the Rust player. State is only ever replaced by what the backend pushes. */
 export class PlayerStore {
-  state = $state<PlayerStateDto>(EMPTY_STATE);
+  /**
+   * What the backend last pushed as a whole (queue, transport, ...). Replaced only by a full state, never by a
+   * position-only push: a value that is replaced four times a second would make everything that reads anything from
+   * it (the queue, the up-next list, the shown song) run again four times a second. `positionMs` and `seq` inside
+   * it are those of the last full state: read the position from `positionMs` below.
+   */
+  #state = $state.raw<PlayerStateDto>(EMPTY_STATE);
+  /** Where the song is, apart from the rest so that only what shows the position follows the 4 Hz pushes. */
+  positionMs = $state(0);
+  /** The newest `seq` seen, from a full state or a position-only push. */
+  #seq = 0;
+  /** When `positionMs` was last set: what lets a lyric line change at its own time between the (1 Hz) reports. */
+  #positionAt = Date.now();
   ready = $state(false);
   catalog = $state<TrackDto[] | null>(null);
   #backend: Backend | null = null;
   #unlisten: (() => void) | null = null;
   /** The window may have been asleep (hidden in the tray) while pushes went by: ask again when it wakes. */
+  get state(): PlayerStateDto {
+    return this.#state;
+  }
+  /** A whole state: it also sets the position and the ordering counter. (Only the backend's pushes, and tests.) */
+  set state(s: PlayerStateDto) {
+    this.#state = s;
+    this.positionMs = s.positionMs;
+    this.#positionAt = Date.now();
+    this.#seq = s.seq;
+  }
+  /** How long ago the position was last reported. */
+  positionAgeMs(): number {
+    return Math.max(0, Date.now() - this.#positionAt);
+  }
+  /** Where the song is now: the last report plus the time since it while playing (never more than a report's gap). */
+  estimatedPositionMs(): number {
+    return this.positionMs + (this.isPlaying ? Math.min(this.positionAgeMs(), STALE_AFTER_MS) : 0);
+  }
   #wake = () => {
     if (!document.hidden) void this.resync();
   };
@@ -52,9 +86,17 @@ export class PlayerStore {
     this.#unlisten?.();
     this.#backend = backend;
     this.state = EMPTY_STATE; // a new backend counts its states from the start
-    const stopState = await backend.onState((s) => this.#apply(s));
+    const stopState = await backend.onState((s) => {
+      perfCounters.state++;
+      this.#apply(s);
+    });
     const stopPosition = await backend.onPosition((p) => {
-      if (p.seq >= this.state.seq) this.state = { ...this.state, seq: p.seq, positionMs: p.positionMs };
+      perfCounters.position++;
+      if (p.seq >= this.#seq) {
+        this.#seq = p.seq;
+        this.positionMs = p.positionMs;
+        this.#positionAt = Date.now();
+      }
     });
     this.#unlisten = () => {
       stopState();
@@ -75,7 +117,7 @@ export class PlayerStore {
    * is not necessarily the latest: the highest `seq` wins and an older one is dropped.
    */
   #apply(s: PlayerStateDto) {
-    if (s.seq >= this.state.seq) this.state = s;
+    if (s.seq >= this.#seq) this.state = s;
   }
 
   /** Takes the backend's state again (what is shown stays if it cannot be read). */

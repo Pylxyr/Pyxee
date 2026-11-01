@@ -37,6 +37,19 @@ fn snapshot(state: &EnvState, text: &str) -> EnvSettingsDto {
     }
 }
 
+/// Whether the program `value` names (a bare command or a path) is called yt-dlp: its file name, whatever folder it is in
+/// and whatever its extension, starts with `yt-dlp` (or `yt_dlp`, `ytdlp`), compared without regard to case.
+fn names_ytdlp(value: &str) -> bool {
+    let file = value
+        .rsplit(['/', '\\'])
+        .next()
+        .unwrap_or(value)
+        .to_ascii_lowercase();
+    ["yt-dlp", "yt_dlp", "ytdlp"]
+        .iter()
+        .any(|p| file.starts_with(p))
+}
+
 /// Why `value` cannot be saved for `name`, in words for the person who typed it. An empty value is always fine
 /// (it removes the variable).
 fn check(name: &str, value: &str) -> Result<(), String> {
@@ -48,6 +61,11 @@ fn check(name: &str, value: &str) -> Result<(), String> {
         "PYXEE_COOKIES" if !Path::new(value).is_file() => Some("that file was not found"),
         // A bare name (`yt-dlp`) is looked up on PATH; anything with a folder in it has to be there now, so a typo is
         // said here instead of showing up later as "yt-dlp not found" in the middle of a search.
+        // What is saved here is run at the next start, and on every search: it has to be yt-dlp, not any program the
+        // window (or a page that got into it) happens to name.
+        "PYXEE_YTDLP" if !names_ytdlp(value) => {
+            Some("the program's file name has to start with yt-dlp (yt-dlp.exe, yt-dlp_x86.exe, ...)")
+        }
         "PYXEE_YTDLP" if value.contains(['/', '\\']) && !Path::new(value).is_file() => {
             Some("that file was not found")
         }
@@ -58,9 +76,16 @@ fn check(name: &str, value: &str) -> Result<(), String> {
             {
                 Some("that path was not found")
             }
+            // yt-dlp starts the file it is given: it has to be the runtime, not another program.
+            Ok(pyxee_sources::jsruntime::Setting::Runtime {
+                name: runtime,
+                path: Some(p),
+            }) if Path::new(&p).is_file() && !pyxee_sources::jsruntime::file_fits(runtime, &p) => {
+                Some("the file's name has to start with the runtime's name (node.exe, deno.exe, ...)")
+            }
             Ok(_) => None,
         },
-        "PYXEE_YTMUSIC_DIRECT" | "PYXEE_SUGGESTIONS" => {
+        "PYXEE_YTMUSIC_DIRECT" | "PYXEE_SUGGESTIONS" | "PYXEE_PERF" => {
             match pyxee_sources::ytmusic::parse_switch(value) {
                 Err(e) => return Err(format!("{name}: {e}.")),
                 Ok(_) => None,
@@ -118,6 +143,32 @@ mod tests {
     }
 
     #[test]
+    fn the_js_runtime_setting_cannot_name_another_program() {
+        // yt-dlp starts the file it is given. This test binary exists, and so would cmd.exe.
+        let exe = std::env::current_exe().unwrap().display().to_string();
+        for runtime in ["node", "deno", "bun", "quickjs"] {
+            let err = check("PYXEE_JS_RUNTIME", &format!("{runtime}:{exe}")).unwrap_err();
+            assert!(
+                err.contains("start with the runtime's name"),
+                "{runtime}: {err}"
+            );
+        }
+        let dir = std::env::temp_dir().join(format!("pyxee-jsrt-check-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        for (runtime, file) in [
+            ("node", "node.exe"),
+            ("deno", "Deno"),
+            ("quickjs", "qjs.exe"),
+        ] {
+            let there = dir.join(file);
+            std::fs::write(&there, b"x").unwrap();
+            let value = format!("{runtime}:{}", there.display());
+            assert_eq!(check("PYXEE_JS_RUNTIME", &value), Ok(()), "{value}");
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
     fn a_bad_js_runtime_setting_is_explained() {
         assert!(check("PYXEE_JS_RUNTIME", "python")
             .unwrap_err()
@@ -141,13 +192,45 @@ mod tests {
         assert!(check("PYXEE_YTDLP", &missing.display().to_string())
             .unwrap_err()
             .contains("not found"));
+        let dir = std::env::temp_dir().join(format!("pyxee-ytdlp-check-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let there = dir.join("yt-dlp_x86.exe");
+        std::fs::write(&there, b"x").unwrap();
+        assert_eq!(check("PYXEE_YTDLP", &there.display().to_string()), Ok(()));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn the_ytdlp_setting_cannot_name_another_program() {
+        // It is started at the next start and on every search, so a name or a file of another program is refused,
+        // whether it exists (a system program, the app itself) or is only looked up on PATH.
         let exe = std::env::current_exe().unwrap().display().to_string();
-        assert_eq!(check("PYXEE_YTDLP", &exe), Ok(()));
+        for other in [
+            "cmd",
+            "powershell.exe",
+            r"C:\Windows\System32\cmd.exe",
+            "/bin/sh",
+            "notyt-dlp.exe",
+            r"C:\tools\yt-dlp\run.cmd",
+            exe.as_str(),
+        ] {
+            let err = check("PYXEE_YTDLP", other).unwrap_err();
+            assert!(err.contains("start with yt-dlp"), "{other}: {err}");
+        }
+        for fine in [
+            "yt-dlp",
+            "YT-DLP.EXE",
+            r"C:\tools\yt-dlp.exe",
+            "/usr/local/bin/yt-dlp",
+            "yt-dlp_macos",
+        ] {
+            assert!(names_ytdlp(fine), "{fine}");
+        }
     }
 
     #[test]
     fn the_ytmusic_switch_takes_zero_or_one() {
-        for name in ["PYXEE_YTMUSIC_DIRECT", "PYXEE_SUGGESTIONS"] {
+        for name in ["PYXEE_YTMUSIC_DIRECT", "PYXEE_SUGGESTIONS", "PYXEE_PERF"] {
             for ok in ["0", "1", "off", "ON", ""] {
                 assert_eq!(check(name, ok), Ok(()), "{name} {ok}");
             }

@@ -15,7 +15,8 @@ use std::collections::{HashMap, HashSet};
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
-use std::sync::{Mutex, PoisonError};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex, PoisonError};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -403,10 +404,24 @@ fn kill_tree(child: &mut std::process::Child) {
     let _ = child.kill();
 }
 
+/// The most a tool may print (either stream). A search or a resolve is a few hundred kilobytes; a flat playlist of
+/// thousands of entries some megabytes. More than this is a fault (or not yt-dlp at all): it is stopped, not held
+/// in memory until the timeout.
+const MAX_TOOL_OUTPUT: u64 = 64 * 1024 * 1024;
+
 pub(crate) fn run_tool(
     path: &Path,
     args: &[String],
     timeout: Duration,
+) -> Result<String, SourceError> {
+    run_tool_capped(path, args, timeout, MAX_TOOL_OUTPUT)
+}
+
+fn run_tool_capped(
+    path: &Path,
+    args: &[String],
+    timeout: Duration,
+    max_output: u64,
 ) -> Result<String, SourceError> {
     let name = program_name(path);
     let mut cmd = Command::new(path);
@@ -428,10 +443,17 @@ pub(crate) fn run_tool(
         }
     })?;
     // Drain both pipes on threads so a large result can never block the process.
+    let too_much = Arc::new(AtomicBool::new(false));
     let read = |mut r: Box<dyn Read + Send>| {
+        let too_much = too_much.clone();
         thread::spawn(move || {
             let mut buf = Vec::new();
-            let _ = r.read_to_end(&mut buf);
+            // One byte past the limit is enough to know it was passed; the rest is not read.
+            let _ = (&mut r).take(max_output + 1).read_to_end(&mut buf);
+            if buf.len() as u64 > max_output {
+                too_much.store(true, Ordering::SeqCst);
+                buf.clear();
+            }
             String::from_utf8_lossy(&buf).into_owned()
         })
     };
@@ -450,6 +472,15 @@ pub(crate) fn run_tool(
     let status = loop {
         match child.try_wait() {
             Ok(Some(s)) => break s,
+            Ok(None) if too_much.load(Ordering::SeqCst) => {
+                kill_tree(&mut child);
+                let _ = child.wait();
+                log::warn!("{name} printed more than {max_output} bytes and was stopped");
+                return Err(SourceError::Failed(format!(
+                    "{name} printed more than {} MB; it was stopped",
+                    max_output / (1024 * 1024)
+                )));
+            }
             Ok(None) if start.elapsed() > timeout => {
                 kill_tree(&mut child);
                 let _ = child.wait();
@@ -464,6 +495,12 @@ pub(crate) fn run_tool(
     };
     let stdout = out.join().unwrap_or_default();
     let stderr = err.join().unwrap_or_default();
+    if too_much.load(Ordering::SeqCst) {
+        return Err(SourceError::Failed(format!(
+            "{name} printed more than {} MB; it was stopped",
+            max_output / (1024 * 1024)
+        )));
+    }
     // A playlist with a few unavailable entries still exits non-zero but prints the rest.
     if !status.success() {
         let tail: String = stderr
@@ -1036,6 +1073,22 @@ mod tests {
         // Without any list the plain `thumbnail` is used, and http becomes https.
         let t = track_of(r#"{"id":"s6","title":"T","thumbnail":"http://i.ytimg.com/one.jpg"}"#);
         assert_eq!(t.thumbnail.as_deref(), Some("https://i.ytimg.com/one.jpg"));
+    }
+
+    #[test]
+    fn a_tool_that_prints_without_end_is_stopped_at_the_limit_not_held_in_memory() {
+        // The test program itself is the "tool": `--list` prints the names of all the tests, some kilobytes.
+        let me = std::env::current_exe().unwrap();
+        let args = vec!["--list".to_string()];
+        let all = run_tool_capped(&me, &args, Duration::from_secs(30), 1 << 30).unwrap();
+        assert!(all.len() > 2_000, "{}", all.len());
+        let started = Instant::now();
+        let err = run_tool_capped(&me, &args, Duration::from_secs(30), 1_000).unwrap_err();
+        assert!(
+            matches!(&err, SourceError::Failed(m) if m.contains("printed more than")),
+            "{err:?}"
+        );
+        assert!(started.elapsed() < Duration::from_secs(10));
     }
 
     #[test]

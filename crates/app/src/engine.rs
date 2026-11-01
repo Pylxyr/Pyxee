@@ -19,7 +19,6 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
-const POSITION_EVERY: Duration = Duration::from_millis(250);
 const URL_TTL: Duration = Duration::from_secs(15 * 60);
 const RECOVER_AFTER: Duration = Duration::from_millis(600);
 
@@ -170,7 +169,8 @@ pub struct Engine {
     suppress_heard: bool,
     skip_audible_for: Option<EntryId>,
     paused: bool,
-    last_position: Instant,
+    /// The song and whole second of the last position report: the next one is made when that changes.
+    last_position_second: Option<(EntryId, u64)>,
     seen_underruns: u64,
     stalled_since: Option<(EntryId, Instant)>,
 }
@@ -210,7 +210,7 @@ impl Engine {
             suppress_heard: false,
             skip_audible_for: None,
             paused: false,
-            last_position: Instant::now(),
+            last_position_second: None,
             seen_underruns: 0,
             stalled_since: None,
         }
@@ -219,6 +219,17 @@ impl Engine {
     /// Hand this to the output device.
     pub fn consumer(&self) -> Consumer {
         self.pipeline.consumer()
+    }
+
+    /// How long the thread that drives `poll()` may wait for a command before polling again. Quick while a song
+    /// plays or one is being started (events from the pipeline and the workers are answered within a few ms); slow
+    /// when nothing is audible (idle, paused), where the wait ends at once anyway when a command arrives.
+    pub fn poll_interval(&self) -> Duration {
+        if self.is_playing() || self.start_id.is_some() {
+            Duration::from_millis(25)
+        } else {
+            Duration::from_millis(100)
+        }
     }
 
     /// Something is loaded and not paused: silence from the device would be a fault, not a pause.
@@ -286,6 +297,8 @@ impl Engine {
             Effect::Pause => {
                 self.paused = true;
                 self.pipeline.set_paused(true);
+                // Nothing is reported while paused, so the window shows exactly where it stopped.
+                self.report_position();
             }
             Effect::Resume => {
                 self.paused = false;
@@ -635,6 +648,36 @@ impl Engine {
         self.host.notice(skipped_notice(&title, failure, upcoming));
     }
 
+    /// A position report each time the song's clock changes by a whole second (the window shows whole seconds, and
+    /// every report costs it a frame: four a second made a playing window draw four times as often). Nothing while
+    /// paused, or while the same second goes on.
+    fn report_position_if_new_second(&mut self) {
+        let Some((id, ms)) = self.pipeline.heard_position() else {
+            return;
+        };
+        let second = (
+            id,
+            (self.offsets.get(&id).copied().unwrap_or(0) + ms) / 1000,
+        );
+        if self.last_position_second != Some(second) {
+            self.report_position();
+        }
+    }
+
+    /// Reports the heard position now, exactly.
+    fn report_position(&mut self) {
+        if self.suppress_heard {
+            return;
+        }
+        let Some((id, ms)) = self.pipeline.heard_position() else {
+            return;
+        };
+        let total = self.offsets.get(&id).copied().unwrap_or(0) + ms;
+        self.last_position_second = Some((id, total / 1000));
+        self.host
+            .engine_event(EngineEvent::Position { id, ms: total });
+    }
+
     fn tick(&mut self) {
         let now = Instant::now();
         let underruns = self.pipeline.underruns();
@@ -651,14 +694,7 @@ impl Engine {
                     self.host.engine_event(EngineEvent::Recovered { id: sid });
                 }
             }
-            if now.duration_since(self.last_position) >= POSITION_EVERY && !self.suppress_heard {
-                self.last_position = now;
-                let offset = self.offsets.get(&id).copied().unwrap_or(0);
-                self.host.engine_event(EngineEvent::Position {
-                    id,
-                    ms: offset + ms,
-                });
-            }
+            self.report_position_if_new_second();
         }
         if underruns != self.seen_underruns {
             self.seen_underruns = underruns;

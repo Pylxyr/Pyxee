@@ -4,6 +4,8 @@ import { MockLibrary } from './mock-library';
 import type { CommandDto } from './bindings/CommandDto';
 import type { EntryDto } from './bindings/EntryDto';
 import type { PlayerStateDto } from './bindings/PlayerStateDto';
+import type { PerfReportDto } from './bindings/PerfReportDto';
+import type { PositionDto } from './bindings/PositionDto';
 import type { TrackDto } from './bindings/TrackDto';
 import type { WindowInfoDto } from './bindings/WindowInfoDto';
 import type { LyricsDto } from './bindings/LyricsDto';
@@ -26,6 +28,19 @@ import { ENV_VARS } from './envvars';
 /** JSON round trip, like the real IPC boundary. (structuredClone rejects Svelte's reactive proxies.) */
 const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v)) as T;
 
+/** A square picture for demo track `i`: two soft colour blobs on a gradient, as a data URI (nothing to fetch). */
+function demoCover(i: number): string {
+  const h = (i * 47 + 20) % 360;
+  const svg =
+    `<svg xmlns="http://www.w3.org/2000/svg" width="480" height="480" viewBox="0 0 480 480">` +
+    `<defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="hsl(${h} 70% 38%)"/>` +
+    `<stop offset="1" stop-color="hsl(${(h + 70) % 360} 75% 22%)"/></linearGradient></defs>` +
+    `<rect width="480" height="480" fill="url(#g)"/>` +
+    `<circle cx="${140 + (i % 3) * 70}" cy="170" r="120" fill="hsl(${(h + 150) % 360} 80% 60%)" fill-opacity=".55"/>` +
+    `<circle cx="330" cy="${300 + (i % 2) * 40}" r="95" fill="hsl(${(h + 30) % 360} 90% 70%)" fill-opacity=".45"/></svg>`;
+  return `data:image/svg+xml,${encodeURIComponent(svg)}`;
+}
+
 export const DEMO_TRACKS: TrackDto[] = [
   ['Neon Harbor', 'Lowtide', 38],
   ['Paper Planes', 'Alma Vey', 31],
@@ -40,7 +55,7 @@ export const DEMO_TRACKS: TrackDto[] = [
   title: title as string,
   artist: artist as string,
   durationMs: (secs as number) * 1000,
-  thumbnail: null,
+  thumbnail: demoCover(i),
 }));
 
 /**
@@ -55,6 +70,9 @@ export class MockBackend extends MockLibrary implements Backend {
   };
   #next = 1;
   #listeners = new Set<(s: PlayerStateDto) => void>();
+  #positionListeners = new Set<(p: PositionDto) => void>();
+  /** The last full state's content without `seq` and `positionMs`: a state that only differs in those is sent light. */
+  #lastKey = '';
   #loadMs = 0;
   #undo: ({ entry: EntryDto; index: number } | { cleared: EntryDto[]; current: number | null })[] = [];
   #timer: ReturnType<typeof setInterval> | null = null;
@@ -108,6 +126,9 @@ export class MockBackend extends MockLibrary implements Backend {
       vars: ENV_VARS.map((v) => ({ name: v.name, value: this.envValues[v.name] ?? '', fromWindows: false })),
     };
   }
+  /** `?perf` on the page's address turns the diagnostics on in the standalone demo. */
+  async perfEnabled() { return typeof location !== 'undefined' && /[?&]perf\b/.test(location.search); }
+  async perfLog(report: PerfReportDto) { console.info('perf', JSON.stringify(report)); }
   async envGet() { return this.#envState(); }
   async envSet(vars: EnvVarDto[]) {
     if (this.envError) throw this.envError;
@@ -290,9 +311,10 @@ export class MockBackend extends MockLibrary implements Backend {
     }
     return { items };
   }
-  /** The mock always pushes whole states. */
-  async onPosition() {
-    return () => {};
+  /** Like the real app: a state in which only the position moved arrives here, not through `onState`. */
+  async onPosition(cb: (p: PositionDto) => void) {
+    this.#positionListeners.add(cb);
+    return () => void this.#positionListeners.delete(cb);
   }
   async onState(cb: (s: PlayerStateDto) => void) {
     this.#listeners.add(cb);
@@ -340,6 +362,13 @@ export class MockBackend extends MockLibrary implements Backend {
     s.upcoming = i < 0 ? s.queue.map((e) => e.id) : s.queue.slice(i + 1).map((e) => e.id);
     s.canUndo = this.#undo.length > 0;
     s.seq += 1;
+    const key = JSON.stringify({ ...s, seq: 0, positionMs: 0 });
+    if (key === this.#lastKey && this.#positionListeners.size > 0) {
+      const light = { seq: s.seq, positionMs: s.positionMs };
+      for (const cb of this.#positionListeners) cb(light);
+      return;
+    }
+    this.#lastKey = key;
     const snapshot = clone(s);
     for (const cb of this.#listeners) cb(snapshot);
   }

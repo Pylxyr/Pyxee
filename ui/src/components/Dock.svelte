@@ -21,7 +21,7 @@
   <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
   <div class="dock" data-testid="player-bar" onclick={openQueue}>
     <div class="dock-seek">
-      <Seek positionMs={player.state.positionMs} durationMs={player.durationMs} onseek={player.seek} accent label="Seek" />
+      <Seek positionMs={player.positionMs} durationMs={player.durationMs} onseek={player.seek} accent label="Seek" />
     </div>
     <button class="flex min-w-0 flex-1 items-center gap-3 text-left" aria-label="Open Now Playing" onclick={() => nav.openNowPlaying()}>
       <span class="flex shrink-0" data-np-source><Thumb src={entry.track.thumbnail} seed={entry.track.key} size={44} rounded="r-sm" /></span>

@@ -14,6 +14,7 @@
   import Icon from './Icon.svelte';
   import IconButton from './IconButton.svelte';
   import LikeButton from './LikeButton.svelte';
+  import Backdrop from './Backdrop.svelte';
   import LyricsPanel from './LyricsPanel.svelte';
   import PlayButton from './PlayButton.svelte';
   import RelatedPanel from './RelatedPanel.svelte';
@@ -42,9 +43,11 @@
     data-testid="np-root"
     role="region"
     aria-label="Now Playing"
+    onintroend={() => (nav.npCovering = nav.nowPlayingOpen)}
+    onoutrostart={() => (nav.npCovering = false)}
     transition:fly={{ y: motionPx(96), duration: nav.morphing ? 0 : motionMs(MOTION.slow), easing: expoOut }}
   >
-    <div class="np-bg" aria-hidden="true"><Thumb src={entry.track.thumbnail} seed={entry.track.key} size={96} fill rounded="r-sm" /></div>
+    <Backdrop class="np-bg" src={entry.track.thumbnail} seed={entry.track.key} />
     <div class="page-pad flex shrink-0 items-center gap-2 py-3" data-testid="np-header">
       <IconButton icon="down" label="Close Now Playing" size="lg" strong onclick={() => nav.closeNowPlaying()} />
       <span class="t-strong muted">Now playing</span>
@@ -71,9 +74,9 @@
           </div>
         </div>
         <div class="w-[min(80vw,22rem)] xl:w-[min(80vw,30rem)] 2xl:w-[min(80vw,40rem)]">
-          <Seek positionMs={player.state.positionMs} durationMs={player.durationMs} onseek={player.seek} accent label="Seek" />
+          <Seek positionMs={player.positionMs} durationMs={player.durationMs} onseek={player.seek} accent label="Seek" />
           <div class="t-caption muted nums flex justify-between">
-            <span>{formatTime(player.state.positionMs)}</span><span>{player.durationMs ? formatTime(player.durationMs) : 'length unknown'}</span>
+            <span>{formatTime(player.positionMs)}</span><span>{player.durationMs ? formatTime(player.durationMs) : 'length unknown'}</span>
           </div>
         </div>
         {#if player.failure}

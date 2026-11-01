@@ -183,7 +183,7 @@ describe('stale player states', () => {
     await store.init(backend);
     pushed(state(5, 500));
     pushed(state(4, 400)); // published earlier by another thread, delivered later
-    expect(store.state.positionMs).toBe(500);
+    expect(store.positionMs).toBe(500);
   });
 });
 
@@ -201,9 +201,14 @@ describe('position-only pushes', () => {
     await store.init(backend);
     pushState({ ...EMPTY_STATE, seq: 5, shuffle: true, positionMs: 100 });
     pushPos({ seq: 6, positionMs: 350 });
-    expect(store.state).toMatchObject({ seq: 6, positionMs: 350, shuffle: true });
+    expect(store.positionMs).toBe(350);
+    expect(store.state.shuffle).toBe(true);
     pushPos({ seq: 4, positionMs: 50 }); // older than what is shown
-    expect(store.state.positionMs).toBe(350);
+    expect(store.positionMs).toBe(350);
+    pushState({ ...EMPTY_STATE, seq: 6, shuffle: false, positionMs: 360 }); // same seq as the push: not older
+    expect(store.positionMs).toBe(360);
+    pushState({ ...EMPTY_STATE, seq: 5, shuffle: true, positionMs: 100 }); // older than the push before it
+    expect(store.state.shuffle).toBe(false);
   });
 });
 
@@ -223,6 +228,6 @@ describe('init and a late getState', () => {
     pushState({ ...EMPTY_STATE, seq: 9, positionMs: 900 });
     answer!({ ...EMPTY_STATE, seq: 4, positionMs: 400 }); // read before the push, delivered after it
     await started;
-    expect(store.state.positionMs).toBe(900);
+    expect(store.positionMs).toBe(900);
   });
 });

@@ -1,3 +1,4 @@
+import { perfCounters } from './perf';
 import { messageOf, type Backend } from './backend';
 import type { LibrarySnapshotDto } from './bindings/LibrarySnapshotDto';
 import type { PlaylistSummaryDto } from './bindings/PlaylistSummaryDto';
@@ -39,6 +40,7 @@ export class LibraryStore {
    * asks again while a change is being pushed), and an older one arriving last must not replace a newer one.
    */
   #apply(s: LibrarySnapshotDto) {
+    perfCounters.other++;
     if (s.revision >= this.snapshot.revision) this.snapshot = s;
   }
 

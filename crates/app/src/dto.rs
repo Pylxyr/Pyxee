@@ -938,3 +938,19 @@ mod tests {
         assert_eq!(v["failure"]["message"], "boom");
     }
 }
+
+/// One interval of the opt-in performance log (`PYXEE_PERF=1`): what the window did, counted by the window itself.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct PerfReportDto {
+    pub seconds: u32,
+    pub state_events: u32,
+    pub position_events: u32,
+    pub other_events: u32,
+    pub dom_mutations: u32,
+    pub running_animations: u32,
+    pub long_tasks: u32,
+    pub long_frames: u32,
+    pub hidden: bool,
+}

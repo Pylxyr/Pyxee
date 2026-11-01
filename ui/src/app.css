@@ -282,12 +282,6 @@ input[type='range'].slider:disabled {
 :root {
   transition: --accent 600ms var(--ease-out);
 }
-input[type='range'].slider {
-  transition: --pct 260ms linear;
-}
-input[type='range'].slider:active {
-  transition: none;
-}
 
 /* Loading placeholders: a soft sheen crosses them (transform only, and only while something is loading). */
 @keyframes sheen {
@@ -407,7 +401,8 @@ input[type='range'].slider:active {
   animation: arrive var(--dur-base) var(--ease-out) both;
 }
 
-/* Seek bar while the song's length is not known: not interactive, gently animated. */
+/* Seek bar while the song's length is not known: not interactive, a still striped bar (nothing here may animate
+   without end: see ui/src/lib/css-budget.test.ts). */
 .seek-unknown {
   width: 100%;
   height: 4px;
@@ -419,7 +414,6 @@ input[type='range'].slider:active {
     color-mix(in srgb, var(--fg) 25%, var(--surface-2)) 8px 16px
   );
   background-size: 22px 100%;
-  animation: seek-unknown-slide 1.2s linear infinite;
 }
 .seek-unknown.accent {
   background: repeating-linear-gradient(
@@ -427,11 +421,6 @@ input[type='range'].slider:active {
     var(--surface-2) 0 8px,
     color-mix(in srgb, var(--accent) 55%, var(--surface-2)) 8px 16px
   );
-}
-@keyframes seek-unknown-slide {
-  to {
-    background-position: 22px 0;
-  }
 }
 
 /* Update progress: the same track as the seek bar, filled with the accent. The fill glides between the events;
@@ -498,22 +487,10 @@ input[type='range'].slider:active {
   }
 }
 
-@keyframes eq {
-  0%,
-  100% {
-    transform: scaleY(0.3);
-  }
-  50% {
-    transform: scaleY(1);
-  }
-}
-
 /* Motion that is not an answer to a click stops for people who asked their system for less of it. */
 @media (prefers-reduced-motion: reduce) {
   .skeleton::after,
-  .seek-unknown,
   .uprog-track.indeterminate .uprog-fill,
-  .eq i,
   .spinner,
   .route-in,
   .track-in,
@@ -526,7 +503,6 @@ input[type='range'].slider:active {
     animation: none !important;
   }
   .lyric {
-    filter: none !important;
     transition: none !important;
   }
   :root {
@@ -535,8 +511,8 @@ input[type='range'].slider:active {
     --dur-slow: 0ms;
     transition: none;
   }
-  input[type='range'].slider,
-  .uprog-fill {
+  .uprog-fill,
+  .eq i {
     transition: none;
   }
   /* A band frozen at the left would read as "38% done": with no motion, the whole track is dimly filled instead. */
@@ -968,6 +944,11 @@ input[type='range'].slider:active {
     min-height: 0;
     background: var(--bg);
     color: var(--fg);
+  }
+  /* Under Now Playing, which covers it completely: not laid out, not drawn, nothing in it updates (the position
+     ticks, a list's rows). Its state, scroll positions included, is kept. */
+  .shell[data-covered] {
+    content-visibility: hidden;
   }
   .shell[data-layout='narrow'] {
     flex-direction: column;
@@ -1561,17 +1542,20 @@ input[type='range'].slider:active {
     height: 100%;
     border-radius: 1px;
     background: var(--accent);
-    transform: scaleY(0.6);
+    transform: scaleY(0.4);
     transform-origin: bottom;
+    transition: transform var(--dur-base) var(--ease-out);
   }
-  .eq[data-playing='true'] i {
-    animation: eq 900ms ease-in-out infinite;
+  /* Playing: three different heights, standing still. (A bar that moves forever keeps the whole page drawing frames
+     for as long as the song plays; this changes once, when play or pause is pressed.) */
+  .eq[data-playing='true'] i:nth-child(1) {
+    transform: scaleY(1);
   }
   .eq[data-playing='true'] i:nth-child(2) {
-    animation-delay: -300ms;
+    transform: scaleY(0.55);
   }
   .eq[data-playing='true'] i:nth-child(3) {
-    animation-delay: -600ms;
+    transform: scaleY(0.8);
   }
 
   /* Cover grid (recent songs, jump back in) */
@@ -1759,10 +1743,11 @@ input[type='range'].slider:active {
   }
   .hero-bg {
     position: absolute;
-    inset: -48px;
+    inset: 0;
     z-index: -1;
+    width: 100%;
+    height: 100%;
     opacity: 0.55;
-    filter: blur(44px) saturate(1.5);
     animation: fade-in 900ms ease-out both;
   }
   .hero::after {
@@ -1801,21 +1786,19 @@ input[type='range'].slider:active {
     line-height: 1.05;
     letter-spacing: -0.01em;
   }
-  /* Synced lyrics: the line being sung comes into focus and the rest fall away with their distance from it. */
+  /* Synced lyrics: the line being sung steps forward and the rest fall away with their distance from it. (Opacity and
+     scale only: a blur per line made every line its own filtered layer, redrawn at each change of line.) */
   .lyric {
     transform-origin: left center;
     opacity: calc(1 - var(--d, 0) * 0.16);
-    filter: blur(calc(var(--d, 0) * 0.45px));
-    transition: opacity 380ms var(--ease-out), filter 380ms var(--ease-out), transform 460ms var(--spring), color var(--dur-base) var(--ease);
+    transition: opacity 380ms var(--ease-out), transform 460ms var(--spring), color var(--dur-base) var(--ease);
   }
   .lyric[data-current='true'] {
     transform: scale(1.05);
     opacity: 1;
-    filter: none;
   }
   .lyric:hover {
     opacity: 1;
-    filter: none;
   }
 
   /* A bar of actions above a list (Play all, Shuffle, the count), on a hairline. */
@@ -1834,10 +1817,11 @@ input[type='range'].slider:active {
   }
   .np-bg {
     position: absolute;
-    inset: -80px;
+    inset: 0;
     z-index: -1;
+    width: 100%;
+    height: 100%;
     opacity: 0.5;
-    filter: blur(72px) saturate(1.6);
     pointer-events: none;
   }
   .np-root .stage-art {

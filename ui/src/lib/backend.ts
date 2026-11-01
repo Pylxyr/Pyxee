@@ -7,6 +7,7 @@ import type { FilterInfoDto } from './bindings/FilterInfoDto';
 import type { HistoryItemDto } from './bindings/HistoryItemDto';
 import type { LogInfoDto } from './bindings/LogInfoDto';
 import type { EnvSettingsDto } from './bindings/EnvSettingsDto';
+import type { PerfReportDto } from './bindings/PerfReportDto';
 import type { EnvVarDto } from './bindings/EnvVarDto';
 import type { AppUpdateDto } from './bindings/AppUpdateDto';
 import type { YtdlpUpdateDto } from './bindings/YtdlpUpdateDto';
@@ -77,6 +78,9 @@ export interface Backend extends LibraryBackend {
   logInfo(): Promise<LogInfoDto>;
   openLogFolder(): Promise<void>;
   /** The variables kept in the `.env` file (Settings > Advanced). */
+  /** Whether the app was started with `PYXEE_PERF=1` (the window then logs what it does; see `perf.ts`). */
+  perfEnabled(): Promise<boolean>;
+  perfLog(report: PerfReportDto): Promise<void>;
   envGet(): Promise<EnvSettingsDto>;
   /** Saves them to `.env`; they are used from the next start. Rejects with a readable message for a value that cannot be used. */
   envSet(vars: EnvVarDto[]): Promise<EnvSettingsDto>;
@@ -161,6 +165,8 @@ export async function tauriBackend(): Promise<Backend> {
       }).catch(() => {}),
     logInfo: () => invoke<LogInfoDto>('get_log_info'),
     openLogFolder: () => invoke<void>('open_log_folder'),
+    perfEnabled: () => invoke<boolean>('perf_enabled'),
+    perfLog: (report) => invoke<void>('perf_log', { report }),
     envGet: () => invoke<EnvSettingsDto>('env_get'),
     envSet: (vars) => invoke<EnvSettingsDto>('env_set', { vars }),
     updateCheckApp: () => invoke<AppUpdateDto>('update_check_app'),
@@ -217,6 +223,6 @@ export async function createBackend(): Promise<Backend> {
   if (typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window) return tauriBackend();
   const { MockBackend } = await import('./mock');
   const mock = new MockBackend();
-  mock.start();
+  mock.start(1000); // like the app: the position is reported once per second of the song
   return mock;
 }

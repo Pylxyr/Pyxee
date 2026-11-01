@@ -252,6 +252,8 @@ fn main() {
             commands::home_get,
             commands::set_volume,
             commands::get_log_info,
+            commands::perf_enabled,
+            commands::perf_log,
             commands::open_log_folder,
             advanced::env_get,
             advanced::env_set,

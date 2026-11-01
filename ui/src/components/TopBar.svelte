@@ -70,7 +70,7 @@
       />
     </div>
     {#if open}
-      <ul id="search-suggestions" role="listbox" aria-label="Suggestions" class="popover absolute inset-x-0 top-11 z-20 overflow-hidden bg-solid-2 py-1 backdrop-blur">
+      <ul id="search-suggestions" role="listbox" aria-label="Suggestions" class="popover absolute inset-x-0 top-11 z-20 overflow-hidden bg-solid-2 py-1">
         {#each search.suggestions as s, i (s)}
           <li
             id="suggest-{i}"

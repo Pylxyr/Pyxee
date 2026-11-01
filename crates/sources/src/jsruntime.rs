@@ -66,6 +66,20 @@ pub fn parse_setting(value: &str) -> Result<Setting, String> {
     }
 }
 
+/// Whether a file path given for runtime `name` is that runtime's program: its file name, whatever its folder or
+/// extension, starts with the runtime's name (`qjs` for quickjs), compared without regard to case. yt-dlp starts
+/// the file it is given, so a setting that came from the window must not name some other program. (A folder is
+/// fine: yt-dlp looks for the runtime by its own name inside it.)
+pub fn file_fits(name: &str, path: &str) -> bool {
+    let file = path
+        .rsplit(['/', '\\'])
+        .next()
+        .unwrap_or(path)
+        .to_ascii_lowercase();
+    let name = name.to_ascii_lowercase();
+    file.starts_with(&name) || (name == "quickjs" && file.starts_with("qjs"))
+}
+
 /// True when `name` (with `.exe` on Windows) is a file in one of the folders of `path_var`.
 fn on_path(name: &str, path_var: Option<&OsStr>, exists: &dyn Fn(&Path) -> bool) -> bool {
     let Some(path_var) = path_var else {
@@ -292,5 +306,28 @@ mod tests {
         assert!(parse_setting("deno:").is_err());
         assert!(parse_setting("--js-runtimes").is_err());
         assert!(parse_setting("node --x").is_err());
+    }
+
+    #[test]
+    fn a_runtime_file_is_the_runtime_by_its_name() {
+        for (name, file) in [
+            ("node", "node.exe"),
+            ("node", r"C:\x\NODE"),
+            ("deno", "/usr/bin/deno"),
+            ("bun", "bun-x64.exe"),
+            ("quickjs", "qjs.exe"),
+            ("quickjs", "quickjs"),
+        ] {
+            assert!(file_fits(name, file), "{name} {file}");
+        }
+        for (name, file) in [
+            ("node", "cmd.exe"),
+            ("node", r"C:\Windows\System32\powershell.exe"),
+            ("deno", "node.exe"),
+            ("bun", "evil.exe"),
+            ("quickjs", "node"),
+        ] {
+            assert!(!file_fits(name, file), "{name} {file}");
+        }
     }
 }

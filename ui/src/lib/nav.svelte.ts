@@ -21,6 +21,9 @@ class NavStore {
   route = $state<Route>('home');
   query = $state('');
   nowPlayingOpen = $state(false);
+  /** Now Playing has finished opening and hides the page under it: that page is then not drawn at all and cannot be
+   *  reached (see `.shell[data-covered]`). Off again before Now Playing starts to close, so the page is drawn when it shows. */
+  npCovering = $state(false);
   tab = $state<NowPlayingTab>('upnext');
   /** Track whose row menu is open (in-page sheet, never a native menu). */
   menuTrack = $state<TrackDto | null>(null);
@@ -92,6 +95,7 @@ class NavStore {
   /** And back: the big cover shrinks into the deck's. Given a page, it closes onto that page. */
   closeNowPlaying(then?: Route) {
     if (!this.nowPlayingOpen) return;
+    this.npCovering = false;
     const source = () => document.querySelector<HTMLElement>('[data-np-source]');
     withViewTransition(
       () => {
