@@ -80,6 +80,8 @@ export interface Backend extends LibraryBackend {
   /** The variables kept in the `.env` file (Settings > Advanced). */
   /** Whether the app was started with `PYXEE_PERF=1` (the window then logs what it does; see `perf.ts`). */
   perfEnabled(): Promise<boolean>;
+  /** `PYXEE_SEEK_MODE`: how the seek bar fills in (step, pixel, glide or steps; anything else is step). */
+  seekMode(): Promise<string>;
   perfLog(report: PerfReportDto): Promise<void>;
   envGet(): Promise<EnvSettingsDto>;
   /** Saves them to `.env`; they are used from the next start. Rejects with a readable message for a value that cannot be used. */
@@ -166,6 +168,7 @@ export async function tauriBackend(): Promise<Backend> {
     logInfo: () => invoke<LogInfoDto>('get_log_info'),
     openLogFolder: () => invoke<void>('open_log_folder'),
     perfEnabled: () => invoke<boolean>('perf_enabled'),
+    seekMode: () => invoke<string>('seek_mode'),
     perfLog: (report) => invoke<void>('perf_log', { report }),
     envGet: () => invoke<EnvSettingsDto>('env_get'),
     envSet: (vars) => invoke<EnvSettingsDto>('env_set', { vars }),

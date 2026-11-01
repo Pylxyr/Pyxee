@@ -262,6 +262,40 @@ input[type='range'].slider:focus-visible::-webkit-slider-thumb {
 input[type='range'].slider:active::-webkit-slider-thumb {
   transform: scale(1.6, 1.2);
 }
+/* The smooth seek-bar modes (PYXEE_SEEK_MODE=glide|steps): the fill is its own rectangle, scaled from the left by one
+   Web Animations transform animation (compositor only, finite: it ends with the song). The range input on top is
+   transparent so it only brings the thumb, keyboard and screen-reader behaviour. */
+.seek-wrap {
+  position: relative;
+  width: 100%;
+  height: 20px;
+}
+.seek-clip {
+  position: absolute;
+  inset: 8px 0 auto 0;
+  height: 4px;
+  overflow: hidden;
+  border-radius: 2px;
+  background: var(--surface-2);
+  pointer-events: none;
+}
+.seek-fill {
+  width: 100%;
+  height: 100%;
+  background: var(--fg);
+  transform: scaleX(0);
+  transform-origin: left center;
+}
+.seek-fill.accent {
+  background: var(--accent);
+}
+input[type='range'].slider.glide {
+  position: absolute;
+  inset: 0;
+}
+input[type='range'].slider.glide::-webkit-slider-runnable-track {
+  background: transparent;
+}
 input[type='range'].slider:disabled {
   cursor: default;
   opacity: 0.5;

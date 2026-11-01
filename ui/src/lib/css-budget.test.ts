@@ -116,6 +116,19 @@ describe('nothing runs without end that the page does not need', () => {
   });
 });
 
+describe('the smooth seek-bar fill (PYXEE_SEEK_MODE=glide|steps)', () => {
+  it('is moved only by a finite Web Animations transform: no CSS animation, transition or layer promotion on it', () => {
+    for (const sel of ['.seek-wrap', '.seek-clip', '.seek-fill', '.seek-fill.accent', "input[type='range'].slider.glide"]) {
+      const body = all.find((b) => b.selector === sel)?.body ?? '';
+      expect(body, sel).toBeTruthy();
+      expect(body, sel).not.toMatch(/transition|animation|will-change|filter/);
+    }
+    // the fill is scaled, never resized: a width change would lay the page out on every frame
+    expect(all.find((b) => b.selector === '.seek-fill')!.body).toMatch(/transform:\s*scaleX\(0\)/);
+    expect(all.find((b) => b.selector === '.seek-fill')!.body).not.toMatch(/\bwidth:\s*var/);
+  });
+});
+
 describe('no large blur, no backdrop filter', () => {
   it('has no backdrop-filter, will-change or blend mode other than normal', () => {
     expect(css).not.toMatch(/backdrop-filter/);

@@ -128,6 +128,8 @@ export class MockBackend extends MockLibrary implements Backend {
   }
   /** `?perf` on the page's address turns the diagnostics on in the standalone demo. */
   async perfEnabled() { return typeof location !== 'undefined' && /[?&]perf\b/.test(location.search); }
+  /** `?seek=pixel|glide|steps` on the page's address picks a seek-bar mode in the standalone demo (default: step). */
+  async seekMode() { return typeof location !== 'undefined' ? (new URLSearchParams(location.search).get('seek') ?? 'step') : 'step'; }
   async perfLog(report: PerfReportDto) { console.info('perf', JSON.stringify(report)); }
   async envGet() { return this.#envState(); }
   async envSet(vars: EnvVarDto[]) {
