@@ -33,6 +33,21 @@ fn file_track(name: &str) -> Track {
     t
 }
 
+/// An absolute path that does not exist. Absolute on both Windows and Unix so the local source
+/// treats it as a missing file (Unavailable) rather than a relative path (Failed).
+fn missing_file_key() -> String {
+    let path = if cfg!(windows) {
+        r"C:\definitely\missing.mp3"
+    } else {
+        "/definitely/missing.mp3"
+    };
+    format!("file:{path}")
+}
+
+fn missing_file_track(title: &str) -> Track {
+    Track::new(&missing_file_key(), title, "x")
+}
+
 struct Shared {
     notices: Mutex<Vec<String>>,
     player: Mutex<Player>,
