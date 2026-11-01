@@ -42,3 +42,20 @@ seek bar should flash, once a second) and *Frame Rendering Stats*.
 `scripts/perf/measure.py` drives the built UI (`npm run build` in `ui/`) in WebKitGTK under Xvfb and reports the CPU of
 the web process per view while a demo song plays. It is software-rendered, so use it to compare a change with the one
 before, not as what WebView2 will use on a GPU. See the script's header for what it needs.
+
+## Seek bar movement (`PYXEE_SEEK_MODE`)
+
+The filled part of the seek bar can move four ways; pick one in Settings > Advanced (used from the next start).
+The time labels and the slider's value always change once a second.
+
+| Mode | What it does |
+|---|---|
+| `step` (default) | The fill moves with the once-a-second position report. |
+| `pixel` | One timer is set for the moment the fill has gone one more device pixel (from the last report plus the time since, like the lyric lines' timer). Nothing is armed while paused, hidden, or when reports have stopped. |
+| `glide` | One Web Animations `scaleX` animation for the rest of the song; restarted on a seek, a new song, a drift over 300 ms or after a pause. |
+| `steps` | The same animation with `steps()`: 4 a second, never more than the pixels left to fill. |
+
+In the standalone demo use `?seek=pixel` (and `?len=210` for a 3.5 minute song; the built-in ones are 27-40 s, so their
+bars move ten times faster than a real song's). To compare on Windows, start Pyxee once per mode with `PYXEE_PERF=1`,
+play the same song for a few minutes with the window in front, and read the `perf:` line plus Task Manager > Details:
+the CPU and GPU columns of the `msedgewebview2.exe` processes whose command line contains `dev.pyxee.app`.
