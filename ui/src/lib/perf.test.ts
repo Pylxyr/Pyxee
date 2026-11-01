@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Backend } from './backend';
 import type { PerfReportDto } from './bindings/PerfReportDto';
-import { perfCounters, startPerf, startPerfIfEnabled } from './perf';
+import { pageMemory, perfCounters, startPerf, startPerfIfEnabled } from './perf';
 
 beforeEach(() => {
   vi.useFakeTimers();
@@ -30,6 +30,36 @@ describe('the performance log (PYXEE_PERF)', () => {
     await vi.advanceTimersByTimeAsync(30_000);
     expect(reports).toHaveLength(2); // stopped: nothing more, no timer left
     expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('says what the page holds: elements, pictures, canvases and (where the WebView has it) the JS heap', () => {
+    const img = document.createElement('img');
+    Object.defineProperty(img, 'complete', { value: true });
+    Object.defineProperty(img, 'naturalWidth', { value: 320 });
+    Object.defineProperty(img, 'naturalHeight', { value: 180 });
+    const canvas = document.createElement('canvas');
+    canvas.width = canvas.height = 32;
+    document.body.append(img, canvas);
+    (performance as unknown as { memory?: unknown }).memory = { usedJSHeapSize: 5 * 1024 * 1024, totalJSHeapSize: 8 * 1024 * 1024 };
+    const m = pageMemory();
+    expect(m).toMatchObject({ heapUsedKb: 5120, heapTotalKb: 8192, images: 1, imageKpx: 58, canvases: 1, canvasKpx: 1 });
+    expect(m.domNodes).toBeGreaterThan(3);
+    delete (performance as unknown as { memory?: unknown }).memory;
+    expect(pageMemory()).toMatchObject({ heapUsedKb: 0, heapTotalKb: 0 }); // a WebView without it: zeros
+    img.remove();
+    canvas.remove();
+  });
+
+  it('writes a line when the window is hidden or shown, with the memory at that moment', async () => {
+    const reports: PerfReportDto[] = [];
+    const stop = startPerf((r) => reports.push(r), 10_000);
+    document.dispatchEvent(new Event('visibilitychange'));
+    expect(reports).toHaveLength(1);
+    expect(reports[0]).toMatchObject({ seconds: 1, positionEvents: 0, hidden: document.hidden });
+    expect(reports[0]!.domNodes).toBeGreaterThan(0);
+    stop();
+    document.dispatchEvent(new Event('visibilitychange'));
+    expect(reports).toHaveLength(1); // stopped: no listener left
   });
 
   it('does nothing at all while the app was not started with PYXEE_PERF=1', async () => {

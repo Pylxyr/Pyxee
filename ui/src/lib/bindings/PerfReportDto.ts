@@ -3,4 +3,9 @@
 /**
  * One interval of the opt-in performance log (`PYXEE_PERF=1`): what the window did, counted by the window itself.
  */
-export type PerfReportDto = { seconds: number, stateEvents: number, positionEvents: number, otherEvents: number, domMutations: number, runningAnimations: number, longTasks: number, longFrames: number, hidden: boolean, };
+export type PerfReportDto = { seconds: number, stateEvents: number, positionEvents: number, otherEvents: number, domMutations: number, runningAnimations: number, longTasks: number, longFrames: number, hidden: boolean, 
+/**
+ * What the page holds (Chromium's own counters; 0 where the WebView has none). Heap sizes in KB, picture sizes in
+ * kilopixels (decoded, a picture takes about 4 bytes a pixel).
+ */
+heapUsedKb: number, heapTotalKb: number, domNodes: number, images: number, imageKpx: number, canvases: number, canvasKpx: number, };

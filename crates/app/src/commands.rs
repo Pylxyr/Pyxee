@@ -290,10 +290,18 @@ pub fn set_volume(state: State<AppState>, percent: u8) {
 }
 
 /// Whether the app was started with `PYXEE_PERF=1` (the window then reports what it does; see `perf_log`).
-fn perf_on() -> bool {
+pub(crate) fn perf_on() -> bool {
     std::env::var("PYXEE_PERF")
         .ok()
         .is_some_and(|v| pyxee_sources::ytmusic::parse_switch(&v) == Ok(true))
+}
+
+/// One line for the performance log, only when `PYXEE_PERF=1`: what the app side did (a window put to sleep or woken,
+/// memory handed back), so it can be read next to the page's own `perf:` lines.
+pub(crate) fn perf_note(what: &str) {
+    if perf_on() {
+        log::info!("perf: {what}");
+    }
 }
 
 #[tauri::command]
@@ -330,7 +338,7 @@ pub fn perf_log(report: PerfReportDto) {
 fn perf_line(report: &PerfReportDto) -> String {
     let c = |n: u32| n.min(10_000_000);
     format!(
-        "perf: {}s state={} position={} other={} dom-changes={} animations={} long-tasks={} long-frames={} hidden={}",
+        "perf: {}s state={} position={} other={} dom-changes={} animations={} long-tasks={} long-frames={} hidden={} heap-kb={} heap-total-kb={} dom-nodes={} images={} image-kpx={} canvases={} canvas-kpx={}",
         report.seconds.clamp(1, 3600),
         c(report.state_events),
         c(report.position_events),
@@ -339,7 +347,14 @@ fn perf_line(report: &PerfReportDto) -> String {
         c(report.running_animations),
         c(report.long_tasks),
         c(report.long_frames),
-        report.hidden
+        report.hidden,
+        report.heap_used_kb,
+        report.heap_total_kb,
+        report.dom_nodes,
+        report.images,
+        report.image_kpx,
+        report.canvases,
+        report.canvas_kpx
     )
 }
 
@@ -410,10 +425,17 @@ mod tests {
             long_tasks: 3,
             long_frames: 4,
             hidden: true,
+            heap_used_kb: 31_000,
+            heap_total_kb: 45_000,
+            dom_nodes: 1200,
+            images: 14,
+            image_kpx: 2300,
+            canvases: 1,
+            canvas_kpx: 4,
         });
         assert_eq!(
             line,
-            "perf: 1s state=2 position=10 other=1 dom-changes=10000000 animations=0 long-tasks=3 long-frames=4 hidden=true"
+            "perf: 1s state=2 position=10 other=1 dom-changes=10000000 animations=0 long-tasks=3 long-frames=4 hidden=true heap-kb=31000 heap-total-kb=45000 dom-nodes=1200 images=14 image-kpx=2300 canvases=1 canvas-kpx=4"
         );
         assert!(!line.contains('\n'));
     }

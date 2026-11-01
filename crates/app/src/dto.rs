@@ -953,4 +953,13 @@ pub struct PerfReportDto {
     pub long_tasks: u32,
     pub long_frames: u32,
     pub hidden: bool,
+    /// What the page holds (Chromium's own counters; 0 where the WebView has none). Heap sizes in KB, picture sizes in
+    /// kilopixels (decoded, a picture takes about 4 bytes a pixel).
+    pub heap_used_kb: u32,
+    pub heap_total_kb: u32,
+    pub dom_nodes: u32,
+    pub images: u32,
+    pub image_kpx: u32,
+    pub canvases: u32,
+    pub canvas_kpx: u32,
 }

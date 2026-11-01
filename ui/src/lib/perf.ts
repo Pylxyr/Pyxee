@@ -12,6 +12,39 @@ export const perfCounters = { state: 0, position: 0, other: 0 };
 
 type Entry = { entryType: string };
 
+/**
+ * What the page holds right now: Chromium's JS heap (`performance.memory`, WebView2 has it; the numbers are 0 where a
+ * WebView does not), the number of page elements, and the decoded size of the pictures and canvases (width x height;
+ * a picture takes about 4 bytes a pixel). Reading it walks the page's pictures once, so it is only done for the log.
+ */
+export function pageMemory(): Pick<PerfReportDto, 'heapUsedKb' | 'heapTotalKb' | 'domNodes' | 'images' | 'imageKpx' | 'canvases' | 'canvasKpx'> {
+  const m = (performance as unknown as { memory?: { usedJSHeapSize: number; totalJSHeapSize: number } }).memory;
+  const kb = (n: number) => Math.round(n / 1024);
+  let images = 0;
+  let imagePx = 0;
+  for (const img of Array.from(document.images)) {
+    if (img.complete && img.naturalWidth > 0) {
+      images++;
+      imagePx += img.naturalWidth * img.naturalHeight;
+    }
+  }
+  let canvases = 0;
+  let canvasPx = 0;
+  for (const c of Array.from(document.getElementsByTagName('canvas'))) {
+    canvases++;
+    canvasPx += c.width * c.height;
+  }
+  return {
+    heapUsedKb: m ? kb(m.usedJSHeapSize) : 0,
+    heapTotalKb: m ? kb(m.totalJSHeapSize) : 0,
+    domNodes: document.getElementsByTagName('*').length,
+    images,
+    imageKpx: Math.round(imagePx / 1000),
+    canvases,
+    canvasKpx: Math.round(canvasPx / 1000),
+  };
+}
+
 export function startPerf(report: (r: PerfReportDto) => void, intervalMs = 10_000): () => void {
   let mutations = 0;
   let longTasks = 0;
@@ -34,6 +67,11 @@ export function startPerf(report: (r: PerfReportDto) => void, intervalMs = 10_00
       // not supported by this WebView: the counts stay 0
     }
   }
+  // The moment the window is hidden or shown again: one line with the page's memory right then (counts as zero), so the
+  // log shows what the page held just before it went to sleep and just after it woke.
+  const onVisibility = () =>
+    report({ seconds: 1, stateEvents: 0, positionEvents: 0, otherEvents: 0, domMutations: 0, runningAnimations: 0, longTasks: 0, longFrames: 0, hidden: document.hidden, ...pageMemory() });
+  document.addEventListener('visibilitychange', onVisibility);
   let last = { ...perfCounters };
   let lastAt = Date.now();
   const timer = setInterval(() => {
@@ -50,6 +88,7 @@ export function startPerf(report: (r: PerfReportDto) => void, intervalMs = 10_00
       longTasks,
       longFrames,
       hidden: document.hidden,
+      ...pageMemory(),
     });
     last = { ...perfCounters };
     lastAt = now;
@@ -57,6 +96,7 @@ export function startPerf(report: (r: PerfReportDto) => void, intervalMs = 10_00
   }, intervalMs);
   return () => {
     clearInterval(timer);
+    document.removeEventListener('visibilitychange', onVisibility);
     mo.disconnect();
     for (const o of observers) o.disconnect();
   };

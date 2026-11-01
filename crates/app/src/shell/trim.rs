@@ -62,9 +62,11 @@ pub fn trim_after_sleep(label: String, still_wanted: Box<dyn Fn() -> bool + Send
             let first = trim_family();
             std::thread::sleep(SECOND_PASS);
             let second = if still_wanted() { trim_family() } else { 0 };
-            log::debug!(
+            let done = format!(
                 "{label}: trimmed the working set of {first} processes, then of {second} more"
             );
+            log::debug!("{done}");
+            crate::commands::perf_note(&done);
         });
     if let Err(e) = spawned {
         log::debug!("could not start the working-set trim: {e}");

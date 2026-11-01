@@ -147,6 +147,11 @@ pub fn set_active(window: &WebviewWindow, active: bool) {
         return;
     }
     let generation = next_generation(window.label());
+    crate::commands::perf_note(&format!(
+        "{} page: {} requested",
+        window.label(),
+        if active { "wake" } else { "sleep" }
+    ));
     if !imp::apply(window, active, generation) {
         note(window.label(), !active); // not done: do not remember it as done
     }
@@ -230,7 +235,10 @@ mod imp {
     unsafe fn recheck(controller: &ICoreWebView2Controller, label: &str, since: Instant) {
         let secs = RECHECK_DELAY.as_secs();
         match read_state(controller) {
-            (Some(true), _) => log::debug!("{label} page: still asleep after {secs} s"),
+            (Some(true), _) => {
+                log::debug!("{label} page: still asleep after {secs} s");
+                crate::commands::perf_note(&format!("{label} page: still asleep after {secs} s"));
+            }
             (Some(false), visible) => log::warn!(
                 "{label} page: awake again {secs} s after it was put to sleep (visible: {visible:?}); sent to it meanwhile: {}",
                 super::wake_sources_since(since)
@@ -262,6 +270,7 @@ mod imp {
                     v19.SetMemoryUsageTargetLevel(COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_NORMAL);
             }
             log::debug!("{label} page: awake");
+            crate::commands::perf_note(&format!("{label} page: resumed"));
         } else {
             if let Err(e) = controller.SetIsVisible(false) {
                 log::warn!("could not mark the {label} page hidden: {e}");
@@ -283,6 +292,9 @@ mod imp {
                         match result {
                             Ok(()) if suspended => {
                                 log::debug!("{label} page: asleep");
+                                crate::commands::perf_note(&format!(
+                                    "{label} page: suspended (WebView2 confirmed)"
+                                ));
                                 // Give the memory back at once instead of when WebView2 gets round to it (see trim.rs).
                                 let owned = label.to_string();
                                 let wanted = label.to_string();
