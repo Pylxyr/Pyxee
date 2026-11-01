@@ -301,6 +301,21 @@ pub fn perf_enabled() -> bool {
     perf_on()
 }
 
+/// How the seek bar fills in (`PYXEE_SEEK_MODE`): `step` (once a second, the default), `pixel`, `glide` or `steps`.
+/// Anything else is `step`; the window decides what each mode does.
+#[tauri::command]
+pub fn seek_mode() -> String {
+    seek_mode_from(std::env::var("PYXEE_SEEK_MODE").ok().as_deref())
+}
+
+pub(crate) fn seek_mode_from(value: Option<&str>) -> String {
+    let v = value.unwrap_or("").trim().to_ascii_lowercase();
+    match v.as_str() {
+        "pixel" | "glide" | "steps" => v,
+        _ => "step".into(),
+    }
+}
+
 /// Writes one interval of the window's own counts to the log. Only when `PYXEE_PERF=1`; each number is capped so a
 /// page cannot write more than a line of plain digits.
 #[tauri::command]

@@ -72,6 +72,14 @@ export const ENV_VARS: EnvVarInfo[] = [
     placeholder: '1',
   },
   {
+    name: 'PYXEE_SEEK_MODE',
+    title: 'Seek bar movement',
+    about: 'How the filled part of the seek bar moves while a song plays. For comparing what each costs on your PC: see docs/performance.md. The time labels always change once a second.',
+    fill: 'Pick one. Step (the default) moves it once a second. Pixel moves it whenever it has gone one pixel further. Glide moves it continuously with one animation. Steps is the same animation in a few jumps a second. Used from the next start.',
+    placeholder: '',
+    choices: ['', 'step', 'pixel', 'glide', 'steps'],
+  },
+  {
     name: 'PYXEE_LOG',
     title: 'Log detail',
     about: 'How much Pyxee writes to its log file.',

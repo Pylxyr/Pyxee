@@ -97,11 +97,16 @@ def main():
             cpu = cpu_percent("WebKitWebProces", args.window)
             mut = (d.execute_script("return window.__mut") - m0) / args.window
             anim = d.execute_script("return document.getAnimations().filter(a=>a.playState==='running').length")
-            result[view] = {"cpu": round(cpu, 1), "running_animations": anim, "dom_mutations_per_s": round(mut, 1)}
+            # the seek bars on screen: their width and what a song of this length makes them move, in pixels a second
+            bars = d.execute_script(
+                "return [...document.querySelectorAll('input.slider[aria-label=Seek]')].map(e=>[e.getBoundingClientRect().width,+e.max])"
+            )
+            pxs = [round(wd / (mx / 1000), 1) for wd, mx in bars if mx > 0]
+            result[view] = {"cpu": round(cpu, 1), "running_animations": anim, "dom_mutations_per_s": round(mut, 1), "seek_px_per_s": pxs}
             if args.shots:
                 os.makedirs(args.shots, exist_ok=True)
                 d.get_screenshot_as_file(os.path.join(args.shots, f"{args.label}-{view}.png"))
-            print(f"{args.label:>10} {view:<12} cpu={cpu:5.1f}%  running animations={anim}  dom mutations/s={mut:5.1f}", flush=True)
+            print(f"{args.label:>10} {view:<12} cpu={cpu:5.1f}%  running animations={anim}  dom mutations/s={mut:5.1f}  seek bar px/s={pxs}", flush=True)
         if args.json:
             print(json.dumps({args.label: result}))
         d.quit()

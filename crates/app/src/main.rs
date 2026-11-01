@@ -253,6 +253,7 @@ fn main() {
             commands::set_volume,
             commands::get_log_info,
             commands::perf_enabled,
+            commands::seek_mode,
             commands::perf_log,
             commands::open_log_folder,
             advanced::env_get,

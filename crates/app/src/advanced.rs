@@ -91,6 +91,9 @@ fn check(name: &str, value: &str) -> Result<(), String> {
                 Ok(_) => None,
             }
         }
+        "PYXEE_SEEK_MODE" if !["step", "pixel", "glide", "steps"].contains(&value.to_ascii_lowercase().as_str()) => {
+            Some("use step, pixel, glide or steps")
+        }
         "PYXEE_LOG" if !LOG_LEVELS.contains(&value.to_ascii_lowercase().as_str()) => {
             Some("use error, warn, info, debug or trace")
         }
@@ -239,6 +242,16 @@ mod tests {
                 "{name}"
             );
         }
+    }
+
+    #[test]
+    fn the_seek_mode_takes_one_of_four_words() {
+        for ok in ["step", "pixel", "GLIDE", "steps", ""] {
+            assert_eq!(check("PYXEE_SEEK_MODE", ok), Ok(()), "{ok}");
+        }
+        assert!(check("PYXEE_SEEK_MODE", "smooth")
+            .unwrap_err()
+            .contains("step, pixel, glide or steps"));
     }
 
     #[test]

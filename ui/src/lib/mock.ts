@@ -59,6 +59,15 @@ export const DEMO_TRACKS: TrackDto[] = [
 }));
 
 /**
+ * `?len=210` on the page's address makes every demo song that many seconds long. The built-in ones are 27-40 s, so a bar
+ * moves 10 times faster than for a real song of 3-4 minutes: use this when measuring anything that follows the position.
+ */
+{
+  const len = typeof location !== 'undefined' ? Number(new URLSearchParams(location.search).get('len')) : 0;
+  if (len >= 10 && len <= 7200) for (const t of DEMO_TRACKS) t.durationMs = Math.round(len * 1000);
+}
+
+/**
  * Browser/test stand-in for the Rust backend. It models just enough of the real state machine
  * (loading -> audible, gapless advance, queue edits, undo) to develop and test the UI without Tauri.
  * The real behaviour lives in `pyxee-core`; do not add features here that core does not have.
