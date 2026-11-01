@@ -15,19 +15,37 @@ param(
   [string]$Csv = (Join-Path $env:USERPROFILE 'Desktop\pyxee-ram.csv')
 )
 
-Add-Type -Namespace Pyxee -Name Win -MemberDefinition @'
-[DllImport("user32.dll")] public static extern bool IsIconic(IntPtr h);
-[DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr h);
+Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+using System.Text;
+public static class PyxeeWin {
+  delegate bool EnumProc(IntPtr h, IntPtr l);
+  [DllImport("user32.dll")] static extern bool EnumWindows(EnumProc p, IntPtr l);
+  [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid);
+  [DllImport("user32.dll")] static extern bool IsIconic(IntPtr h);
+  [DllImport("user32.dll")] static extern bool IsWindowVisible(IntPtr h);
+  [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern int GetWindowText(IntPtr h, StringBuilder s, int n);
+  // The state of the top-level window titled "Pyxee" that belongs to process `pid` (not the mini player or the flyout).
+  public static string State(uint pid) {
+    bool vis = false, icon = false;
+    EnumWindows(delegate (IntPtr h, IntPtr l) {
+      uint p; GetWindowThreadProcessId(h, out p);
+      if (p != pid) return true;
+      StringBuilder t = new StringBuilder(256); GetWindowText(h, t, 256);
+      if (t.ToString() != "Pyxee") return true;
+      if (IsIconic(h)) icon = true; else if (IsWindowVisible(h)) vis = true;
+      return true;
+    }, IntPtr.Zero);
+    return icon ? "minimized" : vis ? "visible" : "hidden";
+  }
+}
 '@
 
 function Get-State {
   $p = Get-Process pyxee-app -ErrorAction SilentlyContinue | Select-Object -First 1
   if (-not $p) { return $null }
-  $h = $p.MainWindowHandle
-  if ($h -eq [IntPtr]::Zero) { return 'hidden' }      # hidden to the tray: no main window
-  if ([Pyxee.Win]::IsIconic($h)) { return 'minimized' }
-  if (-not [Pyxee.Win]::IsWindowVisible($h)) { return 'hidden' }
-  return 'visible'
+  return [PyxeeWin]::State([uint32]$p.Id)
 }
 
 # What kind of process a WebView2 process is, from its command line.
