@@ -23,6 +23,8 @@
 //! seconds later. If the page woke up on its own, the log lists what ran script in it meanwhile (see
 //! [`note_wake_source`]), so the cause is found rather than guessed.
 //!
+//! Once the suspend is done, `trim` also hands the memory of the hidden window back to Windows at once.
+//!
 //! Only WebView2 (Windows) needs this; elsewhere `set_active` only keeps its bookkeeping and `emit_awake` sends to all.
 
 use serde::Serialize;
@@ -170,7 +172,7 @@ mod imp {
         let label = window.label().to_string();
         let queued = window.with_webview(move |view| {
             // SAFETY: WebView2 calls, made on the UI thread, which is where `with_webview` runs this.
-            unsafe { change(&view.controller(), active, &label) };
+            unsafe { change(&view.controller(), active, &label, generation) };
         });
         if let Err(e) = &queued {
             log::debug!("could not change the page power state: {e}");
@@ -238,7 +240,12 @@ mod imp {
     }
 
     /// Every step is tried whatever the others did: an older WebView2 runtime may lack one of them.
-    unsafe fn change(controller: &ICoreWebView2Controller, active: bool, label: &str) {
+    unsafe fn change(
+        controller: &ICoreWebView2Controller,
+        active: bool,
+        label: &str,
+        generation: u64,
+    ) {
         let core = controller.CoreWebView2().ok();
         if active {
             if let Some(v3) = core.as_ref().and_then(|c| c.cast::<ICoreWebView2_3>().ok()) {
@@ -274,7 +281,16 @@ mod imp {
                         let label = &label_owned;
                         // WebView2 may refuse (see its "Sleeping Tabs" conditions); say so instead of claiming it slept.
                         match result {
-                            Ok(()) if suspended => log::debug!("{label} page: asleep"),
+                            Ok(()) if suspended => {
+                                log::debug!("{label} page: asleep");
+                                // Give the memory back at once instead of when WebView2 gets round to it (see trim.rs).
+                                let owned = label.to_string();
+                                let wanted = label.to_string();
+                                crate::shell::trim::trim_after_sleep(
+                                    owned,
+                                    Box::new(move || super::is_current(&wanted, generation)),
+                                );
+                            }
                             Ok(()) => log::warn!("{label} page: WebView2 declined to suspend it"),
                             Err(e) => log::warn!("{label} page: could not be suspended: {e}"),
                         }

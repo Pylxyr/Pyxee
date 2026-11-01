@@ -13,6 +13,7 @@ mod power;
 mod sleep;
 mod tray;
 mod tray_buttons;
+mod trim;
 mod webview_power;
 pub use webview_power::{emit_awake, emit_noted};
 #[cfg(all(windows, feature = "win-extras"))]
