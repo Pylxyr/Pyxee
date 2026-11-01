@@ -50,6 +50,29 @@ pub(crate) fn family(own: u32, all: &[Proc]) -> Vec<u32> {
 /// How long after the first trim the second one runs.
 const SECOND_PASS: Duration = Duration::from_millis(1500);
 
+/// How long after the window is first shown the start-up memory is handed back (the renderer's own start-up work was
+/// done by about 30 s in the runs measured).
+const START_DELAY: Duration = Duration::from_secs(45);
+
+/// Once, `START_DELAY` after the app started with its window shown: trims, if the page is awake (a window hidden by
+/// then was trimmed when it went to sleep). Never repeated: a window that stays in view is not trimmed again.
+pub fn trim_once_after_start(is_awake: Box<dyn Fn() -> bool + Send>) {
+    let spawned = std::thread::Builder::new()
+        .name("trim-after-start".into())
+        .spawn(move || {
+            std::thread::sleep(START_DELAY);
+            if is_awake() {
+                let n = trim_family();
+                let done = format!("start-up memory handed back: trimmed {n} processes");
+                log::debug!("{done}");
+                crate::commands::perf_note(&done);
+            }
+        });
+    if let Err(e) = spawned {
+        log::debug!("could not start the start-up trim: {e}");
+    }
+}
+
 /// Trims now, then once more after a moment, on a thread of its own. `still_wanted` says whether the page is still
 /// asleep (a window shown meanwhile is left alone).
 pub fn trim_after_sleep(label: String, still_wanted: Box<dyn Fn() -> bool + Send>) {

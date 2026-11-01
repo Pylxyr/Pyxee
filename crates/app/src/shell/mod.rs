@@ -158,6 +158,9 @@ pub fn init(app: &AppHandle, args: &[String]) {
             webview_power::set_active(&w, false);
         } else {
             let _ = w.show();
+            // A page that has just started holds what it needed to start (about 200 MB resident, against about 70 MB
+            // of what it keeps using): hand that back once, after it has settled. Later wake-ups need nothing.
+            trim::trim_once_after_start(Box::new(|| !webview_power::is_asleep(MAIN)));
         }
     }
     run_actions(app, &cli.actions);
