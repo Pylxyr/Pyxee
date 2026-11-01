@@ -50,6 +50,7 @@ def main():
     ap.add_argument("--label", default="run")
     ap.add_argument("--json", action="store_true")
     ap.add_argument("--size", default="1280,800")
+    ap.add_argument("--query", default="", help="query string for the mock page, e.g. seek=pixel (a variant switch)")
     args = ap.parse_args()
     w, h = (int(x) for x in args.size.split(","))
     kids = []
@@ -68,7 +69,7 @@ def main():
         o.set_capability("webkitgtk:browserOptions", {"binary": MINI, "args": ["--automation"]})
         d = webdriver.Remote("http://127.0.0.1:4444", options=o)
         d.set_window_size(w, h)
-        d.get("http://127.0.0.1:8765/")
+        d.get("http://127.0.0.1:8765/" + ("?" + args.query.lstrip("?") if args.query else ""))
         time.sleep(2)
         click = """const t=arguments[0];const els=[...document.querySelectorAll('button,[role=tab],a')];
           const el=els.find(e=>(e.getAttribute('aria-label')||e.textContent||'').trim()===t);
