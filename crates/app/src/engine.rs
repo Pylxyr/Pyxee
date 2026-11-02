@@ -223,12 +223,13 @@ impl Engine {
 
     /// How long the thread that drives `poll()` may wait for a command before polling again. Quick while a song
     /// plays or one is being started (events from the pipeline and the workers are answered within a few ms); slow
-    /// when nothing is audible (idle, paused), where the wait ends at once anyway when a command arrives.
+    /// when nothing is audible (idle, paused), where the wait ends at once anyway when a command arrives (a quarter
+    /// of a second is as often as a worker's result or the output-device check needs to be looked at).
     pub fn poll_interval(&self) -> Duration {
         if self.is_playing() || self.start_id.is_some() {
             Duration::from_millis(25)
         } else {
-            Duration::from_millis(100)
+            Duration::from_millis(250)
         }
     }
 

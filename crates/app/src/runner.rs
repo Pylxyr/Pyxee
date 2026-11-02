@@ -228,9 +228,13 @@ fn spawn_real(app: AppHandle, rx: Receiver<Effect>) {
                     DeviceAction::Log { warn: false, text } => log::info!("{text}"),
                 }
             }
+            // The periodic save is for the playing position; paused or idle, a pause, skip or queue change saves by
+            // itself, and asking would only have the writer serialise the whole queue to find it unchanged.
             if last_save.elapsed() >= SAVE_EVERY {
                 last_save = Instant::now();
-                app.state::<AppState>().request_save();
+                if engine.is_playing() {
+                    app.state::<AppState>().request_save();
+                }
             }
         }
     });

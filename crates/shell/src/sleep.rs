@@ -86,6 +86,11 @@ impl SleepTimer {
         self.active.is_some()
     }
 
+    /// A timer that counts down time is running: only then does the clock need to tick (see `tick`).
+    pub fn is_timed(&self) -> bool {
+        matches!(self.active, Some(Active::At { .. }))
+    }
+
     /// True while the player must not start another song after this one (the core's "stop after current").
     pub fn stop_after_current(&self) -> bool {
         matches!(
@@ -147,6 +152,22 @@ impl SleepTimer {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_a_time_timer_needs_the_clock() {
+        let mut t = SleepTimer::new();
+        assert!(!t.is_timed());
+        t.set(SleepSetting::EndOfTrack, 0);
+        assert!(t.is_active() && !t.is_timed());
+        t.set(SleepSetting::Tracks { count: 3 }, 0);
+        assert!(t.is_active() && !t.is_timed());
+        t.set(SleepSetting::Minutes { minutes: 5 }, 0);
+        assert!(t.is_timed());
+        t.cancel();
+        assert!(!t.is_timed());
+        t.extend_minutes(10, 0); // starts one when nothing runs
+        assert!(t.is_timed());
+    }
 
     #[test]
     fn a_time_timer_counts_down_fades_in_the_last_seconds_and_fires_once() {

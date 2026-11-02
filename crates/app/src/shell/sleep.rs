@@ -6,16 +6,40 @@ use crate::state::{now_ms, publish, AppState};
 use pyxee_core::Command;
 use pyxee_shell::sleep::SleepSetting;
 use std::sync::atomic::Ordering;
+use std::sync::OnceLock;
 use std::time::Duration;
 use tauri::{AppHandle, Manager};
 
 pub const SLEEP_EVENT: &str = "sleep-state";
 
+/// The clock thread, so a new timer can wake it (`wake`).
+static CLOCK: OnceLock<std::thread::Thread> = OnceLock::new();
+/// How long the clock rests when no timed timer runs. `wake` ends it at once; this is only a safety net.
+const IDLE_WAIT: Duration = Duration::from_secs(300);
+
 pub fn spawn(app: AppHandle) {
-    std::thread::spawn(move || loop {
-        std::thread::sleep(Duration::from_secs(1));
-        tick(&app);
+    let clock = std::thread::spawn(move || loop {
+        // Nothing to count down (no timer, or one that counts songs): rest instead of waking every second.
+        let timed = app
+            .state::<ShellState>()
+            .sleep
+            .lock()
+            .is_ok_and(|t| t.is_timed());
+        if timed {
+            std::thread::sleep(Duration::from_secs(1));
+            tick(&app);
+        } else {
+            std::thread::park_timeout(IDLE_WAIT);
+        }
     });
+    let _ = CLOCK.set(clock.thread().clone());
+}
+
+/// A timer may have been started: let the clock look at it now.
+fn wake() {
+    if let Some(clock) = CLOCK.get() {
+        clock.unpark();
+    }
 }
 
 fn tick(app: &AppHandle) {
@@ -67,6 +91,7 @@ pub fn set(app: &AppHandle, setting: SleepSetting) {
     if let Ok(mut t) = shell.sleep.lock() {
         t.set(setting, now_ms().max(0) as u64);
     }
+    wake();
     app.state::<AppState>().volume.set_fade(1.0);
     sync_stop_flag(app);
     emit_status(app);
@@ -87,6 +112,7 @@ pub fn extend(app: &AppHandle, minutes: u32) {
     if let Ok(mut t) = shell.sleep.lock() {
         t.extend_minutes(minutes, now_ms().max(0) as u64);
     }
+    wake();
     // Extending during the fade brings the volume back.
     app.state::<AppState>().volume.set_fade(1.0);
     sync_stop_flag(app);
