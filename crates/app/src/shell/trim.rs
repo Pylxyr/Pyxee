@@ -50,22 +50,35 @@ pub(crate) fn family(own: u32, all: &[Proc]) -> Vec<u32> {
 /// How long after the first trim the second one runs.
 const SECOND_PASS: Duration = Duration::from_millis(1500);
 
-/// How long after the window is first shown the start-up memory is handed back (the renderer's own start-up work was
-/// done by about 30 s in the runs measured).
-const START_DELAY: Duration = Duration::from_secs(45);
+/// When, counted from the window first being shown, the start-up memory is handed back. The page touches most of its
+/// start-up memory in the first seconds and never again; in the runs measured the renderer sat at about 140 MB until
+/// about 30 s, then fell to about 85 MB by itself. A first trim once the page has drawn, one while it settles, and a
+/// last one after it has.
+const START_TRIMS: [Duration; 3] = [
+    Duration::from_secs(8),
+    Duration::from_secs(20),
+    Duration::from_secs(45),
+];
 
-/// Once, `START_DELAY` after the app started with its window shown: trims, if the page is awake (a window hidden by
-/// then was trimmed when it went to sleep). Never repeated: a window that stays in view is not trimmed again.
+/// After the app started with its window shown: trims at each of `START_TRIMS` if the page is awake (a window hidden
+/// by then was trimmed when it went to sleep). Only at start-up: a window that stays in view later is not trimmed again.
 pub fn trim_once_after_start(is_awake: Box<dyn Fn() -> bool + Send>) {
     let spawned = std::thread::Builder::new()
         .name("trim-after-start".into())
         .spawn(move || {
-            std::thread::sleep(START_DELAY);
-            if is_awake() {
-                let n = trim_family();
-                let done = format!("start-up memory handed back: trimmed {n} processes");
-                log::debug!("{done}");
-                crate::commands::perf_note(&done);
+            let mut elapsed = Duration::ZERO;
+            for at in START_TRIMS {
+                std::thread::sleep(at.saturating_sub(elapsed));
+                elapsed = at;
+                if is_awake() {
+                    let n = trim_family();
+                    let done = format!(
+                        "start-up memory handed back at {} s: trimmed {n} processes",
+                        at.as_secs()
+                    );
+                    log::debug!("{done}");
+                    crate::commands::perf_note(&done);
+                }
             }
         });
     if let Err(e) = spawned {
@@ -233,6 +246,12 @@ mod tests {
             p(221, 220, "msedgewebview2.exe"), // below a process that is not one
         ];
         assert_eq!(family(200, &all), vec![200, 210]);
+    }
+
+    #[test]
+    fn the_start_up_trims_come_in_order_and_end_with_the_last_one_measured() {
+        assert!(START_TRIMS.windows(2).all(|w| w[0] < w[1]));
+        assert_eq!(START_TRIMS.last(), Some(&Duration::from_secs(45)));
     }
 
     #[test]
