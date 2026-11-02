@@ -1,7 +1,8 @@
 //! Logging to a file the user can find: `<app data>\logs\pyxee.log` (one older copy, `pyxee.log.1`, is kept
 //! when it passes 2 MB, so the logs never exceed about 4 MB; identical records in a row are cut to two lines and a count). Everything is also copied to the console, which is what `tauri dev` shows.
 //!
-//! Set `PYXEE_LOG` to `error`, `warn`, `info` (default), `debug` or `trace` for more or less detail.
+//! Set `PYXEE_LOG` to `error`, `warn` (default), `info`, `debug` or `trace` for more or less detail. The default is `warn`
+//! so a quiet app writes next to nothing to the disk; `PYXEE_PERF=1` raises it to `info`, which its lines need.
 
 use log::{Level, LevelFilter, Log, Metadata, Record};
 use std::fs::{self, File, OpenOptions};
@@ -198,7 +199,18 @@ pub fn level_from(text: Option<&str>) -> LevelFilter {
         Some("warn") => LevelFilter::Warn,
         Some("debug") => LevelFilter::Debug,
         Some("trace") => LevelFilter::Trace,
-        _ => LevelFilter::Info,
+        Some("info") => LevelFilter::Info,
+        _ => LevelFilter::Warn,
+    }
+}
+
+/// The level the log really runs at: what `PYXEE_LOG` asks for, but at least `info` while the performance log
+/// (`PYXEE_PERF=1`) is on, because its lines are written at that level and would otherwise never reach the file.
+pub fn effective_level(asked: LevelFilter, perf: bool) -> LevelFilter {
+    if perf && asked < LevelFilter::Info {
+        LevelFilter::Info
+    } else {
+        asked
     }
 }
 
@@ -210,7 +222,8 @@ pub fn init(dir: &Path) -> (LogInfo, Option<String>) {
         dir: dir.to_path_buf(),
         file: file.clone(),
     };
-    let level = level_from(std::env::var("PYXEE_LOG").ok().as_deref());
+    let perf = std::env::var("PYXEE_PERF").is_ok_and(|v| v.trim() == "1");
+    let level = effective_level(level_from(std::env::var("PYXEE_LOG").ok().as_deref()), perf);
     match FileLogger::open(&file, level, MAX_BYTES, true) {
         Ok(logger) => {
             if log::set_boxed_logger(Box::new(logger)).is_ok() {
@@ -403,10 +416,22 @@ mod tests {
 
     #[test]
     fn the_level_comes_from_the_environment_value() {
-        assert_eq!(level_from(None), LevelFilter::Info);
+        assert_eq!(level_from(None), LevelFilter::Warn);
         assert_eq!(level_from(Some(" DEBUG ")), LevelFilter::Debug);
         assert_eq!(level_from(Some("warn")), LevelFilter::Warn);
-        assert_eq!(level_from(Some("nonsense")), LevelFilter::Info);
+        assert_eq!(level_from(Some("info")), LevelFilter::Info);
+        assert_eq!(level_from(Some("nonsense")), LevelFilter::Warn);
+    }
+
+    #[test]
+    fn the_performance_log_needs_at_least_info() {
+        assert_eq!(effective_level(LevelFilter::Warn, true), LevelFilter::Info);
+        assert_eq!(effective_level(LevelFilter::Error, true), LevelFilter::Info);
+        assert_eq!(
+            effective_level(LevelFilter::Debug, true),
+            LevelFilter::Debug
+        );
+        assert_eq!(effective_level(LevelFilter::Warn, false), LevelFilter::Warn);
     }
 
     #[test]

@@ -61,7 +61,7 @@ variable you set in Windows itself wins over the file. An empty field means the 
 | `PYXEE_SUGGESTIONS` | Whether the search box asks Google for suggestions while you type (on by default). | `0` turns it off: nothing you type is sent anywhere until you run a search. Leave it empty or `1` to keep it on. |
 | `PYXEE_PERF` | Writes to the log, every ten seconds, how many events the window received and how many page changes, running animations and slow tasks it had (off by default). For finding what keeps the window busy: see [docs/performance.md](docs/performance.md). | `1` turns it on. |
 | `PYXEE_SEEK_MODE` | How the filled part of the seek bar moves (for comparing their cost: see [docs/performance.md](docs/performance.md)). | `step` (the default, once a second), `pixel` (each time it has gone one pixel further), `glide` (one animation) or `steps` (the same animation in a few jumps a second). |
-| `PYXEE_LOG` | How much Pyxee writes to its log file. | `error`, `warn`, `info` (the default), `debug` or `trace`. Use `debug` when you report a problem with a song. |
+| `PYXEE_LOG` | How much Pyxee writes to its log file. | `error`, `warn` (the default), `info`, `debug` or `trace`. Use `debug` when you report a problem with a song. |
 
 **About asking YouTube Music directly.** With `PYXEE_YTMUSIC_DIRECT` on, Pyxee sends the same requests the YouTube Music website sends for its Songs tab and Explore page. That is an undocumented interface, not an official API, so it can stop working whenever YouTube changes it. Set `PYXEE_YTMUSIC_DIRECT=0` to use yt-dlp only.
 

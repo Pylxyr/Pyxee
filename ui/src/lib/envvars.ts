@@ -67,7 +67,7 @@ export const ENV_VARS: EnvVarInfo[] = [
   {
     name: 'PYXEE_PERF',
     title: 'Performance log',
-    about: 'Every ten seconds the window writes to the log file how many events it received, how many page changes and running animations it had, and how many slow tasks and frames. For finding what keeps the window busy; it adds a little work of its own, so leave it off otherwise.',
+    about: 'Every ten seconds the window writes to the log file how many events it received, how many page changes and running animations it had, and how many slow tasks and frames. For finding what keeps the window busy; it adds a little work of its own, so leave it off otherwise. While it is on, the log runs at info or more, so the file grows.',
     fill: 'Type 1 to turn it on. Leave it empty (or 0) to keep it off.',
     placeholder: '1',
   },
@@ -83,7 +83,7 @@ export const ENV_VARS: EnvVarInfo[] = [
     name: 'PYXEE_LOG',
     title: 'Log detail',
     about: 'How much Pyxee writes to its log file.',
-    fill: 'Pick one. Info is the default; choose debug or trace for more detail when you report a problem with a song.',
+    fill: 'Pick one. Warn is the default, so a quiet app writes next to nothing; choose info, debug or trace for more detail when you report a problem with a song. The performance log turns this up to info while it is on.',
     placeholder: '',
     choices: ['', 'error', 'warn', 'info', 'debug', 'trace'],
   },

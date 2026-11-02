@@ -32,7 +32,7 @@ The same variables can be set in **Settings** > **Advanced**, which saves them t
 | `PYXEE_JS_RUNTIME` | The JavaScript runtime passed to yt-dlp as `--js-runtimes`: `deno`, `node`, `quickjs` or `bun`, optionally `runtime:path` (a binary or its folder), or `none` to pass nothing. Unset: Deno, then Node, from `PATH`. |
 | `PYXEE_COOKIES` | Path to a Netscape-format `cookies.txt`. A logged-in session is much less likely to get HTTP 429 or "sign in to confirm you're not a bot". yt-dlp may rewrite this file. A path that is not an existing file is ignored (with a warning). |
 | `PYXEE_COOKIES_FROM_BROWSER` | yt-dlp's `BROWSER[+KEYRING][:PROFILE][::CONTAINER]`, e.g. `firefox`. Ignored if `PYXEE_COOKIES` is usable. Chromium browsers on Windows often lock their cookie store; an exported `cookies.txt` is more reliable. |
-| `PYXEE_LOG` | `error`, `warn`, `info` (default), `debug`, `trace`. |
+| `PYXEE_LOG` | `error`, `warn` (default), `info`, `debug`, `trace`. |
 | `PYXEE_DISCORD_CLIENT_ID` | Build time only: the Discord application ID (17 to 20 digits) baked into the build, which turns on Rich Presence ("Listening to Pyxee" with the current song). Unset: the feature is off. Not read at run time. See `shell.md`. |
 | `PYXEE_LASTFM_API_KEY`, `PYXEE_LASTFM_API_SECRET` | Build time only: the Last.fm API account's key and shared secret (32 hex characters each, from <https://www.last.fm/api/account/create>) baked into the build, which makes Settings > "Scrobble what I play to Last.fm" work. Both unset: the toggle only says scrobbling is not available. Set both or neither. Not read at run time; never logged. |
 
