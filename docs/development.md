@@ -1,6 +1,6 @@
 # Development
 
-Everything for building, running and testing Pyxee from source. Users: see the [README](../README.md).
+Everything for building, running and testing Pyxee from source. Users: see the [README](../README.md) and [advanced.md](advanced.md) (the settings); Linux: [linux.md](linux.md).
 
 Rust (audio, queue, library) + Tauri 2 (WebView2) + Svelte/TypeScript/Tailwind UI.
 
@@ -24,7 +24,7 @@ installed if it does not match) and puts it in `crates/app/binaries`. Developmen
 your own copy instead, set `PYXEE_YTDLP` to its path, or put `yt-dlp.exe` next to the app.
 
 ### Optional settings (environment variables)
-The same variables can be set in **Settings** > **Advanced**, which saves them to `.env` in the data folder (see the README); a variable set in Windows wins over that file. `crates/shell/src/envfile.rs` reads it at start-up.
+The same variables can be set in **Settings** > **Advanced**, which saves them to `.env` in the data folder (see [advanced.md](advanced.md)); a variable set in the system wins over that file. `crates/shell/src/envfile.rs` reads it at start-up.
 
 | Variable | Effect |
 |---|---|
@@ -118,3 +118,26 @@ that first in every run). The default run is the full one: formatting, clippy, e
 cannot run (no FFmpeg libraries, rate limited) is a failure, not a skip, and any FAIL gives a non-zero exit code. Options: `-Installer` (also builds and inspects the installer and the portable zip), `-Ci` (replays the release workflow's portable step the way a clean runner meets it, including MSYS2's first-ever login),
 `-UpdateYtdlp`, `-SelfTest` (only the redaction test), and, not recommended, `-SkipTests` / `-SkipLive` (a run with either does not prove the build), `-CookieFile <cookies.txt>`, `-CookieBrowser firefox`, `-Manual` (answer y/n for things to try in the
 app) and `-AnalyzeLog` (summarise the app's own log). Details: the comment block at the top of `scripts\check-windows.ps1`. To measure idle CPU, GPU and memory while Pyxee is hidden, see `docs/measuring.md`.
+
+## Linux
+
+The whole workspace builds, passes clippy and passes its tests on Linux (the `linux` job in CI). Windows-only code
+(WebView2 power handling, the working-set trim, the installer, the tray buttons) is behind `cfg(windows)`.
+
+System packages (Arch: `pacman -S --needed base-devel git nasm webkit2gtk-4.1 gtk3 libayatana-appindicator alsa-lib
+librsvg openssl`; Debian/Ubuntu: `apt install pkg-config nasm make libwebkit2gtk-4.1-dev libgtk-3-dev
+libayatana-appindicator3-dev librsvg2-dev libasound2-dev libdbus-1-dev libssl-dev libsoup-3.0-dev
+libjavascriptcoregtk-4.1-dev libxdo-dev`). Then:
+
+```
+npm ci --prefix ui && npm run build --prefix ui   # Tauri embeds ui/dist
+cargo xtask ffmpeg                                # the minimal static FFmpeg, once (needs git, make, nasm, gcc)
+cargo test --workspace
+cargo run -p pyxee-app --features tauri/custom-protocol
+```
+`tauri/custom-protocol` makes the program show the built page; without it a plain `cargo build` loads `localhost`.
+
+The Linux package (`packaging/arch/PKGBUILD`) uses `--profile release-linux` (whole-program optimisation, one
+code-generation unit, symbols stripped) with `RUSTFLAGS="-C target-cpu=<_march>"`, and builds FFmpeg with
+`PYXEE_FF_MARCH=<_march>` (see `scripts/build-ffmpeg.sh`). The Windows installer keeps the default `release` profile.
+`tauri build` on Linux does not work yet: `tauri.conf.json` lists only the `nsis` bundle.

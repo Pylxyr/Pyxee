@@ -21,7 +21,20 @@ use ts_rs::TS;
 
 const REPO: &str = "Pylxyr/Pyxee";
 const YTDLP_BASE: &str = "https://github.com/yt-dlp/yt-dlp/releases/latest/download";
-const YTDLP_FILE: &str = "yt-dlp.exe";
+/// The file in yt-dlp's release (and its checksum list) that runs on this system.
+const YTDLP_ASSET: &str = if cfg!(windows) {
+    "yt-dlp.exe"
+} else if cfg!(target_arch = "aarch64") {
+    "yt-dlp_linux_aarch64"
+} else {
+    "yt-dlp_linux"
+};
+/// What the updated copy is called in the data folder (its name has to start with `yt-dlp`).
+const YTDLP_FILE: &str = if cfg!(windows) {
+    "yt-dlp.exe"
+} else {
+    "yt-dlp"
+};
 /// Nothing we download is anywhere near this; it stops a wrong URL from filling the disk.
 const MAX_DOWNLOAD: u64 = 300 * 1024 * 1024;
 /// The release list and the checksum lists are small; anything bigger is a wrong answer, not a file to keep in memory.
@@ -256,7 +269,9 @@ fn check_app_blocking() -> Result<AppUpdateDto, String> {
             latest: r.version_text(),
             notes_url: r.page_url.clone(),
             notes,
-            installable: !portable
+            // Only the Windows installer can replace the running program; elsewhere the package manager does.
+            installable: cfg!(windows)
+                && !portable
                 && r.installer.is_some()
                 && r.sums_url.is_some()
                 && (update::sums_trust(UPDATE_PUBLIC_KEY) == update::SumsTrust::ChecksumOnly
@@ -537,7 +552,7 @@ fn check_ytdlp_blocking(dir: &Path) -> Result<YtdlpUpdateDto, String> {
     let sums = text(&format!("{YTDLP_BASE}/SHA2-256SUMS"))?;
     // A program Windows has to find on PATH is not a file we can hash: offer to install our own copy.
     let status = match std::fs::read(&current) {
-        Ok(bytes) => update::tool_status(&update::sha256_hex(&bytes), &sums, YTDLP_FILE)
+        Ok(bytes) => update::tool_status(&update::sha256_hex(&bytes), &sums, YTDLP_ASSET)
             .map_err(|e| e.to_string())?,
         Err(_) => ToolStatus::Available {
             expected: String::new(),
@@ -551,10 +566,10 @@ fn check_ytdlp_blocking(dir: &Path) -> Result<YtdlpUpdateDto, String> {
 
 fn install_ytdlp_blocking(app: &AppHandle, dir: &Path) -> Result<String, String> {
     let sums = text(&format!("{YTDLP_BASE}/SHA2-256SUMS"))?;
-    let expected = update::parse_sums(&sums, YTDLP_FILE)
-        .ok_or_else(|| update::UpdateError::NotListed(YTDLP_FILE.into()).to_string())?;
+    let expected = update::parse_sums(&sums, YTDLP_ASSET)
+        .ok_or_else(|| update::UpdateError::NotListed(YTDLP_ASSET.into()).to_string())?;
     let bytes = download(
-        &format!("{YTDLP_BASE}/{YTDLP_FILE}"),
+        &format!("{YTDLP_BASE}/{YTDLP_ASSET}"),
         &mut |received, total| {
             emit_progress(
                 app,
@@ -672,7 +687,7 @@ mod tests {
     fn the_updated_yt_dlp_lives_in_a_tools_folder_of_the_data_folder() {
         assert_eq!(
             managed_ytdlp_path(Path::new("D:/data")),
-            Path::new("D:/data").join("tools").join("yt-dlp.exe")
+            Path::new("D:/data").join("tools").join(YTDLP_FILE)
         );
     }
 

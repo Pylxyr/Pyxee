@@ -401,6 +401,32 @@ pub fn is_windows_exe(bytes: &[u8]) -> bool {
     bytes.starts_with(b"MZ")
 }
 
+/// Linux programs start with the four bytes 0x7F "ELF".
+pub fn is_elf(bytes: &[u8]) -> bool {
+    bytes.starts_with(b"\x7fELF")
+}
+
+/// A program for the system this is running on: a Windows program on Windows, an ELF program anywhere else.
+pub fn is_native_executable(bytes: &[u8]) -> bool {
+    if cfg!(windows) {
+        is_windows_exe(bytes)
+    } else {
+        is_elf(bytes)
+    }
+}
+
+/// Lets the downloaded file run (a file written by `fs::write` is not executable on Linux).
+#[cfg(unix)]
+fn make_executable(path: &Path) -> Result<(), UpdateError> {
+    use std::os::unix::fs::PermissionsExt;
+    fs::set_permissions(path, fs::Permissions::from_mode(0o755)).map_err(io)
+}
+
+#[cfg(not(unix))]
+fn make_executable(_path: &Path) -> Result<(), UpdateError> {
+    Ok(())
+}
+
 /// What yt-dlp's published checksum says about the program in use.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ToolStatus {
@@ -461,7 +487,7 @@ pub fn install_verified(
     probe: impl FnOnce(&Path) -> Result<String, String>,
 ) -> Result<String, UpdateError> {
     verify(bytes, expected)?;
-    if !is_windows_exe(bytes) {
+    if !is_native_executable(bytes) {
         return Err(UpdateError::NotAnExecutable);
     }
     if let Some(dir) = target.parent() {
@@ -470,6 +496,7 @@ pub fn install_verified(
     let tmp: PathBuf = target.with_extension("exe.part");
     let result = (|| {
         fs::write(&tmp, bytes).map_err(io)?;
+        make_executable(&tmp)?;
         let out = probe(&tmp).map_err(UpdateError::ProbeFailed)?;
         let out = out.trim().to_string();
         if out.is_empty() {
@@ -953,13 +980,25 @@ mod tests {
         d
     }
 
+    /// Something that looks like a program for this system (the first bytes are what is checked).
+    fn prog(rest: &str) -> Vec<u8> {
+        let mut v: Vec<u8> = if cfg!(windows) {
+            b"MZ ".to_vec()
+        } else {
+            b"\x7fELF ".to_vec()
+        };
+        v.extend_from_slice(rest.as_bytes());
+        v
+    }
+
     #[test]
     fn a_verified_program_replaces_the_old_one_and_reports_what_it_printed() {
         let dir = temp("ok");
         let target = dir.join("tools").join("yt-dlp.exe");
         fs::create_dir_all(target.parent().unwrap()).unwrap();
-        fs::write(&target, b"MZ old").unwrap();
-        let new = b"MZ new program";
+        fs::write(&target, prog("old")).unwrap();
+        let new_owned = prog("new program");
+        let new = &new_owned[..];
         let out = install_verified(&target, new, &sha256_hex(new), |p| {
             assert_eq!(
                 fs::read(p).unwrap(),
@@ -975,21 +1014,55 @@ mod tests {
     }
 
     #[test]
+    fn a_program_is_told_apart_by_its_first_bytes() {
+        assert!(is_windows_exe(b"MZ\x90\x00"));
+        assert!(!is_windows_exe(b"\x7fELF\x02"));
+        assert!(is_elf(b"\x7fELF\x02\x01"));
+        assert!(!is_elf(b"MZ\x90\x00"));
+        assert!(is_native_executable(&prog("x")));
+        assert!(!is_native_executable(b"<html>"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn the_downloaded_program_is_made_runnable_before_it_is_tried() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = temp("exec");
+        let target = dir.join("tools").join("yt-dlp");
+        let new_owned = prog("runs");
+        let new = &new_owned[..];
+        install_verified(&target, new, &sha256_hex(new), |p| {
+            let mode = fs::metadata(p).unwrap().permissions().mode();
+            assert_eq!(
+                mode & 0o111,
+                0o111,
+                "the file the probe runs can be executed"
+            );
+            Ok("2026.10.01".into())
+        })
+        .unwrap();
+        assert_eq!(
+            fs::metadata(&target).unwrap().permissions().mode() & 0o111,
+            0o111
+        );
+    }
+
+    #[test]
     fn a_wrong_checksum_installs_nothing_and_never_runs_the_download() {
         let dir = temp("sum");
         let target = dir.join("yt-dlp.exe");
-        fs::write(&target, b"MZ old").unwrap();
-        let err = install_verified(&target, b"MZ new", &"0".repeat(64), |_| {
+        fs::write(&target, prog("old")).unwrap();
+        let err = install_verified(&target, &prog("new"), &"0".repeat(64), |_| {
             panic!("must not run")
         })
         .unwrap_err();
         assert!(matches!(err, UpdateError::ChecksumMismatch { .. }));
-        assert_eq!(fs::read(&target).unwrap(), b"MZ old");
+        assert_eq!(fs::read(&target).unwrap(), prog("old"));
         assert!(!target.with_extension("exe.part").exists());
     }
 
     #[test]
-    fn something_that_is_not_a_windows_program_is_refused() {
+    fn something_that_is_not_a_program_for_this_system_is_refused() {
         let dir = temp("mz");
         let target = dir.join("yt-dlp.exe");
         let html = b"<html>rate limited</html>";
@@ -1003,8 +1076,9 @@ mod tests {
     fn a_program_that_will_not_run_leaves_the_old_one_in_place() {
         let dir = temp("probe");
         let target = dir.join("yt-dlp.exe");
-        fs::write(&target, b"MZ old").unwrap();
-        let new = b"MZ broken";
+        fs::write(&target, prog("old")).unwrap();
+        let new_owned = prog("broken");
+        let new = &new_owned[..];
         let err = install_verified(
             &target,
             new,
@@ -1013,7 +1087,7 @@ mod tests {
         )
         .unwrap_err();
         assert_eq!(err, UpdateError::ProbeFailed("exit code 1".into()));
-        assert_eq!(fs::read(&target).unwrap(), b"MZ old");
+        assert_eq!(fs::read(&target).unwrap(), prog("old"));
         assert!(
             !target.with_extension("exe.part").exists(),
             "no partial file is left behind"
@@ -1025,7 +1099,7 @@ mod tests {
             matches!(err, UpdateError::ProbeFailed(_)),
             "silence is a failure too"
         );
-        assert_eq!(fs::read(&target).unwrap(), b"MZ old");
+        assert_eq!(fs::read(&target).unwrap(), prog("old"));
     }
 
     // ------------------------------------------------------------ publisher check

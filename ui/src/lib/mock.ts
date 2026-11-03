@@ -139,6 +139,8 @@ export class MockBackend extends MockLibrary implements Backend {
   async perfEnabled() { return typeof location !== 'undefined' && /[?&]perf\b/.test(location.search); }
   /** `?seek=pixel|glide|steps` on the page's address picks a seek-bar mode in the standalone demo (default: step). */
   async seekMode() { return typeof location !== 'undefined' ? (new URLSearchParams(location.search).get('seek') ?? 'step') : 'step'; }
+  /** `?os=linux` on the page's address shows the demo as it looks on Linux (default: Windows). */
+  async platform() { return typeof location !== 'undefined' ? (new URLSearchParams(location.search).get('os') ?? 'windows') : 'windows'; }
   async perfLog(report: PerfReportDto) { console.info('perf', JSON.stringify(report)); }
   async envGet() { return this.#envState(); }
   async envSet(vars: EnvVarDto[]) {

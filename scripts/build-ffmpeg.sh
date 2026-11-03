@@ -40,6 +40,11 @@ flags=(
   --enable-parser=opus,aac,mpegaudio,flac,vorbis
   --enable-decoder=opus,aac,mp3float,flac,vorbis,alac,pcm_s16le,pcm_s16be,pcm_s24le,pcm_s24be,pcm_s32le,pcm_s32be,pcm_f32le,pcm_f64le,pcm_u8
 )
+# Optional, for a build that runs on the machine that made it (the Arch package): decode with this CPU's own
+# instructions, e.g. PYXEE_FF_MARCH=native or x86-64-v3. Unset, nothing changes (the Windows installer never sets it).
+if [ -n "${PYXEE_FF_MARCH:-}" ]; then
+  flags+=("--extra-cflags=-O3 -march=${PYXEE_FF_MARCH}")
+fi
 if [ "${PYXEE_FF_TOOLCHAIN:-}" = "msvc" ]; then
   flags+=(--toolchain=msvc)
   # MSYS2's coreutils `link.exe` would shadow the MSVC linker (FFmpeg's documented MSVC setup moves it aside).

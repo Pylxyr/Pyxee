@@ -186,7 +186,7 @@ pub fn sync_window_frame(app: &AppHandle) {
             let _ = crate::window::apply_backdrop(&w);
             log::debug!(
                 "main window frame: {}",
-                if borderless { "none" } else { "Windows" }
+                if borderless { "none" } else { "system" }
             );
         }
         Err(e) => log::warn!("could not change the main window frame: {e}"),

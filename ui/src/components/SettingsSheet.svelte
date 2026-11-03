@@ -6,6 +6,7 @@
   import { sleep } from '$lib/sleep.svelte';
   import { sleepLabel } from '$lib/lyrics';
   import { shellSettings } from '$lib/shell.svelte';
+  import { platform } from '$lib/platform.svelte';
   import { snackbar } from '$lib/snackbar.svelte';
   import AdvancedSection from './AdvancedSection.svelte';
   import Button from './Button.svelte';
@@ -45,18 +46,22 @@
     />
   </section>
 
-  <section class="settings-section" aria-label="Windows">
-    <h3 class="group-title">Windows</h3>
+  <section class="settings-section" aria-label={platform.os === 'windows' ? 'Windows' : 'System'}>
+    <h3 class="group-title">{platform.os === 'windows' ? 'Windows' : 'System'}</h3>
     <Toggle label="Keep playing in the tray when the window is closed" checked={shellSettings.settings.closeToTray} onchange={(on) => shellSettings.update({ closeToTray: on })} />
-    <Toggle label="Start Pyxee when I sign in to Windows" checked={shellSettings.settings.startWithWindows} onchange={(on) => shellSettings.update({ startWithWindows: on })} />
+    <Toggle label={platform.os === 'windows' ? 'Start Pyxee when I sign in to Windows' : 'Start Pyxee when I sign in'} checked={shellSettings.settings.startWithWindows} onchange={(on) => shellSettings.update({ startWithWindows: on })} />
     <Toggle label="Show a notification when the song changes" checked={shellSettings.settings.toastOnChange} onchange={(on) => shellSettings.update({ toastOnChange: on })} />
+    {#if platform.os === 'windows'}
     <Toggle
       label="Show previous, play and next buttons in the notification area"
       hint="They sit beside the Pyxee icon, and the song title shows when you point at it. Windows may put new icons in the hidden-icons flyout (the ^ arrow): drag them out onto the taskbar once and Windows remembers."
       checked={shellSettings.settings.trayControls}
       onchange={(on) => shellSettings.update({ trayControls: on })}
     />
+    {/if}
+    {#if platform.os === 'windows'}
     <Toggle label="Clicking the Pyxee tray icon opens the mini controls (otherwise it opens the window)" checked={shellSettings.settings.flyoutOnClick} onchange={(on) => shellSettings.update({ flyoutOnClick: on })} />
+    {/if}
     <Toggle
       label="Show what I'm playing on Discord"
       hint={'Shows "Listening to Pyxee" with the current song in the Discord desktop app, while it is running.'}
@@ -71,7 +76,7 @@
     />
     <Toggle
       label="Borderless window"
-      hint="Pyxee draws its own slim title bar instead of the Windows one. Press F11 for full screen."
+      hint="Pyxee draws its own slim title bar instead of the system one. Press F11 for full screen."
       checked={shellSettings.settings.borderless}
       onchange={(on) => shellSettings.update({ borderless: on })}
     />

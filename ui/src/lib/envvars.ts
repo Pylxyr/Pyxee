@@ -1,6 +1,6 @@
 /**
  * What Settings > Advanced shows for each variable kept in the `.env` file. The names and their order must match
- * `VARS` in `crates/shell/src/envfile.rs`; the README lists the same variables.
+ * `VARS` in `crates/shell/src/envfile.rs`; docs/advanced.md lists the same variables.
  */
 export interface EnvVarInfo {
   name: string;

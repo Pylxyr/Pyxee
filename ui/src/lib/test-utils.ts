@@ -39,6 +39,7 @@ export const noDiagnostics = {
   updateInstallYtdlp: async () => '',
   perfEnabled: async () => false,
   seekMode: async () => 'step',
+  platform: async () => 'windows',
   perfLog: async () => {},
   envGet: async () => ({ file: null, vars: [] }),
   envSet: async () => ({ file: null, vars: [] }),

@@ -15,6 +15,7 @@
 use std::time::Duration;
 
 /// One running process, as much of it as picking the family needs.
+#[cfg_attr(not(windows), allow(dead_code))]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct Proc {
     pub pid: u32,
@@ -22,12 +23,14 @@ pub(crate) struct Proc {
     pub exe: String,
 }
 
+#[cfg_attr(not(windows), allow(dead_code))]
 fn is_webview_exe(exe: &str) -> bool {
     exe.eq_ignore_ascii_case("msedgewebview2.exe")
 }
 
 /// `own` and every `msedgewebview2.exe` process below it (the manager is a child of this process, the renderer, GPU
 /// and utility processes are children of the manager). Other processes are never touched.
+#[cfg_attr(not(windows), allow(dead_code))]
 pub(crate) fn family(own: u32, all: &[Proc]) -> Vec<u32> {
     let mut out = vec![own];
     let mut i = 0;
@@ -48,6 +51,7 @@ pub(crate) fn family(own: u32, all: &[Proc]) -> Vec<u32> {
 }
 
 /// How long after the first trim the second one runs.
+#[cfg_attr(not(windows), allow(dead_code))]
 const SECOND_PASS: Duration = Duration::from_millis(1500);
 
 /// When, counted from the window first being shown, the start-up memory is handed back. The page touches most of its
@@ -63,6 +67,10 @@ const START_TRIMS: [Duration; 3] = [
 /// After the app started with its window shown: trims at each of `START_TRIMS` if the page is awake (a window hidden
 /// by then was trimmed when it went to sleep). Only at start-up: a window that stays in view later is not trimmed again.
 pub fn trim_once_after_start(is_awake: Box<dyn Fn() -> bool + Send>) {
+    // Windows only: its working-set trim has no counterpart on other systems.
+    if !cfg!(windows) {
+        return;
+    }
     let spawned = std::thread::Builder::new()
         .name("trim-after-start".into())
         .spawn(move || {
@@ -88,6 +96,7 @@ pub fn trim_once_after_start(is_awake: Box<dyn Fn() -> bool + Send>) {
 
 /// Trims now, then once more after a moment, on a thread of its own. `still_wanted` says whether the page is still
 /// asleep (a window shown meanwhile is left alone).
+#[cfg_attr(not(windows), allow(dead_code))]
 pub fn trim_after_sleep(label: String, still_wanted: Box<dyn Fn() -> bool + Send>) {
     let spawned = std::thread::Builder::new()
         .name("trim-working-set".into())

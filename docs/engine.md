@@ -114,7 +114,7 @@ several yt-dlp processes at once, each making several requests of its own.
   landed on would wait behind every stale resolve (those still run afterwards).
 Log lines: `yt-dlp <op> waited ...` (waits over 250 ms), `yt-dlp was rate limited: new runs are refused for ...`, `yt-dlp
 <op> refused: rate-limit cooldown, ... left`, and at start `yt-dlp: using the cookie file ...` / `reading cookies from the
-<browser> browser` (never the path or profile). Cookies: see the README table (`PYXEE_COOKIES`, `PYXEE_COOKIES_FROM_BROWSER`).
+<browser> browser` (never the path or profile). Cookies: see the table in [advanced.md](advanced.md) (`PYXEE_COOKIES`, `PYXEE_COOKIES_FROM_BROWSER`).
 Cookies do not help if the IP address itself is blocked.
 
 **Transient or permanent** (`classify_stderr`, `AudioError`, `LyricsError`). A transient failure keeps the song selected with a

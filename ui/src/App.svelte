@@ -24,6 +24,7 @@
   import NowPlaying from './components/NowPlaying.svelte';
   import { startPerfIfEnabled } from '$lib/perf';
   import { initSeekMode } from '$lib/seekmode.svelte';
+  import { initPlatform } from '$lib/platform.svelte';
   import Snackbar from './components/Snackbar.svelte';
   import TrackMenu from './components/TrackMenu.svelte';
   import SettingsSheet from './components/SettingsSheet.svelte';
@@ -64,6 +65,7 @@
       void sleep.init(backend);
       void startPerfIfEnabled(backend);
       void initSeekMode(backend);
+      void initPlatform(backend);
       void shellSettings.init(backend);
       // Look for a newer Pyxee once, now; the changelog opens by itself if there is one.
       void updates.init(backend).catch(() => {}).then(() => updates.checkAtStartup(backend));

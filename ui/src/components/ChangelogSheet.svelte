@@ -2,6 +2,7 @@
   import type { Backend } from '$lib/backend';
   import { isVersionHeading, parseChangelog } from '$lib/changelog';
   import { updates } from '$lib/updates.svelte';
+  import { platform } from '$lib/platform.svelte';
   import Button from './Button.svelte';
   import Sheet from './Sheet.svelte';
   import UpdateProgress from './UpdateProgress.svelte';
@@ -51,7 +52,9 @@
     {#if info.portable}
       <p class="t-caption muted mt-3 break-all px-3">This is a portable copy. Download the new zip from {info.notesUrl} and unpack it over this folder; your data folder stays.</p>
     {:else if !info.installable}
-      <p class="t-caption muted mt-3 break-all px-3">This release has no installer with a checksum list attached. Download it from {info.notesUrl}</p>
+      <p class="t-caption muted mt-3 break-all px-3">
+        {#if platform.os === 'windows'}This release has no installer with a checksum list attached. Download it from {info.notesUrl}{:else}Update Pyxee with your package manager. The release is at {info.notesUrl}{/if}
+      </p>
     {:else}
       <p class="t-caption muted mt-3 break-all px-3">Full release page: {info.notesUrl}</p>
     {/if}

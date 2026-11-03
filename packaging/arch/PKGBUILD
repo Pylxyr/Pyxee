@@ -1,0 +1,48 @@
+# Maintainer: Pylxyr
+# Builds Pyxee from a release tag for Arch Linux and CachyOS:
+#   cd packaging/arch && updpkgsums && makepkg -si
+# (updpkgsums fills in the checksum below; it comes with pacman-contrib.)
+pkgname=pyxee
+pkgver=0.5.0
+pkgrel=1
+pkgdesc='A music player that finds music online with yt-dlp, with gapless playback, lyrics and themes'
+arch=('x86_64')
+url='https://github.com/Pylxyr/Pyxee'
+license=('MIT')
+depends=('webkit2gtk-4.1' 'gtk3' 'libayatana-appindicator' 'alsa-lib' 'pipewire-alsa' 'yt-dlp')
+makedepends=('rust' 'cargo' 'nodejs' 'npm' 'nasm' 'make' 'git' 'pkgconf')
+optdepends=('deno: JavaScript runtime that yt-dlp needs for every audio format'
+            'nodejs: alternative JavaScript runtime for yt-dlp')
+source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz"
+        'pyxee.desktop')
+sha256sums=('SKIP'
+            'SKIP')
+# Tuned for the machine that builds it. `native` uses every instruction this CPU has (fastest, but the package then
+# only runs on this CPU or a newer one). For a package you will copy to other PCs, use x86-64-v3 (CachyOS's own
+# baseline) or x86-64 (any 64-bit PC), e.g. `_march=x86-64-v3 makepkg -si`.
+_march="${_march:-native}"
+options=('!lto' '!strip')
+
+build() {
+  cd "Pyxee-$pkgver"
+  # the page
+  (cd ui && npm ci && npm run build)
+  # the minimal static FFmpeg that Pyxee decodes audio with (about 10 minutes on one core), built for this CPU
+  PYXEE_FF_MARCH="$_march" cargo run -q -p xtask -- ffmpeg
+  # the program, built for this CPU with the Linux profile (whole-program optimisation); custom-protocol makes it
+  # show the built page instead of a dev server
+  RUSTFLAGS="-C target-cpu=$_march" \
+    cargo build --profile release-linux --locked -p pyxee-app --features tauri/custom-protocol
+}
+
+package() {
+  cd "Pyxee-$pkgver"
+  install -Dm755 target/release-linux/pyxee-app "$pkgdir/usr/bin/pyxee-app"
+  install -Dm644 "$srcdir/pyxee.desktop" "$pkgdir/usr/share/applications/pyxee.desktop"
+  install -Dm644 crates/app/icons/128x128.png "$pkgdir/usr/share/icons/hicolor/128x128/apps/pyxee.png"
+  install -Dm644 crates/app/icons/32x32.png "$pkgdir/usr/share/icons/hicolor/32x32/apps/pyxee.png"
+  install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+  # FFmpeg is linked in statically (LGPLv2.1): its notice and the third-party list ship with the program
+  install -Dm644 crates/app/licenses/FFmpeg-LGPL-2.1.txt "$pkgdir/usr/share/licenses/$pkgname/FFmpeg-LGPL-2.1.txt"
+  install -Dm644 crates/app/licenses/THIRD_PARTY.txt "$pkgdir/usr/share/licenses/$pkgname/THIRD_PARTY.txt"
+}

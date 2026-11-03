@@ -22,7 +22,7 @@
 <div class="theme-picker" inert={theme.settings.dynamicColor}>
 <Toggle
   label="Match system"
-  hint="Use one theme when Windows is light and another when it is dark."
+  hint="Use one theme when your system is light and another when it is dark."
   checked={theme.settings.followSystem}
   onchange={(on) => theme.update({ followSystem: on })}
 />

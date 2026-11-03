@@ -4,6 +4,7 @@
   import type { UpdateProgressDto } from '$lib/bindings/UpdateProgressDto';
   import type { YtdlpUpdateDto } from '$lib/bindings/YtdlpUpdateDto';
   import { updates } from '$lib/updates.svelte';
+  import { platform } from '$lib/platform.svelte';
   import { onMount } from 'svelte';
   import Button from './Button.svelte';
   import UpdateProgress from './UpdateProgress.svelte';
@@ -72,7 +73,8 @@
       {:else if updates.phase === 'installing'}Downloading and checking the installer. Pyxee closes when it starts.
       {:else if updates.info && updates.info.available}Version {updates.info.latest} is available (you have {updates.info.current}).
       {:else if updates.info}You have the latest version ({updates.info.current}).
-      {:else}Looks at the GitHub releases. The installer's SHA-256 is checked before it runs; it is not code-signed yet, so Windows SmartScreen may ask.{/if}
+      {:else if platform.os === 'windows'}Looks at the GitHub releases. The installer's SHA-256 is checked before it runs; it is not code-signed yet, so Windows SmartScreen may ask.
+      {:else}Looks at the GitHub releases. Your package manager installs Pyxee updates; this only tells you when a newer version is out.{/if}
     </p>
     {#if updates.phase === 'installing' && updates.progress}
       <UpdateProgress class="mt-3" progress={updates.progress} what={updates.info?.latest ?? 'Pyxee'} testid="app-update-progress" />
@@ -80,7 +82,9 @@
     {#if updates.info?.available && updates.info.portable}
       <p class="t-caption muted mt-1 break-all" data-testid="portable-update">This is a portable copy. Download the new zip from {updates.info.notesUrl} and unpack it over this folder; your data folder stays.</p>
     {:else if updates.info?.available && !updates.info.installable}
-      <p class="t-caption muted mt-1 break-all">This release has no installer with a checksum list attached. Download it from {updates.info.notesUrl}</p>
+      <p class="t-caption muted mt-1 break-all">
+        {#if platform.os === 'windows'}This release has no installer with a checksum list attached. Download it from {updates.info.notesUrl}{:else}Update Pyxee with your package manager. The release is at {updates.info.notesUrl}{/if}
+      </p>
     {/if}
     {#if updates.error}<p class="accent-text mt-1" role="alert">{updates.error}</p>{/if}
     <div class="mt-2 flex flex-wrap gap-2">

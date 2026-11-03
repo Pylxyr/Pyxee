@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Pyxee
+GenericName=Music Player
+Comment=Search for songs, queue them up and play them gapless
+Exec=pyxee-app
+Icon=pyxee
+Terminal=false
+Categories=AudioVideo;Audio;Player;
+StartupWMClass=pyxee-app

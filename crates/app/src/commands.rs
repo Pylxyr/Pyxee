@@ -309,6 +309,12 @@ pub fn perf_enabled() -> bool {
     perf_on()
 }
 
+/// The system the app runs on (`windows`, `linux` or `macos`), so the window can say "Windows" only where it is true.
+#[tauri::command]
+pub fn platform() -> &'static str {
+    std::env::consts::OS
+}
+
 /// How the seek bar fills in (`PYXEE_SEEK_MODE`): `step` (once a second, the default), `pixel`, `glide` or `steps`.
 /// Anything else is `step`; the window decides what each mode does.
 #[tauri::command]

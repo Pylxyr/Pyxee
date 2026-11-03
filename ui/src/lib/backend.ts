@@ -82,6 +82,8 @@ export interface Backend extends LibraryBackend {
   perfEnabled(): Promise<boolean>;
   /** `PYXEE_SEEK_MODE`: how the seek bar fills in (step, pixel, glide or steps; anything else is step). */
   seekMode(): Promise<string>;
+  /** The system the app runs on: `windows`, `linux` or `macos`. */
+  platform(): Promise<string>;
   perfLog(report: PerfReportDto): Promise<void>;
   envGet(): Promise<EnvSettingsDto>;
   /** Saves them to `.env`; they are used from the next start. Rejects with a readable message for a value that cannot be used. */
@@ -169,6 +171,7 @@ export async function tauriBackend(): Promise<Backend> {
     openLogFolder: () => invoke<void>('open_log_folder'),
     perfEnabled: () => invoke<boolean>('perf_enabled'),
     seekMode: () => invoke<string>('seek_mode'),
+    platform: () => invoke<string>('platform'),
     perfLog: (report) => invoke<void>('perf_log', { report }),
     envGet: () => invoke<EnvSettingsDto>('env_get'),
     envSet: (vars) => invoke<EnvSettingsDto>('env_set', { vars }),

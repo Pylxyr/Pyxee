@@ -31,8 +31,8 @@ pub struct ShellSettings {
     /// lives in the Windows Credential Manager; this is only where an older version left it (moved on first sight) and
     /// where it is kept on a system with no such store.
     pub lastfm_session: Option<String>,
-    /// The main window has no Windows title bar: Pyxee draws its own slim bar (on by default). Off gives the
-    /// window the standard Windows frame.
+    /// The main window has no system title bar: Pyxee draws its own slim bar (on by default on Windows; off by
+    /// default elsewhere, where a frameless window has no edges to resize by). Off gives the window the standard frame.
     pub borderless: bool,
     /// Where the mini player was last left (physical pixels).
     pub mini_bounds: Option<Rect>,
@@ -49,7 +49,7 @@ impl Default for ShellSettings {
             discord_presence: true,
             lastfm_scrobbling: false,
             lastfm_session: None,
-            borderless: true,
+            borderless: cfg!(windows),
             mini_bounds: None,
         }
     }
@@ -166,11 +166,11 @@ mod tests {
     }
 
     #[test]
-    fn borderless_is_on_by_default_also_for_a_file_from_before_it_existed() {
-        assert!(ShellSettings::default().borderless);
+    fn borderless_is_on_by_default_on_windows_also_for_a_file_from_before_it_existed() {
+        assert_eq!(ShellSettings::default().borderless, cfg!(windows));
         let p = dir("borderless").join("shell.json");
         std::fs::write(&p, r#"{"closeToTray":true}"#).unwrap();
-        assert!(load(&p).settings.borderless);
+        assert_eq!(load(&p).settings.borderless, cfg!(windows));
         let s = ShellSettings {
             borderless: false,
             ..Default::default()
