@@ -12,7 +12,7 @@ use pyxee_core::{EntryId, Heard, HeardTracker};
 use std::collections::VecDeque;
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, AtomicUsize, Ordering};
 use std::sync::mpsc::Sender;
-use std::sync::{Arc, Mutex, MutexGuard, TryLockError};
+use std::sync::{Arc, Condvar, Mutex, MutexGuard, TryLockError};
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
@@ -73,6 +73,13 @@ impl Default for Volume {
 /// Seconds of audio kept decoded ahead of the device.
 const BUFFER_SECS: usize = 2;
 const CHUNK_SAMPLES: usize = 4096;
+/// Linux: the longest the producer sleeps with a full buffer or with nothing queued. Every change that matters wakes it
+/// at once; these only bound the harm if a wake-up were ever missed.
+const FULL_LIMIT: Duration = Duration::from_millis(250);
+const IDLE_LIMIT: Duration = Duration::from_millis(500);
+/// Linux: with a full buffer the producer waits until this fraction of it (1/4: half a second of audio) is free,
+/// then fills it up in one go, so playing costs a few wake-ups a second instead of one per chunk.
+const REFILL_DIVISOR: usize = 4;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PipeEvent {
@@ -103,7 +110,72 @@ enum Change {
     ClearQueued,
 }
 
+/// What the producer thread sleeps on. On Linux it blocks until something changes (a track was queued, the buffer
+/// has room again, the pipeline is dropped), so an idle player wakes it a few times a second instead of every few
+/// milliseconds; elsewhere it still sleeps the fixed time it is given.
+struct Wake {
+    epoch: Mutex<u64>,
+    cv: Condvar,
+    /// The producer is waiting for room in the buffer: the device side wakes it once there is enough.
+    space_wanted: AtomicBool,
+    /// How many times the producer's loop has run (an idle pipeline keeps this nearly still).
+    runs: AtomicU64,
+}
+
+impl Wake {
+    fn new() -> Self {
+        Self {
+            epoch: Mutex::new(0),
+            cv: Condvar::new(),
+            space_wanted: AtomicBool::new(false),
+            runs: AtomicU64::new(0),
+        }
+    }
+
+    /// Something the producer must look at changed.
+    fn notify(&self) {
+        *lock(&self.epoch) += 1;
+        self.cv.notify_one();
+    }
+
+    /// Taken before the producer looks at its work: a `notify` after this makes the next `wait` return at once.
+    fn epoch(&self) -> u64 {
+        self.runs.fetch_add(1, Ordering::Relaxed);
+        *lock(&self.epoch)
+    }
+
+    /// Waits for a `notify` since `seen`, but not longer than `limit`. Off Linux: sleeps `poll`.
+    fn wait(&self, seen: u64, limit: Duration, poll: Duration) {
+        if cfg!(target_os = "linux") {
+            let g = lock(&self.epoch);
+            if *g == seen {
+                drop(self.cv.wait_timeout(g, limit));
+            }
+        } else {
+            thread::sleep(poll);
+        }
+    }
+
+    /// Like `wait`, for a full buffer: the device side calls `space_freed` once enough has been played.
+    fn wait_for_space(&self, seen: u64, limit: Duration, poll: Duration) {
+        self.space_wanted
+            .store(cfg!(target_os = "linux"), Ordering::Relaxed);
+        self.wait(seen, limit, poll);
+    }
+
+    /// The device took audio out of the buffer: wake a producer that waits for room, once there is enough of it.
+    fn space_freed(&self, free: usize, enough: usize) {
+        if free >= enough
+            && self.space_wanted.load(Ordering::Relaxed)
+            && self.space_wanted.swap(false, Ordering::Relaxed)
+        {
+            self.notify();
+        }
+    }
+}
+
 struct Shared {
+    wake: Wake,
     source: Mutex<GaplessSource>,
     /// Changes waiting for the producer (taken only briefly; never held while reading).
     pending: Mutex<Vec<Change>>,
@@ -136,6 +208,7 @@ pub struct Consumer {
 impl Pipeline {
     pub fn new(rate: u32, tx: Sender<PipeEvent>, volume: Volume) -> Self {
         let shared = Arc::new(Shared {
+            wake: Wake::new(),
             source: Mutex::new(GaplessSource::new()),
             pending: Mutex::new(Vec::new()),
             inner: Mutex::new(Inner {
@@ -181,12 +254,14 @@ impl Pipeline {
     /// stuck reading a stalled stream: the track joins the queue as soon as it is free.
     pub fn push(&self, t: PreparedTrack) {
         lock(&self.shared.pending).push(Change::Push(Box::new(t)));
+        self.shared.wake.notify();
     }
 
     /// Drops tracks queued behind the current one (e.g. a cancelled prefetch); playback continues. Like `push`, it
     /// takes effect when the producer next looks, and never waits for it.
     pub fn clear_queued(&self) {
         lock(&self.shared.pending).push(Change::ClearQueued);
+        self.shared.wake.notify();
     }
 
     /// Drops everything queued and everything already buffered, immediately.
@@ -203,6 +278,15 @@ impl Pipeline {
         inner.consumed = 0;
         inner.tracker.reset(0);
         self.shared.queued_tracks.store(0, Ordering::Relaxed);
+        drop(inner);
+        drop(src);
+        self.shared.wake.notify();
+    }
+
+    /// How many times the producer thread's loop has run since the pipeline was made (a test hook: an idle pipeline
+    /// must keep this nearly still).
+    pub fn producer_runs(&self) -> u64 {
+        self.shared.wake.runs.load(Ordering::Relaxed)
     }
 
     /// Seeks the track that is playing inside its open source, without re-opening it: the decoded-ahead audio is
@@ -260,6 +344,7 @@ impl Pipeline {
 impl Drop for Pipeline {
     fn drop(&mut self) {
         self.shared.stop.store(true, Ordering::Relaxed);
+        self.shared.wake.notify();
         self.shared.cancel.store(true, Ordering::SeqCst);
         if let Some(h) = self.producer.take() {
             let _ = h.join();
@@ -283,15 +368,23 @@ fn produce(s: &Shared) {
     let cap = s.rate as usize * CHANNELS * BUFFER_SECS;
     let mut tmp = vec![0f32; CHUNK_SAMPLES];
     while !s.stop.load(Ordering::Relaxed) {
+        let seen = s.wake.epoch();
         let free = cap.saturating_sub(lock(&s.inner).buf.len());
         if free < CHUNK_SAMPLES {
             // Nothing to decode yet (the buffer is full, or paused), but queue changes must not wait for room.
+            let mut busy = false;
             if !lock(&s.pending).is_empty() {
-                if let Ok(mut src) = s.source.try_lock() {
-                    apply_pending(s, &mut src);
+                match s.source.try_lock() {
+                    Ok(mut src) => apply_pending(s, &mut src),
+                    Err(_) => busy = true,
                 }
             }
-            thread::sleep(Duration::from_millis(5));
+            if busy {
+                thread::sleep(Duration::from_millis(5));
+            } else {
+                s.wake
+                    .wait_for_space(seen, FULL_LIMIT, Duration::from_millis(5));
+            }
             continue;
         }
         let mut src = lock(&s.source);
@@ -308,7 +401,7 @@ fn produce(s: &Shared) {
         }
         if n == 0 && events.is_empty() {
             drop(src);
-            thread::sleep(Duration::from_millis(10));
+            s.wake.wait(seen, IDLE_LIMIT, Duration::from_millis(10));
             continue;
         }
         let mut inner = lock(&s.inner);
@@ -356,6 +449,9 @@ impl Consumer {
         for (o, v) in out.iter_mut().zip(inner.buf.drain(..n)) {
             *o = v;
         }
+        let cap = s.rate as usize * CHANNELS * BUFFER_SECS;
+        s.wake
+            .space_freed(cap.saturating_sub(inner.buf.len()), cap / REFILL_DIVISOR);
         out[n..].fill(0.0);
         // Volume: ramp across this buffer so a change never clicks.
         let target = s.volume.gain();

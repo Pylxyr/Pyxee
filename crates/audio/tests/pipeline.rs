@@ -453,3 +453,35 @@ fn a_volume_chosen_while_silent_applies_from_the_first_sample_of_the_next_track(
         &buf[..4]
     );
 }
+
+/// An idle producer sleeps until something changes instead of waking every few milliseconds (it used to run 100
+/// times a second doing nothing).
+#[cfg(target_os = "linux")]
+#[test]
+fn an_idle_producer_barely_wakes() {
+    let (p, _c, _rx) = setup();
+    sleep(Duration::from_millis(100));
+    let before = p.producer_runs();
+    sleep(Duration::from_millis(2000));
+    let runs = p.producer_runs() - before;
+    assert!(runs <= 6, "the idle producer ran {runs} times in 2 s");
+}
+
+/// Sleeping must never delay a track that is queued: it is decoded and heard within a moment of the push, from idle
+/// and again after the buffer was full.
+#[test]
+fn a_queued_track_is_picked_up_at_once() {
+    let (p, c, _rx) = setup();
+    sleep(Duration::from_millis(150)); // the producer is asleep now
+    let t0 = Instant::now();
+    p.push(track(1, "a_44k.wav"));
+    let mut buf = vec![0f32; CHUNK * 2];
+    while c.pull(&mut buf, 0) == 0 {
+        assert!(
+            t0.elapsed() < Duration::from_millis(250),
+            "no audio {:?} after the push",
+            t0.elapsed()
+        );
+        sleep(Duration::from_millis(1));
+    }
+}
