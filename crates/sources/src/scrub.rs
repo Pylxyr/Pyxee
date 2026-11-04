@@ -8,7 +8,7 @@ use std::sync::{Mutex, OnceLock, PoisonError};
 
 const REDACTED: &str = "<redacted>";
 /// Environment variables whose values are replaced by their `%NAME%` form.
-const ENV_PATHS: [&str; 4] = ["USERPROFILE", "APPDATA", "LOCALAPPDATA", "TEMP"];
+const ENV_PATHS: [&str; 5] = ["USERPROFILE", "APPDATA", "LOCALAPPDATA", "TEMP", "HOME"];
 
 fn registry() -> &'static Mutex<Vec<String>> {
     static SECRETS: OnceLock<Mutex<Vec<String>>> = OnceLock::new();
@@ -28,7 +28,7 @@ pub(crate) fn register(secret: &str) {
 }
 
 /// `text` without the active cookie file or browser spec, without the user's profile folders
-/// (`%USERPROFILE%`, `%APPDATA%`, `%LOCALAPPDATA%`, `%TEMP%`) and without the value of any
+/// (`%USERPROFILE%`, `%APPDATA%`, `%LOCALAPPDATA%`, `%TEMP%`, `%HOME%`) and without the value of any
 /// `--cookies` or `--cookies-from-browser` argument.
 pub fn scrub(text: &str) -> String {
     let env: Vec<(&str, String)> = ENV_PATHS
@@ -156,6 +156,22 @@ mod tests {
         assert_eq!(
             scrub_with(r"in C:\Users\Jo Doe\AppData\Roaming\Pyxee", &env),
             r"in %APPDATA%\Pyxee"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn the_home_folder_becomes_its_variable_name_off_windows() {
+        let Ok(home) = std::env::var("HOME") else {
+            return;
+        };
+        let home = home.trim().trim_end_matches('/');
+        if home.len() < 3 {
+            return;
+        }
+        assert_eq!(
+            scrub(&format!("read {home}/Music/a.webm")),
+            "read %HOME%/Music/a.webm"
         );
     }
 
