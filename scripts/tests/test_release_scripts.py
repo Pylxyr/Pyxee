@@ -18,8 +18,14 @@ class NextVersion(unittest.TestCase):
         self.assertEqual(bv.next_version("1.2.3", "minor"), "1.3.0")
         self.assertEqual(bv.next_version("1.2.3", "major"), "2.0.0")
 
-    def test_prerelease_suffix_is_dropped(self):
-        self.assertEqual(bv.next_version("1.2.0-rc1", "patch"), "1.2.1")
+    def test_patch_on_a_prerelease_releases_it(self):
+        self.assertEqual(bv.next_version("0.5.1-rc1", "patch"), "0.5.1")
+        self.assertEqual(bv.next_version("0.6.0-rc3", "patch"), "0.6.0")
+        self.assertEqual(bv.next_version("1.2.3-beta.2", "patch"), "1.2.3")
+
+    def test_minor_and_major_on_a_prerelease_drop_the_suffix(self):
+        self.assertEqual(bv.next_version("1.2.0-rc1", "minor"), "1.3.0")
+        self.assertEqual(bv.next_version("1.2.0-rc1", "major"), "2.0.0")
 
     def test_bad_input_is_refused(self):
         with self.assertRaises(ValueError):

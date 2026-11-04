@@ -73,11 +73,14 @@ def current_version() -> str:
 
 
 def next_version(current: str, kind: str) -> str:
-    """The version after `current`. A pre-release suffix is dropped first (1.2.0-rc1 + patch = 1.2.1);
-    to promote a release candidate to 1.2.0, give the exact version instead."""
+    """The version after `current`. On a pre-release, patch releases it: 0.5.1-rc1 + patch = 0.5.1 and
+    0.6.0-rc3 + patch = 0.6.0, because that version has not been released yet. Minor and major drop the suffix
+    and bump from the base (1.2.0-rc1 + minor = 1.3.0). To cut the next candidate, give the exact version."""
     if not SEMVER.match(current):
         raise ValueError(f"'{current}' is not MAJOR.MINOR.PATCH[-suffix].")
     major, minor, patch = (int(part) for part in current.split("-", 1)[0].split("."))
+    if kind == "patch" and "-" in current:
+        return f"{major}.{minor}.{patch}"
     if kind == "major":
         return f"{major + 1}.0.0"
     if kind == "minor":
