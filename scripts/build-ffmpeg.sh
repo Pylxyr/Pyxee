@@ -57,6 +57,12 @@ if [ -f "$prefix/pyxee-ffmpeg.stamp" ] && [ "$(cat "$prefix/pyxee-ffmpeg.stamp")
   exit 0
 fi
 
+# A source folder left by an earlier run (a restored CI cache of target/ keeps one) can be at another commit: start over
+# from the pinned one instead of stopping. The check below still refuses anything that is not that exact commit.
+if [ -d "$src/.git" ] && [ "$(git -C "$src" rev-parse HEAD 2>/dev/null || true)" != "$FFMPEG_COMMIT" ]; then
+  echo "note: $src is not at the pinned commit; fetching it again"
+  rm -rf "$src" "$work/obj"
+fi
 if [ ! -d "$src/.git" ]; then
   git clone --depth 1 --branch "$FFMPEG_TAG" "$FFMPEG_URL" "$src"
 fi

@@ -274,7 +274,7 @@ impl PlayerInterface {
     }
 
     #[dbus_interface(property)]
-    fn metadata(&self) -> HashMap<&str, Value> {
+    fn metadata(&self) -> HashMap<&str, Value<'_>> {
         // TODO: this should be stored in a cache inside the state.
         let mut dict = HashMap::<&str, Value>::new();
 
@@ -411,36 +411,32 @@ async fn run_service(
 
     // Pyxee: block until an event comes (the upstream loop woke every 10 ms to look; that is 100 wake-ups a second
     // for as long as the program runs). `Kill` is sent when the controls are dropped; a closed channel ends it too.
-    loop {
-        if let Ok(event) = event_channel.recv() {
-            if event == InternalEvent::Kill {
-                break;
-            }
-
-            let interface_ref = connection
-                .object_server()
-                .interface::<_, PlayerInterface>(&path)
-                .await?;
-            let mut interface = interface_ref.get_mut().await;
-            let ctxt = SignalContext::new(&connection, &path)?;
-
-            match event {
-                InternalEvent::ChangeMetadata(metadata) => {
-                    interface.state.metadata = metadata;
-                    interface.metadata_changed(&ctxt).await?;
-                }
-                InternalEvent::ChangePlayback(playback) => {
-                    interface.state.playback_status = playback;
-                    interface.playback_status_changed(&ctxt).await?;
-                }
-                InternalEvent::ChangeVolume(volume) => {
-                    interface.state.volume = volume;
-                    interface.volume_changed(&ctxt).await?;
-                }
-                InternalEvent::Kill => (),
-            }
-        } else {
+    while let Ok(event) = event_channel.recv() {
+        if event == InternalEvent::Kill {
             break;
+        }
+
+        let interface_ref = connection
+            .object_server()
+            .interface::<_, PlayerInterface>(&path)
+            .await?;
+        let mut interface = interface_ref.get_mut().await;
+        let ctxt = SignalContext::new(&connection, &path)?;
+
+        match event {
+            InternalEvent::ChangeMetadata(metadata) => {
+                interface.state.metadata = metadata;
+                interface.metadata_changed(&ctxt).await?;
+            }
+            InternalEvent::ChangePlayback(playback) => {
+                interface.state.playback_status = playback;
+                interface.playback_status_changed(&ctxt).await?;
+            }
+            InternalEvent::ChangeVolume(volume) => {
+                interface.state.volume = volume;
+                interface.volume_changed(&ctxt).await?;
+            }
+            InternalEvent::Kill => (),
         }
     }
 
