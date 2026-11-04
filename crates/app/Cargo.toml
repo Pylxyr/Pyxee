@@ -31,7 +31,7 @@ window-vibrancy = "0.8"
 # types are the same ones `with_webview` hands out.
 webview2-com = "0.39"
 windows-core = "0.62"
-windows = { version = "0.61", optional = true, features = [
+windows = { version = "0.62", optional = true, features = [
   "Win32_Foundation",
   "Win32_Storage_EnhancedStorage",
   "Win32_System_Com",
