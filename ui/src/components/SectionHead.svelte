@@ -44,8 +44,8 @@
   {@render actions?.()}
   {#if shelf}
     <span class="shelf-nav">
-      <IconButton icon="down" label="Scroll back" class="-rotate-90" disabled={!canBack} onclick={() => page(-1)} />
-      <IconButton icon="down" label="Scroll forward" class="rotate-90" disabled={!canForward} onclick={() => page(1)} />
+      <IconButton icon="down" label="Scroll back" class="rotate-90" disabled={!canBack} onclick={() => page(-1)} />
+      <IconButton icon="down" label="Scroll forward" class="-rotate-90" disabled={!canForward} onclick={() => page(1)} />
     </span>
   {/if}
 </div>
