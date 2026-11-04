@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
     inputs:
       bump:
-        description: "Which part of the version to increase (1.2.3 = major.minor.patch)"
+        description: "Which part of the version to increase (1.2.3 = major.minor.patch). On a release candidate, patch releases it: 0.5.1-rc1 becomes 0.5.1."
         type: choice
         options: [patch, minor, major]
         default: patch
