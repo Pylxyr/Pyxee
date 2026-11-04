@@ -23,8 +23,9 @@ strip = "symbols"
 # about 8% on the Rust resampler and saves 5 MB of the binary (18.5 -> 13.4 MB when measured).
 opt-level = "s"
 
-# souvlaki 0.8.3's MPRIS service wakes every 10 ms for as long as the program runs, to look for a message. The copy in
-# vendor/souvlaki is the same code, blocking until a message comes (the only change; see the comment in
-# vendor/souvlaki/src/platform/mpris/zbus.rs). Windows uses a different file of the crate and is not affected.
+# souvlaki 0.8.3's MPRIS service wakes every 10 ms for as long as the program runs, to look for a message, and it
+# brings its own zbus 3 (Tauri's plugins use zbus 5, so two D-Bus stacks were linked). The copy in vendor/souvlaki
+# blocks until a message comes and uses zbus 5 (the only changes; see src/platform/mpris/zbus.rs). Windows uses a
+# different file of the crate and is not affected.
 [patch.crates-io]
 souvlaki = { path = "vendor/souvlaki" }

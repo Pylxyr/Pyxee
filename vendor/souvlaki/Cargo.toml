@@ -43,7 +43,6 @@ use_dbus = [
 ]
 use_zbus = [
     "zbus",
-    "zvariant",
     "pollster",
 ]
 
@@ -63,11 +62,7 @@ optional = true
 version = "1.0"
 
 [target."cfg(all(unix, not(any(target_os = \"macos\", target_os = \"ios\", target_os = \"android\"))))".dependencies.zbus]
-version = "3.9"
-optional = true
-
-[target."cfg(all(unix, not(any(target_os = \"macos\", target_os = \"ios\", target_os = \"android\"))))".dependencies.zvariant]
-version = "3.10"
+version = "5"
 optional = true
 
 [target."cfg(any(target_os = \"macos\", target_os = \"ios\"))".dependencies.base64]
