@@ -233,6 +233,12 @@ fn usable_releases(json: &str, include_prereleases: bool) -> Result<Vec<Release>
     Ok(out)
 }
 
+/// Whether the update check looks at pre-releases: when the person asked for them, or when the running build is
+/// itself one (so a release candidate is not left behind by the next one).
+pub fn include_prereleases(current: &str, wanted: bool) -> bool {
+    wanted || Version::parse(current).is_some_and(|v| v.is_prerelease())
+}
+
 /// Picks the newest release from GitHub's `/releases` list (see `usable_releases` for what counts).
 pub fn newest_release(
     json: &str,
@@ -808,6 +814,27 @@ mod tests {
     fn a_prerelease_build_also_sees_prereleases() {
         let r = newest_release(RELEASES, true).unwrap().unwrap();
         assert_eq!(r.tag, "v0.3.0-rc1");
+    }
+
+    #[test]
+    fn prereleases_are_included_when_asked_for_or_when_the_running_build_is_one() {
+        assert!(!include_prereleases("0.2.0", false));
+        assert!(include_prereleases("0.2.0", true));
+        assert!(include_prereleases("0.3.0-rc1", false));
+        assert!(!include_prereleases("garbage", false));
+    }
+
+    #[test]
+    fn a_stable_build_that_asked_for_prereleases_is_offered_the_candidate() {
+        let r = newest_release(RELEASES, include_prereleases("0.2.0", true))
+            .unwrap()
+            .unwrap();
+        assert_eq!(r.tag, "v0.3.0-rc1");
+        assert!(is_newer("0.2.0", &r.tag));
+        let r = newest_release(RELEASES, include_prereleases("0.2.0", false))
+            .unwrap()
+            .unwrap();
+        assert_eq!(r.tag, "v0.2.0", "without the setting nothing changes");
     }
 
     #[test]

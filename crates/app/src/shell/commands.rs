@@ -140,6 +140,7 @@ pub fn shell_get(app: AppHandle) -> ShellSettingsDto {
         discord_presence: true,
         lastfm_scrobbling: false,
         borderless: true,
+        check_prereleases: false,
     })
 }
 
@@ -161,6 +162,7 @@ pub fn shell_set(app: AppHandle, settings: ShellSettingsDto) -> Result<ShellSett
         s.discord_presence = settings.discord_presence;
         s.lastfm_scrobbling = settings.lastfm_scrobbling;
         s.borderless = settings.borderless;
+        s.check_prereleases = settings.check_prereleases;
     }
     shell.save_settings();
     super::sync_autostart(&app);

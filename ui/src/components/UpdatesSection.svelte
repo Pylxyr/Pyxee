@@ -4,9 +4,11 @@
   import type { UpdateProgressDto } from '$lib/bindings/UpdateProgressDto';
   import type { YtdlpUpdateDto } from '$lib/bindings/YtdlpUpdateDto';
   import { updates } from '$lib/updates.svelte';
+  import { shellSettings } from '$lib/shell.svelte';
   import { platform } from '$lib/platform.svelte';
   import { onMount } from 'svelte';
   import Button from './Button.svelte';
+  import Toggle from './Toggle.svelte';
   import UpdateProgress from './UpdateProgress.svelte';
 
   let { backend }: { backend: Backend } = $props();
@@ -33,6 +35,12 @@
       off();
     };
   });
+
+  /** Saves the choice, then looks again so the answer on screen matches it. */
+  async function setPrereleases(on: boolean) {
+    await shellSettings.update({ checkPrereleases: on });
+    if (!shellSettings.error && updates.phase === 'idle') updates.check(backend);
+  }
 
   async function checkTool() {
     toolPhase = 'checking';
@@ -96,6 +104,12 @@
         {/if}
       {/if}
     </div>
+    <Toggle
+      label="Include pre-releases"
+      hint="Also offers release candidates (versions such as 0.6.0-rc1). They are for testing and may have bugs. A copy that already is a pre-release keeps getting them whatever this says."
+      checked={shellSettings.settings.checkPrereleases}
+      onchange={setPrereleases}
+    />
   </div>
 
   <div class="well mt-2">

@@ -118,6 +118,7 @@ pub struct ShellSettingsDto {
     pub discord_presence: bool,
     pub lastfm_scrobbling: bool,
     pub borderless: bool,
+    pub check_prereleases: bool,
 }
 
 impl From<&ShellSettings> for ShellSettingsDto {
@@ -131,6 +132,7 @@ impl From<&ShellSettings> for ShellSettingsDto {
             discord_presence: s.discord_presence,
             lastfm_scrobbling: s.lastfm_scrobbling,
             borderless: s.borderless,
+            check_prereleases: s.check_prereleases,
         }
     }
 }

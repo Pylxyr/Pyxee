@@ -39,7 +39,7 @@ beforeEach(() => {
   lyricsStore.state = { kind: 'idle' };
   sleep.status = null;
   updates.reset();
-  shellSettings.settings = { closeToTray: false, startWithWindows: false, toastOnChange: false, trayControls: false, flyoutOnClick: true, discordPresence: true, lastfmScrobbling: false, borderless: true };
+  shellSettings.settings = { closeToTray: false, startWithWindows: false, toastOnChange: false, trayControls: false, flyoutOnClick: true, discordPresence: true, lastfmScrobbling: false, borderless: true, checkPrereleases: false };
   shellSettings.error = null;
   theme.settings = { followSystem: true, themeId: 'dark', lightId: 'light', darkId: 'dark', dynamicColor: false, custom: [] };
   for (const s of [...snackbar.items]) snackbar.dismiss(s.id);
@@ -181,7 +181,7 @@ describe('Windows settings', () => {
     await waitFor(() => expect(mock.shell.closeToTray).toBe(true));
     await fireEvent.click(within(section).getByLabelText(/Start Pyxee when I sign in/));
     await fireEvent.click(within(section).getByLabelText(/notification when the song changes/));
-    await waitFor(() => expect(mock.shell).toEqual({ closeToTray: true, startWithWindows: true, toastOnChange: true, trayControls: false, flyoutOnClick: true, discordPresence: true, lastfmScrobbling: false, borderless: true }));
+    await waitFor(() => expect(mock.shell).toEqual({ closeToTray: true, startWithWindows: true, toastOnChange: true, trayControls: false, flyoutOnClick: true, discordPresence: true, lastfmScrobbling: false, borderless: true, checkPrereleases: false }));
   });
 
   it('the notification area switches say what they do and save through the backend', async () => {
@@ -315,6 +315,19 @@ describe('Updates settings', () => {
     await fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
     return screen.findByRole('region', { name: 'Updates' });
   }
+
+  it('lets people include pre-releases, saves that, and checks again', async () => {
+    const section = await openUpdates();
+    const toggle = within(section).getByLabelText(/Include pre-releases/i) as HTMLInputElement;
+    expect(toggle.checked).toBe(false);
+    const checks = () => mock.updateCalls.filter((c) => c === 'checkApp').length;
+    const before = checks();
+    await fireEvent.click(toggle);
+    await waitFor(() => expect(mock.shell.checkPrereleases).toBe(true));
+    await waitFor(() => expect(checks()).toBe(before + 1));
+    await fireEvent.click(toggle);
+    await waitFor(() => expect(mock.shell.checkPrereleases).toBe(false));
+  });
 
   it('says when Pyxee is up to date', async () => {
     const section = await openUpdates();

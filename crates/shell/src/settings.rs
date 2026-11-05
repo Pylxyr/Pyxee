@@ -36,6 +36,9 @@ pub struct ShellSettings {
     pub borderless: bool,
     /// Where the mini player was last left (physical pixels).
     pub mini_bounds: Option<Rect>,
+    /// The update check also offers pre-releases (release candidates). Off by default, so a stable copy is only
+    /// ever moved to stable releases; a copy that already is a pre-release looks at them regardless.
+    pub check_prereleases: bool,
 }
 
 impl Default for ShellSettings {
@@ -51,6 +54,7 @@ impl Default for ShellSettings {
             lastfm_session: None,
             borderless: cfg!(windows),
             mini_bounds: None,
+            check_prereleases: false,
         }
     }
 }
@@ -163,6 +167,20 @@ mod tests {
         };
         save(&p, &s).unwrap();
         assert!(!load(&p).settings.discord_presence);
+    }
+
+    #[test]
+    fn checking_for_prereleases_is_off_by_default_also_for_an_older_file_and_can_be_saved_on() {
+        assert!(!ShellSettings::default().check_prereleases);
+        let p = dir("prereleases").join("shell.json");
+        std::fs::write(&p, r#"{"closeToTray": true}"#).unwrap();
+        assert!(!load(&p).settings.check_prereleases);
+        let s = ShellSettings {
+            check_prereleases: true,
+            ..Default::default()
+        };
+        save(&p, &s).unwrap();
+        assert!(load(&p).settings.check_prereleases);
     }
 
     #[test]

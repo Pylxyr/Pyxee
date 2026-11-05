@@ -16,7 +16,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
-use tauri::{AppHandle, State};
+use tauri::{AppHandle, Manager, State};
 use ts_rs::TS;
 
 const REPO: &str = "Pylxyr/Pyxee";
@@ -238,8 +238,11 @@ fn text(url: &str) -> Result<String, String> {
 
 /// The newest release, with the changelog of everything since `current` (not only the newest release's own notes: a
 /// copy several versions behind should read what changed in all of them).
-fn latest_release(current: &str) -> Result<Option<(update::Release, String)>, String> {
-    let beta = update::Version::parse(current).is_some_and(|v| v.is_prerelease());
+fn latest_release(
+    current: &str,
+    wanted_prereleases: bool,
+) -> Result<Option<(update::Release, String)>, String> {
+    let beta = update::include_prereleases(current, wanted_prereleases);
     // 100 is the most GitHub gives in one request; it reaches far back.
     let json = text(&format!(
         "https://api.github.com/repos/{REPO}/releases?per_page=100"
@@ -260,10 +263,19 @@ pub fn portable_dir() -> Option<PathBuf> {
     pyxee_shell::datadir::portable_dir(exe.parent()?)
 }
 
-fn check_app_blocking() -> Result<AppUpdateDto, String> {
+/// Settings > Updates > "Include pre-releases".
+fn wants_prereleases(app: &AppHandle) -> bool {
+    app.state::<crate::shell::ShellState>()
+        .settings
+        .lock()
+        .map(|s| s.check_prereleases)
+        .unwrap_or(false)
+}
+
+fn check_app_blocking(wanted_prereleases: bool) -> Result<AppUpdateDto, String> {
     let current = env!("CARGO_PKG_VERSION").to_string();
     let portable = portable_dir().is_some();
-    Ok(match latest_release(&current)? {
+    Ok(match latest_release(&current, wanted_prereleases)? {
         Some((r, notes)) => AppUpdateDto {
             available: update::is_newer(&current, &r.tag),
             latest: r.version_text(),
@@ -339,7 +351,8 @@ fn fetch_installer(app: &AppHandle) -> Result<(PathBuf, String), String> {
         return Err("This is a portable copy: download the new zip from the release page and unpack it over this folder (your data folder stays).".into());
     }
     let current = env!("CARGO_PKG_VERSION");
-    let (release, _) = latest_release(current)?.ok_or("No release was found.")?;
+    let (release, _) =
+        latest_release(current, wants_prereleases(app))?.ok_or("No release was found.")?;
     if !update::is_newer(current, &release.tag) {
         return Err("Pyxee is already up to date.".into());
     }
@@ -475,8 +488,9 @@ fn launch_installer(path: &Path, expected: &str) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub async fn update_check_app() -> Result<AppUpdateDto, String> {
-    tauri::async_runtime::spawn_blocking(check_app_blocking)
+pub async fn update_check_app(app: AppHandle) -> Result<AppUpdateDto, String> {
+    let wanted = wants_prereleases(&app);
+    tauri::async_runtime::spawn_blocking(move || check_app_blocking(wanted))
         .await
         .map_err(|e| e.to_string())?
 }
