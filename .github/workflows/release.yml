@@ -104,10 +104,11 @@ jobs:
     if: ${{ !inputs.skip_checks }}
     uses: ./.github/workflows/ci.yml
 
+  # Runs alongside `checks`, not after it: nothing here needs their output, and waiting would put the whole CI run in
+  # front of the build. Nothing leaves this job except a workflow artifact; `publish` waits for both.
   build:
-    needs: [version-guard, checks]
-    # `checks` may be skipped, but never failed or cancelled.
-    if: ${{ !cancelled() && needs.version-guard.result == 'success' && (needs.checks.result == 'success' || needs.checks.result == 'skipped') }}
+    needs: version-guard
+    if: ${{ !cancelled() && needs.version-guard.result == 'success' }}
     runs-on: windows-latest
     timeout-minutes: 60
     outputs:
@@ -207,6 +208,9 @@ jobs:
           }
       - name: Build the portable zip
         shell: pwsh
+        env:
+          # `npm ci` and the UI build ran above; without this `cargo xtask portable` repeats both.
+          PYXEE_UI_READY: "1"
         run: |
           cargo xtask portable
           if ($LASTEXITCODE -ne 0) { throw "cargo xtask portable failed" }
@@ -265,12 +269,13 @@ jobs:
           if-no-files-found: error
 
   publish:
-    needs: [version-guard, build]
+    needs: [version-guard, checks, build]
     # A tag push, or a call from cut-release.yml. A manual dry run has neither.
-    # The explicit status check is required: without one GitHub applies an implicit success() over the whole
-    # dependency chain, so the (deliberately) skipped `checks` job upstream of `build` would skip this job too,
-    # silently, even though the build succeeded.
-    if: ${{ !cancelled() && needs.version-guard.result == 'success' && needs.build.result == 'success' && (github.event_name == 'push' || inputs.tag != '') }}
+    # Nothing is published unless the checks passed (or cut-release.yml has just run them, so `checks` is skipped) and
+    # the build succeeded. The explicit status checks are required: without them GitHub applies an implicit success()
+    # over the whole dependency chain, so the (deliberately) skipped `checks` job would skip this job too, silently,
+    # even though the build succeeded.
+    if: ${{ !cancelled() && needs.version-guard.result == 'success' && (needs.checks.result == 'success' || needs.checks.result == 'skipped') && needs.build.result == 'success' && (github.event_name == 'push' || inputs.tag != '') }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
