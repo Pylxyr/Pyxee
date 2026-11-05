@@ -624,6 +624,13 @@ struct Prepared {
     signing: Option<Signing>,
 }
 
+/// `PYXEE_UI_READY=1` says the UI is already installed and built (the release workflow has just done both before it
+/// calls `cargo xtask portable`), so `prepare` does not repeat `npm ci` and `npm run build`. Unset, empty or `0`: it
+/// always does them, as it does on a developer's machine.
+fn ui_ready(value: Option<std::ffi::OsString>) -> bool {
+    value.is_some_and(|v| !v.is_empty() && v != "0")
+}
+
 /// What both packages need first: yt-dlp, FFmpeg libraries, the built UI, the Tauri CLI, the signing setup.
 fn prepare() -> Res<Prepared> {
     let root = workspace_root();
@@ -633,16 +640,25 @@ fn prepare() -> Res<Prepared> {
     }
     tools(&[])?;
     ffmpeg()?;
-    run(
-        npm().args(["ci", "--prefix", "ui"]).current_dir(&root),
-        "npm ci (UI dependencies)",
-    )?;
-    run(
-        npm()
-            .args(["run", "build", "--prefix", "ui"])
-            .current_dir(&root),
-        "npm run build (UI)",
-    )?;
+    if ui_ready(std::env::var_os("PYXEE_UI_READY")) {
+        if !root.join("ui/dist/index.html").is_file() {
+            return Err("PYXEE_UI_READY is set, but ui/dist/index.html is missing (run `npm run build --prefix ui` first)".into());
+        }
+        println!(
+            "UI: already installed and built (PYXEE_UI_READY), not repeating npm ci and the build."
+        );
+    } else {
+        run(
+            npm().args(["ci", "--prefix", "ui"]).current_dir(&root),
+            "npm ci (UI dependencies)",
+        )?;
+        run(
+            npm()
+                .args(["run", "build", "--prefix", "ui"])
+                .current_dir(&root),
+            "npm run build (UI)",
+        )?;
+    }
     // The Tauri CLI comes from the UI's npm dependencies (installed by `npm ci` above): no `cargo install`.
     let cli = tauri_cli(&root);
     if !cli.is_file() {
@@ -768,6 +784,16 @@ fn portable() -> Res<()> {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn ui_ready_only_for_a_real_value() {
+        use super::*;
+        use std::ffi::OsString;
+        assert!(!ui_ready(None));
+        assert!(!ui_ready(Some(OsString::new())));
+        assert!(!ui_ready(Some(OsString::from("0"))));
+        assert!(ui_ready(Some(OsString::from("1"))));
+    }
 
     #[test]
     fn a_signed_checksum_list_verifies_with_the_public_key_and_not_after_a_change() {
