@@ -17,7 +17,7 @@ pub fn default_rate() -> Result<u32> {
     let dev = cpal::default_host()
         .default_output_device()
         .context("no default output device")?;
-    Ok(dev.default_output_config()?.sample_rate().0)
+    Ok(dev.default_output_config()?.sample_rate())
 }
 
 #[derive(Default)]
@@ -78,7 +78,7 @@ impl Player {
         if cfg.sample_format() != SampleFormat::F32 {
             bail!("device default format is {:?}; the spike expects f32 (WASAPI shared mode normally is)", cfg.sample_format());
         }
-        if cfg.sample_rate().0 != rate {
+        if cfg.sample_rate() != rate {
             bail!("device rate changed between calls");
         }
         let out_ch = cfg.channels() as usize;
@@ -91,7 +91,7 @@ impl Player {
         // Pre-size so the audio callback does not allocate for typical buffer sizes.
         let mut scratch: Vec<f32> = Vec::with_capacity(16 * 1024);
         let stream = device.build_output_stream(
-            &cfg.config(),
+            cfg.config(),
             move |data: &mut [f32], _| {
                 let frames = data.len() / out_ch;
                 scratch.resize(frames * 2, 0.0);
@@ -109,7 +109,13 @@ impl Player {
                 }
                 c2.fetch_add((got / 2) as u64, Ordering::Relaxed);
             },
-            |e| eprintln!("audio stream error: {e}"),
+            |e| match e.kind() {
+                // Reported while the stream goes on (cpal 0.18): a glitch is not an error.
+                cpal::ErrorKind::Xrun
+                | cpal::ErrorKind::RealtimeDenied
+                | cpal::ErrorKind::DeviceChanged => eprintln!("audio stream note: {e}"),
+                _ => eprintln!("audio stream error: {e}"),
+            },
             None,
         )?;
 

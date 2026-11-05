@@ -4,7 +4,6 @@ use super::dto::{LyricsDto, ShellSettingsDto, SleepSettingDto, SleepStateDto, Sl
 use super::{flyout, mini, sleep, ShellState};
 use crate::state::now_ms;
 use pyxee_lyrics::{fetch, Query, LRCLIB};
-use std::io::Read;
 use std::time::Duration;
 use tauri::{AppHandle, Manager};
 
@@ -25,21 +24,27 @@ pub async fn cover_bytes(url: String) -> Result<tauri::ipc::Response, String> {
         return Err("not a cover address".into());
     }
     let bytes = tauri::async_runtime::spawn_blocking(move || {
-        let agent = ureq::AgentBuilder::new()
-            .timeout(Duration::from_secs(8))
-            .redirects(0)
-            .build();
-        let response = agent.get(&url).call().map_err(|e| e.to_string())?;
-        let mut bytes = Vec::new();
-        response
-            .into_reader()
-            .take(COVER_MAX_BYTES + 1)
-            .read_to_end(&mut bytes)
-            .map_err(|e| e.to_string())?;
-        if bytes.len() as u64 > COVER_MAX_BYTES {
-            return Err("the cover is too large".to_string());
+        // No redirects: a cover host that sends the app somewhere else is not a cover host this app vetted.
+        let agent: ureq::Agent = pyxee_net::agent_config()
+            .timeout_global(Some(Duration::from_secs(8)))
+            .max_redirects(0)
+            .build()
+            .into();
+        let mut response =
+            pyxee_net::retry_stale(|| agent.get(&url).call()).map_err(|e| e.to_string())?;
+        // With redirects off a redirect comes back as an ordinary answer: it is not a picture.
+        if !response.status().is_success() {
+            return Err(format!("the cover address answered {}", response.status()));
         }
-        Ok(bytes)
+        response
+            .body_mut()
+            .with_config()
+            .limit(COVER_MAX_BYTES)
+            .read_to_vec()
+            .map_err(|e| match e {
+                ureq::Error::BodyExceedsLimit(_) => "the cover is too large".to_string(),
+                e => e.to_string(),
+            })
     })
     .await
     .map_err(|e| e.to_string())??;

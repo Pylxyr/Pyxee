@@ -11,6 +11,7 @@ use release::{
     PORTABLE_MARKER, PORTABLE_README,
 };
 use sha2::{Digest, Sha256};
+use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -390,16 +391,18 @@ fn ffmpeg() -> Res<()> {
 // ---------------------------------------------------------------------- network
 
 fn get(url: &str) -> Res<Vec<u8>> {
-    let agent = ureq::AgentBuilder::new()
-        .timeout_connect(std::time::Duration::from_secs(20))
-        .timeout_read(std::time::Duration::from_secs(120))
-        .build();
-    let resp = agent.get(url).call().map_err(|e| match e {
-        ureq::Error::Status(c, _) => format!("{url} answered HTTP {c}"),
+    let agent: ureq::Agent = pyxee_net::agent_config()
+        .timeout_connect(Some(std::time::Duration::from_secs(20)))
+        .timeout_per_read(Some(std::time::Duration::from_secs(120)))
+        .build()
+        .into();
+    let resp = pyxee_net::retry_stale(|| agent.get(url).call()).map_err(|e| match e {
+        ureq::Error::StatusCode(c) => format!("{url} answered HTTP {c}"),
         e => format!("could not reach {url}: {e}. Check your internet connection (and any proxy or firewall)."),
     })?;
     let mut bytes = Vec::new();
-    resp.into_reader()
+    resp.into_body()
+        .into_reader()
         .read_to_end(&mut bytes)
         .map_err(|e| format!("download of {url} was interrupted: {e}"))?;
     Ok(bytes)

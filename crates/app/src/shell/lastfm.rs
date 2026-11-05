@@ -105,7 +105,8 @@ fn sign(params: &[(String, String)], secret: &str) -> String {
         hash.update(v.as_bytes());
     }
     hash.update(secret.as_bytes());
-    format!("{:x}", hash.finalize())
+    // md-5 0.11 digests no longer print as hex by themselves.
+    hash.finalize().iter().map(|b| format!("{b:02x}")).collect()
 }
 
 /// Where the session key is kept: the Windows Credential Manager (a generic credential of the current user, which
@@ -836,11 +837,14 @@ impl Api {
         Self {
             app,
             endpoint: API_URL.to_owned(),
-            agent: ureq::AgentBuilder::new()
-                .timeout_connect(CONNECT_TIMEOUT)
-                .timeout(HTTP_TIMEOUT)
+            agent: pyxee_net::agent_config()
+                .timeout_connect(Some(CONNECT_TIMEOUT))
+                .timeout_global(Some(HTTP_TIMEOUT))
                 .user_agent(concat!("Pyxee/", env!("CARGO_PKG_VERSION")))
-                .build(),
+                // An error status is an answer too: Last.fm explains its errors in the body.
+                .http_status_as_error(false)
+                .build()
+                .into(),
         }
     }
 
@@ -863,18 +867,18 @@ impl Api {
             .iter()
             .map(|(k, v)| (k.as_str(), v.as_str()))
             .collect();
-        match self.agent.post(&self.endpoint).send_form(&form) {
+        match self.agent.post(&self.endpoint).send_form(form) {
             Ok(r) => {
-                let status = r.status();
-                let body = r
-                    .into_string()
-                    .map_err(|e| ApiError::Network(e.to_string()))?;
-                parse_response(status, &body)
+                let status = r.status().as_u16();
+                // A body that cannot be read counts as no body: for an error status the code alone says enough.
+                let body = r.into_body().read_to_string();
+                match body {
+                    Ok(body) => parse_response(status, &body),
+                    Err(e) if status < 400 => Err(ApiError::Network(e.to_string())),
+                    Err(_) => parse_response(status, ""),
+                }
             }
-            Err(ureq::Error::Status(status, r)) => {
-                parse_response(status, &r.into_string().unwrap_or_default())
-            }
-            Err(ureq::Error::Transport(t)) => Err(ApiError::Network(t.to_string())),
+            Err(e) => Err(ApiError::Network(e.to_string())),
         }
     }
 

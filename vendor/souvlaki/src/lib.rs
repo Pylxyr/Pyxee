@@ -35,6 +35,7 @@ pub struct MediaMetadata<'a> {
 
 /// Events sent by the OS media controls.
 #[derive(Clone, PartialEq, Debug)]
+#[non_exhaustive]
 pub enum MediaControlEvent {
     Play,
     Pause,
@@ -56,6 +57,13 @@ pub enum MediaControlEvent {
     /// the user must call [`MediaControls::set_volume`]. Note that
     /// this must be done only with the MPRIS backend.
     SetVolume(f64),
+    /// Turn shuffle on or off.
+    ///
+    /// Publish the resulting state with `MediaControls::set_shuffle`
+    /// after handling the request.
+    ///
+    /// **NOTE**: currently only emitted on macOS/iOS
+    SetShuffle(bool),
     /// Open the URI in the media player.
     OpenUri(String),
 

@@ -1,26 +1,36 @@
-
+> [!IMPORTANT]
+> There is an almost complete rewrite of the library available at the [1.0 branch of this repository](https://github.com/Sinono3/souvlaki/tree/1.0),
+> created around Aug 2025. It hasn't been merged yet, and it is _unstable_. I finished writing 90% of the code, but didn't get around to testing it properly.
+> Anyways, for those interested: please try it out!
+> The API should be cleaner, and the internals less prone to bugs.
+> I'm seeing many PRs being opened for features/bugfixes already available that branch.
+> I plan to publish a pre-release on crates.io soon.
+> I should have posted this way back in August, but I didn't.
+> Thank you for your patience and support!
 
 # Souvlaki [![Crates.io](https://img.shields.io/crates/v/souvlaki.svg)](https://crates.io/crates/souvlaki) [![Docs](https://docs.rs/souvlaki/badge.svg)](https://docs.rs/souvlaki) [![CI](https://github.com/Sinono3/souvlaki/actions/workflows/build.yml/badge.svg)](https://github.com/Sinono3/souvlaki/actions/workflows/build.yml)
 
 A cross-platform library for handling OS media controls and metadata. One abstraction for Linux, MacOS/iOS, Windows.
 
+![Architecture diagram for souvlaki.](docs/architecture.excalidraw.svg)
+
 ## Supported platforms
 
-- Linux (via MPRIS)
+- Linux/BSD (via MPRIS)
 - MacOS/iOS
 - Windows
 
 ## Windows
 
 - Update metadata:\
-![image](https://user-images.githubusercontent.com/8389938/106080661-4a515e80-60f6-11eb-81e0-81ab0eda5188.png)
+  ![image](https://user-images.githubusercontent.com/8389938/106080661-4a515e80-60f6-11eb-81e0-81ab0eda5188.png)
 - Play and pause polling.\
-![play_pause](https://user-images.githubusercontent.com/8389938/106080917-bdf36b80-60f6-11eb-98b5-f3071ae3eab6.gif)
+  ![play_pause](https://user-images.githubusercontent.com/8389938/106080917-bdf36b80-60f6-11eb-98b5-f3071ae3eab6.gif)
 
 ## Linux
 
 - GNOME: \
-![GNOME](https://user-images.githubusercontent.com/59307989/150836249-3270c4fc-78b9-4b8d-8d50-dd030b72b631.png)
+  ![GNOME](https://user-images.githubusercontent.com/59307989/150836249-3270c4fc-78b9-4b8d-8d50-dd030b72b631.png)
 
 - playerctl:
 ```shell
@@ -41,9 +51,9 @@ my_player xesam:title               When The Sun Hits
 ## MacOS
 
 - Control Center:\
-![Control Center](https://user-images.githubusercontent.com/434125/171526539-ecb07a74-5dc5-4f4b-8305-4a99d4d5c31c.png)
+  ![Control Center](https://user-images.githubusercontent.com/434125/171526539-ecb07a74-5dc5-4f4b-8305-4a99d4d5c31c.png)
 - Now Playing:\
-![Now Playing](https://user-images.githubusercontent.com/434125/171526759-9232be58-63ed-4eea-ac15-aa50258d8254.png)
+  ![Now Playing](https://user-images.githubusercontent.com/434125/171526759-9232be58-63ed-4eea-ac15-aa50258d8254.png)
 
 ## Requirements
 
@@ -76,7 +86,7 @@ souvlaki = { version = "<version>", default-features = false, features = ["use_z
 
 ## Example
 
-```rust
+```rust,no_run
 use souvlaki::{MediaControlEvent, MediaControls, MediaMetadata, PlatformConfig};
 
 fn main() {

@@ -4,8 +4,9 @@
 //! stream, polls the default device, and carries the actions out.
 //!
 //! The rules:
-//! - Any stream error, a default device that is a different one than the stream runs on, or output that has stopped
-//!   pulling audio for a while counts as a problem. Exactly one "lost" line is logged per outage, not one per retry.
+//! - Any stream error that ends the stream, a default device that is a different one than the stream runs on (told
+//!   apart by its id, not its name: two devices can share a name and one device can be renamed), or output that has
+//!   stopped pulling audio for a while counts as a problem. Exactly one "lost" line is logged per outage, not one per retry.
 //! - While playing, the player is paused (so the UI says so instead of pretending to play) and one notice is shown.
 //! - The stream is rebuilt on the default device at most once per second until it works.
 //! - When it works again, the player resumes only if *we* paused it and nobody has touched playback since.
@@ -38,12 +39,20 @@ pub enum Action {
     Log { warn: bool, text: String },
 }
 
+/// An output device: the id tells devices apart (it is the same for the same device and differs between two devices
+/// that share a name), the name is for messages.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DeviceRef {
+    pub id: String,
+    pub name: String,
+}
+
 /// What the app sees on each check.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Observation {
     pub now_ms: u64,
-    /// Name of the system default output device; `None` when there is no output device at all.
-    pub default_device: Option<String>,
+    /// The system default output device; `None` when there is no output device at all.
+    pub default_device: Option<DeviceRef>,
     /// How many times the output callback has run since the stream started.
     pub callbacks: u64,
     /// The player is playing (not paused, something is loaded).
@@ -60,7 +69,7 @@ enum State {
 pub struct DeviceWatch {
     state: State,
     /// The device the stream runs on.
-    active: Option<String>,
+    active: Option<DeviceRef>,
     last_callbacks: u64,
     last_progress_ms: u64,
     /// We paused the player because the device was lost.
@@ -70,7 +79,7 @@ pub struct DeviceWatch {
 
 impl DeviceWatch {
     /// `device`: the device the stream was just opened on; `now_ms`: now.
-    pub fn new(device: Option<String>, now_ms: u64) -> Self {
+    pub fn new(device: Option<DeviceRef>, now_ms: u64) -> Self {
         Self {
             state: if device.is_some() {
                 State::Running
@@ -98,7 +107,7 @@ impl DeviceWatch {
             warn: true,
             text: format!(
                 "audio device lost: {why} (was {})",
-                self.active.as_deref().unwrap_or("none")
+                self.active.as_ref().map_or("none", |d| d.name.as_str())
             ),
         }];
         if playing && !self.auto_paused {
@@ -125,14 +134,23 @@ impl DeviceWatch {
     pub fn tick(&mut self, o: &Observation) -> Vec<Action> {
         match self.state.clone() {
             State::Running => {
+                // The same device under a new name (the user renamed it): nothing to rebuild, only the name to learn.
+                if let (Some(now), Some(was)) = (&o.default_device, &mut self.active) {
+                    if now.id == was.id && now.name != was.name {
+                        was.name.clone_from(&now.name);
+                    }
+                }
                 if o.callbacks != self.last_callbacks || !o.playing {
                     self.last_callbacks = o.callbacks;
                     self.last_progress_ms = o.now_ms;
                 }
                 match (&o.default_device, &self.active) {
                     (None, _) => self.lose("no output device is available", o.playing),
-                    (Some(now), Some(was)) if now != was => vec![Action::Rebuild {
-                        reason: format!("the default output changed from {was} to {now}"),
+                    (Some(now), Some(was)) if now.id != was.id => vec![Action::Rebuild {
+                        reason: format!(
+                            "the default output changed from {} to {}",
+                            was.name, now.name
+                        ),
                     }],
                     _ if o.playing
                         && o.now_ms.saturating_sub(self.last_progress_ms) >= STALL_MS =>
@@ -160,23 +178,23 @@ impl DeviceWatch {
     }
 
     /// The stream now runs on `device`.
-    pub fn rebuilt(&mut self, device: &str, rate: u32, now_ms: u64) -> Vec<Action> {
+    pub fn rebuilt(&mut self, device: &DeviceRef, rate: u32, now_ms: u64) -> Vec<Action> {
         let was_lost = self.is_lost();
         self.state = State::Running;
-        self.active = Some(device.to_string());
+        self.active = Some(device.clone());
         self.last_callbacks = 0;
         self.last_progress_ms = now_ms;
         self.last_fail_log = None;
         let mut out = vec![Action::Log {
             warn: false,
             text: if was_lost {
-                format!("audio device recovered: {device} at {rate} Hz")
+                format!("audio device recovered: {} at {rate} Hz", device.name)
             } else {
-                format!("audio output moved to {device} at {rate} Hz")
+                format!("audio output moved to {} at {rate} Hz", device.name)
             },
         }];
         if was_lost {
-            out.push(Action::Notice(format!("Audio is back on {device}.")));
+            out.push(Action::Notice(format!("Audio is back on {}.", device.name)));
         }
         if self.auto_paused {
             self.auto_paused = false;
@@ -216,10 +234,17 @@ impl DeviceWatch {
 mod tests {
     use super::*;
 
+    /// A device whose id follows from its name (the real id is cpal's, e.g. `wasapi:{endpoint guid}`).
+    fn dev(name: &str) -> DeviceRef {
+        DeviceRef {
+            id: format!("wasapi:{name}"),
+            name: name.into(),
+        }
+    }
     fn obs(now_ms: u64, device: Option<&str>, callbacks: u64, playing: bool) -> Observation {
         Observation {
             now_ms,
-            default_device: device.map(str::to_string),
+            default_device: device.map(dev),
             callbacks,
             playing,
         }
@@ -228,7 +253,7 @@ mod tests {
         a.iter().filter(|a| matches!(a, Action::Log { .. })).count()
     }
     fn watch() -> DeviceWatch {
-        DeviceWatch::new(Some("Earbuds".into()), 0)
+        DeviceWatch::new(Some(dev("Earbuds")), 0)
     }
 
     #[test]
@@ -260,7 +285,7 @@ mod tests {
         let mut w = watch();
         let a = w.on_stream_error("gone", false);
         assert!(!a.contains(&Action::PausePlayer));
-        let back = w.rebuilt("Earbuds", 48_000, 5_000);
+        let back = w.rebuilt(&dev("Earbuds"), 48_000, 5_000);
         assert!(!back.contains(&Action::ResumePlayer), "it was not playing");
     }
 
@@ -319,7 +344,7 @@ mod tests {
     fn recovery_resumes_what_we_paused_and_says_one_line() {
         let mut w = watch();
         w.on_stream_error("gone", true);
-        let a = w.rebuilt("Earbuds", 44_100, 8_000);
+        let a = w.rebuilt(&dev("Earbuds"), 44_100, 8_000);
         assert!(a.contains(&Action::ResumePlayer));
         assert_eq!(logs(&a), 1);
         assert!(
@@ -328,7 +353,7 @@ mod tests {
         assert!(!w.is_lost());
         // A second recovery without a new loss resumes nothing.
         assert!(!w
-            .rebuilt("Earbuds", 44_100, 9_000)
+            .rebuilt(&dev("Earbuds"), 44_100, 9_000)
             .contains(&Action::ResumePlayer));
     }
 
@@ -338,7 +363,7 @@ mod tests {
         w.on_stream_error("gone", true);
         w.on_user(UserEffect::TookOver); // they hit play, picked another song or pressed stop
         assert!(!w
-            .rebuilt("Earbuds", 48_000, 4_000)
+            .rebuilt(&dev("Earbuds"), 48_000, 4_000)
             .contains(&Action::ResumePlayer));
     }
 
@@ -349,11 +374,50 @@ mod tests {
         assert!(
             matches!(&a[..], [Action::Rebuild { reason }] if reason.contains("Earbuds") && reason.contains("Speakers"))
         );
-        let done = w.rebuilt("Speakers", 48_000, 600);
+        let done = w.rebuilt(&dev("Speakers"), 48_000, 600);
         assert!(done
             .iter()
             .all(|a| !matches!(a, Action::Notice(_) | Action::ResumePlayer)));
         assert!(w.tick(&obs(1_100, Some("Speakers"), 20, true)).is_empty());
+    }
+
+    #[test]
+    fn two_devices_with_the_same_name_are_still_two_devices() {
+        let mut w = watch();
+        let twin = DeviceRef {
+            id: "wasapi:another-endpoint".into(),
+            name: "Earbuds".into(),
+        };
+        let a = w.tick(&Observation {
+            now_ms: 500,
+            default_device: Some(twin),
+            callbacks: 10,
+            playing: true,
+        });
+        assert!(matches!(&a[..], [Action::Rebuild { .. }]), "{a:?}");
+    }
+
+    #[test]
+    fn a_renamed_device_is_the_same_device() {
+        let mut w = watch();
+        let renamed = DeviceRef {
+            id: "wasapi:Earbuds".into(),
+            name: "My earbuds".into(),
+        };
+        let a = w.tick(&Observation {
+            now_ms: 500,
+            default_device: Some(renamed),
+            callbacks: 10,
+            playing: true,
+        });
+        assert!(a.is_empty(), "no rebuild for a new name: {a:?}");
+        // ...and later messages use the name it has now.
+        let lost = w.on_stream_error("gone", true);
+        assert!(
+            lost.iter()
+                .any(|a| matches!(a, Action::Log { text, .. } if text.contains("My earbuds"))),
+            "{lost:?}"
+        );
     }
 
     #[test]

@@ -5,11 +5,12 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
-log = "0.4"
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
-thiserror = "2"
-ureq = { version = "2", features = ["native-certs"] }
+log = "0.4.35"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
+thiserror = "2.0.21"
+pyxee-net = { path = "../net" }
+ureq = "3.5.1"
 
 [lints]
 workspace = true

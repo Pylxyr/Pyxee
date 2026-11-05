@@ -19,6 +19,7 @@ use crate::{
 use serde_json::{json, Value};
 use std::collections::HashSet;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use ureq::http::header::{CONTENT_TYPE, COOKIE, ORIGIN, USER_AGENT as USER_AGENT_HEADER};
 
 pub const ENDPOINT: &str = "https://music.youtube.com/youtubei/v1/search?prettyPrint=false";
 /// The setting (environment variable or `.env` line) that turns the direct requests of this module off.
@@ -166,23 +167,33 @@ pub fn playlist_body(id: &str, now: SystemTime) -> String {
 
 /// One POST to the website's own API, answered with the body text. `what` names the request in an error.
 fn post(endpoint: &str, body: &str, what: &str) -> Result<String, SourceError> {
-    let answer = crate::net::agent()
-        .post(endpoint)
-        .timeout(TIMEOUT)
-        .set("User-Agent", USER_AGENT)
-        .set("Content-Type", "application/json")
-        .set("Origin", "https://music.youtube.com")
-        // The consent cookie the website sets once its banner is answered; without it some regions get a page.
-        .set("Cookie", "SOCS=CAI")
-        .send_string(body);
+    // Every one of these is a question (search, browse, next): asking twice changes nothing, so a connection that
+    // the server closed while it sat idle is simply tried again (ureq 3 does not do that by itself).
+    let agent = crate::net::agent();
+    let answer = pyxee_net::retry_stale(|| {
+        agent
+            .post(endpoint)
+            .config()
+            .timeout_global(Some(TIMEOUT))
+            .build()
+            .header(USER_AGENT_HEADER, USER_AGENT)
+            .header(CONTENT_TYPE, "application/json")
+            .header(ORIGIN, "https://music.youtube.com")
+            // The consent cookie the website sets once its banner is answered; without it some regions get a page.
+            .header(COOKIE, "SOCS=CAI")
+            .send(body)
+    });
     match answer {
-        Ok(r) => r
-            .into_string()
+        Ok(mut r) => r
+            .body_mut()
+            .with_config()
+            .limit(crate::net::MAX_ANSWER_BYTES)
+            .read_to_string()
             .map_err(|e| SourceError::Failed(e.to_string())),
         // Only a real "slow down" is allowed to stop the other ways of searching; a 403 here may be this
         // endpoint alone.
-        Err(ureq::Error::Status(429, _)) => Err(SourceError::RateLimited),
-        Err(ureq::Error::Status(c, _)) => Err(SourceError::Failed(format!(
+        Err(ureq::Error::StatusCode(429)) => Err(SourceError::RateLimited),
+        Err(ureq::Error::StatusCode(c)) => Err(SourceError::Failed(format!(
             "YouTube Music {what} failed (HTTP {c})"
         ))),
         Err(_) => Err(SourceError::Offline),

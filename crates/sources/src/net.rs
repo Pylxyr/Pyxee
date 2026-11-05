@@ -7,6 +7,9 @@ use std::sync::OnceLock;
 pub(crate) fn agent() -> ureq::Agent {
     static AGENT: OnceLock<ureq::Agent> = OnceLock::new();
     AGENT
-        .get_or_init(|| ureq::AgentBuilder::new().build())
+        .get_or_init(|| pyxee_net::agent_config().build().into())
         .clone()
 }
+
+/// The most a YouTube Music answer may be. The biggest pages (the explore shelves) are a few megabytes.
+pub(crate) const MAX_ANSWER_BYTES: u64 = 16 << 20;

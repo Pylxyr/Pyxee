@@ -2,13 +2,14 @@ use std::collections::HashMap;
 use std::convert::From;
 use std::convert::TryFrom;
 use std::convert::TryInto;
-use std::sync::{mpsc, Arc, Mutex};
+use std::sync::{Arc, Mutex, mpsc};
 use std::thread::{self, JoinHandle};
 use std::time::Duration;
 
+use zbus::connection;
+use zbus::interface;
 use zbus::object_server::SignalEmitter;
-use zbus::zvariant::{ObjectPath, Value};
-use zbus::{connection::Builder, interface};
+use zvariant::{ObjectPath, Value};
 
 use crate::{
     MediaControlEvent, MediaMetadata, MediaPlayback, MediaPosition, PlatformConfig, SeekDirection,
@@ -265,7 +266,7 @@ impl PlayerInterface {
         // NOTE: Should the `Seeked` signal be called when calling this method?
     }
 
-    fn set_position(&self, _track_id: ObjectPath<'_>, position: i64) {
+    fn set_position(&self, _track_id: zvariant::ObjectPath, position: i64) {
         if let Ok(micros) = position.try_into() {
             if let Some(duration) = self.state.metadata.duration {
                 // If the Position argument is greater than the track length, do nothing.
@@ -345,7 +346,8 @@ impl PlayerInterface {
     }
 
     #[zbus(property)]
-    fn set_volume(&self, volume: f64) {
+    fn set_volume(&mut self, volume: f64) {
+        self.state.volume = volume;
         self.send_event(MediaControlEvent::SetVolume(volume));
     }
 
@@ -429,7 +431,7 @@ async fn run_service(
     let name = format!("org.mpris.MediaPlayer2.{dbus_name}");
     let path = ObjectPath::try_from("/org/mpris/MediaPlayer2")?;
     let connected = async {
-        Builder::session()?
+        connection::Builder::session()?
             .serve_at(&path, app)?
             .serve_at(&path, player)?
             .name(name.as_str())?

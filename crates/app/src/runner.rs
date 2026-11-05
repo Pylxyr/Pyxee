@@ -5,10 +5,12 @@ use crate::engine::{Engine, Host};
 use crate::recorder::HistoryRecorder;
 use crate::sim::{catalog, Sim, SimOut, TICK_MS};
 use crate::state::{now_ms, publish, with_library, AppState};
-use pyxee_audio::output::{DeviceInfo, Output};
+use pyxee_audio::output::{DeviceIdent, DeviceInfo, Output};
 use pyxee_audio::AudioError;
 use pyxee_core::{Command, Effect, EngineEvent, Failure};
-use pyxee_shell::audiodev::{Action as DeviceAction, DeviceWatch, Observation, UserEffect};
+use pyxee_shell::audiodev::{
+    Action as DeviceAction, DeviceRef, DeviceWatch, Observation, UserEffect,
+};
 use std::collections::VecDeque;
 use std::sync::mpsc::{channel, Receiver, RecvTimeoutError, Sender};
 use std::sync::{Arc, Mutex};
@@ -113,6 +115,14 @@ const DEVICE_CHECK_EVERY: Duration = Duration::from_millis(500);
 /// The rate assumed for the engine when there is no output device at start; the first device that appears sets it.
 const FALLBACK_RATE: u32 = 48_000;
 
+/// The watcher tells devices apart by cpal's stable id, which the audio crate hands over as a [`DeviceIdent`].
+fn watched(d: &DeviceIdent) -> DeviceRef {
+    DeviceRef {
+        id: d.id.clone(),
+        name: d.name.clone(),
+    }
+}
+
 /// Opens the default output device and starts the stream on it, pulling from `engine`. When the device runs at
 /// another sample rate than the engine was built for, the engine is rebuilt at the new rate first.
 fn open_output(engine: &mut Engine, errors: &Sender<String>) -> Result<Output, AudioError> {
@@ -149,7 +159,7 @@ fn spawn_real(app: AppHandle, rx: Receiver<Effect>) {
             })
         }) {
             Ok(o) => {
-                watch = DeviceWatch::new(Some(o.name().to_string()), since_start());
+                watch = DeviceWatch::new(Some(watched(o.ident())), since_start());
                 output = Some(o);
             }
             Err(e) => log::warn!("audio output unavailable at start: {e}"),
@@ -194,7 +204,7 @@ fn spawn_real(app: AppHandle, rx: Receiver<Effect>) {
                 last_check = Instant::now();
                 todo.extend(watch.tick(&Observation {
                     now_ms: since_start(),
-                    default_device: DeviceInfo::default_name(),
+                    default_device: DeviceInfo::default_ident().as_ref().map(watched),
                     callbacks: output.as_ref().map_or(0, Output::callbacks),
                     playing: engine.is_playing(),
                 }));
@@ -208,7 +218,11 @@ fn spawn_real(app: AppHandle, rx: Receiver<Effect>) {
                             Ok(o) => {
                                 // Errors reported by the stream that was just closed are not about this one.
                                 while err_rx.try_recv().is_ok() {}
-                                todo.extend(watch.rebuilt(o.name(), o.rate(), since_start()));
+                                todo.extend(watch.rebuilt(
+                                    &watched(o.ident()),
+                                    o.rate(),
+                                    since_start(),
+                                ));
                                 output = Some(o);
                             }
                             Err(e) => {

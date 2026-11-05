@@ -13,6 +13,8 @@ use std::io::{self, Read, Seek, SeekFrom};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Condvar, Mutex, MutexGuard, OnceLock, PoisonError};
 use std::time::{Duration, Instant};
+use ureq::http::header::{HeaderName, CONTENT_RANGE, RANGE};
+use ureq::http::StatusCode;
 
 const CHUNK: u64 = 512 * 1024;
 /// Files up to this size are downloaded completely; bigger ones only around the playhead.
@@ -100,10 +102,11 @@ fn agent() -> ureq::Agent {
     static AGENT: OnceLock<ureq::Agent> = OnceLock::new();
     AGENT
         .get_or_init(|| {
-            ureq::AgentBuilder::new()
-                .timeout_connect(Duration::from_secs(10))
-                .timeout_read(Duration::from_secs(20))
+            pyxee_net::agent_config()
+                .timeout_connect(Some(Duration::from_secs(10)))
+                .timeout_per_read(Some(Duration::from_secs(20)))
                 .build()
+                .into()
         })
         .clone()
 }
@@ -128,12 +131,15 @@ fn url_host(url: &str) -> Option<&str> {
 }
 
 /// Applies the headers a stream URL needs (User-Agent etc.). Range is set by the caller and never overridden.
-fn with_headers(mut req: ureq::Request, headers: &[(String, String)]) -> ureq::Request {
+fn with_headers(
+    mut req: ureq::RequestBuilder<ureq::typestate::WithoutBody>,
+    headers: &[(String, String)],
+) -> ureq::RequestBuilder<ureq::typestate::WithoutBody> {
     for (k, v) in headers {
         if k.eq_ignore_ascii_case("range") || k.eq_ignore_ascii_case("host") {
             continue;
         }
-        req = req.set(k, v);
+        req = req.header(k.as_str(), v.as_str());
     }
     req
 }
@@ -157,7 +163,7 @@ impl Fetcher {
         let to = (from + CHUNK).min(self.len) - 1;
         let want = to - from + 1;
         let resp = with_headers(self.agent.get(&self.url), &self.headers)
-            .set("Range", &format!("bytes={from}-{to}"))
+            .header(RANGE, format!("bytes={from}-{to}"))
             .call();
         match resp {
             Ok(resp) if !answers_range(&resp, from) => Err(FetchError::Transient(
@@ -165,7 +171,12 @@ impl Fetcher {
             )),
             Ok(resp) => {
                 let mut data = Vec::with_capacity(want as usize);
-                match resp.into_reader().take(want).read_to_end(&mut data) {
+                match resp
+                    .into_body()
+                    .into_reader()
+                    .take(want)
+                    .read_to_end(&mut data)
+                {
                     Ok(_) if data.len() as u64 == want => Ok(data),
                     Ok(_) => Err(FetchError::Transient(format!(
                         "short answer: {} of {want} bytes",
@@ -176,21 +187,25 @@ impl Fetcher {
             }
             // 408 (the server gave up waiting) is about this moment, not about the address. Any other 4xx ends the
             // download, 429 included; `decode.rs` reports that one as `RateLimited` so the player can try again later.
-            Err(ureq::Error::Status(c, _)) if (400..500).contains(&c) && c != 408 => {
+            Err(ureq::Error::StatusCode(c)) if (400..500).contains(&c) && c != 408 => {
                 Err(FetchError::Fatal(c))
             }
-            Err(ureq::Error::Status(c, _)) => Err(FetchError::Transient(format!("HTTP {c}"))),
+            Err(ureq::Error::StatusCode(c)) => Err(FetchError::Transient(format!("HTTP {c}"))),
             Err(e) => Err(FetchError::Transient(e.to_string())),
         }
     }
 }
 
+/// A response header as text (`None` when absent or not text).
+fn header(resp: &ureq::http::Response<ureq::Body>, name: HeaderName) -> Option<&str> {
+    resp.headers().get(name)?.to_str().ok()
+}
+
 /// A real answer to a range request: status 206 and a `Content-Range` that starts where the request did. A server that
 /// answers 200 with the whole file (or a different part) must not have its bytes taken for the requested chunk.
-fn answers_range(resp: &ureq::Response, from: u64) -> bool {
-    resp.status() == 206
-        && resp
-            .header("Content-Range")
+fn answers_range(resp: &ureq::http::Response<ureq::Body>, from: u64) -> bool {
+    resp.status() == StatusCode::PARTIAL_CONTENT
+        && header(resp, CONTENT_RANGE)
             .and_then(|v| v.trim().strip_prefix("bytes "))
             .and_then(|v| v.split('-').next())
             .and_then(|v| v.trim().parse::<u64>().ok())
@@ -279,10 +294,10 @@ impl HttpRangeSource {
         cancel: Arc<AtomicBool>,
     ) -> Result<Self, AudioError> {
         let agent = agent();
-        let first = with_headers(agent.get(url), headers).set("Range", "bytes=0-0");
+        let first = with_headers(agent.get(url), headers).header(RANGE, "bytes=0-0");
         let resp = match first.call() {
             Ok(r) => r,
-            Err(ureq::Error::Status(c, _)) if is_expired(c) => {
+            Err(ureq::Error::StatusCode(c)) if is_expired(c) => {
                 log::warn!(
                     "stream request refused (HTTP {c}): host={} client={}; a fresh URL refused on its first request \
                      usually means yt-dlp picked a player client YouTube now rejects (update yt-dlp)",
@@ -291,12 +306,11 @@ impl HttpRangeSource {
                 );
                 return Err(AudioError::UrlExpired(c));
             }
-            Err(ureq::Error::Status(429, _)) => return Err(AudioError::RateLimited),
-            Err(ureq::Error::Status(c, _)) => return Err(net(format!("HTTP {c}"))),
+            Err(ureq::Error::StatusCode(429)) => return Err(AudioError::RateLimited),
+            Err(ureq::Error::StatusCode(c)) => return Err(net(format!("HTTP {c}"))),
             Err(e) => return Err(net(e)),
         };
-        let total = resp
-            .header("Content-Range")
+        let total = header(&resp, CONTENT_RANGE)
             .and_then(|v| v.rsplit('/').next())
             .and_then(|v| v.trim().parse::<u64>().ok())
             .ok_or_else(|| {

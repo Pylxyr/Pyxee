@@ -18,6 +18,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 use tauri::{AppHandle, Manager, State};
 use ts_rs::TS;
+use ureq::http::header::ACCEPT;
 
 const REPO: &str = "Pylxyr/Pyxee";
 const YTDLP_BASE: &str = "https://github.com/yt-dlp/yt-dlp/releases/latest/download";
@@ -140,12 +141,13 @@ impl Drop for InstallGuard {
 }
 
 fn agent() -> ureq::Agent {
-    ureq::AgentBuilder::new()
+    pyxee_net::agent_config()
         .https_only(true)
         .user_agent(concat!("Pyxee/", env!("CARGO_PKG_VERSION")))
-        .timeout_connect(Duration::from_secs(20))
-        .timeout_read(Duration::from_secs(120))
+        .timeout_connect(Some(Duration::from_secs(20)))
+        .timeout_per_read(Some(Duration::from_secs(120)))
         .build()
+        .into()
 }
 
 /// Updates are only ever fetched over https (the agent also refuses a redirect to plain http).
@@ -159,40 +161,43 @@ fn require_https(url: &str) -> Result<(), String> {
     }
 }
 
-fn request(url: &str) -> Result<ureq::Response, String> {
+fn request(url: &str) -> Result<ureq::http::Response<ureq::Body>, String> {
     require_https(url)?;
-    agent()
-        .get(url)
-        .set("Accept", "application/vnd.github+json, */*")
-        .call()
-        .map_err(|e| match e {
-            ureq::Error::Status(404, _) => format!(
+    let agent = agent();
+    // A GET, so a connection that the server closed meanwhile is simply tried again.
+    pyxee_net::retry_stale(|| {
+        agent
+            .get(url)
+            .header(ACCEPT, "application/vnd.github+json, */*")
+            .call()
+    })
+    .map_err(|e| match e {
+            ureq::Error::StatusCode(404) => format!(
                 "{url} was not found. The release may have been removed, or the repository is private."
             ),
-            ureq::Error::Status(403 | 429, _) => {
+            ureq::Error::StatusCode(403 | 429) => {
                 "GitHub is limiting requests right now. Try again in a few minutes.".to_string()
             }
-            ureq::Error::Status(c, _) => format!("{url} answered HTTP {c}"),
+            ureq::Error::StatusCode(c) => format!("{url} answered HTTP {c}"),
             e => format!("Could not reach {url}: {e}. Check your internet connection (and any proxy or firewall)."),
         })
 }
 
-/// Reads at most `limit` bytes; more than that is an error, never a silently cut-off answer.
-fn read_limited(reader: impl Read, limit: u64, what: &str) -> Result<Vec<u8>, String> {
-    let mut bytes = Vec::new();
-    reader
-        .take(limit + 1)
-        .read_to_end(&mut bytes)
-        .map_err(|e| format!("The download of {what} was interrupted: {e}"))?;
-    if bytes.len() as u64 > limit {
-        return Err(format!("{what} is larger than expected."));
+/// What went wrong while reading the body of `what`. More than the limit is an error, never a cut-off answer.
+fn read_failure(what: &str, e: &ureq::Error) -> String {
+    match e {
+        ureq::Error::BodyExceedsLimit(_) => format!("{what} is larger than expected."),
+        e => format!("The download of {what} was interrupted: {e}"),
     }
-    Ok(bytes)
 }
 
 fn get(url: &str, limit: u64) -> Result<Vec<u8>, String> {
-    let resp = request(url)?;
-    read_limited(resp.into_reader(), limit, url)
+    let mut resp = request(url)?;
+    resp.body_mut()
+        .with_config()
+        .limit(limit)
+        .read_to_vec()
+        .map_err(|e| read_failure(url, &e))
 }
 
 /// Downloads a large file in 64 KiB steps and reports `(received, total)` at most every 100 ms and once at the end.
@@ -200,13 +205,11 @@ fn get(url: &str, limit: u64) -> Result<Vec<u8>, String> {
 fn download(url: &str, on_progress: &mut dyn FnMut(u64, Option<u64>)) -> Result<Vec<u8>, String> {
     const TOO_BIG: &str = "The download is larger than expected";
     let resp = request(url)?;
-    let total = resp
-        .header("Content-Length")
-        .and_then(|v| v.trim().parse::<u64>().ok());
+    let total = resp.body().content_length();
     if total.is_some_and(|t| t > MAX_DOWNLOAD) {
         return Err(TOO_BIG.into());
     }
-    let mut reader = resp.into_reader();
+    let mut reader = resp.into_body().into_reader();
     let mut bytes = Vec::new();
     let mut chunk = vec![0u8; 64 * 1024];
     let mut last: Option<Instant> = None;
@@ -677,10 +680,15 @@ mod tests {
     }
 
     #[test]
-    fn an_answer_over_the_limit_is_an_error_not_a_cut_off_file() {
-        let data = [7u8; 11];
-        assert_eq!(read_limited(&data[..], 11, "x").unwrap().len(), 11);
-        assert!(read_limited(&data[..], 10, "x").is_err());
+    fn an_answer_over_the_limit_is_reported_as_too_large_not_as_an_interruption() {
+        // The limit itself is ureq's (tested in pyxee-net); what is ours is how the app words it.
+        let big = read_failure("https://x/y", &ureq::Error::BodyExceedsLimit(10));
+        assert_eq!(big, "https://x/y is larger than expected.");
+        let cut = read_failure("https://x/y", &ureq::Error::ConnectionFailed);
+        assert!(
+            cut.starts_with("The download of https://x/y was interrupted"),
+            "{cut}"
+        );
     }
 
     #[test]

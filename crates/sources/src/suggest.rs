@@ -15,6 +15,8 @@ const PAUSE_MAX: Duration = Duration::from_secs(15 * 60);
 
 /// Text longer than this is not asked about: it is a paste, not a search, and it would only be handed to Google.
 const ASK_MAX_CHARS: usize = 80;
+/// The most a suggestions answer may be (a handful of short strings).
+const MAX_ANSWER_BYTES: u64 = 256 << 10;
 
 pub const ENDPOINT: &str = "https://suggestqueries.google.com/complete/search";
 
@@ -77,17 +79,27 @@ fn fetch_from(endpoint: &str, prefix: &str) -> Result<Vec<String>, SourceError> 
         "{endpoint}?client=firefox&ds=yt&q={}",
         encode(prefix.trim())
     );
-    match crate::net::agent()
-        .get(&url)
-        .timeout(Duration::from_secs(4))
-        .call()
-    {
-        Ok(r) => parse(
-            &r.into_string()
+    // The agent keeps its connection between keystrokes, so after a pause the server may have closed it: a GET is
+    // simply tried again (ureq 3 does not do that by itself).
+    let agent = crate::net::agent();
+    let answer = pyxee_net::retry_stale(|| {
+        agent
+            .get(&url)
+            .config()
+            .timeout_global(Some(Duration::from_secs(4)))
+            .build()
+            .call()
+    });
+    match answer {
+        Ok(mut r) => parse(
+            &r.body_mut()
+                .with_config()
+                .limit(MAX_ANSWER_BYTES)
+                .read_to_string()
                 .map_err(|e| SourceError::Failed(e.to_string()))?,
         ),
-        Err(ureq::Error::Status(429 | 403, _)) => Err(SourceError::RateLimited),
-        Err(ureq::Error::Status(c, _)) => Err(SourceError::Failed(format!(
+        Err(ureq::Error::StatusCode(429 | 403)) => Err(SourceError::RateLimited),
+        Err(ureq::Error::StatusCode(c)) => Err(SourceError::Failed(format!(
             "suggestions failed (HTTP {c})"
         ))),
         Err(_) => Err(SourceError::Offline),

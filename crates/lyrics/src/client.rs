@@ -1,6 +1,8 @@
 use crate::{clean_artist, clean_title, parse_lrc, Lyrics};
 use serde::Deserialize;
 use std::time::Duration;
+use ureq::http::header::{RETRY_AFTER, USER_AGENT as USER_AGENT_HEADER};
+use ureq::http::StatusCode;
 
 pub const LRCLIB: &str = "https://lrclib.net";
 /// LRCLIB asks clients to say who they are, with a version.
@@ -11,6 +13,8 @@ const USER_AGENT: &str = concat!(
 );
 /// A match whose length differs by more than this is probably another recording.
 const DURATION_SLACK_SECS: f64 = 4.0;
+/// The most a lyrics answer may be (a song's synced lyrics are a few tens of kilobytes at most).
+const MAX_ANSWER_BYTES: u64 = 1 << 20;
 
 #[derive(Debug, thiserror::Error)]
 pub enum LyricsError {
@@ -198,16 +202,34 @@ pub fn from_lrclib(json: &str, duration_secs: Option<f64>) -> Result<Lyrics, Lyr
 }
 
 fn get(agent: &ureq::Agent, url: &str) -> Result<Option<String>, LyricsError> {
-    match agent.get(url).set("User-Agent", USER_AGENT).call() {
-        Ok(r) => r.into_string().map(Some).map_err(|_| LyricsError::Network),
-        Err(ureq::Error::Status(404, _)) => Ok(None),
-        Err(ureq::Error::Status(429, resp)) => Err(LyricsError::RateLimited {
-            retry_after_secs: retry_after_secs(resp.header("Retry-After")),
+    // The agent hands back error statuses as ordinary responses (see `fetch`), because a 429 carries `Retry-After`.
+    // A lookup is a GET, so a connection that the server had closed meanwhile is simply tried again.
+    let mut resp =
+        pyxee_net::retry_stale(|| agent.get(url).header(USER_AGENT_HEADER, USER_AGENT).call())
+            .map_err(|_| LyricsError::Network)?;
+    let status = resp.status();
+    let code = status.as_u16();
+    if status.is_success() {
+        return resp
+            .body_mut()
+            .with_config()
+            .limit(MAX_ANSWER_BYTES)
+            .read_to_string()
+            .map(Some)
+            .map_err(|_| LyricsError::Network);
+    }
+    match status {
+        StatusCode::NOT_FOUND => Ok(None),
+        StatusCode::TOO_MANY_REQUESTS => Err(LyricsError::RateLimited {
+            retry_after_secs: retry_after_secs(
+                resp.headers()
+                    .get(RETRY_AFTER)
+                    .and_then(|v| v.to_str().ok()),
+            ),
         }),
-        Err(ureq::Error::Status(code @ (401 | 403), _)) => Err(LyricsError::Blocked(code)),
-        Err(ureq::Error::Status(code @ 500..=599, _)) => Err(LyricsError::Unavailable(code)),
-        Err(ureq::Error::Status(code, _)) => Err(LyricsError::Parse(format!("HTTP {code}"))),
-        Err(ureq::Error::Transport(_)) => Err(LyricsError::Network),
+        StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN => Err(LyricsError::Blocked(code)),
+        s if s.is_server_error() => Err(LyricsError::Unavailable(code)),
+        _ => Err(LyricsError::Parse(format!("HTTP {code}"))),
     }
 }
 
@@ -226,10 +248,12 @@ fn encode(s: &str) -> String {
 
 /// Looks the song up at `base` (`LRCLIB`, or a test server): exact match first, then a search.
 pub fn fetch(base: &str, q: &Query) -> Result<Lyrics, LyricsError> {
-    let agent = ureq::AgentBuilder::new()
-        .timeout_connect(Duration::from_secs(6))
-        .timeout_read(Duration::from_secs(10))
-        .build();
+    let agent: ureq::Agent = pyxee_net::agent_config()
+        .timeout_connect(Some(Duration::from_secs(6)))
+        .timeout_per_read(Some(Duration::from_secs(10)))
+        .http_status_as_error(false)
+        .build()
+        .into();
     let (t, a) = (encode(&q.title), encode(&q.artist));
     let mut exact = format!("{base}/api/get?track_name={t}&artist_name={a}");
     if let Some(d) = q.duration_secs {

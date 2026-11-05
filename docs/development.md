@@ -100,12 +100,12 @@ cargo test --workspace
 ## Dependency checks
 CI has a `deny` job (cargo-deny, advisories only) and an `npm audit --omit=dev` step. Run them locally with `cargo deny --locked check advisories` and `npm audit --omit=dev --prefix ui`.
 
-* **Advisories: not blocking** (`continue-on-error`) while the baseline is not clean. Baseline on 2026-11-05: no vulnerabilities, and warnings only (unmaintained: `proc-macro-error`, `rustls-pemfile`, `zbus_names`, `zvariant`, `zvariant_derive`; unsound: `glib` 0.18 from Tauri's GTK3 stack and `tokio` before 1.53.3; one yanked `async-executor`). Run `cargo deny --locked check advisories` to confirm; once it is clean the advisories step can become blocking.
+* **Advisories: not blocking** (`continue-on-error`) while the baseline is not clean. Baseline on 2026-11-05, after raising every dependency that Rust 1.91 and Tauri's own version pins allow (`ureq` 3 no longer pulls in `rustls-pemfile`, `tokio` is 1.54.1, and no locked version is yanked): no vulnerabilities, and warnings only (unmaintained: `proc-macro-error`, `zbus_names`, `zvariant`, `zvariant_derive`; unsound: `glib` 0.18 from Tauri's GTK3 stack). Run `cargo deny --locked check advisories` to confirm; once it is clean the advisories step can become blocking.
 * **npm audit: informational.** Zero vulnerabilities in the runtime dependencies on 2026-10-22.
 
 ## Layout
 `crates/core` queue + state machine (no I/O) · `crates/audio` decode, resample, gapless, output · `crates/sources` yt-dlp, local ·
-`crates/library` SQLite library ·
+`crates/library` SQLite library · `crates/net` HTTP defaults (certificate store, one retry for a stale connection) ·
 `crates/app` Tauri glue · `crates/spike` milestone 1 harness · `ui/` Svelte frontend · `xtask/` tool downloader and installer build.
 Settings > Updates checks for a newer Pyxee (GitHub releases, installer checked against `SHA256SUMS.txt`) and updates yt-dlp in place (checksum-verified,
 test-run, then swapped in; a failure changes nothing). A portable copy is updated by downloading the new zip instead.

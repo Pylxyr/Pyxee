@@ -1,0 +1,13 @@
+[package]
+name = "pyxee-net"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+log = "0.4.35"
+# `platform-verifier` is what lets an agent trust the system's certificate store (see `agent_config`).
+ureq = { version = "3.5.1", features = ["platform-verifier"] }
+
+[lints]
+workspace = true
