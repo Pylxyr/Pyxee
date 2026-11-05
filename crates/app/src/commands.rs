@@ -340,7 +340,7 @@ pub fn perf_log(report: PerfReportDto) {
     log::info!("{}", perf_line(&report));
 }
 
-/// The log line for a report: digits only, each number capped.
+/// The log line for a report: digits only. The event counts are capped; the sizes are 32-bit numbers, so at most 10 digits.
 fn perf_line(report: &PerfReportDto) -> String {
     let c = |n: u32| n.min(10_000_000);
     format!(

@@ -91,13 +91,37 @@ impl MediaControls {
         let friendly_name = self.friendly_name.clone();
         let event_handler = Arc::new(Mutex::new(event_handler));
         let (event_channel, rx) = mpsc::channel();
+        let (ready_tx, ready_rx) = mpsc::sync_channel(1);
+
+        let thread = thread::spawn(move || {
+            pollster::block_on(run_service(
+                dbus_name,
+                friendly_name,
+                event_handler,
+                rx,
+                ready_tx,
+            ))
+            .unwrap();
+        });
+
+        // Pyxee: wait for the connection to the session bus, so that a missing bus (or a name that is taken) is
+        // reported here instead of as a panic in the service thread that every later call then trips over. A bus
+        // that is only slow keeps the old behaviour: the controls stay attached and come up when it answers.
+        match ready_rx.recv_timeout(Duration::from_secs(5)) {
+            Ok(Ok(())) | Err(mpsc::RecvTimeoutError::Timeout) => {}
+            Ok(Err(e)) => {
+                thread.join().ok();
+                return Err(e.into());
+            }
+            Err(mpsc::RecvTimeoutError::Disconnected) => {
+                thread.join().ok();
+                return Err(Error::ThreadPanicked);
+            }
+        }
 
         self.thread = Some(ServiceThreadHandle {
             event_channel,
-            thread: thread::spawn(move || {
-                pollster::block_on(run_service(dbus_name, friendly_name, event_handler, rx))
-                    .unwrap();
-            }),
+            thread,
         });
         Ok(())
     }
@@ -386,6 +410,7 @@ async fn run_service(
     friendly_name: String,
     event_handler: Arc<Mutex<dyn Fn(MediaControlEvent) + Send + 'static>>,
     event_channel: mpsc::Receiver<InternalEvent>,
+    ready: mpsc::SyncSender<zbus::Result<()>>,
 ) -> zbus::Result<()> {
     let app = AppInterface {
         friendly_name,
@@ -403,12 +428,24 @@ async fn run_service(
 
     let name = format!("org.mpris.MediaPlayer2.{dbus_name}");
     let path = ObjectPath::try_from("/org/mpris/MediaPlayer2")?;
-    let connection = Builder::session()?
-        .serve_at(&path, app)?
-        .serve_at(&path, player)?
-        .name(name.as_str())?
-        .build()
-        .await?;
+    let connected = async {
+        Builder::session()?
+            .serve_at(&path, app)?
+            .serve_at(&path, player)?
+            .name(name.as_str())?
+            .build()
+            .await
+    }
+    .await;
+    let connection = match connected {
+        Ok(connection) => connection,
+        Err(e) => {
+            // `attach` is waiting for this answer and returns the error; there is nothing left to serve.
+            ready.send(Err(e)).ok();
+            return Ok(());
+        }
+    };
+    ready.send(Ok(())).ok();
 
     // Pyxee: block until an event comes (the upstream loop woke every 10 ms to look; that is 100 wake-ups a second
     // for as long as the program runs). `Kill` is sent when the controls are dropped; a closed channel ends it too.

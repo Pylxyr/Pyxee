@@ -100,7 +100,7 @@ cargo test --workspace
 ## Dependency checks
 CI has a `deny` job (cargo-deny, advisories only) and an `npm audit --omit=dev` step. Run them locally with `cargo deny --locked check advisories` and `npm audit --omit=dev --prefix ui`.
 
-* **Advisories: not blocking** (`continue-on-error`) while the baseline is not clean. Baseline on 2026-10-28, after updating `rustls` to 0.23.46, `rustls-webpki` to 0.103.16 and `webpki-roots` to 1.0.11 (the earlier `zip` and `ringbuf` findings were already fixed by 9.0.5 and 0.5.3): `rustls-pemfile` 2.2.0 (RUSTSEC-2025-0134, unmaintained, pulled in by `ureq`/`native-certs`). Run `cargo deny --locked check advisories` to confirm; once it is clean the advisories step can become blocking.
+* **Advisories: not blocking** (`continue-on-error`) while the baseline is not clean. Baseline on 2026-11-05: no vulnerabilities, and warnings only (unmaintained: `proc-macro-error`, `rustls-pemfile`, `zbus_names`, `zvariant`, `zvariant_derive`; unsound: `glib` 0.18 from Tauri's GTK3 stack and `tokio` before 1.53.3; one yanked `async-executor`). Run `cargo deny --locked check advisories` to confirm; once it is clean the advisories step can become blocking.
 * **npm audit: informational.** Zero vulnerabilities in the runtime dependencies on 2026-10-22.
 
 ## Layout

@@ -367,8 +367,13 @@ fn apply_pending(s: &Shared, src: &mut GaplessSource) {
 fn produce(s: &Shared) {
     let cap = s.rate as usize * CHANNELS * BUFFER_SECS;
     let mut tmp = vec![0f32; CHUNK_SAMPLES];
-    while !s.stop.load(Ordering::Relaxed) {
+    loop {
+        // The epoch comes first and `stop` after it: `Drop` sets `stop` and then notifies, so either this epoch already
+        // counts that notify (and `stop` is visible), or the next wait sees a newer epoch and returns at once.
         let seen = s.wake.epoch();
+        if s.stop.load(Ordering::Relaxed) {
+            break;
+        }
         let free = cap.saturating_sub(lock(&s.inner).buf.len());
         if free < CHUNK_SAMPLES {
             // Nothing to decode yet (the buffer is full, or paused), but queue changes must not wait for room.

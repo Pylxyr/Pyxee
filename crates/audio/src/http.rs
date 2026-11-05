@@ -174,7 +174,8 @@ impl Fetcher {
                     Err(e) => Err(FetchError::Transient(e.to_string())),
                 }
             }
-            // 408 (the server gave up waiting) and 429 are about this moment, not about the address.
+            // 408 (the server gave up waiting) is about this moment, not about the address. Any other 4xx ends the
+            // download, 429 included; `decode.rs` reports that one as `RateLimited` so the player can try again later.
             Err(ureq::Error::Status(c, _)) if (400..500).contains(&c) && c != 408 => {
                 Err(FetchError::Fatal(c))
             }
