@@ -212,6 +212,32 @@ describe('position-only pushes', () => {
   });
 });
 
+describe('a full state that arrives after a position-only push', () => {
+  // Two threads publish (the media keys and the engine), and what one sends can arrive after what the other sent
+  // next. A position-only push is only sent when nothing but the position moved since the last full state, so that
+  // state is the one the push builds on: dropping it would drop what it announced, such as the pause.
+  it('is still applied, and the position stays where the newer push put it', async () => {
+    let pushState: (s: PlayerStateDto) => void = () => {};
+    let pushPos: (p: PositionDto) => void = () => {};
+    const backend = {
+      onState: async (cb: (s: PlayerStateDto) => void) => ((pushState = cb), () => {}),
+      onPosition: async (cb: (p: PositionDto) => void) => ((pushPos = cb), () => {}),
+      getState: async () => ({ ...EMPTY_STATE, seq: 1 }),
+      devCatalog: async () => [],
+    } as unknown as Backend;
+    const store = new PlayerStore();
+    await store.init(backend);
+    pushState({ ...EMPTY_STATE, seq: 5, transport: { state: 'playing', id: 1 }, positionMs: 100 });
+    expect(store.isPlaying).toBe(true);
+    pushPos({ seq: 7, positionMs: 700 }); // sent after the pause, delivered first
+    pushState({ ...EMPTY_STATE, seq: 6, transport: { state: 'paused', id: 1, loaded: true }, positionMs: 600 });
+    expect(store.isPlaying).toBe(false);
+    expect(store.positionMs).toBe(700);
+    pushPos({ seq: 6, positionMs: 650 }); // older than the newest position: still dropped
+    expect(store.positionMs).toBe(700);
+  });
+});
+
 describe('init and a late getState', () => {
   it('does not replace a state that was pushed while the answer was on its way', async () => {
     let pushState: (s: PlayerStateDto) => void = () => {};

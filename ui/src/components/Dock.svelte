@@ -37,6 +37,7 @@
     {#if player.failure}
       <Button variant="primary" size="sm" onclick={player.retry}>Retry</Button>
     {/if}
+    <IconButton icon="prev" label="Previous" size="lg" strong iconSize={24} onclick={player.previous} />
     <PlayButton />
     <IconButton icon="next" label="Next" size="lg" strong iconSize={24} onclick={player.next} />
   </div>

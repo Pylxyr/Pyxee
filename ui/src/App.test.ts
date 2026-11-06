@@ -210,6 +210,18 @@ describe('playing from the UI', () => {
     await waitFor(() => expect(screen.getByTestId('player-bar').textContent).toContain('Paper Planes'));
   });
 
+  it('the narrow window has Previous as well as Play and Next on its bar, and Previous goes back a song', async () => {
+    await openApp();
+    await fireEvent.click(screen.getByRole('button', { name: /^Neon Harbor/ }));
+    const bar = await screen.findByTestId('player-bar');
+    mock.tick(600);
+    expect(within(bar).getByRole('button', { name: 'Next' })).toBeTruthy();
+    await fireEvent.click(within(bar).getByRole('button', { name: 'Next' }));
+    await waitFor(() => expect(screen.getByTestId('player-bar').textContent).toContain('Paper Planes'));
+    await fireEvent.click(within(screen.getByTestId('player-bar')).getByRole('button', { name: 'Previous' }));
+    await waitFor(() => expect(screen.getByTestId('player-bar').textContent).toContain('Neon Harbor'));
+  });
+
   it('keyboard: space toggles and n skips, but typing in search does not', async () => {
     await openApp();
     await fireEvent.click(screen.getByRole('button', { name: /^Neon Harbor/ }));

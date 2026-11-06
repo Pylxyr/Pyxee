@@ -41,6 +41,8 @@ export class PlayerStore {
   positionMs = $state(0);
   /** The newest `seq` seen, from a full state or a position-only push. */
   #seq = 0;
+  /** The `seq` of the newest full state applied: what a later full state is compared with. */
+  #stateSeq = 0;
   /** When `positionMs` was last set: what lets a lyric line change at its own time between the (1 Hz) reports. */
   #positionAt = Date.now();
   ready = $state(false);
@@ -57,6 +59,7 @@ export class PlayerStore {
     this.positionMs = s.positionMs;
     this.#positionAt = Date.now();
     this.#seq = s.seq;
+    this.#stateSeq = s.seq;
   }
   /** How long ago the position was last reported. */
   positionAgeMs(): number {
@@ -114,10 +117,20 @@ export class PlayerStore {
 
   /**
    * Keeps the newest state. Two threads publish, and a slow answer to `getState` can land after a push, so an arrival
-   * is not necessarily the latest: the highest `seq` wins and an older one is dropped.
+   * is not necessarily the latest: of two full states the higher `seq` wins and the older one is dropped. A position
+   * push is not a state: it is only sent when nothing but the position moved since the last full state, so a full state
+   * that arrives after a newer position push is still the newest *state* (it may be the pause that push builds on).
+   * It is applied, and the position stays where the newer push put it.
    */
   #apply(s: PlayerStateDto) {
-    if (s.seq >= this.#seq) this.state = s;
+    if (s.seq < this.#stateSeq) return;
+    const newer = s.seq < this.#seq ? { ms: this.positionMs, at: this.#positionAt, seq: this.#seq } : null;
+    this.state = s;
+    if (newer) {
+      this.positionMs = newer.ms;
+      this.#positionAt = newer.at;
+      this.#seq = newer.seq;
+    }
   }
 
   /** Takes the backend's state again (what is shown stays if it cannot be read). */
