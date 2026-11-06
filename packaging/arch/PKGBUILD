@@ -3,7 +3,7 @@
 #   cd packaging/arch && updpkgsums && makepkg -si
 # (updpkgsums fills in the checksum below; it comes with pacman-contrib.)
 pkgname=pyxee
-pkgver=0.5.0
+pkgver=0.5.1
 pkgrel=1
 pkgdesc='A music player that finds music online with yt-dlp, with gapless playback, lyrics and themes'
 arch=('x86_64')

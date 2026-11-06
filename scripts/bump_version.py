@@ -7,7 +7,9 @@ python scripts/bump_version.py --next patch   print the next version (patch, min
 python scripts/bump_version.py --current      print the current version
 
 Files: Cargo.toml ([workspace.package]), Cargo.lock (the pyxee-* and xtask entries),
-ui/package.json, ui/package-lock.json and crates/app/tauri.conf.json.
+ui/package.json, ui/package-lock.json, crates/app/tauri.conf.json and, for final releases only,
+packaging/arch/PKGBUILD (its pkgver; a pre-release such as 0.5.2-rc1 leaves it on the last final release,
+because pkgver cannot contain a hyphen and the Arch package builds from a release tag).
 Standard library only.
 """
 
@@ -24,10 +26,13 @@ CARGO_LOCK = ROOT / "Cargo.lock"
 PACKAGE = ROOT / "ui" / "package.json"
 PACKAGE_LOCK = ROOT / "ui" / "package-lock.json"
 TAURI_CONF = ROOT / "crates" / "app" / "tauri.conf.json"
+PKGBUILD = ROOT / "packaging" / "arch" / "PKGBUILD"
 
 SEMVER = re.compile(r"^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$")
 # [workspace.package] table: the first `version = "..."` after the header.
 WORKSPACE_VERSION = re.compile(r'(\[workspace\.package\][^\[]*?^version = ")([^"]*)(")', re.MULTILINE | re.DOTALL)
+# The Arch package's `pkgver=...` line (the release tag it builds from).
+PKGVER = re.compile(r"(^pkgver=)([^\s#]*)", re.MULTILINE)
 # Cargo.lock entries for our own crates (pyxee-* and xtask); third-party crates are never touched.
 LOCK_ENTRY = re.compile(r'(^name = "(?:pyxee-[\w-]+|xtask)"\nversion = ")([^"]*)(")', re.MULTILINE)
 
@@ -55,6 +60,10 @@ def read_versions() -> dict[str, str | None]:
     found: dict[str, str | None] = {}
     match = WORKSPACE_VERSION.search(_read(CARGO_TOML))
     found["Cargo.toml [workspace.package]"] = match.group(2) if match else None
+    # Only a final release has an Arch package version; a pre-release leaves pkgver on the last final one.
+    if PKGBUILD.exists() and match and "-" not in match.group(2):
+        pkgver = PKGVER.search(_read(PKGBUILD))
+        found["packaging/arch/PKGBUILD pkgver"] = pkgver.group(2) if pkgver else None
     if CARGO_LOCK.exists():
         for entry in LOCK_ENTRY.finditer(_read(CARGO_LOCK)):
             name = entry.group(0).split('"')[1]
@@ -128,7 +137,15 @@ def bump(version: str) -> int:
     conf = _json(TAURI_CONF)
     conf["version"] = version
     _write_json(TAURI_CONF, conf)
-    print(f"Version set to {version} in Cargo.toml, Cargo.lock, ui/package.json, ui/package-lock.json and tauri.conf.json.")
+    files = "Cargo.toml, Cargo.lock, ui/package.json, ui/package-lock.json and tauri.conf.json"
+    if PKGBUILD.exists() and "-" not in version:
+        pkg, pkg_count = PKGVER.subn(lambda m: f"{m.group(1)}{version}", _read(PKGBUILD), count=1)
+        if not pkg_count:
+            print("pkgver not found in packaging/arch/PKGBUILD", file=sys.stderr)
+            return 1
+        _write(PKGBUILD, pkg)
+        files = "Cargo.toml, Cargo.lock, ui/package.json, ui/package-lock.json, tauri.conf.json and packaging/arch/PKGBUILD"
+    print(f"Version set to {version} in {files}.")
     return 0
 
 

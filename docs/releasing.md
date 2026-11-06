@@ -52,7 +52,7 @@ The run summary says what to do. Short version: a flaky step (network, runner) -
 
 ## Versions by hand
 
-`python scripts/bump_version.py 0.2.0` sets every file (`Cargo.toml`, `Cargo.lock`, `ui/package.json`, its lockfile, `tauri.conf.json`); `--check v0.2.0` verifies them; `--next minor` prints the next version. CI runs the check on every push so the files cannot drift apart.
+`python scripts/bump_version.py 0.2.0` sets every file (`Cargo.toml`, `Cargo.lock`, `ui/package.json`, its lockfile, `tauri.conf.json`, and for a final release the `pkgver` of `packaging/arch/PKGBUILD`, which the Arch package builds its release tag from; a pre-release leaves it alone); `--check v0.2.0` verifies them; `--next minor` prints the next version. CI runs the check on every push so the files cannot drift apart.
 
 ## Portable build
 `cargo xtask portable` (Windows) builds the program without an installer and writes `target/portable/Pyxee_<version>_x64-portable.zip`. The zip holds one folder: `Pyxee.exe`, `yt-dlp.exe`, `THIRD_PARTY_NOTICES.txt`, `FFmpeg-LGPL-2.1.txt`, `GPL-3.0.txt`, `yt-dlp-THIRD_PARTY_LICENSES.txt`, `README.txt` and `portable.txt`. `portable.txt` next to the program is what turns portable mode on: the library, settings and logs live in `data\` beside `Pyxee.exe` (nothing in the user's profile, no Roaming-to-Local move); deleting `portable.txt` gives the normal per-user folder. The zip never contains a `data` folder, an ffmpeg program or a libav DLL (libav is linked in statically); the packer refuses to finish if one slips in, and `scripts\check-windows.cmd -Installer` opens the finished zip again to prove it. It needs the WebView2 runtime (part of Windows 11 and current Windows 10), which the installer would otherwise download.

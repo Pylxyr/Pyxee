@@ -124,7 +124,8 @@ sudo pacman -U pyxee-*.pkg.tar.zst
 
 **Which version do I get?** `makepkg` builds the release named on the `pkgver=` line at the top of `PKGBUILD`. Compare
 it with the newest version on the [Releases page](https://github.com/Pylxyr/Pyxee/releases). To build a different
-release, edit `pkgver`, run `updpkgsums` again and then `makepkg -si`.
+release, edit `pkgver`, run `updpkgsums` again and then `makepkg -si`. Releases older than 0.5.1 cannot be built with
+this recipe, because they do not have the Linux build profile it uses.
 
 **Skipping `updpkgsums`.** The recipe ships with `SKIP` in place of checksums, so `makepkg` works without step 3. The
 download is then not verified.
@@ -360,6 +361,17 @@ Everything is in `~/.local/share/dev.pyxee.app`:
 
 **`makepkg` says it must not run as root.** Run `makepkg -si` as your normal user, without `sudo`. It asks for your
 password itself when it installs.
+
+**`error: profile 'release-linux' is not defined`.** The recipe is set to build a release that is too old to have the
+Linux build profile (0.5.0 or earlier). Update the repository (`git restore packaging/arch/PKGBUILD`, then `git pull`),
+or set `pkgver=` in `PKGBUILD` to 0.5.1 or newer. Then clear the old build and start again:
+
+```
+cd Pyxee/packaging/arch
+rm -rf src pkg
+updpkgsums
+makepkg -si
+```
 
 **The build stops with `Killed`, or the computer freezes near the end.** The last compile step uses a lot of memory.
 Close other programs and try again. If it keeps happening, add swap space or enable zram.

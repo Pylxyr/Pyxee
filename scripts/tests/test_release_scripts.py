@@ -44,6 +44,21 @@ class NextVersion(unittest.TestCase):
         self.assertEqual(len(versions), 1, versions)
 
 
+class PkgverRegex(unittest.TestCase):
+    PKGBUILD = "# Maintainer: x\npkgname=pyxee\npkgver=0.5.0\npkgrel=1\n"
+
+    def test_only_the_pkgver_line_changes(self):
+        out = bv.PKGVER.sub(lambda m: f"{m.group(1)}9.9.9", self.PKGBUILD, count=1)
+        self.assertIn("\npkgver=9.9.9\n", out)
+        self.assertIn("\npkgrel=1\n", out)
+        self.assertEqual(bv.PKGVER.search(self.PKGBUILD).group(2), "0.5.0")
+
+    def test_the_repo_pkgbuild_follows_a_final_release_only(self):
+        versions = bv.read_versions()
+        workspace = versions["Cargo.toml [workspace.package]"]
+        self.assertEqual("packaging/arch/PKGBUILD pkgver" in versions, "-" not in workspace)
+
+
 class LockfileRegex(unittest.TestCase):
     LOCK = 'name = "pyxee-core"\nversion = "0.0.1"\n\nname = "serde"\nversion = "1.0.0"\n\nname = "xtask"\nversion = "0.0.1"\n'
 
