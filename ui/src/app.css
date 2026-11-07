@@ -12,7 +12,7 @@
   --color-solid: var(--solid);
   --color-solid-2: var(--solid-2);
   --color-on-fg: var(--on-fg);
-  --font-sans: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif;
+  --font-sans: 'Segoe UI Variable Text', 'Segoe UI', system-ui, 'Inter', 'Noto Sans', 'Cantarell', 'Roboto', 'DejaVu Sans', sans-serif;
 }
 
 /*
@@ -52,8 +52,8 @@
   --shadow-art: 0 14px 34px rgb(0 0 0 / 0.34);
 
   /* Type: Segoe UI Variable (optical sizes switch on by themselves), one family, sentence case, regular and semibold. */
-  --font-text: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif;
-  --font-display: 'Bahnschrift', 'Segoe UI Variable Display', 'Segoe UI', system-ui, sans-serif;
+  --font-text: 'Segoe UI Variable Text', 'Segoe UI', system-ui, 'Inter', 'Noto Sans', 'Cantarell', 'Roboto', 'DejaVu Sans', sans-serif;
+  --font-display: 'Bahnschrift', 'Segoe UI Variable Display', 'Segoe UI', system-ui, 'Inter', 'Noto Sans', 'Cantarell', 'Roboto', 'DejaVu Sans', sans-serif;
 
   /* Geometry: 6 px for small controls and thumbnails, 10 px for buttons, cards and tiles, 16 px for the big cover and the hero panel. */
   --r-sm: 6px;
@@ -855,7 +855,7 @@ input[type='range'].slider:disabled {
     box-shadow: inset 0 -1px 0 var(--accent);
   }
   .field-mono {
-    font-family: Consolas, 'Cascadia Mono', monospace;
+    font-family: Consolas, 'Cascadia Mono', ui-monospace, 'JetBrains Mono', 'DejaVu Sans Mono', monospace;
     font-size: 12px;
   }
 

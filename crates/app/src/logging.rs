@@ -255,17 +255,7 @@ pub fn init(dir: &Path) -> (LogInfo, Option<String>) {
 /// Opens the folder in the system file manager.
 pub fn open_folder(dir: &Path) -> Result<(), String> {
     fs::create_dir_all(dir).map_err(|e| format!("cannot create {}: {e}", dir.display()))?;
-    let program = if cfg!(windows) {
-        "explorer"
-    } else {
-        "xdg-open"
-    };
-    // Explorer reports failure even when it opened the folder, so only a failure to start counts.
-    std::process::Command::new(program)
-        .arg(dir)
-        .spawn()
-        .map(drop)
-        .map_err(|e| format!("could not open {} with {program}: {e}", dir.display()))
+    crate::opener::open_folder(dir)
 }
 
 #[cfg(test)]

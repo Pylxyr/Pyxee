@@ -48,7 +48,10 @@
 
   <section class="settings-section" aria-label={platform.os === 'windows' ? 'Windows' : 'System'}>
     <h3 class="group-title">{platform.os === 'windows' ? 'Windows' : 'System'}</h3>
-    <Toggle label="Keep playing in the tray when the window is closed" checked={shellSettings.settings.closeToTray} onchange={(on) => shellSettings.update({ closeToTray: on })} />
+    <Toggle
+      label="Keep playing in the tray when the window is closed"
+      hint={platform.os === 'linux' ? 'Needs a tray on your desktop: KDE Plasma has one, GNOME needs the "AppIndicator and KStatusNotifierItem Support" extension. Without a tray, closing the window leaves no way back to it except starting Pyxee again.' : undefined}
+      checked={shellSettings.settings.closeToTray} onchange={(on) => shellSettings.update({ closeToTray: on })} />
     <Toggle label={platform.os === 'windows' ? 'Start Pyxee when I sign in to Windows' : 'Start Pyxee when I sign in'} checked={shellSettings.settings.startWithWindows} onchange={(on) => shellSettings.update({ startWithWindows: on })} />
     <Toggle label="Show a notification when the song changes" checked={shellSettings.settings.toastOnChange} onchange={(on) => shellSettings.update({ toastOnChange: on })} />
     {#if platform.os === 'windows'}
@@ -76,7 +79,7 @@
     />
     <Toggle
       label="Borderless window"
-      hint="Pyxee draws its own slim title bar instead of the system one. Press F11 for full screen."
+      hint={platform.os === 'linux' ? "Pyxee draws its own slim title bar instead of the system one. Some desktops give a window without a frame no edges to resize by. Press F11 for full screen." : "Pyxee draws its own slim title bar instead of the system one. Press F11 for full screen."}
       checked={shellSettings.settings.borderless}
       onchange={(on) => shellSettings.update({ borderless: on })}
     />

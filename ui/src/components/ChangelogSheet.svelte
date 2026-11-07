@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { Backend } from '$lib/backend';
+  import { messageOf, type Backend } from '$lib/backend';
   import { isVersionHeading, parseChangelog } from '$lib/changelog';
   import { updates } from '$lib/updates.svelte';
   import { platform } from '$lib/platform.svelte';
@@ -62,6 +62,9 @@
 
     <div class="mt-3 flex flex-wrap justify-end gap-2">
       <Button size="sm" onclick={() => updates.closeChangelog()}>Later</Button>
+      {#if !info.installable && backend}
+        <Button size="sm" onclick={() => backend.openReleasePage().catch((e) => (updates.error = messageOf(e)))}>Open release page</Button>
+      {/if}
       {#if info.installable && backend}
         <Button size="sm" variant="primary" disabled={installing} onclick={() => updates.install(backend)}>Download and install {info.latest}</Button>
       {/if}

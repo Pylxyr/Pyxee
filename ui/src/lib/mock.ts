@@ -126,6 +126,8 @@ export class MockBackend extends MockLibrary implements Backend {
     };
   }
   async openLogFolder() { this.logFolderOpens++; }
+  releasePageOpens = 0;
+  async openReleasePage() { this.releasePageOpens++; }
   /** The `.env` values by variable name; set `envError` to make `envSet` reject. */
   envValues: Record<string, string> = {};
   envError: string | null = null;

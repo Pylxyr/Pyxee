@@ -9,22 +9,30 @@ use tauri::{AppHandle, Manager};
 
 const TRAY_ID: &str = "main";
 
+/// The first line of the tray menu on Linux, which shows the song that is playing. The Linux tray (a
+/// StatusNotifierItem) has no tooltip, so this is the only place the tray can say what plays.
+static NOW_PLAYING: std::sync::OnceLock<MenuItem<tauri::Wry>> = std::sync::OnceLock::new();
+
 pub fn init(app: &AppHandle) -> tauri::Result<()> {
     let item = |id: &str, text: &str| MenuItem::with_id(app, id, text, true, None::<&str>);
-    let menu = Menu::with_items(
-        app,
-        &[
-            &item("show", "Open Pyxee")?,
-            &PredefinedMenuItem::separator(app)?,
-            &item("playpause", "Play / Pause")?,
-            &item("previous", "Previous")?,
-            &item("next", "Next")?,
-            &PredefinedMenuItem::separator(app)?,
-            &item("mini", "Mini player")?,
-            &PredefinedMenuItem::separator(app)?,
-            &item("quit", "Quit")?,
-        ],
-    )?;
+    let menu = Menu::new(app)?;
+    if cfg!(target_os = "linux") {
+        let now = MenuItem::with_id(app, "nowplaying", "Pyxee", false, None::<&str>)?;
+        menu.append(&now)?;
+        menu.append(&PredefinedMenuItem::separator(app)?)?;
+        let _ = NOW_PLAYING.set(now);
+    }
+    menu.append_items(&[
+        &item("show", "Open Pyxee")?,
+        &PredefinedMenuItem::separator(app)?,
+        &item("playpause", "Play / Pause")?,
+        &item("previous", "Previous")?,
+        &item("next", "Next")?,
+        &PredefinedMenuItem::separator(app)?,
+        &item("mini", "Mini player")?,
+        &PredefinedMenuItem::separator(app)?,
+        &item("quit", "Quit")?,
+    ])?;
     let icon = Image::from_bytes(include_bytes!("../../icons/tray-32.png"))?;
     TrayIconBuilder::with_id(TRAY_ID)
         .icon(icon)
@@ -82,8 +90,14 @@ pub fn set_tooltip(app: &AppHandle, text: &str) {
     if let Some(tray) = app.tray_by_id(TRAY_ID) {
         // The Windows tooltip is limited to 127 characters.
         let t: String = text.chars().take(120).collect();
-        if let Err(e) = tray.set_tooltip(Some(t)) {
+        if let Err(e) = tray.set_tooltip(Some(t.clone())) {
             log::debug!("tray tooltip not set: {e}");
+        }
+        if let Some(line) = NOW_PLAYING.get() {
+            // In a menu text `&` marks a shortcut letter; `&&` is a literal one.
+            if let Err(e) = line.set_text(t.replace('&', "&&")) {
+                log::debug!("tray menu line not set: {e}");
+            }
         }
     }
 }

@@ -11,6 +11,7 @@ fn attach_reports_a_missing_session_bus() {
     let mut controls = MediaControls::new(PlatformConfig {
         display_name: "Pyxee test",
         dbus_name: "pyxee_test_no_bus",
+        desktop_entry: None,
         hwnd: None,
     })
     .unwrap();

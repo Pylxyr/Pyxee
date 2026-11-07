@@ -22,6 +22,7 @@ pub struct MediaControls {
     thread: Option<ServiceThreadHandle>,
     dbus_name: String,
     friendly_name: String,
+    desktop_entry: String,
 }
 
 struct ServiceThreadHandle {
@@ -71,6 +72,7 @@ impl MediaControls {
         let PlatformConfig {
             dbus_name,
             display_name,
+            desktop_entry,
             ..
         } = config;
 
@@ -78,6 +80,7 @@ impl MediaControls {
             thread: None,
             dbus_name: dbus_name.to_string(),
             friendly_name: display_name.to_string(),
+            desktop_entry: desktop_entry.unwrap_or_default().to_string(),
         })
     }
 
@@ -90,6 +93,7 @@ impl MediaControls {
 
         let dbus_name = self.dbus_name.clone();
         let friendly_name = self.friendly_name.clone();
+        let desktop_entry = self.desktop_entry.clone();
         let event_handler = Arc::new(Mutex::new(event_handler));
         let (event_channel, rx) = mpsc::channel();
         let (ready_tx, ready_rx) = mpsc::sync_channel(1);
@@ -98,6 +102,7 @@ impl MediaControls {
             pollster::block_on(run_service(
                 dbus_name,
                 friendly_name,
+                desktop_entry,
                 event_handler,
                 rx,
                 ready_tx,
@@ -169,6 +174,9 @@ impl MediaControls {
 
 struct AppInterface {
     friendly_name: String,
+    /// Pyxee change: the `DesktopEntry` property (the .desktop file's name without `.desktop`). Without it KDE Plasma
+    /// and GNOME cannot tie the media widget to the application: no icon, and "raise" has nothing to launch.
+    desktop_entry: String,
     event_handler: Arc<Mutex<dyn Fn(MediaControlEvent) + Send + 'static>>,
 }
 
@@ -199,6 +207,11 @@ impl AppInterface {
     #[zbus(property)]
     fn identity(&self) -> &str {
         &self.friendly_name
+    }
+
+    #[zbus(property)]
+    fn desktop_entry(&self) -> &str {
+        &self.desktop_entry
     }
 
     #[zbus(property)]
@@ -410,12 +423,14 @@ impl PlayerInterface {
 async fn run_service(
     dbus_name: String,
     friendly_name: String,
+    desktop_entry: String,
     event_handler: Arc<Mutex<dyn Fn(MediaControlEvent) + Send + 'static>>,
     event_channel: mpsc::Receiver<InternalEvent>,
     ready: mpsc::SyncSender<zbus::Result<()>>,
 ) -> zbus::Result<()> {
     let app = AppInterface {
         friendly_name,
+        desktop_entry,
         event_handler: event_handler.clone(),
     };
 

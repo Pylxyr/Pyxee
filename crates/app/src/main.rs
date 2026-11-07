@@ -9,6 +9,7 @@ mod engine;
 mod engine_tests;
 mod library_service;
 mod logging;
+mod opener;
 mod recorder;
 mod runner;
 mod session;
@@ -257,6 +258,7 @@ fn main() {
             commands::platform,
             commands::perf_log,
             commands::open_log_folder,
+            commands::open_release_page,
             advanced::env_get,
             advanced::env_set,
             commands::set_window_theme,

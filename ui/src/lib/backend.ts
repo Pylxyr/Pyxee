@@ -77,6 +77,8 @@ export interface Backend extends LibraryBackend {
   /** Where the log file is, for the Diagnostics section. */
   logInfo(): Promise<LogInfoDto>;
   openLogFolder(): Promise<void>;
+  /** Opens Pyxee's releases page in the default browser. */
+  openReleasePage(): Promise<void>;
   /** The variables kept in the `.env` file (Settings > Advanced). */
   /** Whether the app was started with `PYXEE_PERF=1` (the window then logs what it does; see `perf.ts`). */
   perfEnabled(): Promise<boolean>;
@@ -169,6 +171,7 @@ export async function tauriBackend(): Promise<Backend> {
       }).catch(() => {}),
     logInfo: () => invoke<LogInfoDto>('get_log_info'),
     openLogFolder: () => invoke<void>('open_log_folder'),
+    openReleasePage: () => invoke<void>('open_release_page'),
     perfEnabled: () => invoke<boolean>('perf_enabled'),
     seekMode: () => invoke<string>('seek_mode'),
     platform: () => invoke<string>('platform'),

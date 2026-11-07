@@ -252,7 +252,7 @@ install -Dm755 target/release-linux/pyxee-app ~/.local/bin/pyxee-app
 install -Dm644 packaging/arch/pyxee.desktop ~/.local/share/applications/pyxee.desktop
 install -Dm644 crates/app/icons/128x128.png ~/.local/share/icons/hicolor/128x128/apps/pyxee.png
 install -Dm644 crates/app/icons/32x32.png ~/.local/share/icons/hicolor/32x32/apps/pyxee.png
-sed -i "s|^Exec=.*|Exec=$HOME/.local/bin/pyxee-app|" ~/.local/share/applications/pyxee.desktop
+sed -i "s|^Exec=pyxee-app|Exec=$HOME/.local/bin/pyxee-app|" ~/.local/share/applications/pyxee.desktop
 ```
 
 The last line points the menu entry at the full path, so it works even if `~/.local/bin` is not on your `PATH`. If Pyxee
@@ -355,7 +355,7 @@ those gone too; this cannot be undone.
 
 - **Window frame.** The main window uses your desktop's own title bar. **Settings** -> **Borderless window** switches to
   Pyxee's slim bar, but a window without a frame may have no edges to resize by.
-- **Tray.** The icon's menu has Open Pyxee, Play / Pause, Previous, Next, Mini player and Quit. On most Linux desktops a
+- **Tray.** The icon's menu starts with the song that is playing (Linux trays have no tooltip), then has Open Pyxee, Play / Pause, Previous, Next, Mini player and Quit. On most Linux desktops a
   click on the icon opens the menu, so the Windows option "clicking the icon opens the mini controls" does not exist
   here, and neither do the previous/play/next buttons beside the icon. KDE Plasma shows the icon out of the box; GNOME
   needs the "AppIndicator and KStatusNotifierItem Support" extension.

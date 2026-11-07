@@ -127,10 +127,7 @@ pub fn clean_title(title: &str) -> String {
         "ft.",
         "with ",
     ];
-    loop {
-        let Some(open) = s.rfind(['(', '[']) else {
-            break;
-        };
+    while let Some(open) = s.rfind(['(', '[']) {
         let close = if s[open..].starts_with('(') { ')' } else { ']' };
         let Some(end_rel) = s[open..].find(close) else {
             break;

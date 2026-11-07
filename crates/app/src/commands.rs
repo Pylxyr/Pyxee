@@ -378,6 +378,12 @@ pub fn open_log_folder(state: State<AppState>) -> Result<(), String> {
     crate::logging::open_folder(&state.log.dir)
 }
 
+/// Opens the releases page of Pyxee in the default browser (the page's own links do not leave the app window).
+#[tauri::command]
+pub fn open_release_page() -> Result<(), String> {
+    crate::opener::open_url(crate::opener::RELEASES_URL)
+}
+
 /// Makes the native window (title bar, Mica backdrop) follow the theme the user picked, not only the
 /// Windows setting. `None` follows the system again.
 #[tauri::command]

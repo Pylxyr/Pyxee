@@ -28,6 +28,8 @@ pub fn init(app: &AppHandle) -> Option<Media> {
     let config = PlatformConfig {
         dbus_name: "dev.pyxee.app",
         display_name: "Pyxee",
+        // packaging/arch/pyxee.desktop: lets KDE and GNOME show Pyxee's icon in their media widgets and raise it.
+        desktop_entry: Some("pyxee"),
         hwnd,
     };
     let mut controls = match MediaControls::new(config) {
@@ -75,6 +77,9 @@ fn on_event(app: &AppHandle, event: MediaControlEvent) {
             Command::Seek(seek_target(position(), dir, by.as_millis() as u64))
         }
         MediaControlEvent::SetPosition(MediaPosition(to)) => Command::Seek(to.as_millis() as u64),
+        // MPRIS `Raise` / `Quit`: what clicking the player in the KDE or GNOME media widget (or `playerctl`) asks for.
+        MediaControlEvent::Raise => return super::show_main(app),
+        MediaControlEvent::Quit => return super::quit(app),
         _ => return,
     };
     super::command(app, cmd);

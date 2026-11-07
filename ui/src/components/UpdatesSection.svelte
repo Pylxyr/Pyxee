@@ -99,6 +99,9 @@
       <Button size="sm" disabled={updates.phase !== 'idle'} onclick={() => updates.check(backend)}>Check for updates</Button>
       {#if updates.info?.available}
         <Button size="sm" disabled={updates.phase === 'installing'} onclick={() => updates.openChangelog()}>What's new</Button>
+        {#if !updates.info.installable}
+          <Button size="sm" onclick={() => backend.openReleasePage().catch((e) => (updates.error = messageOf(e)))}>Open release page</Button>
+        {/if}
         {#if updates.info.installable}
           <Button size="sm" variant="primary" disabled={updates.phase !== 'idle'} onclick={() => updates.install(backend)}>Download and install {updates.info.latest}</Button>
         {/if}

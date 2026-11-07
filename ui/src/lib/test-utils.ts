@@ -31,6 +31,7 @@ export const noDiagnostics = {
   setWindowTint: async () => {},
   logInfo: async () => ({ dir: '', file: '', error: null }),
   openLogFolder: async () => {},
+  openReleasePage: async () => {},
   onNotice: async () => () => {},
   onUpdateProgress: async () => () => {},
   updateCheckApp: async () => ({ current: '0.1.0', latest: '0.1.0', available: false, notesUrl: '', notes: '', installable: false, portable: false }),
