@@ -29,7 +29,7 @@ class OrbitView extends ConsumerWidget {
     );
     return SizedBox.expand(
       child: Material(
-        color: Ink.base,
+        color: Palette.base,
         child: SafeArea(
           child: Column(
             children: [
