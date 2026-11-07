@@ -24,7 +24,7 @@ void main(List<String> args) async {
     output.assets.code.add(
       CodeAsset(
         package: input.packageName,
-        name: 'src/bridge_native.dart',
+        name: 'core/bridge/bridge_native.dart',
         linkMode: DynamicLoadingBundled(),
         file: library,
       ),
