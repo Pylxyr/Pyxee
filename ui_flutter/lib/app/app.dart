@@ -2,7 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:material_ui/material_ui.dart';
 
 import 'router.dart';
-import 'theme.dart';
+import 'theme/theme.dart';
 
 class PyxeeApp extends ConsumerWidget {
   const PyxeeApp({super.key});

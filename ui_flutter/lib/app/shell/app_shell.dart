@@ -1,20 +1,14 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 import 'package:material_ui/material_ui.dart';
 
-import '../../core/bridge/bridge_providers.dart';
-import '../destinations.dart';
+import '../../features/orbit/orbit_state.dart';
+import '../../features/orbit/orbit_view.dart';
+import '../places.dart';
+import '../theme/metrics.dart';
+import 'capsule.dart';
+import 'spine.dart';
 
-/// From this width the places are tabs in a masthead on top; below it they are a bar along the bottom.
-const double wideBreakpoint = 900;
-
-int? _selectedIndex(String path) {
-  if (path.startsWith('/playlist')) return 2;
-  final i = destinations.indexWhere((d) => d.path == path);
-  return i < 0 ? null : i;
-}
-
-/// The frame around every page: masthead (wide windows), the page, the deck, and the bottom bar (narrow windows).
+/// The frame around every page: the spine, the page on its canvas, the capsule floating over it, and Orbit over all.
 class AppShell extends StatelessWidget {
   const AppShell({super.key, required this.path, required this.child});
 
@@ -23,79 +17,94 @@ class AppShell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final wide = MediaQuery.sizeOf(context).width >= wideBreakpoint;
-    final selected = _selectedIndex(path);
+    final wide = MediaQuery.sizeOf(context).width >= Metrics.railBreakpoint;
+    final place = Place.of(path);
+    final canvas = Stack(
+      children: [
+        Positioned.fill(
+          child: _Canvas(
+            child: Padding(
+              padding: const EdgeInsets.only(
+                bottom: Metrics.capsuleHeight + 2 * Metrics.capsuleGap,
+              ),
+              child: child,
+            ),
+          ),
+        ),
+        const Positioned(
+          left: 0,
+          right: 0,
+          bottom: Metrics.capsuleGap,
+          child: Center(child: Capsule()),
+        ),
+      ],
+    );
     return Scaffold(
-      body: Column(
+      body: Stack(
         children: [
-          if (wide) _Masthead(selected: selected),
-          Expanded(child: child),
-          const _Deck(),
+          Positioned.fill(
+            child: wide
+                ? Row(
+                    children: [
+                      Spine(axis: Axis.vertical, current: place),
+                      Expanded(child: canvas),
+                    ],
+                  )
+                : Column(
+                    children: [
+                      Expanded(child: canvas),
+                      Spine(axis: Axis.horizontal, current: place),
+                    ],
+                  ),
+          ),
+          const Positioned.fill(child: _OrbitLayer()),
         ],
       ),
-      bottomNavigationBar: wide
-          ? null
-          : NavigationBar(
-              selectedIndex: selected ?? 0,
-              onDestinationSelected: (i) => context.go(destinations[i].path),
-              destinations: [
-                for (final d in destinations)
-                  NavigationDestination(icon: Icon(d.icon), label: d.label),
-              ],
-            ),
     );
   }
 }
 
-class _Masthead extends StatelessWidget {
-  const _Masthead({required this.selected});
+class _Canvas extends StatelessWidget {
+  const _Canvas({required this.child});
 
-  final int? selected;
+  final Widget child;
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return SizedBox(
-      height: 56,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 24),
-        child: Row(
-          children: [
-            Text('Pyxee', style: theme.textTheme.titleLarge),
-            const SizedBox(width: 32),
-            for (var i = 0; i < destinations.length; i++)
-              TextButton(
-                onPressed: () => context.go(destinations[i].path),
-                style: TextButton.styleFrom(
-                  foregroundColor: i == selected
-                      ? theme.colorScheme.primary
-                      : theme.colorScheme.onSurfaceVariant,
-                ),
-                child: Text(destinations[i].label),
-              ),
-            const Spacer(),
-            IconButton(
-              onPressed: () => context.go('/search'),
-              tooltip: 'Search',
-              icon: const Icon(Icons.search),
-            ),
-          ],
+    return Padding(
+      padding: const EdgeInsets.all(Metrics.canvasInset),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(Metrics.canvasRadius),
+        child: ColoredBox(
+          color: Theme.of(context).colorScheme.surface,
+          child: child,
         ),
       ),
     );
   }
 }
 
-/// Where the player will sit. For now it only shows whether the Rust library answered.
-class _Deck extends ConsumerWidget {
-  const _Deck();
+/// Orbit slides up over the shell and is not built at all while it is closed.
+class _OrbitLayer extends ConsumerWidget {
+  const _OrbitLayer();
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    return SizedBox(
-      height: 56,
-      width: double.infinity,
-      child: Center(child: Text(ref.watch(bridgeStatusProvider))),
+    final open = ref.watch(orbitOpenProvider);
+    return AnimatedSwitcher(
+      duration: Metrics.orbitDuration,
+      switchInCurve: Curves.easeOutCubic,
+      switchOutCurve: Curves.easeInCubic,
+      transitionBuilder: (child, animation) => SlideTransition(
+        position: Tween<Offset>(
+          begin: const Offset(0, 1),
+          end: Offset.zero,
+        ).animate(animation),
+        child: child,
+      ),
+      child: open
+          ? const OrbitView(key: ValueKey('orbit'))
+          : const SizedBox.shrink(key: ValueKey('closed')),
     );
   }
 }
