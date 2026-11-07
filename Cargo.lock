@@ -3208,6 +3208,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "pyxee-bridge"
+version = "0.5.2"
+dependencies = [
+ "pyxee-core",
+ "serde_json",
+]
+
+[[package]]
 name = "pyxee-core"
 version = "0.5.2"
 dependencies = [

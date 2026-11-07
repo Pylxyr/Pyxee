@@ -1,0 +1,16 @@
+[package]
+name = "pyxee-bridge"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "pyxee_bridge"
+crate-type = ["cdylib"]
+
+[dependencies]
+pyxee-core = { path = "../core" }
+serde_json = "1.0.154"
+
+[lints]
+workspace = true
