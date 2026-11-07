@@ -1,7 +1,7 @@
 import 'package:material_ui/material_ui.dart';
 
 /// Pyxee's palette: a near-black ink, a slightly lighter canvas that the pages sit on, and one citrus accent.
-abstract final class Ink {
+abstract final class Palette {
   static const base = Color(0xFF0D0E11);
   static const canvas = Color(0xFF16181D);
   static const accent = Color(0xFFC8F169);
@@ -9,12 +9,12 @@ abstract final class Ink {
 
 ThemeData pyxeeTheme() {
   final scheme = ColorScheme.fromSeed(
-    seedColor: Ink.accent,
+    seedColor: Palette.accent,
     brightness: Brightness.dark,
-    surface: Ink.canvas,
+    surface: Palette.canvas,
   );
   return ThemeData(
     colorScheme: scheme,
-    scaffoldBackgroundColor: Ink.base,
+    scaffoldBackgroundColor: Palette.base,
   );
 }
