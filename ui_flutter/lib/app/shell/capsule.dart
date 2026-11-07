@@ -5,8 +5,8 @@ import '../../core/bridge/bridge_providers.dart';
 import '../../features/orbit/orbit_state.dart';
 import '../theme/metrics.dart';
 
-/// The player as a floating pill over the page. Tapping it opens Orbit. For now it only shows whether the Rust
-/// library answered.
+/// The player as a floating pill over the page. Tapping it opens Orbit. For now it shows the core's transport state
+/// and how many times the core has published, and the button sends it a toggle.
 class Capsule extends ConsumerWidget {
   const Capsule({super.key});
 
@@ -14,6 +14,12 @@ class Capsule extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
+    final head = ref.watch(playerHeadProvider);
+    final status = head.when(
+      data: (h) => '${h.transport} - ${h.queueLength} in queue - #${h.seq}',
+      error: (e, _) => 'bridge FAILED: $e',
+      loading: () => 'starting',
+    );
     return ConstrainedBox(
       constraints: const BoxConstraints(maxWidth: Metrics.capsuleMaxWidth),
       child: Padding(
@@ -48,7 +54,7 @@ class Capsule extends ConsumerWidget {
                             style: theme.textTheme.titleSmall,
                           ),
                           Text(
-                            ref.watch(bridgeStatusProvider),
+                            status,
                             style: theme.textTheme.bodySmall,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
@@ -56,9 +62,13 @@ class Capsule extends ConsumerWidget {
                         ],
                       ),
                     ),
-                    const IconButton(
-                      onPressed: null,
-                      icon: Icon(Icons.play_arrow),
+                    IconButton(
+                      onPressed: head.hasValue
+                          ? () => ref
+                                .read(bridgeProvider)
+                                .dispatch({'type': 'toggle'})
+                          : null,
+                      icon: const Icon(Icons.play_arrow),
                     ),
                   ],
                 ),

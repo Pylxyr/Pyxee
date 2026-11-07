@@ -9,6 +9,7 @@ environment:
 
 dependencies:
   code_assets: ^2.2.0
+  ffi: ^2.2.0
   flutter:
     sdk: flutter
   flutter_riverpod: ^3.5.0

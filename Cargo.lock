@@ -3212,7 +3212,10 @@ name = "pyxee-bridge"
 version = "0.5.2"
 dependencies = [
  "pyxee-core",
+ "pyxee-sources",
+ "serde",
  "serde_json",
+ "ts-rs",
 ]
 
 [[package]]
