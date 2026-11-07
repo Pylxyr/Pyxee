@@ -1,7 +1,8 @@
 # Maintainer: Pylxyr
 # Builds Pyxee from a release tag for Arch Linux and CachyOS:
-#   cd packaging/arch && updpkgsums && makepkg -si
-# (updpkgsums fills in the checksum below; it comes with pacman-contrib.)
+#   cd packaging/arch && makepkg -sic
+# (-s installs the build tools, -i installs Pyxee when it is built, -c deletes the work folders afterwards.)
+# Optional: `updpkgsums` (from pacman-contrib) fills in the checksum below; see docs/linux.md.
 pkgname=pyxee
 pkgver=0.5.1
 pkgrel=1
@@ -45,4 +46,8 @@ package() {
   # FFmpeg is linked in statically (LGPLv2.1): its notice and the third-party list ship with the program
   install -Dm644 crates/app/licenses/FFmpeg-LGPL-2.1.txt "$pkgdir/usr/share/licenses/$pkgname/FFmpeg-LGPL-2.1.txt"
   install -Dm644 crates/app/licenses/THIRD_PARTY.txt "$pkgdir/usr/share/licenses/$pkgname/THIRD_PARTY.txt"
+  # Everything is installed into $pkgdir now, so the build output can go: this is what `cargo clean` does, plus the
+  # page's npm packages. It frees several gigabytes at once, whichever makepkg options were used. (`makepkg --repackage`
+  # would need a new build after this, and the next version is built in a fresh folder anyway.)
+  rm -rf target ui/node_modules
 }

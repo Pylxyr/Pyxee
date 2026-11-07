@@ -47,39 +47,32 @@ Other Arch-based distributions that use `pacman` should work with the same steps
 **1. Install the build tools.**
 
 ```
-sudo pacman -S --needed base-devel git pacman-contrib
+sudo pacman -S --needed base-devel git
 ```
 
-`base-devel` provides `makepkg` and the compilers, `git` downloads the package recipe, and `pacman-contrib` provides
-`updpkgsums`, used in step 3.
+`base-devel` provides `makepkg` and the compilers, and `git` downloads the package recipe.
 
 **2. Download the package recipe.**
 
 ```
-git clone https://github.com/Pylxyr/Pyxee.git
-cd Pyxee/packaging/arch
+git clone https://github.com/Pylxyr/Pyxee.git ~/Pyxee
+cd ~/Pyxee/packaging/arch
 ```
 
-This folder holds a file called `PKGBUILD`, the recipe that tells `makepkg` how to build Pyxee. The cloned repository is
-only used for this recipe; `makepkg` downloads the program's source itself, from a tagged release.
+This puts a `Pyxee` folder in your home folder (`~`) and moves into the part of it that holds a file called `PKGBUILD`,
+the recipe that tells `makepkg` how to build Pyxee. Keep the folder: updating later reuses it. `makepkg` downloads the
+program's source itself, from a tagged release.
 
-**3. Fill in the checksums.**
-
-```
-updpkgsums
-```
-
-This downloads the release once and writes its checksum into `PKGBUILD`, so that `makepkg` can verify its download.
-
-**4. Build and install.**
+**3. Build and install.**
 
 ```
-makepkg -si
+makepkg -sic
 ```
 
-Do not put `sudo` in front of this command; `makepkg` refuses to run as root and asks for your password only when it
-needs to install something. Answer `Y` when it offers to install missing dependencies. The build goes through four
-stages:
+The three letters mean: `s` installs any build tools that are missing, `i` installs Pyxee when it is built, and `c`
+deletes the work folders afterwards. Do not put `sudo` in front of this command; `makepkg` refuses to run as root and
+asks for your password only when it needs to install something. Answer `Y` when it offers to install missing
+dependencies. The build goes through four stages:
 
 1. It downloads Pyxee's source.
 2. It builds the user interface (the page you see in the window).
@@ -89,11 +82,14 @@ stages:
 When it finishes, `pacman` installs the package. The dependencies Pyxee needs (`webkit2gtk-4.1`, `gtk3`,
 `libayatana-appindicator`, `alsa-lib`, `pipewire-alsa` and `yt-dlp`) are installed automatically.
 
-**5. Start Pyxee.**
+You do not need to clean up: the build output (several gigabytes) is deleted by the recipe as soon as the package is
+made, and `-c` removes the work folders. What stays is described in [Freeing disk space](#freeing-disk-space).
+
+**4. Start Pyxee.**
 
 Search for "Pyxee" in your application menu, or run `pyxee-app` in a terminal.
 
-**6. Optional: install a JavaScript runtime.** yt-dlp uses one to keep every audio format available, and Pyxee shows a
+**5. Optional: install a JavaScript runtime.** yt-dlp uses one to keep every audio format available, and Pyxee shows a
 warning without one. See "A warning about a JavaScript runtime" in the [README](../README.md#if-something-goes-wrong).
 
 ```
@@ -110,25 +106,27 @@ the fastest option but means the package only runs on that CPU or a newer one. T
 other PCs, set `_march`:
 
 ```
-_march=x86-64-v3 makepkg -si     # CachyOS's own baseline; needs a CPU with AVX2
-_march=x86-64 makepkg -si        # runs on any 64-bit PC
+_march=x86-64-v3 makepkg -sic     # CachyOS's own baseline; needs a CPU with AVX2
+_march=x86-64 makepkg -sic        # runs on any 64-bit PC
 ```
 
 **Build now, install later.** Build the package without installing it, then install the resulting file with `pacman`
 (on this PC or another one; use a non-`native` `_march` for another PC):
 
 ```
-makepkg -s
+makepkg -sc
 sudo pacman -U pyxee-*.pkg.tar.zst
 ```
 
 **Which version do I get?** `makepkg` builds the release named on the `pkgver=` line at the top of `PKGBUILD`. Compare
 it with the newest version on the [Releases page](https://github.com/Pylxyr/Pyxee/releases). To build a different
-release, edit `pkgver`, run `updpkgsums` again and then `makepkg -si`. Releases older than 0.5.1 cannot be built with
-this recipe, because they do not have the Linux build profile it uses.
+release, edit `pkgver` and run `makepkg -sic` again. Releases older than 0.5.1 cannot be built with this recipe,
+because they do not have the Linux build profile it uses.
 
-**Skipping `updpkgsums`.** The recipe ships with `SKIP` in place of checksums, so `makepkg` works without step 3. The
-download is then not verified.
+**Checksums (optional).** The recipe ships with `SKIP` in place of checksums, so the download is not verified.
+`updpkgsums` (install it with `sudo pacman -S pacman-contrib`) downloads the release once and writes its checksum into
+`PKGBUILD`, which then catches a damaged re-download. The checksum comes from the same download, so it does not prove
+the file is genuine. It changes `PKGBUILD`, so run `git restore packaging/arch/PKGBUILD` before the next `git pull`.
 
 **What gets installed.**
 
@@ -139,12 +137,20 @@ download is then not verified.
 | Icons | `/usr/share/icons/hicolor/` (32x32 and 128x128) |
 | Licences | `/usr/share/licenses/pyxee/` |
 
-**Free up disk space after building.** The package file stays in the folder; the build files can go:
+### Freeing disk space
+
+You do not have to do anything for the big files: the recipe deletes the build output (the same as `cargo clean`, plus
+the npm packages) as soon as the package is made, and `makepkg -c` removes the work folders. Two small things stay in
+`~/Pyxee/packaging/arch`: the source download (`pyxee-*.tar.gz`) and the finished package (`pyxee-*.pkg.tar.zst`, which
+you can keep to reinstall without rebuilding). To remove both:
 
 ```
-cd Pyxee/packaging/arch
-rm -rf src pkg
+cd ~/Pyxee/packaging/arch
+rm -f pyxee-*.tar.gz pyxee-*.pkg.tar.zst
 ```
+
+The Rust and npm download caches (`~/.cargo` and `~/.npm`) are kept on purpose, so the next update downloads less. If you
+need that space too: `rm -rf ~/.cargo/registry ~/.cargo/git ~/.npm/_cacache`.
 
 ## Other distributions (build from source)
 
@@ -285,20 +291,37 @@ Pyxee does not replace itself on Linux. **Settings** -> **Updates** still tells 
 keeps yt-dlp (the part that finds your music) up to date: Pyxee downloads yt-dlp's own Linux program into its data
 folder and uses that, falling back to the `yt-dlp` from your package manager.
 
-**Arch Linux and CachyOS.** Pull the repository and build again:
+**Arch Linux and CachyOS.** Updating is two short steps. Open a terminal and copy the lines in.
+
+**1. Download the newest recipe and see if there is something new.**
 
 ```
-cd Pyxee
+cd ~/Pyxee
 git restore packaging/arch/PKGBUILD
 git pull
-cd packaging/arch
-updpkgsums
-makepkg -si
+pacman -Q pyxee
+grep ^pkgver packaging/arch/PKGBUILD
 ```
 
-The `git restore` line undoes the checksums that `updpkgsums` wrote last time, which would otherwise make `git pull`
-refuse to continue. Afterwards, check that `pkgver=` in `PKGBUILD` matches the newest version on the
-[Releases page](https://github.com/Pylxyr/Pyxee/releases).
+The last two lines print the version you have installed (for example `pyxee 0.5.1-1`) and the version the recipe will
+build (for example `pkgver=0.5.1`). If the numbers are the same, you are up to date and can stop here. If the second is
+newer, go on to step 2. (`git restore` undoes any edit you made to `PKGBUILD`, so that `git pull` cannot be blocked.)
+
+**2. Build and install the new version.**
+
+```
+cd ~/Pyxee/packaging/arch
+makepkg -sic
+```
+
+This takes as long as the first build, and it cleans up after itself the same way. Your library, queue and settings are
+kept.
+
+Prefer one line? This does both steps and stops at the first problem:
+
+```
+cd ~/Pyxee && git restore packaging/arch/PKGBUILD && git pull && cd packaging/arch && makepkg -sic
+```
 
 **Other distributions.** Pull, then repeat steps 5 to 7 (and 9 if you installed it for your user):
 
@@ -357,20 +380,22 @@ Everything is in `~/.local/share/dev.pyxee.app`:
 
 ## Troubleshooting
 
-**`updpkgsums: command not found`.** Install `pacman-contrib` (`sudo pacman -S pacman-contrib`) and run it again.
+**`updpkgsums: command not found`.** This optional step needs `pacman-contrib` (`sudo pacman -S pacman-contrib`). You can
+also skip it; the build works without it.
 
-**`makepkg` says it must not run as root.** Run `makepkg -si` as your normal user, without `sudo`. It asks for your
+**`makepkg` says it must not run as root.** Run `makepkg -sic` as your normal user, without `sudo`. It asks for your
 password itself when it installs.
 
 **`error: profile 'release-linux' is not defined`.** The recipe is set to build a release that is too old to have the
-Linux build profile (0.5.0 or earlier). Update the repository (`git restore packaging/arch/PKGBUILD`, then `git pull`),
-or set `pkgver=` in `PKGBUILD` to 0.5.1 or newer. Then clear the old build and start again:
+Linux build profile (0.5.0 or earlier). Update the repository and start again from a clean folder:
 
 ```
-cd Pyxee/packaging/arch
+cd ~/Pyxee
+git restore packaging/arch/PKGBUILD
+git pull
+cd packaging/arch
 rm -rf src pkg
-updpkgsums
-makepkg -si
+makepkg -sic
 ```
 
 **The build stops with `Killed`, or the computer freezes near the end.** The last compile step uses a lot of memory.

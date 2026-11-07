@@ -55,17 +55,36 @@ Prefer no installer? Each release also has a portable zip. Unzip it anywhere and
 
 Pyxee is built from source on your own machine, which tunes it for your CPU. There is no prebuilt Linux download.
 
-**Arch Linux and CachyOS** (a package is built and installed with `pacman`):
+**Arch Linux and CachyOS** (a package is built and installed with `pacman`). Open a terminal (`Ctrl+Alt+T`) and copy these lines in:
 
 ```
-sudo pacman -S --needed base-devel git pacman-contrib
-git clone https://github.com/Pylxyr/Pyxee.git
-cd Pyxee/packaging/arch
-updpkgsums
-makepkg -si
+sudo pacman -S --needed base-devel git
+git clone https://github.com/Pylxyr/Pyxee.git ~/Pyxee
+cd ~/Pyxee/packaging/arch
+makepkg -sic
 ```
 
-The first build takes a while (roughly half an hour on a fast PC). Start Pyxee from your application menu, or run `pyxee-app`.
+- It asks for your password, and later `Proceed? [Y/n]`: type your password (nothing shows while you type) or `Y`, then Enter.
+- The first build takes a while (roughly half an hour on a fast PC) and is quiet for long stretches. That is normal.
+- It cleans up after itself: the build files (several gigabytes) are deleted when it finishes.
+- Start Pyxee from your application menu, or run `pyxee-app`.
+
+**To update later**, copy these lines in. They show the version you have and the version available; if the numbers match, you are already up to date:
+
+```
+cd ~/Pyxee
+git restore packaging/arch/PKGBUILD
+git pull
+pacman -Q pyxee
+grep ^pkgver packaging/arch/PKGBUILD
+```
+
+If the second number is newer, build it (your library and settings are kept):
+
+```
+cd ~/Pyxee/packaging/arch
+makepkg -sic
+```
 
 **Debian, Ubuntu, Fedora and other distributions** build from source with Rust and Node.js.
 
@@ -74,7 +93,7 @@ The full guide covers both, step by step for beginners and with options for adva
 ## Updates
 
 - **Windows:** open **Settings** -> **Updates**. Pyxee checks for a newer version and installs it for you (a portable copy downloads the new zip instead).
-- **Linux:** Pyxee does not replace itself. Pull the repository and rebuild; the steps are in [Pyxee on Linux](docs/linux.md#updating). **Updates** still tells you when a newer version is out.
+- **Linux:** Pyxee does not replace itself. The two short update steps are in the [Linux install](#linux) above, with more in [Pyxee on Linux](docs/linux.md#updating). **Updates** still tells you when a newer version is out.
 - **Both:** **Updates** also keeps yt-dlp, the part that finds your music, up to date. This fixes most "it suddenly stopped finding songs" problems.
 
 ## If something goes wrong
