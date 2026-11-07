@@ -1,12 +1,13 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:material_ui/material_ui.dart';
 
-import '../../core/bridge/bridge_providers.dart';
+import '../../core/state/providers.dart';
 import '../../features/orbit/orbit_state.dart';
+import '../../shared/widgets/basics.dart';
 import '../theme/metrics.dart';
 
-/// The player as a floating pill over the page. Tapping it opens Orbit. For now it shows the core's transport state
-/// and how many times the core has published, and the button sends it a toggle.
+/// The player as a floating pill over the page. Tapping it opens Orbit. It rebuilds when the song or the transport
+/// changes; the progress line under the title is the only part that follows the position.
 class Capsule extends ConsumerWidget {
   const Capsule({super.key});
 
@@ -14,12 +15,14 @@ class Capsule extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
-    final head = ref.watch(playerHeadProvider);
-    final status = head.when(
-      data: (h) => '${h.transport} - ${h.queueLength} in queue - #${h.seq}',
-      error: (e, _) => 'bridge FAILED: $e',
-      loading: () => 'starting',
-    );
+    final song = ref.watch(currentSongProvider);
+    final transport = ref.watch(playerProvider.select((p) => p.transport));
+    final actions = ref.read(actionsProvider);
+    final subtitle = transport.failed
+        ? (transport.failure ?? 'Playback failed')
+        : transport.busy
+        ? 'Loading...'
+        : (song?.artist ?? 'Pick something to play');
     return ConstrainedBox(
       constraints: const BoxConstraints(maxWidth: Metrics.capsuleMaxWidth),
       child: Padding(
@@ -33,16 +36,10 @@ class Capsule extends ConsumerWidget {
             child: SizedBox(
               height: Metrics.capsuleHeight,
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
+                padding: const EdgeInsets.only(left: 12, right: 8),
                 child: Row(
                   children: [
-                    CircleAvatar(
-                      backgroundColor: scheme.primaryContainer,
-                      child: Icon(
-                        Icons.music_note,
-                        color: scheme.onPrimaryContainer,
-                      ),
-                    ),
+                    PxArt(url: song?.thumbnail, size: 44, radius: 22),
                     const SizedBox(width: 12),
                     Expanded(
                       child: Column(
@@ -50,25 +47,36 @@ class Capsule extends ConsumerWidget {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            'Nothing playing',
+                            song?.title ?? 'Nothing playing',
                             style: theme.textTheme.titleSmall,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                           ),
                           Text(
-                            status,
+                            subtitle,
                             style: theme.textTheme.bodySmall,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                           ),
+                          const SizedBox(height: 4),
+                          RepaintBoundary(child: _Progress(durationMs: song?.durationMs)),
                         ],
                       ),
                     ),
                     IconButton(
-                      onPressed: head.hasValue
-                          ? () => ref
-                                .read(bridgeProvider)
-                                .dispatch({'type': 'toggle'})
-                          : null,
-                      icon: const Icon(Icons.play_arrow),
+                      onPressed: song == null ? null : actions.previous,
+                      tooltip: 'Previous',
+                      icon: const Icon(Icons.skip_previous),
+                    ),
+                    IconButton.filled(
+                      onPressed: song == null ? null : actions.toggle,
+                      tooltip: transport.playing ? 'Pause' : 'Play',
+                      icon: Icon(transport.playing ? Icons.pause : Icons.play_arrow),
+                    ),
+                    IconButton(
+                      onPressed: song == null ? null : actions.next,
+                      tooltip: 'Next',
+                      icon: const Icon(Icons.skip_next),
                     ),
                   ],
                 ),
@@ -78,5 +86,19 @@ class Capsule extends ConsumerWidget {
         ),
       ),
     );
+  }
+}
+
+class _Progress extends ConsumerWidget {
+  const _Progress({required this.durationMs});
+
+  final int? durationMs;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final position = ref.watch(positionProvider);
+    final total = durationMs;
+    final value = total == null || total <= 0 ? 0.0 : (position / total).clamp(0.0, 1.0);
+    return LinearProgressIndicator(value: value, minHeight: 3, borderRadius: BorderRadius.circular(2));
   }
 }

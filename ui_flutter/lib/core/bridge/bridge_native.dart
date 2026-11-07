@@ -20,5 +20,12 @@ external void pyxeeBridgeStop();
 @Native<Pointer<Utf8> Function(Pointer<Utf8>)>(symbol: 'pyxee_bridge_call')
 external Pointer<Utf8> pyxeeBridgeCall(Pointer<Utf8> request);
 
+/// Returns at once; the reply comes back as a `reply` event carrying `id`.
+@Native<Void Function(Pointer<Utf8>, Uint64)>(
+  symbol: 'pyxee_bridge_call_async',
+  isLeaf: true,
+)
+external void pyxeeBridgeCallAsync(Pointer<Utf8> request, int id);
+
 @Native<Void Function(Pointer<Utf8>)>(symbol: 'pyxee_bridge_free')
 external void pyxeeBridgeFree(Pointer<Utf8> text);

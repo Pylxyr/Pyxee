@@ -3211,10 +3211,16 @@ dependencies = [
 name = "pyxee-bridge"
 version = "0.5.2"
 dependencies = [
+ "log",
+ "pyxee-audio",
  "pyxee-core",
+ "pyxee-library",
+ "pyxee-lyrics",
+ "pyxee-shell",
  "pyxee-sources",
  "serde",
  "serde_json",
+ "souvlaki",
  "ts-rs",
 ]
 
