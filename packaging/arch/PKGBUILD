@@ -4,7 +4,7 @@
 # (-s installs the build tools, -i installs Pyxee when it is built, -c deletes the work folders afterwards.)
 # Optional: `updpkgsums` (from pacman-contrib) fills in the checksum below; see docs/linux.md.
 pkgname=pyxee
-pkgver=0.5.1
+pkgver=0.5.2
 pkgrel=1
 pkgdesc='A music player that finds music online with yt-dlp, with gapless playback, lyrics and themes'
 arch=('x86_64')
