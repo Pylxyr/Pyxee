@@ -9,10 +9,17 @@ name = "pyxee_bridge"
 crate-type = ["cdylib"]
 
 [dependencies]
+log = { version = "0.4.35", features = ["std"] }
+pyxee-audio = { path = "../audio" }
 pyxee-core = { path = "../core" }
+pyxee-library = { path = "../library" }
+pyxee-lyrics = { path = "../lyrics" }
+pyxee-shell = { path = "../shell" }
 pyxee-sources = { path = "../sources" }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.154"
+# Media keys and the system transport tile: the same crate, features and vendored copy the Tauri shell uses.
+souvlaki = { version = "0.9.3", default-features = false, features = ["use_zbus"] }
 ts-rs = { version = "12.0.1", features = ["serde-compat"] }
 
 [lints]
