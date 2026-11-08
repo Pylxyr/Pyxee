@@ -7,8 +7,11 @@ import '../orbit/orbit_view.dart';
 
 Future<void> showSettings(BuildContext context) => showDialog<void>(
   context: context,
-  builder: (context) => const Dialog(
-    child: ConstrainedBox(constraints: BoxConstraints(maxWidth: 480, maxHeight: 640), child: _Settings()),
+  builder: (context) => Dialog(
+    child: ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 480, maxHeight: 640),
+      child: const _Settings(),
+    ),
   ),
 );
 

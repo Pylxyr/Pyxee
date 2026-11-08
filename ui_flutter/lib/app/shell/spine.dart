@@ -2,10 +2,11 @@ import 'package:go_router/go_router.dart';
 import 'package:material_ui/material_ui.dart';
 
 import '../../features/settings/settings_dialog.dart';
+import '../../shared/widgets/basics.dart';
 import '../places.dart';
 import '../theme/metrics.dart';
 
-/// The places as a row of icons: a column down the left edge on wide windows, a row along the bottom on narrow ones.
+/// The places: a labelled column down the left edge on wide windows, a row of icons along the bottom on narrow ones.
 class Spine extends StatelessWidget {
   const Spine({super.key, required this.axis, required this.current});
 
@@ -14,41 +15,99 @@ class Spine extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final compact = axis == Axis.horizontal;
     final items = [
-      for (final p in Place.values) _SpineItem(place: p, selected: p == current),
-      IconButton(
-        onPressed: () => showSettings(context),
-        tooltip: 'Settings',
-        icon: const Icon(Icons.tune),
-      ),
+      for (final p in Place.values)
+        _NavItem(
+          label: p.label,
+          icon: p == current ? p.activeIcon : p.icon,
+          selected: p == current,
+          compact: compact,
+          onTap: () => context.go(p.path),
+        ),
     ];
-    if (axis == Axis.vertical) {
+    final settings = _NavItem(
+      label: 'Settings',
+      icon: Icons.tune,
+      selected: false,
+      compact: compact,
+      onTap: () => showSettings(context),
+    );
+    if (!compact) {
       return SizedBox(
         width: Metrics.spineWidth,
-        child: Column(mainAxisAlignment: MainAxisAlignment.center, spacing: 8, children: items),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(12, 12, 4, 12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            spacing: 2,
+            children: [...items, const Spacer(), settings],
+          ),
+        ),
       );
     }
     return SafeArea(
       top: false,
       child: SizedBox(
         height: Metrics.spineHeight,
-        child: Row(mainAxisAlignment: MainAxisAlignment.spaceEvenly, children: items),
+        child: Row(mainAxisAlignment: MainAxisAlignment.spaceEvenly, children: [...items, settings]),
       ),
     );
   }
 }
 
-class _SpineItem extends StatelessWidget {
-  const _SpineItem({required this.place, required this.selected});
+class _NavItem extends StatelessWidget {
+  const _NavItem({
+    required this.label,
+    required this.icon,
+    required this.selected,
+    required this.compact,
+    required this.onTap,
+  });
 
-  final Place place;
+  final String label;
+  final IconData icon;
   final bool selected;
+  final bool compact;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    void open() => context.go(place.path);
-    return selected
-        ? IconButton.filledTonal(onPressed: open, tooltip: place.label, icon: Icon(place.activeIcon))
-        : IconButton(onPressed: open, tooltip: place.label, icon: Icon(place.icon));
+    final scheme = Theme.of(context).colorScheme;
+    final color = selected ? scheme.primary : scheme.onSurfaceVariant;
+    return PxPress(
+      onTap: onTap,
+      builder: (context, hovered) => Tooltip(
+        message: compact ? label : '',
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            color: selected
+                ? scheme.primary.withValues(alpha: 0.14)
+                : hovered
+                ? scheme.onSurface.withValues(alpha: 0.07)
+                : const Color(0x00000000),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: SizedBox(
+            height: 40,
+            width: compact ? 56 : null,
+            child: Row(
+              mainAxisAlignment: compact ? MainAxisAlignment.center : MainAxisAlignment.start,
+              children: [
+                if (!compact) const SizedBox(width: 12),
+                Icon(icon, size: 20, color: color),
+                if (!compact) ...[
+                  const SizedBox(width: 12),
+                  Text(
+                    label,
+                    style: TextStyle(fontSize: 14, fontWeight: selected ? FontWeight.w600 : FontWeight.w500, color: color),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }

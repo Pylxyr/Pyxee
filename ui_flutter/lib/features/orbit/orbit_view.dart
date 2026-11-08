@@ -180,10 +180,10 @@ class _Transport extends ConsumerWidget {
         ),
         IconButton(onPressed: a.next, tooltip: 'Next', icon: const Icon(Icons.skip_next)),
         IconButton(
-          onPressed: () => a.setRepeat(RepeatMode.values[(repeat.index + 1) % RepeatMode.values.length]),
+          onPressed: () => a.setRepeat(PxRepeat.values[(repeat.index + 1) % PxRepeat.values.length]),
           tooltip: 'Repeat: ${repeat.name}',
-          isSelected: repeat != RepeatMode.off,
-          icon: Icon(repeat == RepeatMode.one ? Icons.repeat_one : Icons.repeat),
+          isSelected: repeat != PxRepeat.off,
+          icon: Icon(repeat == PxRepeat.one ? Icons.repeat_one : Icons.repeat),
         ),
       ],
     );
@@ -208,7 +208,12 @@ class _OrbitTabs extends StatelessWidget {
       length: 3,
       child: Column(
         children: [
-          TabBar(tabs: [Tab(text: 'Queue'), Tab(text: 'Lyrics'), Tab(text: 'Related')]),
+          TabBar(
+            isScrollable: true,
+            tabAlignment: TabAlignment.start,
+            dividerColor: Color(0x00000000),
+            tabs: [Tab(text: 'Queue'), Tab(text: 'Lyrics'), Tab(text: 'Related')],
+          ),
           Expanded(child: TabBarView(children: [_QueueTab(), _LyricsTab(), _RelatedTab()])),
         ],
       ),
@@ -226,7 +231,7 @@ class _QueueTab extends ConsumerWidget {
     final current = player.currentEntry;
     final upcoming = [
       for (final id in player.upcoming)
-        if (player.entry(id) case final e?) e,
+        ?player.entry(id),
     ];
     if (player.queue.isEmpty) return const PxMessage('The queue is empty.');
     return Column(

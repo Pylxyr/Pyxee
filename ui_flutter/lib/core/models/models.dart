@@ -53,7 +53,7 @@ class Song {
 
 List<Song> songs(Object? v) => _list(v, Song.fromJson);
 
-enum RepeatMode { off, all, one }
+enum PxRepeat { off, all, one }
 
 @immutable
 class QueueEntry {
@@ -117,7 +117,7 @@ class PlayerState {
   factory PlayerState.fromJson(Json j) => PlayerState(
     seq: j['seq']! as int,
     transport: Transport.fromJson(j['transport']! as Json),
-    repeat: RepeatMode.values.byName(j['repeat']! as String),
+    repeat: PxRepeat.values.byName(j['repeat']! as String),
     shuffle: j['shuffle']! as bool,
     autoplay: j['autoplay']! as bool,
     canUndo: j['canUndo']! as bool,
@@ -128,7 +128,7 @@ class PlayerState {
 
   final int seq;
   final Transport transport;
-  final RepeatMode repeat;
+  final PxRepeat repeat;
   final bool shuffle;
   final bool autoplay;
   final bool canUndo;
