@@ -23,9 +23,45 @@ ThemeData buildTheme(Color seed, Brightness brightness, {required bool clear}) {
     brightness: brightness,
     surface: dark ? Palette.canvas : Palette.canvasLight,
   );
+  final radius = BorderRadius.circular(8);
   return ThemeData(
     colorScheme: scheme,
     scaffoldBackgroundColor: clear ? const Color(0x00000000) : (dark ? Palette.base : Palette.baseLight),
+    // A desktop feel: dense, no ripples, quiet hover states, square-ish buttons, thin controls.
+    visualDensity: VisualDensity.compact,
+    splashFactory: NoSplash.splashFactory,
+    highlightColor: const Color(0x00000000),
+    hoverColor: scheme.onSurface.withValues(alpha: 0.07),
+    iconButtonTheme: IconButtonThemeData(style: IconButton.styleFrom(shape: RoundedRectangleBorder(borderRadius: radius))),
+    listTileTheme: ListTileThemeData(
+      shape: RoundedRectangleBorder(borderRadius: radius),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 12),
+      horizontalTitleGap: 12,
+    ),
+    chipTheme: ChipThemeData(
+      showCheckmark: false,
+      backgroundColor: const Color(0x00000000),
+      selectedColor: scheme.primary.withValues(alpha: 0.18),
+      side: BorderSide(color: scheme.outlineVariant),
+      shape: RoundedRectangleBorder(borderRadius: radius),
+      labelStyle: const TextStyle(fontSize: 13),
+      padding: const EdgeInsets.symmetric(horizontal: 4),
+    ),
+    sliderTheme: const SliderThemeData(
+      trackHeight: 3,
+      thumbShape: RoundSliderThumbShape(enabledThumbRadius: 6),
+      overlayShape: RoundSliderOverlayShape(overlayRadius: 14),
+    ),
+    scrollbarTheme: ScrollbarThemeData(
+      thickness: const WidgetStatePropertyAll(6),
+      radius: const Radius.circular(3),
+    ),
+    snackBarTheme: SnackBarThemeData(
+      behavior: SnackBarBehavior.floating,
+      width: 420,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+    ),
+    popupMenuTheme: PopupMenuThemeData(shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
   );
 }
 

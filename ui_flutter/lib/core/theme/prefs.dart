@@ -27,9 +27,12 @@ const pxThemes = [
   PxTheme('steel', 'Steel', 0xFFB4BCC8),
 ];
 
+/// Troubleshooting switches: `PYXEE_OFF=mica,tray,media` (comma separated) leaves those features out at startup.
+bool featureOff(String name) => (Platform.environment['PYXEE_OFF'] ?? '').split(',').contains(name);
+
 /// Mica needs Windows 11 (build 22000 or later).
 final bool micaSupported = () {
-  if (!Platform.isWindows) return false;
+  if (!Platform.isWindows || featureOff('mica') || featureOff('acrylic')) return false;
   final build = RegExp(r'Build (\d+)').firstMatch(Platform.operatingSystemVersion);
   return (int.tryParse(build?.group(1) ?? '') ?? 0) >= 22000;
 }();

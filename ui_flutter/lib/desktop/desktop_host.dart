@@ -42,18 +42,28 @@ class _DesktopHostState extends ConsumerState<DesktopHost> with WindowListener, 
   }
 
   Future<void> _init() async {
+    debugPrint('[pyxee] desktop host: start');
     await windowManager.setPreventClose(true);
-    try {
-      await tray.trayManager.setIcon(Platform.isWindows ? 'assets/tray.ico' : 'assets/tray.png');
-      await _menu(playing: ref.read(isPlayingProvider));
-    } on Object {
-      // No tray on this desktop (GNOME without the AppIndicator extension): closing then really closes.
+    debugPrint('[pyxee] desktop host: close prevented');
+    if (!featureOff('tray')) {
+      try {
+        await tray.trayManager.setIcon(Platform.isWindows ? 'assets/tray.ico' : 'assets/tray.png');
+        await _menu(playing: ref.read(isPlayingProvider));
+        debugPrint('[pyxee] desktop host: tray ready');
+      } on Object catch (e) {
+        // No tray on this desktop (GNOME without the AppIndicator extension): closing then really closes.
+        debugPrint('[pyxee] tray unavailable: $e');
+      }
     }
-    // The system media controls need the window handle (Windows) and exist from here on.
-    try {
-      ref.read(bridgeProvider).call('attachMedia', {'hwnd': mainWindowHandle()});
-    } on Object {
-      // Media keys are a convenience; the core logs why they are missing.
+    // The system media controls need the window handle (Windows). The call runs on a Rust thread, so a slow or
+    // failing system API cannot stall the UI.
+    if (!featureOff('media')) {
+      try {
+        await ref.read(bridgeProvider).callAsync('attachMedia', {'hwnd': mainWindowHandle()});
+        debugPrint('[pyxee] desktop host: media keys attached');
+      } on Object catch (e) {
+        debugPrint('[pyxee] media keys unavailable: $e');
+      }
     }
   }
 
@@ -119,20 +129,30 @@ class _DesktopHostState extends ConsumerState<DesktopHost> with WindowListener, 
     }
   }
 
-  /// Mica follows the theme's brightness and the setting; elsewhere the window stays solid.
+  /// Mica follows the theme's brightness and the setting; elsewhere the window stays solid. The window's own
+  /// background is transparent only while Mica is on, so a failed effect never leaves an invisible window.
   void _syncMaterial() {
-    if (!Platform.isWindows) return;
+    if (!Platform.isWindows || featureOff('acrylic')) return;
     final dark = Theme.of(context).brightness == Brightness.dark;
     final mica = ref.read(prefsProvider).mica && micaSupported;
     if (dark == _dark && mica == _mica) return;
     _dark = dark;
     _mica = mica;
-    unawaited(
-      acrylic.Window.setEffect(
-        effect: mica ? acrylic.WindowEffect.mica : acrylic.WindowEffect.disabled,
-        dark: dark,
-      ),
-    );
+    unawaited(_applyMaterial(dark: dark, mica: mica));
+  }
+
+  Future<void> _applyMaterial({required bool dark, required bool mica}) async {
+    try {
+      if (mica) {
+        await windowManager.setBackgroundColor(const Color(0x00000000));
+        await acrylic.Window.setEffect(effect: acrylic.WindowEffect.mica, dark: dark);
+      } else {
+        await acrylic.Window.setEffect(effect: acrylic.WindowEffect.disabled, dark: dark);
+        await windowManager.setBackgroundColor(dark ? const Color(0xFF0D0E11) : const Color(0xFFE9EBEF));
+      }
+    } on Object catch (e) {
+      debugPrint('[pyxee] window material not applied: $e');
+    }
   }
 
   @override

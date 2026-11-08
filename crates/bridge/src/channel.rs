@@ -262,8 +262,8 @@ pub fn stop() {
 }
 
 fn spawn_threads() {
-    let Some(app) = app() else { return };
-    let rx = app.pending_rx.lock().ok().and_then(|mut r| r.take());
+    let Some(first) = app() else { return };
+    let rx = first.pending_rx.lock().ok().and_then(|mut r| r.take());
     if let Some(rx) = rx {
         spawn_runner(rx);
     }

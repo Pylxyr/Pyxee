@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:material_ui/material_ui.dart';
 
 import '../../core/state/providers.dart';
+import '../../core/theme/prefs.dart';
 import '../../features/orbit/orbit_state.dart';
 import '../../features/orbit/orbit_view.dart';
 import '../places.dart';
@@ -41,7 +42,7 @@ class AppShell extends StatelessWidget {
           Positioned.fill(
             child: Column(
               children: [
-                const TitleBar(),
+                if (!featureOff('chrome')) const TitleBar(),
                 Expanded(
                   child: wide
                       ? Row(
@@ -61,7 +62,9 @@ class AppShell extends StatelessWidget {
             ),
           ),
           const Positioned(top: Metrics.titleBarHeight, left: 0, right: 0, bottom: 0, child: _OrbitLayer()),
-          const _NoticeListener(),
+          // Positioned, so that it takes no part in sizing the Stack: a non-positioned child of size zero would
+          // shrink the whole Stack, and everything in it, to nothing.
+          const Positioned(left: 0, top: 0, width: 0, height: 0, child: _NoticeListener()),
         ],
       ),
     );

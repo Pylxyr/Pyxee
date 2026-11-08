@@ -48,15 +48,16 @@ class _SearchPageState extends ConsumerState<SearchPage> {
     return Column(
       children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+          padding: const EdgeInsets.fromLTRB(28, 8, 28, 8),
           child: TextField(
             controller: _controller,
             autofocus: _text.isEmpty,
             textInputAction: TextInputAction.search,
             decoration: const InputDecoration(
+              filled: true,
               prefixIcon: Icon(Icons.search),
               hintText: 'Search songs, artists, playlists',
-              border: OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(28))),
+              border: OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(12)), borderSide: BorderSide.none),
             ),
             onSubmitted: _run,
           ),

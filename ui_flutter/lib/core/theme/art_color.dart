@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:collection';
 import 'dart:io';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
@@ -11,7 +10,7 @@ import 'package:material_color_utilities/material_color_utilities.dart';
 import '../state/providers.dart';
 
 const _hosts = ['ytimg.com', 'ggpht.com', 'googleusercontent.com', 'youtube.com'];
-final _cache = LinkedHashMap<String, Color?>();
+final _cache = <String, Color?>{};
 
 bool _coverHost(Uri u) => u.scheme == 'https' && _hosts.any((h) => u.host == h || u.host.endsWith('.$h'));
 

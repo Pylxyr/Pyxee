@@ -5,7 +5,17 @@ import 'package:material_ui/material_ui.dart';
 import '../../core/models/models.dart';
 import '../../core/state/providers.dart';
 
-/// A cover. Decoded at the size it is shown at, so a screen of covers stays small in memory.
+/// Asks Google's image servers for a cover at about the size it is needed (at twice the display size), instead of
+/// whatever small size the stored address names. Other hosts are left alone.
+String sizedCover(String url, int px) {
+  if (!url.contains('googleusercontent.com') && !url.contains('ggpht.com')) return url;
+  final m = RegExp(r'=(w\d+-h\d+|s\d+)[^/]*$').firstMatch(url);
+  if (m == null) return url;
+  final target = ((px + 63) ~/ 64) * 64;
+  return '${url.substring(0, m.start)}=w$target-h$target-l90-rj';
+}
+
+/// A cover, fetched and decoded at twice the size it is shown at and filtered down, so it stays sharp.
 class PxArt extends StatelessWidget {
   const PxArt({super.key, required this.url, required this.size, this.radius = 10});
 
@@ -21,6 +31,7 @@ class PxArt extends StatelessWidget {
       child: Icon(Icons.music_note, size: size * 0.4, color: scheme.onSurfaceVariant),
     );
     final src = url;
+    final px = (size * MediaQuery.devicePixelRatioOf(context) * 2).round().clamp(96, 640);
     return SizedBox.square(
       dimension: size,
       child: ClipRRect(
@@ -28,11 +39,11 @@ class PxArt extends StatelessWidget {
         child: src == null
             ? placeholder
             : Image.network(
-                src,
-                cacheWidth: (size * MediaQuery.devicePixelRatioOf(context)).round(),
+                sizedCover(src, px),
+                cacheWidth: px,
                 fit: BoxFit.cover,
                 gaplessPlayback: true,
-                filterQuality: FilterQuality.low,
+                filterQuality: FilterQuality.medium,
                 errorBuilder: (_, _, _) => placeholder,
               ),
       ),
@@ -203,6 +214,89 @@ class PxSongList extends StatelessWidget {
       itemCount: songs.length,
       itemExtent: 64,
       itemBuilder: (context, i) => PxSongTile(song: songs[i], onTap: () => onPlay(i)),
+    );
+  }
+}
+
+/// Something to click on a desktop: a pointer cursor, and a builder that learns whether the mouse is over it.
+class PxPress extends StatefulWidget {
+  const PxPress({super.key, required this.onTap, required this.builder});
+
+  final VoidCallback? onTap;
+  final Widget Function(BuildContext context, bool hovered) builder;
+
+  @override
+  State<PxPress> createState() => _PxPressState();
+}
+
+class _PxPressState extends State<PxPress> {
+  bool _hovered = false;
+
+  @override
+  Widget build(BuildContext context) => MouseRegion(
+    cursor: widget.onTap == null ? MouseCursor.defer : SystemMouseCursors.click,
+    onEnter: (_) => setState(() => _hovered = true),
+    onExit: (_) => setState(() => _hovered = false),
+    child: Semantics(
+      button: true,
+      child: GestureDetector(behavior: HitTestBehavior.opaque, onTap: widget.onTap, child: widget.builder(context, _hovered)),
+    ),
+  );
+}
+
+/// A square cover with its title under it; the mouse over it shows a play button.
+class PxCoverCard extends StatelessWidget {
+  const PxCoverCard({
+    super.key,
+    required this.title,
+    required this.subtitle,
+    required this.url,
+    required this.width,
+    required this.onTap,
+  });
+
+  final String title;
+  final String subtitle;
+  final String? url;
+  final double width;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return PxPress(
+      onTap: onTap,
+      builder: (context, hovered) => Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Stack(
+            children: [
+              PxArt(url: url, size: width, radius: 12),
+              if (hovered)
+                Positioned.fill(
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(color: const Color(0x59000000), borderRadius: BorderRadius.circular(12)),
+                    child: const Center(child: Icon(Icons.play_circle_fill, size: 44, color: Color(0xFFFFFFFF))),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Text(
+            title,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            subtitle,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+          ),
+        ],
+      ),
     );
   }
 }

@@ -154,7 +154,7 @@ class PlayerActions {
   void undo() => _d({'type': 'undo'});
   void setShuffle(bool on) => _d({'type': 'setShuffle', 'on': on});
   void setAutoplay(bool on) => _d({'type': 'setAutoplay', 'on': on});
-  void setRepeat(RepeatMode r) => _d({'type': 'setRepeat', 'repeat': r.name});
+  void setRepeat(PxRepeat r) => _d({'type': 'setRepeat', 'repeat': r.name});
   void setVolume(int percent) => _bridge.call('setVolume', {'percent': percent});
   void sleepMinutes(int minutes) =>
       _bridge.call('sleepSet', {'setting': {'kind': 'minutes', 'minutes': minutes}});

@@ -18,7 +18,12 @@ class CollectionPage extends StatelessWidget {
       length: 3,
       child: Column(
         children: [
-          TabBar(tabs: [Tab(text: 'Liked'), Tab(text: 'Playlists'), Tab(text: 'History')]),
+          TabBar(
+            isScrollable: true,
+            tabAlignment: TabAlignment.start,
+            dividerColor: Color(0x00000000),
+            tabs: [Tab(text: 'Liked'), Tab(text: 'Playlists'), Tab(text: 'History')],
+          ),
           Expanded(child: TabBarView(children: [_Liked(), _Playlists(), _History()])),
         ],
       ),

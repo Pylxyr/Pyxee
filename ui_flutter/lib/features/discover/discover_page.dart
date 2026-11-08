@@ -26,54 +26,36 @@ class _DiscoverPageState extends ConsumerState<DiscoverPage> {
     final shelves = _genre == null ? ref.watch(exploreProvider) : ref.watch(genreProvider(_genre!));
     final actions = ref.read(actionsProvider);
     return ListView(
-      padding: const EdgeInsets.symmetric(vertical: 16),
+      padding: const EdgeInsets.fromLTRB(28, 8, 28, 24),
       children: [
-        if (home != null && home.quickPicks.isNotEmpty)
-          _Row(
-            title: 'Quick picks',
-            cards: [
-              for (var i = 0; i < home.quickPicks.length; i++)
-                _Card(
-                  title: home.quickPicks[i].title,
-                  subtitle: home.quickPicks[i].artist,
-                  url: home.quickPicks[i].thumbnail,
-                  onTap: () => actions.play(home.quickPicks, i),
-                ),
-            ],
-          ),
+        if (home != null && home.quickPicks.isNotEmpty) ...[
+          const _Title('Quick picks'),
+          _PickGrid(songs: home.quickPicks, onPlay: (i) => actions.play(home.quickPicks, i)),
+        ],
         if (home != null && home.recent.isNotEmpty)
-          _Row(
+          _ShelfRow(
             title: 'Play it again',
             cards: [
               for (var i = 0; i < home.recent.length; i++)
-                _Card(
-                  title: home.recent[i].title,
-                  subtitle: home.recent[i].artist,
-                  url: home.recent[i].thumbnail,
-                  onTap: () => actions.play(home.recent, i),
+                _Item(home.recent[i].title, home.recent[i].artist, home.recent[i].thumbnail, () => actions.play(home.recent, i)),
+            ],
+          ),
+        if (genres.isNotEmpty) ...[
+          const _Title('Moods and genres'),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (final g in genres)
+                ChoiceChip(
+                  label: Text(g.title),
+                  selected: _genre == g.params,
+                  onSelected: (on) => setState(() => _genre = on ? g.params : null),
                 ),
             ],
           ),
-        if (genres.isNotEmpty)
-          SizedBox(
-            height: 48,
-            child: ListView(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              children: [
-                for (final g in genres)
-                  Padding(
-                    padding: const EdgeInsets.only(right: 8),
-                    child: ChoiceChip(
-                      label: Text(g.title),
-                      selected: _genre == g.params,
-                      onSelected: (on) => setState(() => _genre = on ? g.params : null),
-                    ),
-                  ),
-              ],
-            ),
-          ),
-        PxAsyncList<Shelf>(
+        ],
+        PxAsyncList<List<Shelf>>(
           value: shelves,
           onRetry: () => ref.invalidate(_genre == null ? exploreProvider : genreProvider(_genre!)),
           builder: (list) => [for (final s in list) _shelf(context, s)],
@@ -85,30 +67,20 @@ class _DiscoverPageState extends ConsumerState<DiscoverPage> {
   Widget _shelf(BuildContext context, Shelf s) {
     final actions = ref.read(actionsProvider);
     final api = ref.read(apiProvider);
-    return _Row(
+    return _ShelfRow(
       title: s.title,
       cards: [
         for (var i = 0; i < s.songs.length; i++)
-          _Card(
-            title: s.songs[i].title,
-            subtitle: s.songs[i].artist,
-            url: s.songs[i].thumbnail,
-            onTap: () => actions.play(s.songs, i),
-          ),
+          _Item(s.songs[i].title, s.songs[i].artist, s.songs[i].thumbnail, () => actions.play(s.songs, i)),
         for (final a in s.albums)
-          _Card(
-            title: a.title,
-            subtitle: a.artist,
-            url: a.thumbnail,
-            onTap: () => context.go('/search?q=${Uri.encodeQueryComponent('${a.title} ${a.artist}')}'),
+          _Item(
+            a.title,
+            a.artist,
+            a.thumbnail,
+            () => context.go('/search?q=${Uri.encodeQueryComponent('${a.title} ${a.artist}')}'),
           ),
         for (final p in s.playlists)
-          _Card(
-            title: p.title,
-            subtitle: p.subtitle,
-            url: p.thumbnail,
-            onTap: () => unawaited(api.playlistTracks(p.id).then(actions.play)),
-          ),
+          _Item(p.title, p.subtitle, p.thumbnail, () => unawaited(api.playlistTracks(p.id).then(actions.play))),
       ],
     );
   }
@@ -130,11 +102,33 @@ class PxAsyncList<T> extends StatelessWidget {
   );
 }
 
-class _Row extends StatelessWidget {
-  const _Row({required this.title, required this.cards});
+class _Item {
+  const _Item(this.title, this.subtitle, this.url, this.onTap);
 
   final String title;
-  final List<Widget> cards;
+  final String subtitle;
+  final String? url;
+  final VoidCallback onTap;
+}
+
+class _Title extends StatelessWidget {
+  const _Title(this.text);
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.only(top: 24, bottom: 12),
+    child: Text(text, style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700, fontSize: 20)),
+  );
+}
+
+/// One row of covers: as many as fit across the page, so nothing needs scrolling sideways.
+class _ShelfRow extends StatelessWidget {
+  const _ShelfRow({required this.title, required this.cards});
+
+  final String title;
+  final List<_Item> cards;
 
   @override
   Widget build(BuildContext context) {
@@ -142,53 +136,99 @@ class _Row extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-          child: Text(title, style: Theme.of(context).textTheme.titleMedium),
-        ),
-        SizedBox(
-          height: 196,
-          child: ListView.builder(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            itemCount: cards.length,
-            itemExtent: 148,
-            itemBuilder: (context, i) => cards[i],
-          ),
+        _Title(title),
+        LayoutBuilder(
+          builder: (context, box) {
+            const gap = 16.0;
+            final count = ((box.maxWidth + gap) / (160 + gap)).floor().clamp(2, 10);
+            final width = (box.maxWidth - gap * (count - 1)) / count;
+            return Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              spacing: gap,
+              children: [
+                for (final c in cards.take(count))
+                  SizedBox(
+                    width: width,
+                    child: PxCoverCard(title: c.title, subtitle: c.subtitle, url: c.url, width: width, onTap: c.onTap),
+                  ),
+              ],
+            );
+          },
         ),
       ],
     );
   }
 }
 
-class _Card extends StatelessWidget {
-  const _Card({required this.title, required this.subtitle, required this.url, required this.onTap});
+/// Quick picks as compact rows in a grid: cover, title, artist.
+class _PickGrid extends StatelessWidget {
+  const _PickGrid({required this.songs, required this.onPlay});
 
-  final String title;
-  final String subtitle;
-  final String? url;
+  final List<Song> songs;
+  final void Function(int index) onPlay;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, box) {
+        const gap = 8.0;
+        final columns = (box.maxWidth / 300).floor().clamp(1, 4);
+        final width = (box.maxWidth - gap * (columns - 1)) / columns;
+        return Wrap(
+          spacing: gap,
+          runSpacing: gap,
+          children: [
+            for (var i = 0; i < songs.length && i < columns * 3; i++)
+              SizedBox(width: width, height: 56, child: _PickTile(song: songs[i], onTap: () => onPlay(i))),
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _PickTile extends StatelessWidget {
+  const _PickTile({required this.song, required this.onTap});
+
+  final Song song;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return InkWell(
+    final scheme = theme.colorScheme;
+    return PxPress(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(12),
-      child: Padding(
-        padding: const EdgeInsets.all(6),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+      builder: (context, hovered) => DecoratedBox(
+        decoration: BoxDecoration(
+          color: scheme.onSurface.withValues(alpha: hovered ? 0.1 : 0.05),
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Row(
           children: [
-            PxArt(url: url, size: 136, radius: 12),
-            const SizedBox(height: 6),
-            Text(title, maxLines: 1, overflow: TextOverflow.ellipsis, style: theme.textTheme.bodyMedium),
-            Text(
-              subtitle,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+            PxArt(url: song.thumbnail, size: 56, radius: 10),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    song.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
+                  ),
+                  Text(
+                    song.artist,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
+                  ),
+                ],
+              ),
             ),
+            const SizedBox(width: 12),
           ],
         ),
       ),
