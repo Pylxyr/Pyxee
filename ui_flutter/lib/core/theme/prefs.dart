@@ -7,26 +7,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/models.dart';
 import '../state/providers.dart';
 
-enum ModeChoice { system, dark, light }
-
-/// A selectable accent. The album art can override it while a song plays (see `artSeedProvider`).
-@immutable
-class PxTheme {
-  const PxTheme(this.id, this.name, this.seedValue);
-
-  final String id;
-  final String name;
-  final int seedValue;
-}
-
-const pxThemes = [
-  PxTheme('citrus', 'Citrus', 0xFFC8F169),
-  PxTheme('ember', 'Ember', 0xFFFF8A5B),
-  PxTheme('tide', 'Tide', 0xFF5BC0EB),
-  PxTheme('orchid', 'Orchid', 0xFFC77DFF),
-  PxTheme('steel', 'Steel', 0xFFB4BCC8),
-];
-
 /// Troubleshooting switches: `PYXEE_OFF=mica,tray,media` (comma separated) leaves those features out at startup.
 bool featureOff(String name) => (Platform.environment['PYXEE_OFF'] ?? '').split(',').contains(name);
 
@@ -40,42 +20,55 @@ final bool micaSupported = () {
 @immutable
 class Prefs {
   const Prefs({
-    this.themeId = 'citrus',
-    this.mode = ModeChoice.dark,
-    this.artColors = true,
+    this.followSystem = true,
+    this.themeId = 'dark',
+    this.lightId = 'light',
+    this.darkId = 'dark',
+    this.artColors = false,
     this.mica = true,
     this.closeToTray = true,
-    this.volume = 100,
+    this.volume = 80,
   });
 
   factory Prefs.fromJson(Json j) => Prefs(
-    themeId: (j['themeId'] as String?) ?? 'citrus',
-    mode: ModeChoice.values.asNameMap()[j['mode']] ?? ModeChoice.dark,
-    artColors: (j['artColors'] as bool?) ?? true,
+    followSystem: (j['followSystem'] as bool?) ?? true,
+    themeId: (j['themeId'] as String?) ?? 'dark',
+    lightId: (j['lightId'] as String?) ?? 'light',
+    darkId: (j['darkId'] as String?) ?? 'dark',
+    artColors: (j['artColors'] as bool?) ?? false,
     mica: (j['mica'] as bool?) ?? true,
     closeToTray: (j['closeToTray'] as bool?) ?? true,
-    volume: ((j['volume'] as int?) ?? 100).clamp(0, 100),
+    volume: ((j['volume'] as int?) ?? 80).clamp(0, 100),
   );
 
+  /// Use [lightId] or [darkId] according to the system's light/dark setting.
+  final bool followSystem;
+
+  /// The theme used when not following the system.
   final String themeId;
-  final ModeChoice mode;
+  final String lightId;
+  final String darkId;
+
+  /// Take the whole palette from the cover of the song that is playing.
   final bool artColors;
   final bool mica;
   final bool closeToTray;
   final int volume;
 
-  PxTheme get theme => pxThemes.firstWhere((t) => t.id == themeId, orElse: () => pxThemes.first);
-
   Prefs copyWith({
+    bool? followSystem,
     String? themeId,
-    ModeChoice? mode,
+    String? lightId,
+    String? darkId,
     bool? artColors,
     bool? mica,
     bool? closeToTray,
     int? volume,
   }) => Prefs(
+    followSystem: followSystem ?? this.followSystem,
     themeId: themeId ?? this.themeId,
-    mode: mode ?? this.mode,
+    lightId: lightId ?? this.lightId,
+    darkId: darkId ?? this.darkId,
     artColors: artColors ?? this.artColors,
     mica: mica ?? this.mica,
     closeToTray: closeToTray ?? this.closeToTray,
@@ -83,8 +76,10 @@ class Prefs {
   );
 
   Json toJson() => {
+    'followSystem': followSystem,
     'themeId': themeId,
-    'mode': mode.name,
+    'lightId': lightId,
+    'darkId': darkId,
     'artColors': artColors,
     'mica': mica,
     'closeToTray': closeToTray,

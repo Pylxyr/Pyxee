@@ -346,21 +346,22 @@ enum SearchKind { all, songs, videos, albums, artists, playlists }
 
 @immutable
 class SearchHit {
-  const SearchHit.song(Song this.song) : key = null, title = null, thumbnail = null;
+  const SearchHit.song(Song this.song) : key = null, title = null, thumbnail = null, isArtist = false;
 
   const SearchHit.playlist({
     required String this.key,
     required String this.title,
     this.thumbnail,
-  }) : song = null;
+  }) : song = null, isArtist = false;
 
   const SearchHit.artist({
     required String this.key,
     required String this.title,
     this.thumbnail,
-  }) : song = null;
+  }) : song = null, isArtist = true;
 
   final Song? song;
+  final bool isArtist;
   final String? key;
   final String? title;
   final String? thumbnail;
