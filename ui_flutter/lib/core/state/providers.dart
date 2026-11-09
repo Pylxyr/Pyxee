@@ -149,6 +149,7 @@ class PlayerActions {
   void addToQueue(Song s) => _d({'type': 'addToQueue', 'track': s.toJson()});
   void playNext(Song s) => _d({'type': 'playNext', 'track': s.toJson()});
   void remove(int id) => _d({'type': 'remove', 'id': id});
+  void move(int id, int to) => _d({'type': 'move', 'id': id, 'to': to});
   void moveUpcoming(int id, int to) => _d({'type': 'moveUpcoming', 'id': id, 'to': to});
   void clear() => _d({'type': 'clear'});
   void undo() => _d({'type': 'undo'});
@@ -158,6 +159,7 @@ class PlayerActions {
   void setVolume(int percent) => _bridge.call('setVolume', {'percent': percent});
   void sleepMinutes(int minutes) =>
       _bridge.call('sleepSet', {'setting': {'kind': 'minutes', 'minutes': minutes}});
+  void sleepTracks(int count) => _bridge.call('sleepSet', {'setting': {'kind': 'tracks', 'count': count}});
   void sleepEndOfTrack() => _bridge.call('sleepSet', {'setting': {'kind': 'endOfTrack'}});
   void sleepCancel() => _bridge.call('sleepCancel');
   void sleepExtend(int minutes) => _bridge.call('sleepExtend', {'minutes': minutes});
@@ -191,6 +193,11 @@ class CoreApi {
           ),
         },
     ];
+  }
+
+  Future<List<String>> suggest(String prefix) async {
+    final data = await _b.callAsync('suggest', {'prefix': prefix});
+    return [for (final s in (data as List<Object?>? ?? const <Object?>[])) s! as String];
   }
 
   Future<List<SearchKind>> supportedFilters() async {
