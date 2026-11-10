@@ -86,9 +86,8 @@ class PlaylistPage extends ConsumerWidget {
                       buildDefaultDragHandles: false,
                       itemCount: pl.entries.length,
                       proxyDecorator: (child, _, _) => Material(color: Colors.transparent, child: child),
-                      onReorder: (from, to) {
-                        final dest = to > from ? to - 1 : to;
-                        if (dest != from) move(pl.entries[from].entryId, dest);
+                      onReorderItem: (from, to) {
+                        if (to != from) move(pl.entries[from].entryId, to);
                       },
                       itemBuilder: (context, i) {
                         final e = pl.entries[i];

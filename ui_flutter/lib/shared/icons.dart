@@ -57,7 +57,7 @@ ui.Path parseSvgPath(String d) {
     } else if (cmd == null) {
       break;
     }
-    final String c = cmd!;
+    final String c = cmd;
     final rel = c == c.toLowerCase();
     final up = c.toUpperCase();
     switch (up) {
@@ -96,7 +96,7 @@ ui.Path parseSvgPath(String d) {
         x = nx;
         y = ny;
       case 'S':
-        final x1 = cx == null ? x : 2 * x - cx, y1 = cy == null ? y : 2 * y - cy!;
+        final x1 = cx == null ? x : 2 * x - cx, y1 = cy == null ? y : 2 * y - cy;
         final x2 = r.number() + (rel ? x : 0), y2 = r.number() + (rel ? y : 0);
         final nx = r.number() + (rel ? x : 0), ny = r.number() + (rel ? y : 0);
         path.cubicTo(x1, y1, x2, y2, nx, ny);

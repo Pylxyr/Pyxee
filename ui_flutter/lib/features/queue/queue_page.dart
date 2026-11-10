@@ -65,9 +65,8 @@ class QueuePage extends ConsumerWidget {
                   buildDefaultDragHandles: false,
                   itemCount: queue.length,
                   proxyDecorator: (child, _, _) => Material(color: Colors.transparent, child: child),
-                  onReorder: (from, to) {
-                    final dest = to > from ? to - 1 : to;
-                    if (dest != from) actions.move(queue[from].id, dest);
+                  onReorderItem: (from, to) {
+                    if (to != from) actions.move(queue[from].id, to);
                   },
                   itemBuilder: (context, i) {
                     final e = queue[i];

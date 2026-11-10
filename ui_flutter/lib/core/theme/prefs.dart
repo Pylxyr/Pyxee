@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../app/theme/colors.dart';
 import '../models/models.dart';
 import '../state/providers.dart';
 
@@ -28,9 +29,24 @@ class Prefs {
     this.mica = true,
     this.closeToTray = true,
     this.volume = 80,
+    this.custom = const [],
   });
 
-  factory Prefs.fromJson(Json j) => Prefs(
+  factory Prefs.fromJson(Json j) {
+    final custom = <ThemeDef>[];
+    final raw = j['custom'];
+    if (raw is List) {
+      for (final c in raw) {
+        final def = themeFromJson(c);
+        if (def != null && def.id.isNotEmpty && !builtinThemes.any((t) => t.id == def.id) && !custom.any((t) => t.id == def.id) && custom.length < maxCustomThemes) {
+          custom.add(def);
+        }
+      }
+    }
+    return Prefs._fromJson(j, custom);
+  }
+
+  factory Prefs._fromJson(Json j, List<ThemeDef> custom) => Prefs(
     followSystem: (j['followSystem'] as bool?) ?? true,
     themeId: (j['themeId'] as String?) ?? 'dark',
     lightId: (j['lightId'] as String?) ?? 'light',
@@ -39,6 +55,7 @@ class Prefs {
     mica: (j['mica'] as bool?) ?? true,
     closeToTray: (j['closeToTray'] as bool?) ?? true,
     volume: ((j['volume'] as int?) ?? 80).clamp(0, 100),
+    custom: custom,
   );
 
   /// Use [lightId] or [darkId] according to the system's light/dark setting.
@@ -55,6 +72,9 @@ class Prefs {
   final bool closeToTray;
   final int volume;
 
+  /// Themes the user made or imported.
+  final List<ThemeDef> custom;
+
   Prefs copyWith({
     bool? followSystem,
     String? themeId,
@@ -64,6 +84,7 @@ class Prefs {
     bool? mica,
     bool? closeToTray,
     int? volume,
+    List<ThemeDef>? custom,
   }) => Prefs(
     followSystem: followSystem ?? this.followSystem,
     themeId: themeId ?? this.themeId,
@@ -73,6 +94,7 @@ class Prefs {
     mica: mica ?? this.mica,
     closeToTray: closeToTray ?? this.closeToTray,
     volume: volume ?? this.volume,
+    custom: custom ?? this.custom,
   );
 
   Json toJson() => {
@@ -84,6 +106,7 @@ class Prefs {
     'mica': mica,
     'closeToTray': closeToTray,
     'volume': volume,
+    'custom': [for (final t in custom) t.toJson()],
   };
 }
 
@@ -97,6 +120,50 @@ class PrefsNotifier extends Notifier<Prefs> {
   Prefs build() {
     ref.onDispose(() => _save?.cancel());
     return ref.read(initialPrefsProvider);
+  }
+
+  /// Saves a custom theme: a new one when [def] has no id (or an unknown one), else replaces it. Returns what was
+  /// stored; throws a [StateError] with a sentence when there is no room.
+  ThemeDef saveCustom(ThemeDef def) {
+    final prefs = state;
+    final existing = def.id.isNotEmpty && prefs.custom.any((t) => t.id == def.id);
+    if (!existing && prefs.custom.length >= maxCustomThemes) {
+      throw StateError('You can keep up to $maxCustomThemes custom themes. Delete one first.');
+    }
+    final id = existing ? def.id : _newId(prefs.custom);
+    final saved = ThemeDef(id, def.name.trim().isEmpty ? 'My theme' : def.name.trim(), def.dark, 'Custom theme', def.colors);
+    final custom = existing ? [for (final t in prefs.custom) t.id == id ? saved : t] : [...prefs.custom, saved];
+    // A theme switched from dark to light can no longer serve as the system-dark theme (and vice versa).
+    bool ok(String themeId, bool dark) => themeById(themeId, custom).dark == dark;
+    update(prefs.copyWith(
+      custom: custom,
+      darkId: ok(prefs.darkId, true) ? prefs.darkId : defaultDarkId,
+      lightId: ok(prefs.lightId, false) ? prefs.lightId : defaultLightId,
+    ));
+    return saved;
+  }
+
+  void deleteCustom(String id) {
+    final prefs = state;
+    if (!prefs.custom.any((t) => t.id == id)) return;
+    update(prefs.copyWith(
+      custom: [for (final t in prefs.custom) if (t.id != id) t],
+      themeId: prefs.themeId == id ? defaultDarkId : prefs.themeId,
+      darkId: prefs.darkId == id ? defaultDarkId : prefs.darkId,
+      lightId: prefs.lightId == id ? defaultLightId : prefs.lightId,
+    ));
+  }
+
+  /// Picks one theme for good (and stops following the system).
+  void select(String id) => update(state.copyWith(followSystem: false, themeId: id));
+
+  String _newId(List<ThemeDef> custom) {
+    var id = 'custom-${DateTime.now().millisecondsSinceEpoch.toRadixString(36)}';
+    var n = 0;
+    while (custom.any((t) => t.id == id)) {
+      id = 'custom-${DateTime.now().millisecondsSinceEpoch.toRadixString(36)}${n++}';
+    }
+    return id;
   }
 
   void update(Prefs next) {

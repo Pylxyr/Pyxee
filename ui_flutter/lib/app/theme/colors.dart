@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:math' as math;
 
 import 'package:material_ui/material_ui.dart';
@@ -98,18 +99,124 @@ class ThemeColors {
   final Color fg;
   final Color muted;
   final Color accent;
+
+  Color get(String key) => switch (key) {
+    'bg' => bg,
+    'surface' => surface,
+    'surface2' => surface2,
+    'line' => line,
+    'fg' => fg,
+    'muted' => muted,
+    _ => accent,
+  };
+
+  ThemeColors withKey(String key, Color c) => ThemeColors(
+    bg: key == 'bg' ? c : bg,
+    surface: key == 'surface' ? c : surface,
+    surface2: key == 'surface2' ? c : surface2,
+    line: key == 'line' ? c : line,
+    fg: key == 'fg' ? c : fg,
+    muted: key == 'muted' ? c : muted,
+    accent: key == 'accent' ? c : accent,
+  );
+
+  Map<String, String> toJson() => {for (final f in colorFields) f.$1: colorToHex(get(f.$1))};
+}
+
+/// (key, label, hint) of the seven colours, as the editor lists them.
+const colorFields = <(String, String, String)>[
+  ('bg', 'Background', 'The page behind everything'),
+  ('surface', 'Panels', 'Cards, the player bar, hovered rows'),
+  ('surface2', 'Raised', 'Menus, selected rows, slider tracks'),
+  ('line', 'Dividers', 'Thin lines between areas'),
+  ('fg', 'Text', 'Titles and body text'),
+  ('muted', 'Secondary text', 'Artists, durations, icons'),
+  ('accent', 'Accent', 'Seek bar, likes, focus ring'),
+];
+
+String colorToHex(Color c) => '#${((_byte(c.r) << 16) | (_byte(c.g) << 8) | _byte(c.b)).toRadixString(16).padLeft(6, '0')}';
+
+/// `#abc` and `ABCDEF` become colours; anything else is null.
+Color? normalizeHex(String v) {
+  var h = v.trim().replaceFirst('#', '').toLowerCase();
+  if (RegExp(r'^[0-9a-f]{3}$').hasMatch(h)) h = h.split('').map((c) => c + c).join();
+  return RegExp(r'^[0-9a-f]{6}$').hasMatch(h) ? hex('#$h') : null;
 }
 
 @immutable
 class ThemeDef {
-  const ThemeDef(this.id, this.name, this.dark, this.description, this.colors);
+  const ThemeDef(this.id, this.name, this.dark, this.description, this.colors, {this.builtin = false});
 
   final String id;
   final String name;
   final bool dark;
   final String description;
   final ThemeColors colors;
+  final bool builtin;
+
+  ThemeDef copyWith({String? id, String? name, bool? dark, ThemeColors? colors}) =>
+      ThemeDef(id ?? this.id, name ?? this.name, dark ?? this.dark, description, colors ?? this.colors);
+
+  Map<String, Object?> toJson() => {'id': id, 'name': name, 'scheme': dark ? 'dark' : 'light', 'colors': colors.toJson()};
 }
+
+/// A theme from untrusted data (saved settings, pasted text); null if it is not usable.
+ThemeDef? themeFromJson(Object? raw) {
+  if (raw is! Map) return null;
+  final name = raw['name'] is String ? (raw['name'] as String).trim() : '';
+  final scheme = raw['scheme'];
+  final colors = raw['colors'];
+  if (name.isEmpty || (scheme != 'dark' && scheme != 'light') || colors is! Map) return null;
+  final parsed = <String, Color>{};
+  for (final f in colorFields) {
+    final v = colors[f.$1];
+    final c = v is String ? normalizeHex(v) : null;
+    if (c == null) return null;
+    parsed[f.$1] = c;
+  }
+  final id = raw['id'] is String && RegExp(r'^[a-z0-9-]{1,40}$').hasMatch(raw['id'] as String) ? raw['id'] as String : '';
+  return ThemeDef(
+    id,
+    name.length > 40 ? name.substring(0, 40) : name,
+    scheme == 'dark',
+    'Custom theme',
+    ThemeColors(bg: parsed['bg']!, surface: parsed['surface']!, surface2: parsed['surface2']!, line: parsed['line']!, fg: parsed['fg']!, muted: parsed['muted']!, accent: parsed['accent']!),
+  );
+}
+
+String exportTheme(ThemeDef def) =>
+    const JsonEncoder.withIndent('  ').convert({'pyxeeTheme': 1, 'name': def.name, 'scheme': def.dark ? 'dark' : 'light', 'colors': def.colors.toJson()});
+
+/// Reads text produced by [exportTheme]; throws a [FormatException] with a sentence the UI can show.
+ThemeDef parseThemeText(String text) {
+  Object? raw;
+  try {
+    raw = jsonDecode(text);
+  } on FormatException {
+    throw const FormatException("That isn't theme text. Paste what Export copied.");
+  }
+  final def = themeFromJson(raw);
+  if (def == null) throw const FormatException('That theme is missing a name, a dark/light setting or one of its colours.');
+  return def.copyWith(id: '');
+}
+
+class ContrastCheck {
+  const ContrastCheck(this.label, this.ratio, this.min);
+
+  final String label;
+  final double ratio;
+  final double min;
+  bool get ok => ratio >= min;
+}
+
+/// The pairings that decide whether a theme is readable (WCAG contrast ratios).
+List<ContrastCheck> contrastChecks(ThemeColors c) => [
+  ContrastCheck('Text on background', contrast(c.fg, c.bg), 4.5),
+  ContrastCheck('Text on panels', contrast(c.fg, c.surface), 4.5),
+  ContrastCheck('Secondary text on background', contrast(c.muted, c.bg), 4.5),
+  ContrastCheck('Secondary text on raised', contrast(c.muted, c.surface2), 3),
+  ContrastCheck('Accent on background', contrast(c.accent, c.bg), 3),
+];
 
 ThemeDef _t(String id, String name, String scheme, String description, String c) {
   final p = c.split(' ').map(hex).toList();
@@ -119,6 +226,7 @@ ThemeDef _t(String id, String name, String scheme, String description, String c)
     scheme == 'dark',
     description,
     ThemeColors(bg: p[0], surface: p[1], surface2: p[2], line: p[3], fg: p[4], muted: p[5], accent: p[6]),
+    builtin: true,
   );
 }
 
@@ -150,7 +258,13 @@ final List<ThemeDef> builtinThemes = [
   _t('lemonade', 'Lemonade', 'light', 'Pale lemon with a dark gold accent', '#fffdf0 #f7f3d9 #ede7bf #e0d9a6 #26230d #615c33 #926200'),
 ];
 
-ThemeDef themeById(String id) => builtinThemes.firstWhere((t) => t.id == id, orElse: () => builtinThemes.first);
+const maxCustomThemes = 30;
+
+/// The built-in themes and the ones the user made or imported.
+List<ThemeDef> allThemes(List<ThemeDef> custom) => [...builtinThemes, ...custom];
+
+ThemeDef themeById(String id, [List<ThemeDef> custom = const []]) =>
+    allThemes(custom).firstWhere((t) => t.id == id, orElse: () => builtinThemes.first);
 
 /// How much of a cover's colour the surfaces take: a grey cover stays grey, a coloured one is clearly tinted.
 double _surfaceTint(double s, double ceiling) => s < 0.08 ? s : _clamp(s * 0.8, 0.22, ceiling);
