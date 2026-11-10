@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:material_ui/material_ui.dart';
 
@@ -238,11 +237,22 @@ ThemeData buildPxTheme(PxColors p, {required bool mica}) {
 
 typedef AppThemes = ({ThemeData light, ThemeData dark, ThemeMode mode});
 
+/// A theme being edited: shown live, not yet saved.
+class ThemePreviewNotifier extends Notifier<ThemeDef?> {
+  @override
+  ThemeDef? build() => null;
+
+  void set(ThemeDef? def) => state = def;
+}
+
+final themePreviewProvider = NotifierProvider<ThemePreviewNotifier, ThemeDef?>(ThemePreviewNotifier.new);
+
 /// The theme the app wears: the chosen one, one for light and one for dark when following the system, or (with
 /// "Color from album art" on and a cover to take it from) a palette made from the cover.
 final appThemeProvider = Provider<AppThemes>((ref) {
   final prefs = ref.watch(prefsProvider);
-  final art = prefs.artColors ? ref.watch(artSeedProvider) : null;
+  final preview = ref.watch(themePreviewProvider);
+  final art = prefs.artColors && preview == null ? ref.watch(artSeedProvider) : null;
   final mica = prefs.mica && micaSupported;
 
   ThemeData make(ThemeDef def) {
@@ -250,10 +260,14 @@ final appThemeProvider = Provider<AppThemes>((ref) {
     return buildPxTheme(PxColors.from(colors, dark: def.dark, mica: mica), mica: mica);
   }
 
-  if (prefs.followSystem) {
-    return (light: make(themeById(prefs.lightId)), dark: make(themeById(prefs.darkId)), mode: ThemeMode.system);
+  if (preview != null) {
+    final one = make(preview);
+    return (light: one, dark: one, mode: preview.dark ? ThemeMode.dark : ThemeMode.light);
   }
-  final def = themeById(prefs.themeId);
+  if (prefs.followSystem) {
+    return (light: make(themeById(prefs.lightId, prefs.custom)), dark: make(themeById(prefs.darkId, prefs.custom)), mode: ThemeMode.system);
+  }
+  final def = themeById(prefs.themeId, prefs.custom);
   final one = make(def);
   return (light: one, dark: one, mode: def.dark ? ThemeMode.dark : ThemeMode.light);
 });

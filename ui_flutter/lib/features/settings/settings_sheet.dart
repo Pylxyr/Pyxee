@@ -11,6 +11,7 @@ import '../../core/theme/prefs.dart';
 import '../../shared/icons.dart';
 import '../../shared/sheets.dart';
 import '../../shared/widgets.dart';
+import 'theme_editor.dart';
 
 /// Settings: a tab that slides in from the right edge (the Settings button is in the top right corner).
 Future<void> showSettingsSheet(BuildContext context) => showPxSheet<void>(
@@ -30,8 +31,9 @@ class _Settings extends ConsumerWidget {
     final notifier = ref.read(prefsProvider.notifier);
     final sleep = ref.watch(sleepProvider);
     final selected = prefs.followSystem ? (p.dark ? prefs.darkId : prefs.lightId) : prefs.themeId;
-    final darks = builtinThemes.where((t) => t.dark).toList();
-    final lights = builtinThemes.where((t) => !t.dark).toList();
+    final all = allThemes(prefs.custom);
+    final darks = all.where((t) => t.dark).toList();
+    final lights = all.where((t) => !t.dark).toList();
 
     Widget section(String title, List<Widget> children, {bool first = false}) => Container(
       padding: EdgeInsets.only(top: first ? 0 : 16, bottom: 16),
@@ -100,7 +102,7 @@ class _Settings extends ConsumerWidget {
               height: 32,
               padding: const EdgeInsets.symmetric(horizontal: 12),
               decoration: BoxDecoration(color: p.surface, borderRadius: BorderRadius.circular(rSm), border: Border(bottom: BorderSide(color: p.muted), top: BorderSide(color: p.rule), left: BorderSide(color: p.rule), right: BorderSide(color: p.rule))),
-              child: Row(children: [Expanded(child: Text(themeById(value).name, style: PxText.body(p.fg))), IconTheme(data: IconThemeData(color: p.muted), child: const PxIcon('down', size: 16))]),
+              child: Row(children: [Expanded(child: Text(themeById(value, prefs.custom).name, style: PxText.body(p.fg))), IconTheme(data: IconThemeData(color: p.muted), child: const PxIcon('down', size: 16))]),
             ),
           ),
         ],
@@ -145,6 +147,11 @@ class _Settings extends ConsumerWidget {
                         grid(darks),
                         Padding(padding: const EdgeInsets.fromLTRB(4, 16, 4, 8), child: Text('Light', style: PxText.button(p.fg, FontWeight.w600))),
                         grid(lights),
+                        const SizedBox(height: 12),
+                        Align(
+                          alignment: Alignment.centerLeft,
+                          child: PxButton(label: 'Customize…', kind: PxButtonKind.primary, onPressed: () => unawaited(showThemeEditor(context, themeById(selected, prefs.custom)))),
+                        ),
                       ],
                     ),
                   ),

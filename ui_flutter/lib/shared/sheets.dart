@@ -343,13 +343,18 @@ class _NameFormState extends State<_NameForm> {
 
 /// `.field`: a text field with a hairline frame and a stronger line under it that turns accent when focused.
 class PxTextField extends StatefulWidget {
-  const PxTextField({super.key, required this.controller, this.hint, this.autofocus = false, this.maxLength, this.onSubmitted});
+  const PxTextField({super.key, required this.controller, this.hint, this.autofocus = false, this.maxLength, this.onSubmitted, this.onChanged, this.mono = false, this.lines = 1});
 
   final TextEditingController controller;
   final String? hint;
   final bool autofocus;
   final int? maxLength;
   final ValueChanged<String>? onSubmitted;
+  final ValueChanged<String>? onChanged;
+
+  /// Monospace, for hex colours and theme text.
+  final bool mono;
+  final int lines;
 
   @override
   State<PxTextField> createState() => _PxTextFieldState();
@@ -393,8 +398,11 @@ class _PxTextFieldState extends State<PxTextField> {
         autofocus: widget.autofocus,
         maxLength: widget.maxLength,
         onSubmitted: widget.onSubmitted,
+        onChanged: widget.onChanged,
+        maxLines: widget.lines,
+        minLines: widget.lines,
         cursorColor: p.accent,
-        style: PxText.body(p.fg),
+        style: widget.mono ? PxText.body(p.fg).copyWith(fontFamily: 'Consolas', fontFamilyFallback: const ['Cascadia Mono', 'JetBrains Mono', 'DejaVu Sans Mono', 'monospace'], fontSize: 12) : PxText.body(p.fg),
         decoration: InputDecoration.collapsed(hintText: widget.hint, hintStyle: PxText.body(p.muted)),
         buildCounter: (context, {required currentLength, required isFocused, maxLength}) => null,
       ),
