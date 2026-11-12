@@ -12,23 +12,12 @@ updates:
       interval: weekly
     commit-message:
       prefix: deps
-    groups:
-      # Tauri's crates and plugins are released as a set.
-      tauri:
-        patterns: [tauri, tauri-*]
     ignore:
-      # crates/app uses the same windows-core as Tauri's webview2-com so the types match (see crates/app/Cargo.toml).
-      # A lone bump breaks that (and needs a newer Rust); it moves when Tauri's webview2-com does.
+      # Still pulled in by cpal and the windows crates. This ignore dates from the Tauri days and is kept for now.
       - dependency-name: windows-core
-  - package-ecosystem: npm
-    directory: /ui
+  - package-ecosystem: pub
+    directory: /ui_flutter
     schedule:
       interval: weekly
     commit-message:
       prefix: deps
-    groups:
-      # Tauri's JS packages must match the crates; the page's build tools (vite, svelte, vitest...) move together.
-      tauri:
-        patterns: ["@tauri-apps/*"]
-      frontend:
-        patterns: ["*"]
