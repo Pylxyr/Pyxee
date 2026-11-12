@@ -1,31 +1,32 @@
 //! The C interface the Flutter shell (`ui_flutter/`) loads. Requests go in and replies come back as JSON text, and
 //! events are pushed to a callback, so the surface stays small and nothing has to be generated.
 //!
-//! The Tauri-free modules of `pyxee-app` are included from there with `#[path]` rather than copied, so the old shell
-//! and this one run the same engine, library and contract. Only the glue that needs an `AppHandle` is rewritten here
-//! (`channel.rs`).
+//! The engine, library, session and contract modules (`engine`, `library_service`, `session`, `dto` ...) live in this
+//! crate; `channel.rs` is the glue that drives them for the Flutter app.
 
 use std::ffi::{c_char, CStr, CString};
 use std::ptr;
 
 mod channel;
 
-/// The typed contract between the core and the UI: the Tauri shell's own file.
-#[path = "../../app/src/dto.rs"]
+/// The typed contract between the core and the UI.
+pub mod advanced;
+pub mod discord;
 pub mod dto;
-/// The shell features' contract (lyrics, sleep timer), also the Tauri shell's file.
-#[path = "../../app/src/shell/dto.rs"]
-pub mod shell_dto;
-#[path = "../../app/src/engine.rs"]
 pub mod engine;
-#[path = "../../app/src/library_service.rs"]
 pub mod library_service;
-#[path = "../../app/src/recorder.rs"]
+pub mod opener;
 pub mod recorder;
-#[path = "../../app/src/session.rs"]
 pub mod session;
-#[path = "../../app/src/tools.rs"]
+/// The shell features' contract (lyrics, sleep timer).
+pub mod shell_dto;
 pub mod tools;
+pub mod updater;
+
+#[cfg(test)]
+mod engine_tests;
+#[cfg(test)]
+mod sim;
 
 /// Changes whenever an exported function changes incompatibly, so the shell can refuse a library that does not match.
 pub const ABI_VERSION: u32 = 3;

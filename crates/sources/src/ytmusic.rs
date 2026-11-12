@@ -1773,7 +1773,7 @@ mod tests {
     #[test]
     fn a_genre_token_that_is_not_a_plain_token_is_refused_before_any_request() {
         // The playlist id is checked the same way (see the test above); the token comes from the page, but it also
-        // arrives from the webview (`genre_get`), so it is held to the same shape `parse_genres` accepts.
+        // arrives from the UI (`genre_get`), so it is held to the same shape `parse_genres` accepts.
         let (url, request) = testserver::once(200, &explore_answer(vec![]));
         for bad in ["", "a b", "x\"y", "{}", &"a".repeat(513)] {
             assert!(

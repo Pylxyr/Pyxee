@@ -6,16 +6,13 @@ python scripts/bump_version.py --check v1.1.0 fail unless every file equals the 
 python scripts/bump_version.py --next patch   print the next version (patch, minor or major)
 python scripts/bump_version.py --current      print the current version
 
-Files: Cargo.toml ([workspace.package]), Cargo.lock (the pyxee-* and xtask entries),
-ui/package.json, ui/package-lock.json, crates/app/tauri.conf.json and, for final releases only,
-packaging/arch/PKGBUILD (its pkgver; a pre-release such as 0.5.2-rc1 leaves it on the last final release,
-because pkgver cannot contain a hyphen and the Arch package builds from a release tag).
+Files: Cargo.toml ([workspace.package]), Cargo.lock (the pyxee-* and xtask entries) and
+ui_flutter/pubspec.yaml (its `version:`; a `+build` suffix, if there is one, is kept).
 Standard library only.
 """
 
 from __future__ import annotations
 
-import json
 import re
 import sys
 from pathlib import Path
@@ -23,16 +20,13 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 CARGO_TOML = ROOT / "Cargo.toml"
 CARGO_LOCK = ROOT / "Cargo.lock"
-PACKAGE = ROOT / "ui" / "package.json"
-PACKAGE_LOCK = ROOT / "ui" / "package-lock.json"
-TAURI_CONF = ROOT / "crates" / "app" / "tauri.conf.json"
-PKGBUILD = ROOT / "packaging" / "arch" / "PKGBUILD"
+PUBSPEC = ROOT / "ui_flutter" / "pubspec.yaml"
 
 SEMVER = re.compile(r"^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$")
 # [workspace.package] table: the first `version = "..."` after the header.
 WORKSPACE_VERSION = re.compile(r'(\[workspace\.package\][^\[]*?^version = ")([^"]*)(")', re.MULTILINE | re.DOTALL)
-# The Arch package's `pkgver=...` line (the release tag it builds from).
-PKGVER = re.compile(r"(^pkgver=)([^\s#]*)", re.MULTILINE)
+# The Flutter app's `version: 0.5.2` (optionally `0.5.2+3`: the part after `+` is the build number, kept as it is).
+PUBSPEC_VERSION = re.compile(r"(^version:[ \t]*)([^\s+#]+)(\+[^\s#]*)?", re.MULTILINE)
 # Cargo.lock entries for our own crates (pyxee-* and xtask); third-party crates are never touched.
 LOCK_ENTRY = re.compile(r'(^name = "(?:pyxee-[\w-]+|xtask)"\nversion = ")([^"]*)(")', re.MULTILINE)
 
@@ -47,38 +41,26 @@ def _write(path: Path, text: str) -> None:
         handle.write(text)
 
 
-def _json(path: Path) -> dict:
-    return json.loads(_read(path))
-
-
-def _write_json(path: Path, data: dict) -> None:
-    _write(path, json.dumps(data, indent=2, ensure_ascii=False) + "\n")
-
-
 def read_versions() -> dict[str, str | None]:
     """{label: version} for every place that carries the version."""
     found: dict[str, str | None] = {}
     match = WORKSPACE_VERSION.search(_read(CARGO_TOML))
     found["Cargo.toml [workspace.package]"] = match.group(2) if match else None
-    # Only a final release has an Arch package version; a pre-release leaves pkgver on the last final one.
-    if PKGBUILD.exists() and match and "-" not in match.group(2):
-        pkgver = PKGVER.search(_read(PKGBUILD))
-        found["packaging/arch/PKGBUILD pkgver"] = pkgver.group(2) if pkgver else None
     if CARGO_LOCK.exists():
         for entry in LOCK_ENTRY.finditer(_read(CARGO_LOCK)):
             name = entry.group(0).split('"')[1]
             found[f"Cargo.lock {name}"] = entry.group(2)
-    found["ui/package.json"] = _json(PACKAGE).get("version")
-    if PACKAGE_LOCK.exists():
-        lock = _json(PACKAGE_LOCK)
-        found["ui/package-lock.json"] = lock.get("version")
-        found["ui/package-lock.json (root package)"] = (lock.get("packages", {}).get("") or {}).get("version")
-    found["crates/app/tauri.conf.json"] = _json(TAURI_CONF).get("version")
+    if PUBSPEC.exists():
+        pubspec = PUBSPEC_VERSION.search(_read(PUBSPEC))
+        found["ui_flutter/pubspec.yaml"] = pubspec.group(2) if pubspec else None
     return found
 
 
 def current_version() -> str:
-    return _json(PACKAGE)["version"]
+    match = WORKSPACE_VERSION.search(_read(CARGO_TOML))
+    if not match:
+        raise ValueError("[workspace.package] version not found in Cargo.toml")
+    return match.group(2)
 
 
 def next_version(current: str, kind: str) -> str:
@@ -127,25 +109,15 @@ def bump(version: str) -> int:
     _write(CARGO_TOML, text)
     if CARGO_LOCK.exists():
         _write(CARGO_LOCK, LOCK_ENTRY.sub(lambda m: f"{m.group(1)}{version}{m.group(3)}", _read(CARGO_LOCK)))
-    for path in (PACKAGE, PACKAGE_LOCK):
-        if path.exists():
-            data = _json(path)
-            data["version"] = version
-            if "" in data.get("packages", {}):
-                data["packages"][""]["version"] = version
-            _write_json(path, data)
-    conf = _json(TAURI_CONF)
-    conf["version"] = version
-    _write_json(TAURI_CONF, conf)
-    files = "Cargo.toml, Cargo.lock, ui/package.json, ui/package-lock.json and tauri.conf.json"
-    if PKGBUILD.exists() and "-" not in version:
-        pkg, pkg_count = PKGVER.subn(lambda m: f"{m.group(1)}{version}", _read(PKGBUILD), count=1)
-        if not pkg_count:
-            print("pkgver not found in packaging/arch/PKGBUILD", file=sys.stderr)
+    if PUBSPEC.exists():
+        pubspec, pubspec_count = PUBSPEC_VERSION.subn(
+            lambda m: f"{m.group(1)}{version}{m.group(3) or ''}", _read(PUBSPEC), count=1
+        )
+        if not pubspec_count:
+            print("version not found in ui_flutter/pubspec.yaml", file=sys.stderr)
             return 1
-        _write(PKGBUILD, pkg)
-        files = "Cargo.toml, Cargo.lock, ui/package.json, ui/package-lock.json, tauri.conf.json and packaging/arch/PKGBUILD"
-    print(f"Version set to {version} in {files}.")
+        _write(PUBSPEC, pubspec)
+    print(f"Version set to {version} in Cargo.toml, Cargo.lock and ui_flutter/pubspec.yaml.")
     return 0
 
 

@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'dart:math' as math;
 import 'dart:ui' show FontFeature, ImageFilter;
 
@@ -8,7 +7,6 @@ import 'package:material_ui/material_ui.dart';
 
 import '../app/theme/colors.dart';
 import '../app/theme/px_theme.dart';
-import '../core/models/models.dart';
 import '../core/state/providers.dart';
 import '../core/theme/prefs.dart';
 import 'icons.dart';
@@ -321,19 +319,22 @@ class PxSegmented<T> extends StatelessWidget {
                   semanticLabel: it.label,
                   builder: (context, hovered, pressed) {
                     final on = value == it.id;
+                    // No `alignment` on the Container: it would stretch the tab to the full width of the row.
                     return Container(
                       height: 32,
                       padding: const EdgeInsets.symmetric(horizontal: 10),
-                      alignment: Alignment.center,
                       decoration: BoxDecoration(
                         color: hovered && !it.disabled ? p.hover : Colors.transparent,
                         borderRadius: const BorderRadius.vertical(top: Radius.circular(rSm)),
                         border: on ? Border(bottom: BorderSide(color: p.accent, width: 2)) : null,
                       ),
-                      child: Text(
-                        it.label,
-                        style: PxText.body(on || (hovered && !it.disabled) ? p.fg : p.muted).copyWith(fontWeight: on ? FontWeight.w600 : FontWeight.w400),
-                        maxLines: 1,
+                      child: Center(
+                        widthFactor: 1,
+                        child: Text(
+                          it.label,
+                          style: PxText.body(on || (hovered && !it.disabled) ? p.fg : p.muted).copyWith(fontWeight: on ? FontWeight.w600 : FontWeight.w400),
+                          maxLines: 1,
+                        ),
                       ),
                     );
                   },
@@ -854,33 +855,48 @@ class PxPageHeader extends StatelessWidget {
     final p = context.px;
     final width = MediaQuery.sizeOf(context).width;
     return Container(
-      padding: const EdgeInsets.only(top: 16, bottom: 20),
+      padding: EdgeInsets.only(top: 16, bottom: below == null ? 20 : 0),
       margin: const EdgeInsets.only(bottom: 8),
-      decoration: BoxDecoration(border: Border(bottom: BorderSide(color: p.rule))),
+      decoration: below == null ? BoxDecoration(border: Border(bottom: BorderSide(color: p.rule))) : null,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Wrap(
-            crossAxisAlignment: WrapCrossAlignment.end,
-            spacing: 16,
-            runSpacing: 8,
-            children: [
-              if (lead != null) lead!,
-              ConstrainedBox(
-                constraints: const BoxConstraints(minWidth: 192, maxWidth: 900),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
+          LayoutBuilder(
+            builder: (context, box) {
+              final titleBlock = Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(title, style: PxText.pageTitle(width, p.fg), maxLines: 1, overflow: TextOverflow.ellipsis),
+                  if (meta != null) Text(meta!, style: PxText.body(p.muted)),
+                ],
+              );
+              final actionRow = Wrap(spacing: 8, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: actions);
+              // Wide enough: the title takes the row and the page's actions sit at the far right (`.page-head-main`
+              // grows, `.page-head-actions` stays at its width). Narrow: they wrap under the title.
+              if (box.hasBoundedWidth && box.maxWidth >= 640) {
+                return Row(
+                  crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
-                    Text(title, style: PxText.pageTitle(width, p.fg), maxLines: 1, overflow: TextOverflow.ellipsis),
-                    if (meta != null) Text(meta!, style: PxText.body(p.muted)),
+                    if (lead != null) ...[lead!, const SizedBox(width: 16)],
+                    Expanded(child: titleBlock),
+                    if (actions.isNotEmpty) ...[const SizedBox(width: 16), actionRow],
                   ],
-                ),
-              ),
-              if (actions.isNotEmpty) Wrap(spacing: 8, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: actions),
-            ],
+                );
+              }
+              return Wrap(
+                crossAxisAlignment: WrapCrossAlignment.end,
+                spacing: 16,
+                runSpacing: 8,
+                children: [
+                  ?lead,
+                  ConstrainedBox(constraints: BoxConstraints(minWidth: 192, maxWidth: box.maxWidth), child: titleBlock),
+                  if (actions.isNotEmpty) actionRow,
+                ],
+              );
+            },
           ),
-          if (below != null) ...[const SizedBox(height: 8), below!],
+          if (below != null) ...[const SizedBox(height: 8), SizedBox(width: double.infinity, child: below!)],
         ],
       ),
     );
@@ -936,6 +952,7 @@ class PxScrollPage extends StatelessWidget {
   Widget build(BuildContext context) {
     final pad = pagePad(MediaQuery.sizeOf(context).width);
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         if (header != null) Padding(padding: EdgeInsets.symmetric(horizontal: pad), child: header),
         Expanded(

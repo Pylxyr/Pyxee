@@ -11,7 +11,9 @@ import '../../core/theme/prefs.dart';
 import '../../shared/icons.dart';
 import '../../shared/sheets.dart';
 import '../../shared/widgets.dart';
+import 'advanced_sheet.dart';
 import 'theme_editor.dart';
+import 'updates_section.dart';
 
 /// Settings: a tab that slides in from the right edge (the Settings button is in the top right corner).
 Future<void> showSettingsSheet(BuildContext context) => showPxSheet<void>(
@@ -179,6 +181,15 @@ class _Settings extends ConsumerWidget {
               checked: prefs.mica,
               onChanged: (on) => notifier.update(prefs.copyWith(mica: on)),
             ),
+          PxToggle(
+            label: 'Discord Rich Presence',
+            hint: 'Shows the song you are listening to in your Discord status. Needs the Discord app running on this PC.',
+            checked: prefs.discordPresence,
+            onChanged: (on) {
+              notifier.update(prefs.copyWith(discordPresence: on));
+              unawaited(ref.read(apiProvider).discordSet(on));
+            },
+          ),
           PxMenuItem(
             onTap: () {
               Navigator.of(context).pop();
@@ -186,7 +197,15 @@ class _Settings extends ConsumerWidget {
             },
             child: Row(children: [const Expanded(child: Text('Sleep timer')), Text(sleep?.label ?? 'Off', style: PxText.body(p.muted))]),
           ),
+          PxMenuItem(
+            onTap: () {
+              Navigator.of(context).pop();
+              unawaited(showAdvancedSheet(context));
+            },
+            child: Row(children: [const Expanded(child: Text('Advanced settings')), Text('Cookies, yt-dlp, logging…', style: PxText.body(p.muted))]),
+          ),
         ]),
+        section('Updates', const [UpdatesSection()]),
       ],
     );
   }

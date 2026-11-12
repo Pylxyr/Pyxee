@@ -2,7 +2,7 @@
 """Regenerates every icon from assets/logo/logo.svg (full mark) and tray.svg (simplified for 16-24 px).
 
 Needs: rsvg-convert (librsvg) and Pillow.   python3 assets/logo/make-icons.py
-Outputs (committed): crates/app/icons/{32x32,128x128,128x128@2x,icon}.png, icon.ico,
+Outputs (committed): assets/icons/{32x32,128x128,128x128@2x,icon}.png, icon.ico,
 tray-{16,24,32}.png, tray.ico, and assets/logo/png/logo-1024.png.
 """
 import io
@@ -15,7 +15,7 @@ from PIL import Image
 ROOT = Path(__file__).resolve().parents[2]
 LOGO = ROOT / "assets/logo/logo.svg"
 TRAY = ROOT / "assets/logo/tray.svg"
-ICONS = ROOT / "crates/app/icons"
+ICONS = ROOT / "assets/icons"
 
 
 def render(svg: Path, size: int) -> bytes:

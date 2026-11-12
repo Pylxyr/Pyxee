@@ -87,12 +87,28 @@ class _DesktopHostState extends ConsumerState<DesktopHost> with WindowListener, 
     await windowManager.focus();
   }
 
+  bool _quitting = false;
+
+  /// The window and the tray icon go first, so quitting looks instant. Saving the session and closing the window then
+  /// happen out of sight, and if any of it hangs the process is ended anyway.
   Future<void> _quit() async {
-    await ref.read(apiProvider).quit();
+    if (_quitting) return;
+    _quitting = true;
+    Timer(const Duration(seconds: 6), () => exit(0));
+    try {
+      await windowManager.hide();
+    } on Object {
+      // Already hidden or gone.
+    }
     try {
       await tray.trayManager.destroy();
     } on Object {
       // Nothing to remove.
+    }
+    try {
+      await ref.read(apiProvider).quit().timeout(const Duration(seconds: 4));
+    } on Object {
+      // Saving the session took too long; leave without it.
     }
     await windowManager.destroy();
   }

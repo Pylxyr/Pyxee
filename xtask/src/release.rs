@@ -223,23 +223,23 @@ pub fn portable_entries() -> Vec<Entry> {
             name: "Pyxee.exe",
         },
         Entry {
-            from: Some("crates/app/binaries/yt-dlp-x86_64-pc-windows-msvc.exe".into()),
+            from: Some("tools/yt-dlp-x86_64-pc-windows-msvc.exe".into()),
             name: "yt-dlp.exe",
         },
         Entry {
-            from: Some("crates/app/licenses/THIRD_PARTY.txt".into()),
+            from: Some("licenses/THIRD_PARTY.txt".into()),
             name: "THIRD_PARTY_NOTICES.txt",
         },
         Entry {
-            from: Some("crates/app/licenses/FFmpeg-LGPL-2.1.txt".into()),
+            from: Some("licenses/FFmpeg-LGPL-2.1.txt".into()),
             name: "FFmpeg-LGPL-2.1.txt",
         },
         Entry {
-            from: Some("crates/app/licenses/GPL-3.0.txt".into()),
+            from: Some("licenses/GPL-3.0.txt".into()),
             name: "GPL-3.0.txt",
         },
         Entry {
-            from: Some("crates/app/licenses/yt-dlp-THIRD_PARTY_LICENSES.txt".into()),
+            from: Some("licenses/yt-dlp-THIRD_PARTY_LICENSES.txt".into()),
             name: "yt-dlp-THIRD_PARTY_LICENSES.txt",
         },
         Entry {

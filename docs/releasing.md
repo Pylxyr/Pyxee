@@ -1,5 +1,51 @@
 # Releasing
 
+> **The pipeline below still builds the Tauri app.** `release.yml`, `cut-release.yml`, `packaging/windows/installer.nsi` and the
+> `installer`, `portable`, `signing-config` and `sign-file` commands of `cargo xtask` have not been changed since the Tauri
+> removal, so they do not work on this branch. The next section is the plan to replace them; nothing in it is built yet.
+
+## Flutter release pipeline (proposal, waiting for approval)
+
+Same shape as today: **Cut release** runs CI, bumps the version (`scripts/bump_version.py` now also sets
+`ui_flutter/pubspec.yaml`), tags, and calls the release workflow. The release workflow would, on a Windows runner:
+
+1. **Native pieces.** Set up Rust (the pin in `rust-toolchain.toml`) and the cached FFmpeg (`.github/actions/ffmpeg`), run
+   `cargo xtask tools` (the pinned yt-dlp, checksum verified), then `cargo build -p pyxee-bridge --release --locked`. The two
+   build-time variables are set here, because they are compiled in: `PYXEE_UPDATE_PUBLIC_KEY` (the key that checks
+   `SHA256SUMS.txt`) and `PYXEE_DISCORD_CLIENT_ID`. Secret handling and the signing key stay exactly as they are.
+2. **Flutter build.** `subosito/flutter-action` pinned by commit SHA (`1a449444c387b1966244ae4d4f8c696479add0b2`, tag v2.23.0, looked
+   up with `git ls-remote`) with the exact Flutter version the app was developed against, then `flutter pub get` and
+   `flutter build windows --release` in `ui_flutter`. The result is in `ui_flutter\build\windows\x64\runner\Release` (older Flutter
+   documentation shows the path without `x64`; confirm on the first run). It holds the exe, `flutter_windows.dll`,
+   `pyxee_bridge.dll` (copied by the native-assets hook), plugin DLLs and `data\`.
+3. **Staging folder.** The Release folder plus what Flutter does not bring: `yt-dlp.exe` next to the exe (where the app looks for
+   it), the Visual C++ runtime DLLs `msvcp140.dll`, `vcruntime140.dll` and `vcruntime140_1.dll` (Flutter's documentation says a
+   PC without the redistributable needs them next to the exe), the texts in `licenses\` and the third-party notices. Then a
+   smoke test: start the exe, wait about ten seconds, check it is still running, `yt-dlp.exe --version` works.
+4. **Installer (NSIS).** The current `installer.nsi` is a Tauri template full of `{{#each}}` placeholders, so it needs a plain
+   rewrite: install the staging folder, shortcuts, an uninstaller that keeps the data folder. Name it
+   `Pyxee_<version>_x64-setup.exe`: the in-app updater picks the asset that ends in `-setup.exe`. The updater starts the
+   installer with no arguments right after Pyxee closes, so it has to work as a normal wizard over a copy that was running a
+   moment ago. NSIS would be installed in the job (for example with Chocolatey); it is not assumed to be on the runner.
+5. **Portable zip.** The staging folder plus an empty `portable.txt` next to the exe (that is how the app recognises a portable
+   copy and keeps its data in `data\` beside it), named `Pyxee_<version>_x64-portable.zip`.
+6. **Checksums, signatures, attestation: as today.** `SHA256SUMS.txt` lists the installer and the zip, `cargo xtask sign-sums`
+   writes `SHA256SUMS.txt.sig` (both names are what the updater looks for), the build attestation step stays, and the
+   Authenticode signing of the installer stays as configured (the updater compares the installer's signature with the running
+   exe's when the exe is signed).
+7. **Release notes and notices.** `scripts/release_notes.py` needs `crates/bridge/` and `ui_flutter/` added to its areas (it
+   still sorts files by the old `crates/app/` and `ui/` paths). `licenses/THIRD_PARTY.txt` still lists npm packages and has to be
+   regenerated for the Dart and Flutter packages before the first release.
+
+**Updates.** The in-app updater is back (Settings > Updates, a silent check at start, "What's new", installing Pyxee, updating
+yt-dlp) and works the way it did, so nothing replaces it: the pipeline only has to publish what it expects (the `-setup.exe`,
+`SHA256SUMS.txt`, `SHA256SUMS.txt.sig`). I recommend keeping it as it is, because without the yt-dlp updater songs stop loading
+whenever YouTube changes. Please confirm that this is what you want.
+
+---
+
+The rest of this page describes the Tauri pipeline as it was.
+
 ## One click
 
 1. On GitHub: **Actions -> Cut release -> Run workflow**. Leave the branch on `main`.
@@ -48,11 +94,11 @@ The run summary says what to do. Short version: a flaky step (network, runner) -
 
 - **Settings -> Actions -> General -> Workflow permissions**: *Read and write*, or the bot cannot push the version commit and tag.
 - If `main` is protected, allow the `github-actions[bot]` to push to it (or use a rules bypass for it). Make the **`ci-ok`** check the required one: it fails if any CI job failed.
-- Optional: Dependabot opens weekly update PRs for GitHub Actions, Cargo and npm (`.github/dependabot.yml`); action versions are pinned to commit SHAs, so they only change through those PRs.
+- Optional: Dependabot opens weekly update PRs for GitHub Actions, Cargo and pub (`.github/dependabot.yml`); action versions are pinned to commit SHAs, so they only change through those PRs.
 
 ## Versions by hand
 
-`python scripts/bump_version.py 0.2.0` sets every file (`Cargo.toml`, `Cargo.lock`, `ui/package.json`, its lockfile, `tauri.conf.json`, and for a final release the `pkgver` of `packaging/arch/PKGBUILD`, which the Arch package builds its release tag from; a pre-release leaves it alone); `--check v0.2.0` verifies them; `--next minor` prints the next version. CI runs the check on every push so the files cannot drift apart.
+`python scripts/bump_version.py 0.2.0` sets every file (`Cargo.toml`, `Cargo.lock` and `ui_flutter/pubspec.yaml`); `--check v0.2.0` verifies them; `--next minor` prints the next version. CI runs the check on every push so the files cannot drift apart.
 
 ## Portable build
 `cargo xtask portable` (Windows) builds the program without an installer and writes `target/portable/Pyxee_<version>_x64-portable.zip`. The zip holds one folder: `Pyxee.exe`, `yt-dlp.exe`, `THIRD_PARTY_NOTICES.txt`, `FFmpeg-LGPL-2.1.txt`, `GPL-3.0.txt`, `yt-dlp-THIRD_PARTY_LICENSES.txt`, `README.txt` and `portable.txt`. `portable.txt` next to the program is what turns portable mode on: the library, settings and logs live in `data\` beside `Pyxee.exe` (nothing in the user's profile, no Roaming-to-Local move); deleting `portable.txt` gives the normal per-user folder. The zip never contains a `data` folder, an ffmpeg program or a libav DLL (libav is linked in statically); the packer refuses to finish if one slips in, and `scripts\check-windows.cmd -Installer` opens the finished zip again to prove it. It needs the WebView2 runtime (part of Windows 11 and current Windows 10), which the installer would otherwise download.
@@ -60,7 +106,7 @@ The run summary says what to do. Short version: a flaky step (network, runner) -
 The release workflow builds the zip after the installers, unpacks it, runs the bundled `yt-dlp.exe --version`, and attaches it to the release; it is covered by `SHA256SUMS.txt` like the installers. A portable copy never runs an installer: Settings > Updates tells it to download the new zip and unpack it over the folder (`data\` is not in the zip, so it stays). yt-dlp still updates in place, into `data\tools`.
 
 ## Notices
-`crates/app/licenses/` holds the licence texts and notices that ship with the app (the FFmpeg LGPL text and notice, the yt-dlp licences); the release uploads them next to the installers. They are plain committed files: nothing generates or checks them, so update them by hand when the FFmpeg or yt-dlp version changes.
+`licenses/` holds the licence texts and notices that ship with the app (the FFmpeg LGPL text and notice, the yt-dlp licences); the release uploads them next to the installers. They are plain committed files: nothing generates or checks them, so update them by hand when the FFmpeg or yt-dlp version changes.
 
 ## Bumping the bundled yt-dlp
 Installers and the portable zip bundle one pinned yt-dlp release, so two builds of a tag contain the same `yt-dlp.exe`. The pin is `YTDLP_VERSION` and `YTDLP_SHA256` in `xtask/src/main.rs`; `cargo xtask tools` downloads that exact release and stops if the bytes do not match. The in-app updater is separate and still pulls the latest release at run time, which is what keeps users working when YouTube changes.
@@ -68,7 +114,7 @@ Installers and the portable zip bundle one pinned yt-dlp release, so two builds 
 To bump it:
 1. Pick the release at https://github.com/yt-dlp/yt-dlp/releases and read the `yt-dlp.exe` line of its `SHA2-256SUMS`.
 2. Set `YTDLP_VERSION` and `YTDLP_SHA256` in `xtask/src/main.rs`.
-3. Optionally refresh `crates/app/licenses/yt-dlp-THIRD_PARTY_LICENSES.txt` from the repository at that tag, and the yt-dlp version and source URL in `crates/app/licenses/THIRD_PARTY.txt`. Nothing checks them.
+3. Optionally refresh `licenses/yt-dlp-THIRD_PARTY_LICENSES.txt` from the repository at that tag, and the yt-dlp version and source URL in `licenses/THIRD_PARTY.txt`. Nothing checks them.
 4. Run `cargo test -p xtask` and `python -m unittest discover -s scripts/tests`; the release workflow's smoke tests then run the new exe with the app's real format selector.
 
 ## Code signing

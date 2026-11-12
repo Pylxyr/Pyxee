@@ -1,5 +1,5 @@
 //! Pure logic for the Windows shell integration (sleep timer, flyout placement, window geometry, resume/network
-//! detection, taskbar progress, settings). No Windows or Tauri calls live here, so all of it is tested on any OS.
+//! detection, taskbar progress, settings). No Windows or UI-framework calls live here, so all of it is tested on any OS.
 
 pub mod anchor;
 pub mod atomic;

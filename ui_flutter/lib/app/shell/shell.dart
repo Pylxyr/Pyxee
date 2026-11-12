@@ -6,6 +6,7 @@ import 'package:material_ui/material_ui.dart';
 import 'package:window_manager/window_manager.dart';
 
 import '../../core/state/providers.dart';
+import '../../core/state/updates.dart';
 import '../../features/explore/explore_page.dart';
 import '../../features/home/home_page.dart';
 import '../../features/library/library_page.dart';
@@ -13,6 +14,7 @@ import '../../features/now_playing/now_playing.dart';
 import '../../features/playlist/playlist_page.dart';
 import '../../features/queue/queue_page.dart';
 import '../../features/search/search_page.dart';
+import '../../features/settings/changelog_sheet.dart';
 import '../../shared/widgets.dart';
 import '../state/ui_state.dart';
 import '../theme/px_theme.dart';
@@ -39,6 +41,10 @@ class _PxShellState extends ConsumerState<PxShell> with WindowListener {
   void initState() {
     super.initState();
     windowManager.addListener(this);
+    // Pyxee looks for a newer version by itself once, after the first frame. It says nothing unless there is one.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) unawaited(ref.read(updatesProvider.notifier).checkAtStartup());
+    });
   }
 
   @override
@@ -105,6 +111,11 @@ class _PxShellState extends ConsumerState<PxShell> with WindowListener {
 
     // Messages from the core that are not player state (a song was skipped, the output device changed).
     ref.listen(noticeProvider, (_, next) => next.whenData((m) => ref.read(toastProvider.notifier).push(m, timeout: const Duration(seconds: 10))));
+
+    // A check that found a newer version shows what's new, whether the person asked or Pyxee looked by itself.
+    ref.listen(updatesProvider.select((u) => u.changelogOpen), (was, open) {
+      if (open && was != true) unawaited(showChangelogSheet(context, ref));
+    });
 
     final page = _Page(libraryError: libraryError, topBar: wide ? null : Padding(padding: EdgeInsets.symmetric(horizontal: pad, vertical: 12), child: const PxTopBar(showSettings: true)));
 
@@ -207,14 +218,16 @@ class _Page extends ConsumerWidget {
               child: PxNotice(children: [Text("Your library couldn't be opened ($libraryError). Likes, playlists and history won't be saved this session.", style: PxText.body(p.fg))]),
             ),
           Expanded(
-            // Pages slide past each other on a shared axis in the order of the tabs.
+            // Fade through: the old page is gone in the first half and the new one comes in during the second, with a
+            // short slide along the order of the tabs, so the two are never drawn on top of each other.
             child: AnimatedSwitcher(
-              duration: const Duration(milliseconds: 260),
-              switchInCurve: Curves.easeOutCubic,
-              layoutBuilder: (current, previous) => Stack(children: [...previous, ?current]),
+              duration: const Duration(milliseconds: 240),
+              switchInCurve: const Interval(0.5, 1.0, curve: Curves.easeOutCubic),
+              switchOutCurve: const Interval(0.5, 1.0, curve: Curves.easeInCubic),
+              layoutBuilder: (current, previous) => Stack(fit: StackFit.expand, children: [...previous, ?current]),
               transitionBuilder: (child, animation) => FadeTransition(
                 opacity: animation,
-                child: SlideTransition(position: Tween(begin: Offset(nav.dir * 0.025, 0), end: Offset.zero).animate(animation), child: child),
+                child: SlideTransition(position: Tween(begin: Offset(nav.dir * 0.02, 0), end: Offset.zero).animate(animation), child: child),
               ),
               child: KeyedSubtree(key: ValueKey(nav.route), child: content),
             ),

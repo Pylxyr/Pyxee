@@ -59,6 +59,12 @@ Future<void> main() async {
     // Unreadable settings: start with the defaults.
   }
   bridge.call('setVolume', {'percent': prefs.volume});
+  try {
+    // Discord Rich Presence follows the setting (it stays off in a build without a Discord application ID).
+    bridge.call('discordSet', {'on': prefs.discordPresence});
+  } on Object {
+    // Not worth stopping the start for.
+  }
 
   var rasterized = 0;
   WidgetsBinding.instance.addTimingsCallback((timings) {
