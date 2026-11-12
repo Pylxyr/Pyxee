@@ -11,7 +11,7 @@
   Output: pyxee-check\report-<time>.txt  (paste its contents back). Full logs: pyxee-check\logs\.
   The report never contains stream URLs (only hosts), cookie paths/values, or your user name.
 
-.PARAMETER Ytdlp          Path to yt-dlp.exe (default: PYXEE_YTDLP, crates\app\binaries, then PATH).
+.PARAMETER Ytdlp          Path to yt-dlp.exe (default: PYXEE_YTDLP, tools, then PATH).
 .PARAMETER Query1/2       Search queries used for the two live tracks (default: two CC-licensed songs).
 .PARAMETER CookieFile     Netscape cookies.txt to use (sets PYXEE_COOKIES for this run only).
 .PARAMETER CookieBrowser  e.g. firefox (sets PYXEE_COOKIES_FROM_BROWSER for this run only).
@@ -666,9 +666,9 @@ function Add-UiTestCount([string]$logFile) {
 # ---------------------------------------------------------------- 1. static: ffmpeg is gone from the repo
 
 Section 'no ffmpeg process in code, build and packaging (libav is linked in-process)'
-$bin = Join-Path $Root 'crates\app\binaries'
+$bin = Join-Path $Root 'tools'
 $ff = @(Get-ChildItem $bin -Filter 'ffmpeg*' -ErrorAction SilentlyContinue)
-if ($ff.Count -eq 0) { Add-Result 'PASS' 'no-ffmpeg-sidecar-file' 'crates\app\binaries has no ffmpeg*' } else { Add-Result 'FAIL' 'no-ffmpeg-sidecar-file' ($ff.Name -join ', ') }
+if ($ff.Count -eq 0) { Add-Result 'PASS' 'no-ffmpeg-sidecar-file' 'tools has no ffmpeg*' } else { Add-Result 'FAIL' 'no-ffmpeg-sidecar-file' ($ff.Name -join ', ') }
 try {
   $conf = Get-Content (Join-Path $Root 'crates\app\tauri.bundle.conf.json') -Raw | ConvertFrom-Json
   $bins = @($conf.bundle.externalBin)

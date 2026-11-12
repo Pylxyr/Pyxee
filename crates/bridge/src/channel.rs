@@ -1,19 +1,22 @@
 //! The core behind the C interface: the player, the audio engine, the library, the sleep timer and the media keys,
 //! with every change pushed to the listener as a JSON event.
 //!
-//! This is the Tauri shell's glue (`state.rs`, `runner.rs`, `commands.rs`, `shell/sleep.rs`, `shell/media.rs`)
-//! ported to a process-wide `App` instead of a Tauri `AppHandle`. The engine, the library service, the session file
-//! and the recorder are the Tauri shell's own files (see `lib.rs`).
+//! A process-wide `App` ties the engine, the library service, the session file and the recorder (all in this crate,
+//! see `lib.rs`) to the sleep timer, the media keys and the event listener.
 
+use crate::advanced::{self, EnvState};
+use crate::discord::{self, Discord};
 use crate::dto::{
     state_dto, CommandDto, ExploreShelfDto, FilterInfoDto, GenreDto, NoticeDto, PlayerStateDto, PositionDto,
     SearchErrorDto, SearchFilterDto, SearchItemDto, SearchResponseDto, TrackDto,
 };
 use crate::engine::{Engine, Host};
 use crate::library_service::LibraryService;
+use crate::opener;
 use crate::recorder::HistoryRecorder;
 use crate::session;
 use crate::shell_dto::{LyricsDto, SleepSettingDto, SleepStateDto, SleepStatusDto};
+use crate::updater;
 use pyxee_audio::output::{DeviceIdent, DeviceInfo, Output};
 use pyxee_audio::pipeline::Volume;
 use pyxee_audio::AudioError;
@@ -83,6 +86,11 @@ struct App {
     media: Mutex<Option<MediaControls>>,
     sent: Mutex<Sent>,
     prefs_path: Option<PathBuf>,
+    data_dir: Option<PathBuf>,
+    /// The `.env` file Settings > Advanced edits.
+    env: EnvState,
+    /// Discord Rich Presence, while it is switched on (and this build has a Discord application).
+    discord: Mutex<Option<Discord>>,
 }
 
 static APP: OnceLock<App> = OnceLock::new();
@@ -121,12 +129,14 @@ impl log::Log for StderrLog {
     fn flush(&self) {}
 }
 
-/// `PYXEE_LOG=info|debug|off` (default: warnings) writes the core's log to the process's stderr.
+/// `PYXEE_LOG=error|warn|info|debug|trace|off` (default: warnings) writes the core's log to the process's stderr.
 fn init_logging() {
     static LOGGER: OnceLock<StderrLog> = OnceLock::new();
     let level = match std::env::var("PYXEE_LOG").ok().as_deref() {
+        Some("trace") => log::LevelFilter::Trace,
         Some("debug") => log::LevelFilter::Debug,
         Some("info") => log::LevelFilter::Info,
+        Some("error") => log::LevelFilter::Error,
         Some("off") => log::LevelFilter::Off,
         _ => log::LevelFilter::Warn,
     };
@@ -142,8 +152,9 @@ fn env_dir(name: &str) -> Option<PathBuf> {
     std::env::var_os(name).filter(|v| !v.is_empty()).map(PathBuf::from)
 }
 
-/// The folders the Tauri shell used (`dev.pyxee.app` under Local, the former one under Roaming), so the library, the
-/// session and the settings are shared with it. Do not run both apps at once: they would write the same files.
+/// The folders earlier versions of Pyxee used (`dev.pyxee.app` under Local, the former one under Roaming), so the
+/// library, the session and the settings carry over. An older version running at the same time would write the same
+/// files.
 fn data_folders() -> (Option<PathBuf>, Option<PathBuf>) {
     let (local, roaming) = if cfg!(windows) {
         (env_dir("LOCALAPPDATA"), env_dir("APPDATA"))
@@ -165,13 +176,18 @@ fn locate_ytdlp() -> PathBuf {
     if found.is_file() {
         return found;
     }
-    let exe = if cfg!(windows) { "yt-dlp.exe" } else { "yt-dlp" };
-    let dev = Path::new(env!("CARGO_MANIFEST_DIR")).join("../app/binaries").join(exe);
-    if dev.is_file() {
-        dev
+    // `cargo xtask tools` saves the program under its sidecar name (`yt-dlp-<triple>.exe`), so look for that as well.
+    let names: &[&str] = if cfg!(windows) {
+        &["yt-dlp.exe", "yt-dlp-x86_64-pc-windows-msvc.exe"]
     } else {
-        found
-    }
+        &["yt-dlp"]
+    };
+    let tools = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tools");
+    names
+        .iter()
+        .map(|name| tools.join(name))
+        .find(|path| path.is_file())
+        .unwrap_or(found)
 }
 
 fn build() -> App {
@@ -203,6 +219,12 @@ fn build() -> App {
     let mut remote = YtDlpSource::new(locate_ytdlp())
         .with_cookies(Cookies::from_env())
         .with_js_runtime(JsRuntime::from_env());
+    // The updater's copy of yt-dlp wins over the installed one, unless the developer pinned one with PYXEE_YTDLP.
+    if std::env::var_os("PYXEE_YTDLP").is_none_or(|v| v.is_empty()) {
+        if let Some(dir) = &data_dir {
+            remote = remote.with_preferred(updater::managed_ytdlp_path(dir));
+        }
+    }
     if !ytmusic::direct_requests_allowed_from_env() {
         remote = remote.without_music_search();
     }
@@ -236,7 +258,13 @@ fn build() -> App {
         clock: Instant::now(),
         media: Mutex::new(None),
         sent: Mutex::new(Sent::default()),
-        prefs_path: data_dir.map(|d| d.join("ui_prefs.json")),
+        prefs_path: data_dir.as_ref().map(|d| d.join("ui_prefs.json")),
+        env: EnvState {
+            file: data_dir.as_ref().map(|d| d.join(".env")),
+            from_windows: env_applied.from_windows,
+        },
+        data_dir,
+        discord: Mutex::new(None),
     }
 }
 
@@ -267,6 +295,8 @@ fn spawn_threads() {
     if let Some(rx) = rx {
         spawn_runner(rx);
     }
+    // Installers that earlier updates downloaded are no longer needed.
+    thread::spawn(updater::clear_leftovers);
     // The session is written here, off the thread that reports playback: a burst of requests becomes one write.
     thread::Builder::new()
         .name("session-writer".into())
@@ -299,7 +329,7 @@ struct Envelope<'a, T: Serialize> {
     data: T,
 }
 
-fn emit<T: Serialize>(event: &str, data: T) {
+pub(crate) fn emit<T: Serialize>(event: &str, data: T) {
     let Some(app) = app() else { return };
     let callback = app.on_event.lock().ok().and_then(|c| *c);
     let Some(callback) = callback else { return };
@@ -391,6 +421,12 @@ impl App {
         };
         if phase == Phase::Playing && self.restore_fade.swap(false, Ordering::Relaxed) {
             self.volume.set_fade(1.0);
+        }
+        // Discord decides for itself (and cheaply) whether anything changed enough to be worth sending.
+        if let Ok(guard) = self.discord.lock() {
+            if let Some(discord) = guard.as_ref() {
+                discord.on_state(phase, entry.map(|e| &e.track), s.position_ms);
+            }
         }
         let Ok(mut sent) = self.sent.lock() else { return };
         let Ok(mut media) = self.media.lock() else { return };
@@ -843,6 +879,28 @@ pub fn call_async(request: Option<String>, id: u64) {
     });
 }
 
+/// Makes Discord Rich Presence match the setting: starts it when it is on (and this build has a Discord application ID),
+/// clears it and stops when it is off.
+fn sync_discord(app: &App, on: bool) {
+    let stopped = {
+        let Ok(mut slot) = app.discord.lock() else { return };
+        if on {
+            if slot.is_none() {
+                *slot = discord::init();
+            }
+            None
+        } else {
+            slot.take()
+        }
+    };
+    // Outside the lock: clearing waits for Discord (a second at most) and `on_state` must not be held up by it.
+    if let Some(discord) = stopped {
+        discord.shutdown();
+    } else if on {
+        app.publish(|_| Vec::new()); // show the song that is playing now
+    }
+}
+
 fn handle_text(request: &str) -> Result<Value, CallError> {
     let request: Request = serde_json::from_str(request).map_err(|e| CallError::from(format!("bad request: {e}")))?;
     let app = app().ok_or("the bridge is not started")?;
@@ -900,6 +958,7 @@ fn handle(app: &App, method: &str, params: &Value) -> Result<Value, CallError> {
         }
         "quit" => {
             app.save_session();
+            sync_discord(app, false); // clears the presence, waiting a second at most
             Ok(Value::Null)
         }
         "attachMedia" => {
@@ -921,6 +980,29 @@ fn handle(app: &App, method: &str, params: &Value) -> Result<Value, CallError> {
                 pyxee_shell::atomic::write(path, text.as_bytes())
                     .map_err(|e| CallError::from(format!("could not save the settings: {e}")))?;
             }
+            Ok(Value::Null)
+        }
+        // ------------------------------------------------- advanced, updates, discord
+        "envGet" => json_of(advanced::env_get(&app.env)?),
+        "envSet" => {
+            let vars: Vec<crate::dto::EnvVarDto> = arg(params, "vars")?;
+            json_of(advanced::env_set(&app.env, vars)?)
+        }
+        "updateCheckApp" => json_of(updater::update_check_app(arg(params, "prereleases")?)?),
+        "updateInstallApp" => {
+            updater::update_install_app(arg(params, "prereleases")?)?;
+            // The installer is running: close the window so it can replace the files.
+            emit("window", json!({ "action": "quit" }));
+            Ok(Value::Null)
+        }
+        "updateCheckYtdlp" => json_of(updater::update_check_ytdlp(app.data_dir.as_deref())?),
+        "updateInstallYtdlp" => json_of(updater::update_install_ytdlp(app.data_dir.as_deref())?),
+        "openReleasePage" => {
+            opener::open_url(opener::RELEASES_URL)?;
+            Ok(Value::Null)
+        }
+        "discordSet" => {
+            sync_discord(app, arg(params, "on")?);
             Ok(Value::Null)
         }
         // -------------------------------------------------------------- sources

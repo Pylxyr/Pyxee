@@ -21,8 +21,8 @@ const YTDLP_VERSION: &str = "2026.10.21";
 /// SHA-256 of that release's `yt-dlp.exe` (from its published SHA2-256SUMS). `cargo xtask tools` refuses any other bytes.
 const YTDLP_SHA256: &str = "33121d192d706e62f684a06f80918e3f3a8ba52ac3a65213b6951c39c7d9f555";
 
-/// Where the pinned release's files are. The in-app updater (crates/app/src/updater.rs) is separate on purpose: it
-/// pulls the latest release at run time, which is how users get a yt-dlp that keeps up with YouTube.
+/// Where the pinned release's files are. The in-app updater (removed with the old shell, see docs/migration.md) was separate on purpose: it
+/// pulled the latest release at run time, which is how users get a yt-dlp that keeps up with YouTube.
 fn ytdlp_base() -> String {
     format!("https://github.com/yt-dlp/yt-dlp/releases/download/{YTDLP_VERSION}")
 }
@@ -429,7 +429,7 @@ fn fetch_pinned(label: &str, url: &str, expected: &str) -> Res<Vec<u8>> {
 
 fn tools(args: &[String]) -> Res<()> {
     let mut update = false;
-    let mut dir = workspace_root().join("crates/app/binaries");
+    let mut dir = workspace_root().join("tools");
     let mut it = args.iter();
     while let Some(a) = it.next() {
         match a.as_str() {
@@ -462,7 +462,7 @@ fn tools(args: &[String]) -> Res<()> {
     }
 
     println!("\nDone. The app finds it automatically in development; the installer bundles it.");
-    println!("Licenses: yt-dlp.exe is a GPLv3+ combined work (a separate program, not linked); the FFmpeg libraries are LGPL v2.1+ (see crates/app/licenses/).");
+    println!("Licenses: yt-dlp.exe is a GPLv3+ combined work (a separate program, not linked); the FFmpeg libraries are LGPL v2.1+ (see licenses/).");
     Ok(())
 }
 

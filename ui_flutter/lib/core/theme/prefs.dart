@@ -28,6 +28,8 @@ class Prefs {
     this.artColors = false,
     this.mica = true,
     this.closeToTray = true,
+    this.discordPresence = true,
+    this.checkPrereleases = false,
     this.volume = 80,
     this.custom = const [],
   });
@@ -54,6 +56,8 @@ class Prefs {
     artColors: (j['artColors'] as bool?) ?? false,
     mica: (j['mica'] as bool?) ?? true,
     closeToTray: (j['closeToTray'] as bool?) ?? true,
+    discordPresence: (j['discordPresence'] as bool?) ?? true,
+    checkPrereleases: (j['checkPrereleases'] as bool?) ?? false,
     volume: ((j['volume'] as int?) ?? 80).clamp(0, 100),
     custom: custom,
   );
@@ -70,6 +74,12 @@ class Prefs {
   final bool artColors;
   final bool mica;
   final bool closeToTray;
+
+  /// Discord Rich Presence ("Listening to Pyxee"). Only does anything in a build that has a Discord application ID.
+  final bool discordPresence;
+
+  /// Settings > Updates > Include pre-releases.
+  final bool checkPrereleases;
   final int volume;
 
   /// Themes the user made or imported.
@@ -83,6 +93,8 @@ class Prefs {
     bool? artColors,
     bool? mica,
     bool? closeToTray,
+    bool? discordPresence,
+    bool? checkPrereleases,
     int? volume,
     List<ThemeDef>? custom,
   }) => Prefs(
@@ -93,6 +105,8 @@ class Prefs {
     artColors: artColors ?? this.artColors,
     mica: mica ?? this.mica,
     closeToTray: closeToTray ?? this.closeToTray,
+    discordPresence: discordPresence ?? this.discordPresence,
+    checkPrereleases: checkPrereleases ?? this.checkPrereleases,
     volume: volume ?? this.volume,
     custom: custom ?? this.custom,
   );
@@ -105,6 +119,8 @@ class Prefs {
     'artColors': artColors,
     'mica': mica,
     'closeToTray': closeToTray,
+    'discordPresence': discordPresence,
+    'checkPrereleases': checkPrereleases,
     'volume': volume,
     'custom': [for (final t in custom) t.toJson()],
   };

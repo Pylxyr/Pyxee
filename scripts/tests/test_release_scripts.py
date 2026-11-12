@@ -44,19 +44,24 @@ class NextVersion(unittest.TestCase):
         self.assertEqual(len(versions), 1, versions)
 
 
-class PkgverRegex(unittest.TestCase):
-    PKGBUILD = "# Maintainer: x\npkgname=pyxee\npkgver=0.5.0\npkgrel=1\n"
+class PubspecRegex(unittest.TestCase):
+    PUBSPEC = "name: pyxee\nversion: 0.5.2+3\nenvironment:\n  sdk: ^3.12.0\n"
 
-    def test_only_the_pkgver_line_changes(self):
-        out = bv.PKGVER.sub(lambda m: f"{m.group(1)}9.9.9", self.PKGBUILD, count=1)
-        self.assertIn("\npkgver=9.9.9\n", out)
-        self.assertIn("\npkgrel=1\n", out)
-        self.assertEqual(bv.PKGVER.search(self.PKGBUILD).group(2), "0.5.0")
+    def test_only_the_version_line_changes_and_the_build_number_stays(self):
+        out = bv.PUBSPEC_VERSION.sub(lambda m: f"{m.group(1)}9.9.9{m.group(3) or ''}", self.PUBSPEC, count=1)
+        self.assertIn("\nversion: 9.9.9+3\n", out)
+        self.assertIn("\nenvironment:\n  sdk: ^3.12.0\n", out)
+        self.assertEqual(bv.PUBSPEC_VERSION.search(self.PUBSPEC).group(2), "0.5.2")
 
-    def test_the_repo_pkgbuild_follows_a_final_release_only(self):
-        versions = bv.read_versions()
-        workspace = versions["Cargo.toml [workspace.package]"]
-        self.assertEqual("packaging/arch/PKGBUILD pkgver" in versions, "-" not in workspace)
+    def test_a_version_without_a_build_number(self):
+        found = bv.PUBSPEC_VERSION.search("version: 1.0.0-rc1\n")
+        self.assertEqual((found.group(2), found.group(3)), ("1.0.0-rc1", None))
+
+    def test_the_repo_pubspec_is_one_of_the_checked_files(self):
+        self.assertIn("ui_flutter/pubspec.yaml", bv.read_versions())
+
+    def test_the_current_version_comes_from_cargo_toml(self):
+        self.assertEqual(bv.current_version(), bv.read_versions()["Cargo.toml [workspace.package]"])
 
 
 class LockfileRegex(unittest.TestCase):

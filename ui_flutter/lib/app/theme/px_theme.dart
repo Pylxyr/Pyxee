@@ -227,9 +227,13 @@ ThemeData buildPxTheme(PxColors p, {required bool mica}) {
     dividerColor: p.rule,
     textSelectionTheme: TextSelectionThemeData(cursorColor: p.accent, selectionColor: p.accent.withValues(alpha: 0.3)),
     scrollbarTheme: ScrollbarThemeData(
-      thickness: const WidgetStatePropertyAll(8),
+      thickness: WidgetStateProperty.resolveWith((states) => states.contains(WidgetState.hovered) || states.contains(WidgetState.dragged) ? 10.0 : 6.0),
       radius: const Radius.circular(8),
-      thumbColor: WidgetStatePropertyAll(p.fg.withValues(alpha: 0.24)),
+      thumbColor: WidgetStateProperty.resolveWith((states) {
+        if (states.contains(WidgetState.dragged)) return p.accent.withValues(alpha: 0.72);
+        if (states.contains(WidgetState.hovered)) return p.accent.withValues(alpha: 0.42);
+        return p.fg.withValues(alpha: 0.24);
+      }),
     ),
     extensions: [p],
   );

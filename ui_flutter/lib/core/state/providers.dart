@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../bridge/bridge.dart';
 import '../models/models.dart';
+import '../models/system.dart';
 
 /// Opened once in `main` and handed in as an override, so a missing library shows an error screen instead of a crash.
 final bridgeProvider = Provider<Bridge>((ref) => throw UnimplementedError());
@@ -118,6 +119,12 @@ final sleepProvider = NotifierProvider<SleepNotifier, SleepStatus?>(
 final noticeProvider = StreamProvider<String>((ref) {
   final bridge = ref.watch(bridgeProvider);
   return _events(bridge, 'notice').map((d) => (d! as Json)['message']! as String);
+});
+
+/// Progress of a download that Settings > Updates started (Pyxee's installer or yt-dlp).
+final updateProgressProvider = StreamProvider<UpdateProgress>((ref) {
+  final bridge = ref.watch(bridgeProvider);
+  return _events(bridge, 'updateProgress').map((d) => UpdateProgress.fromJson(d! as Json));
 });
 
 /// What the window should do, asked by the system media widget (Linux): `show` or `quit`.
@@ -306,6 +313,29 @@ class CoreApi {
 
   Future<void> savePrefs(Json prefs) => _b.callAsync('prefsSet', {'json': jsonEncode(prefs)});
   Future<void> quit() => _b.callAsync('quit');
+
+  // Settings > Advanced (the `.env` file), Settings > Updates and Discord
+  Future<EnvSettings> envGet() async => EnvSettings.fromJson(await _b.callAsync('envGet') as Json);
+
+  Future<EnvSettings> envSet(List<EnvVar> vars) async =>
+      EnvSettings.fromJson(await _b.callAsync('envSet', {'vars': [for (final v in vars) v.toJson()]}) as Json);
+
+  Future<AppUpdate> updateCheckApp({required bool prereleases}) async =>
+      AppUpdate.fromJson(await _b.callAsync('updateCheckApp', {'prereleases': prereleases}) as Json);
+
+  /// Starts the installer; the core then asks the window to quit so the installer can replace the files.
+  Future<void> updateInstallApp({required bool prereleases}) =>
+      _b.callAsync('updateInstallApp', {'prereleases': prereleases});
+
+  Future<YtdlpUpdate> updateCheckYtdlp() async => YtdlpUpdate.fromJson(await _b.callAsync('updateCheckYtdlp') as Json);
+
+  /// Returns the version that was installed.
+  Future<String> updateInstallYtdlp() async => await _b.callAsync('updateInstallYtdlp') as String;
+
+  Future<void> openReleasePage() => _b.callAsync('openReleasePage');
+
+  /// Discord Rich Presence on or off (it does nothing in a build without a Discord application ID).
+  Future<void> discordSet(bool on) => _b.callAsync('discordSet', {'on': on});
 }
 
 final apiProvider = Provider<CoreApi>((ref) => CoreApi(ref.watch(bridgeProvider)));

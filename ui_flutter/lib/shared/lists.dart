@@ -500,10 +500,12 @@ class _PxShelfState extends State<PxShelf> {
     if (!_c.hasClients || !mounted) return;
     final back = _c.offset > 4;
     final forward = _c.offset + _c.position.viewportDimension < _c.position.maxScrollExtent - 4;
-    if (back != _back || forward != _forward) setState(() {
-      _back = back;
-      _forward = forward;
-    });
+    if (back != _back || forward != _forward) {
+      setState(() {
+        _back = back;
+        _forward = forward;
+      });
+    }
   }
 
   void _page(int dir) {

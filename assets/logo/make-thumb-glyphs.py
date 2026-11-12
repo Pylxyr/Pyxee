@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""White transport glyphs (32x32, transparent) for the taskbar thumbnail buttons -> crates/app/icons/thumb/.
+"""White transport glyphs (32x32, transparent) for the taskbar thumbnail buttons -> assets/icons/thumb/.
 Needs Pillow.   python3 assets/logo/make-thumb-glyphs.py"""
 from pathlib import Path
 from PIL import Image, ImageDraw
 
-OUT = Path(__file__).resolve().parents[2] / "crates/app/icons/thumb"
+OUT = Path(__file__).resolve().parents[2] / "assets/icons/thumb"
 S, K = 32, 8  # size, supersampling
 
 

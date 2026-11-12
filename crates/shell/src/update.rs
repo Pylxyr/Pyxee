@@ -1,5 +1,5 @@
 //! Decisions for the in-app updaters: is a release newer, which release file is the installer, does a download match
-//! its published SHA-256, and how a verified program replaces the old one. No network and no Tauri here; the app
+//! its published SHA-256, and how a verified program replaces the old one. No network and no UI framework here; the app
 //! downloads, this module judges and writes, so all of it is tested on any OS.
 //!
 //! Nothing is installed until it has been checked: the checksum must match, the file must be a Windows program, and
@@ -536,7 +536,7 @@ pub enum Signature {
 }
 
 /// Reads signatures. A trait so the decision below is tested without Windows; the app implements it with the
-/// system's own verification (see `crates/app/src/updater.rs`).
+/// system's own verification (the former shell did; see `docs/migration.md`).
 pub trait SignatureChecker {
     fn signature(&self, file: &Path) -> Result<Signature, String>;
 }

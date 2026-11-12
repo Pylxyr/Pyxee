@@ -15,56 +15,34 @@ import '../settings/settings_sheet.dart';
 
 /// Now Playing, full screen: the cover and controls on the left, and beside them Up next, Lyrics and Related. It slides
 /// up over the shell and is not built at all while closed.
-class PxNowPlaying extends ConsumerStatefulWidget {
+class PxNowPlaying extends ConsumerWidget {
   const PxNowPlaying({super.key});
 
   @override
-  ConsumerState<PxNowPlaying> createState() => _PxNowPlayingState();
-}
-
-class _PxNowPlayingState extends ConsumerState<PxNowPlaying> with SingleTickerProviderStateMixin {
-  late final AnimationController _c = AnimationController(vsync: this, duration: const Duration(milliseconds: 360), reverseDuration: const Duration(milliseconds: 260));
-  late final Animation<Offset> _slide = Tween(begin: const Offset(0, 0.08), end: Offset.zero).animate(CurvedAnimation(parent: _c, curve: Curves.easeOutExpo, reverseCurve: Curves.easeInCubic));
-
-  @override
-  void initState() {
-    super.initState();
-    _c.addStatusListener((_) {
-      if (mounted) setState(() {});
-    });
-  }
-
-  @override
-  void dispose() {
-    _c.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final open = ref.watch(navProvider.select((n) => n.npOpen));
     final hasSong = ref.watch(currentSongProvider) != null;
-    final want = open && hasSong;
-    // Started after the frame: starting an animation notifies listeners, which must not happen while building.
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      if (want) {
-        if (!_c.isCompleted && _c.status != AnimationStatus.forward) unawaited(_c.forward());
-      } else if (!_c.isDismissed && _c.status != AnimationStatus.reverse) {
-        unawaited(_c.reverse());
-      }
-    });
-    if (_c.isDismissed && !want) return const SizedBox.shrink();
+    final show = open && hasSong;
     final p = context.px;
-    return FadeTransition(
-      opacity: _c,
-      child: SlideTransition(
-        position: _slide,
-        child: Container(
-          color: Color.alphaBlend(p.accent.withValues(alpha: 0.14), p.solid),
-          child: const _NpBody(),
-        ),
+    // AnimatedSwitcher runs the slide and the fade in both directions by itself: the page is swapped for nothing when
+    // it closes and the other way round when it opens, so there is no controller to keep in step with the state.
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 340),
+      reverseDuration: const Duration(milliseconds: 240),
+      switchInCurve: Curves.easeOutExpo,
+      switchOutCurve: Curves.easeInCubic,
+      layoutBuilder: (current, previous) => Stack(fit: StackFit.expand, children: [...previous, ?current]),
+      transitionBuilder: (child, animation) => FadeTransition(
+        opacity: animation,
+        child: SlideTransition(position: Tween(begin: const Offset(0, 0.08), end: Offset.zero).animate(animation), child: child),
       ),
+      child: show
+          ? Container(
+              key: const ValueKey('now-playing'),
+              color: Color.alphaBlend(p.accent.withValues(alpha: 0.14), p.solid),
+              child: const _NpBody(),
+            )
+          : const SizedBox.shrink(key: ValueKey('now-playing-closed')),
     );
   }
 }

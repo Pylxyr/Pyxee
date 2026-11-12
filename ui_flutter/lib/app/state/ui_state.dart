@@ -74,6 +74,7 @@ class NavNotifier extends Notifier<NavState> {
   void setNpTab(NpTab tab) => state = state.copyWith(npTab: tab);
 
   void openNowPlaying() {
+    debugPrint('[pyxee] open now playing (already open: ${state.npOpen})');
     if (!state.npOpen) state = state.copyWith(npOpen: true);
   }
 
