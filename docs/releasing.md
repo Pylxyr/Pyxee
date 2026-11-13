@@ -16,7 +16,7 @@ That is all. The workflow then:
 3. builds on Windows, in steps of its own so a failed log says which one broke: the minimal static FFmpeg libraries the audio decoder links (cached; there is no ffmpeg program, audio is decoded in-app), the pinned yt-dlp (SHA-256 checked against the value pinned in the repo), the Rust bridge (`cargo build -p pyxee-bridge --release`, with `PYXEE_UPDATE_PUBLIC_KEY` and `PYXEE_DISCORD_CLIENT_ID` compiled in) and the Flutter app (`flutter build windows --release`). Then `cargo xtask installer` and `cargo xtask portable` (with `PYXEE_BUILD_READY=1`, so they only gather, package and sign) make the two downloads. The workflow **unpacks the zip and starts it, installs the installer silently and starts that, checks that no ffmpeg program or libav DLL slipped in and that the licence texts are installed, and uninstalls it again to see that the uninstaller removes what the installer wrote**;
 4. writes the release notes (below), creates the release as a draft, uploads the installer, the portable zip, `SHA256SUMS.txt`, the third-party notices and the FFmpeg LGPL text, then publishes it. A signed build-provenance attestation is added when the repository allows it.
 
-The first release ever (no `v*.*.*` tag yet) publishes the version already in the files as it is. `0.0.1` is the current one.
+In a repository with no `v*.*.*` tag yet, the first release publishes the version already in the files as it is. The version the files carry now is shown by `python scripts/bump_version.py --current`.
 
 Every version, pre-releases (`-rc1`...) included, gets the NSIS installer (`Pyxee_x.y.z_x64-setup.exe`, a plain NSIS script in `packaging/windows/installer.nsi`) and the portable zip. There is no MSI.
 
