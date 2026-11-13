@@ -1228,7 +1228,7 @@ dependencies = [
 
 [[package]]
 name = "pyxee-audio"
-version = "0.5.2"
+version = "0.6.0-rc1"
 dependencies = [
  "cc",
  "cpal",
@@ -1242,7 +1242,7 @@ dependencies = [
 
 [[package]]
 name = "pyxee-bridge"
-version = "0.5.2"
+version = "0.6.0-rc1"
 dependencies = [
  "discord-rich-presence",
  "log",
@@ -1261,7 +1261,7 @@ dependencies = [
 
 [[package]]
 name = "pyxee-core"
-version = "0.5.2"
+version = "0.6.0-rc1"
 dependencies = [
  "serde",
  "serde_json",
@@ -1269,7 +1269,7 @@ dependencies = [
 
 [[package]]
 name = "pyxee-library"
-version = "0.5.2"
+version = "0.6.0-rc1"
 dependencies = [
  "pyxee-core",
  "rusqlite",
@@ -1278,7 +1278,7 @@ dependencies = [
 
 [[package]]
 name = "pyxee-lyrics"
-version = "0.5.2"
+version = "0.6.0-rc1"
 dependencies = [
  "log",
  "pyxee-net",
@@ -1290,7 +1290,7 @@ dependencies = [
 
 [[package]]
 name = "pyxee-net"
-version = "0.5.2"
+version = "0.6.0-rc1"
 dependencies = [
  "log",
  "ureq",
@@ -1298,7 +1298,7 @@ dependencies = [
 
 [[package]]
 name = "pyxee-shell"
-version = "0.5.2"
+version = "0.6.0-rc1"
 dependencies = [
  "ring",
  "serde",
@@ -1309,7 +1309,7 @@ dependencies = [
 
 [[package]]
 name = "pyxee-sources"
-version = "0.5.2"
+version = "0.6.0-rc1"
 dependencies = [
  "log",
  "pyxee-net",
@@ -1321,7 +1321,7 @@ dependencies = [
 
 [[package]]
 name = "pyxee-spike"
-version = "0.5.2"
+version = "0.6.0-rc1"
 dependencies = [
  "anyhow",
  "cpal",
@@ -2300,7 +2300,7 @@ dependencies = [
 
 [[package]]
 name = "xtask"
-version = "0.5.2"
+version = "0.6.0-rc1"
 dependencies = [
  "pyxee-net",
  "ring",
