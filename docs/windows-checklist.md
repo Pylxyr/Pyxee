@@ -37,13 +37,15 @@ from a terminal with `PYXEE_LOG=debug` (see [advanced.md](advanced.md)) and past
 
 ## Release pipeline (first real run)
 
-Not written yet for the Flutter app: see the proposal in [releasing.md](releasing.md). When a release workflow exists,
-tick these on its first run:
+The release workflow (`.github/workflows/release.yml`, started by **Cut release**, described in [releasing.md](releasing.md))
+builds the bridge and the Flutter app, then the installer and the portable zip, and tests both. Tick these on its first real run:
 
-- [ ] CI is green on the Windows runner, including the Flutter job.
-- [ ] The installed folder lists the app exe, `pyxee_bridge.dll` and `yt-dlp.exe` (and no ffmpeg or libav DLL: libav is linked in statically).
-- [ ] The release has the installer, `SHA256SUMS.txt` and `THIRD_PARTY_NOTICES.txt`; the checksum of the downloaded installer matches.
-- [ ] Install the downloaded installer on a clean user profile: SmartScreen "More info -> Run anyway" works, the app starts, a YouTube song plays.
+- [ ] CI is green on `main` before you start, including the Flutter job.
+- [ ] The workflow's own checks pass: yt-dlp runs, the portable zip starts, the silent install starts, and the uninstall leaves nothing behind.
+- [ ] The release has `Pyxee_x.y.z_x64-setup.exe`, the portable zip, `SHA256SUMS.txt` with its `.sig`, `THIRD_PARTY_NOTICES.txt` and the FFmpeg LGPL text; the checksum of the downloaded installer matches.
+- [ ] The installed folder lists `Pyxee.exe`, `pyxee_bridge.dll`, `yt-dlp.exe` and the Flutter files (and no ffmpeg or libav DLL: libav is linked in statically). Task Manager and the file properties call the program "Pyxee".
+- [ ] Install the downloaded installer over an older Pyxee: SmartScreen at most asks for "More info -> Run anyway", the app starts, a YouTube song plays, and your library and settings are still there.
+- [ ] On that older copy, Settings > Updates finds the new release and installs it.
 
 ### FFmpeg licence (LGPL v2.1+, statically linked)
 
