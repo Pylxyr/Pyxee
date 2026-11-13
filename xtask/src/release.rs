@@ -1,11 +1,12 @@
-//! Release packaging beyond the installer: the portable zip and code signing.
+//! Release packaging beyond building the app: the staged app folder, the portable zip, the installer's file list and
+//! code signing.
 //!
-//! Everything that decides something (names, what goes in the zip, what must not, the signtool command line, the
-//! Tauri signing config) is a plain function with a test and runs on any platform. The calls that need Windows
-//! (signtool, PowerShell) are thin and live in `main.rs`.
+//! Everything that decides something (names, what goes in the folder, what must not, the signtool command line, the
+//! uninstall list) is a plain function with a test and runs on any platform. The calls that need Windows (signtool,
+//! makensis, PowerShell) are thin and live in `main.rs`.
 //!
-//! Signing is driven by environment variables so that no secret is ever written to a file in the repository, to a
-//! Tauri config, or to a command line that is printed:
+//! Signing is driven by environment variables so that no secret is ever written to a file in the repository, to an
+//! installer script, or to a command line that is printed:
 //!
 //! | Variable | Meaning |
 //! |---|---|
@@ -15,7 +16,6 @@
 //! | `PYXEE_SIGNTOOL` | path to `signtool.exe` (default: newest in the Windows SDK, then PATH) |
 //! | `PYXEE_REQUIRE_SIGNING` | `1`: a build without a certificate is an error instead of an unsigned build |
 
-use serde_json::{json, Value};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
@@ -140,33 +140,6 @@ pub fn newest_sdk(names: &[String]) -> Option<&String> {
         .max_by_key(|n| sdk_version_key(n))
 }
 
-/// The Tauri config that makes `tauri build` sign everything it produces (the program, the uninstaller, the
-/// installers) by calling `<xtask> sign-file <file>`. The secret is read by that call from the environment; nothing
-/// secret is in this config. `base` is `tauri.bundle.conf.json`, whose relative paths stay relative to `crates/app`.
-pub fn signed_tauri_config(base: &Value, xtask_exe: &Path) -> Value {
-    let mut conf = base.clone();
-    merge(
-        &mut conf,
-        &json!({"bundle": {"windows": {"signCommand": {
-            "cmd": xtask_exe.to_string_lossy(),
-            "args": ["sign-file", "%1"],
-        }}}}),
-    );
-    conf
-}
-
-/// Recursive JSON merge: objects are merged key by key, anything else is replaced.
-pub fn merge(into: &mut Value, patch: &Value) {
-    match (into, patch) {
-        (Value::Object(a), Value::Object(b)) => {
-            for (k, v) in b {
-                merge(a.entry(k.clone()).or_insert(Value::Null), v);
-            }
-        }
-        (slot, v) => *slot = v.clone(),
-    }
-}
-
 /// What to say when a build ends up unsigned.
 pub fn unsigned_notice(required: bool) -> Result<&'static str, &'static str> {
     if required {
@@ -176,84 +149,113 @@ pub fn unsigned_notice(required: bool) -> Result<&'static str, &'static str> {
     }
 }
 
-/// The installer formats to build: the NSIS installer only (there is no MSI; it could not carry a pre-release
-/// version such as `0.1.1-rc1`, so candidates and final releases were built differently).
-pub const BUNDLES: &str = "nsis";
+// ---------------------------------------------------------------------------------------- the app folder
 
-// ---------------------------------------------------------------------------------------- portable
+/// What the app is called on disk. The Flutter runner builds `pyxee_ui.exe` (`BINARY_NAME` in
+/// `ui_flutter/windows/CMakeLists.txt`); the staged folder renames it, because the updater, the shortcuts and the
+/// release notes all say `Pyxee.exe`.
+pub const APP_EXE: &str = "Pyxee.exe";
+pub const FLUTTER_EXE: &str = "pyxee_ui.exe";
+pub const YTDLP_EXE: &str = "yt-dlp.exe";
+pub const BRIDGE_DLL: &str = "pyxee_bridge.dll";
+pub const FLUTTER_DLL: &str = "flutter_windows.dll";
+/// The Visual C++ runtime, copied next to the program (Flutter's documentation: a PC without the redistributable
+/// needs them there).
+pub const VC_RUNTIME_DLLS: [&str; 3] = ["msvcp140.dll", "vcruntime140.dll", "vcruntime140_1.dll"];
+/// Where `flutter build windows --release` leaves the app (older Flutter versions leave out the `x64`).
+pub const FLUTTER_RELEASE_DIRS: [&str; 2] = [
+    "ui_flutter/build/windows/x64/runner/Release",
+    "ui_flutter/build/windows/runner/Release",
+];
+/// Licence texts and notices that ship with every build: where they are in the repository, and their name next to
+/// the program.
+pub const NOTICE_FILES: [(&str, &str); 4] = [
+    ("licenses/THIRD_PARTY.txt", "THIRD_PARTY_NOTICES.txt"),
+    ("licenses/FFmpeg-LGPL-2.1.txt", "FFmpeg-LGPL-2.1.txt"),
+    ("licenses/GPL-3.0.txt", "GPL-3.0.txt"),
+    (
+        "licenses/yt-dlp-THIRD_PARTY_LICENSES.txt",
+        "yt-dlp-THIRD_PARTY_LICENSES.txt",
+    ),
+];
 
-pub fn portable_folder_name(version: &str) -> String {
-    format!("Pyxee_{version}_x64-portable")
+/// The installer's file name. The in-app updater picks the release asset that ends in `-setup.exe`.
+pub fn installer_name(version: &str) -> String {
+    format!("Pyxee_{version}_x64-setup.exe")
 }
 
-pub fn portable_zip_name(version: &str) -> String {
-    format!("{}.zip", portable_folder_name(version))
+/// `0.5.2` or `0.5.2-rc1` as the four numbers a Windows file version needs: `0.5.2.0`.
+pub fn numeric_version(version: &str) -> String {
+    let base = version.split(['-', '+']).next().unwrap_or(version);
+    let mut parts: Vec<&str> = base.split('.').collect();
+    while parts.len() < 4 {
+        parts.push("0");
+    }
+    parts.truncate(4);
+    parts.join(".")
 }
 
-pub const PORTABLE_README: &str = "Pyxee (portable)\r\n\
-\r\n\
-Run Pyxee.exe. Nothing is installed and nothing is written outside this folder:\r\n\
-your library, settings and logs are kept in the data folder next to Pyxee.exe\r\n\
-(it exists because of the file portable.txt; delete portable.txt to use the\r\n\
-normal %LOCALAPPDATA% folder instead).\r\n\
-\r\n\
-Needs the Microsoft Edge WebView2 runtime (already part of Windows 11 and of\r\n\
-current Windows 10).\r\n\
-\r\n\
-To update: download the new zip from https://github.com/Pylxyr/Pyxee/releases and\r\n\
-unpack it over this folder. The data folder is not in the zip, so it stays.\r\n\
-Settings > Updates still updates yt-dlp, into data\\tools.\r\n\
-\r\n\
-Licences: THIRD_PARTY_NOTICES.txt, FFmpeg-LGPL-2.1.txt,\r\n\
-GPL-3.0.txt and
-yt-dlp-THIRD_PARTY_LICENSES.txt (yt-dlp.exe is a GPLv3+ combined work).\r\n";
-
-/// A file that goes in the portable folder: where it comes from and its name inside.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Entry {
-    pub from: Option<PathBuf>,
-    pub name: &'static str,
+/// A file Pyxee itself writes into its data folder. A portable copy keeps that folder next to the program, and it
+/// is also where Flutter keeps `app.so`, `icudtl.dat` and `flutter_assets` (the two never use the same names), so
+/// what is refused is what the user would have made, never the folder as such. `rel` is relative to the app folder,
+/// with forward slashes.
+pub fn is_user_data(rel: &str) -> bool {
+    let Some(rest) = rel.strip_prefix("data/") else {
+        return false;
+    };
+    let first = rest.split('/').next().unwrap_or(rest);
+    first.starts_with("library.db")
+        || matches!(
+            first,
+            "shell.json" | "session.json" | "ui_prefs.json" | ".env" | "logs" | "tools"
+        )
+        || first.ends_with(".tmp")
 }
 
-/// The portable folder's contents. `from: None` entries are written by the packer (the marker and the readme).
-pub fn portable_entries() -> Vec<Entry> {
-    vec![
-        Entry {
-            from: Some("target/release/pyxee-app.exe".into()),
-            name: "Pyxee.exe",
-        },
-        Entry {
-            from: Some("tools/yt-dlp-x86_64-pc-windows-msvc.exe".into()),
-            name: "yt-dlp.exe",
-        },
-        Entry {
-            from: Some("licenses/THIRD_PARTY.txt".into()),
-            name: "THIRD_PARTY_NOTICES.txt",
-        },
-        Entry {
-            from: Some("licenses/FFmpeg-LGPL-2.1.txt".into()),
-            name: "FFmpeg-LGPL-2.1.txt",
-        },
-        Entry {
-            from: Some("licenses/GPL-3.0.txt".into()),
-            name: "GPL-3.0.txt",
-        },
-        Entry {
-            from: Some("licenses/yt-dlp-THIRD_PARTY_LICENSES.txt".into()),
-            name: "yt-dlp-THIRD_PARTY_LICENSES.txt",
-        },
-        Entry {
-            from: None,
-            name: PORTABLE_MARKER,
-        },
-        Entry {
-            from: None,
-            name: "README.txt",
-        },
-    ]
+/// Checks the file list of an app folder (`names` relative to it, forward slashes): everything the program needs is
+/// there, no ffmpeg program or libav DLL slipped in (libav is linked in statically; the licence text is meant to
+/// be there), no user data, and `portable.txt` is there exactly when the folder is the portable one.
+pub fn check_app_files(names: &[String], portable: bool) -> Res<()> {
+    for n in names {
+        let file = n.rsplit('/').next().unwrap_or(n);
+        if is_ffmpeg_binary(file) {
+            return Err(format!(
+                "{n}: an ffmpeg program or libav DLL, but libav is linked in statically"
+            ));
+        }
+        if is_user_data(n) {
+            return Err(format!("{n}: the user's data must never be shipped"));
+        }
+    }
+    let mut required: Vec<&str> = vec![
+        APP_EXE,
+        YTDLP_EXE,
+        FLUTTER_DLL,
+        BRIDGE_DLL,
+        "data/icudtl.dat",
+    ];
+    required.extend(VC_RUNTIME_DLLS);
+    required.extend(NOTICE_FILES.iter().map(|(_, name)| *name));
+    if portable {
+        required.extend([PORTABLE_MARKER, "README.txt"]);
+    }
+    for want in required {
+        if !names.iter().any(|n| n == want) {
+            return Err(format!("{want} is missing"));
+        }
+    }
+    if !names.iter().any(|n| n.starts_with("data/flutter_assets/")) {
+        return Err("data/flutter_assets is missing (is this a Flutter release build?)".into());
+    }
+    if !portable && names.iter().any(|n| n == PORTABLE_MARKER) {
+        return Err(format!(
+            "{PORTABLE_MARKER} must not be in the installed copy: it would turn portable mode on"
+        ));
+    }
+    Ok(())
 }
 
-/// An ffmpeg program or a libav DLL (libav is linked in statically; the licence text is meant to be there).
+/// An ffmpeg program or a libav DLL.
 pub fn is_ffmpeg_binary(file_name: &str) -> bool {
     let n = file_name.to_ascii_lowercase();
     if matches!(n.as_str(), "ffmpeg.exe" | "ffprobe.exe" | "ffplay.exe") {
@@ -266,38 +268,124 @@ pub fn is_ffmpeg_binary(file_name: &str) -> bool {
     matches!(stem, "avcodec" | "avformat" | "avutil" | "swresample")
 }
 
-/// Checks the entry names of a finished zip (`Folder/name`): everything required is there, nothing is outside the
-/// one top folder, no ffmpeg program or libav DLL slipped in, and no data folder (the user's data is never shipped).
+/// Every file under `dir`, as `(name relative to dir with forward slashes, full path)`, sorted by name so the same
+/// folder always gives the same list (and the same zip).
+pub fn collect_files(dir: &Path) -> Res<Vec<(String, PathBuf)>> {
+    fn walk(base: &Path, dir: &Path, out: &mut Vec<(String, PathBuf)>) -> Res<()> {
+        let rd =
+            std::fs::read_dir(dir).map_err(|e| format!("cannot read {}: {e}", dir.display()))?;
+        for entry in rd.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                walk(base, &path, out)?;
+            } else {
+                let rel = path
+                    .strip_prefix(base)
+                    .map_err(|e| e.to_string())?
+                    .components()
+                    .map(|c| c.as_os_str().to_string_lossy().into_owned())
+                    .collect::<Vec<_>>()
+                    .join("/");
+                out.push((rel, path));
+            }
+        }
+        Ok(())
+    }
+    let mut out = Vec::new();
+    walk(dir, dir, &mut out)?;
+    out.sort_by(|a, b| a.0.cmp(&b.0));
+    Ok(out)
+}
+
+/// The NSIS lines that remove exactly what the installer put in `$INSTDIR`: every file, then every folder that held
+/// one, deepest first, and finally the install folder itself if nothing else is in it. The uninstaller never deletes
+/// a folder recursively, so an install folder somebody pointed at `D:\Music` loses only Pyxee's own files.
+pub fn uninstall_script(files: &[String]) -> Res<String> {
+    let mut dirs: Vec<String> = Vec::new();
+    let mut out = String::new();
+    let mut sorted: Vec<&String> = files.iter().collect();
+    sorted.sort();
+    for f in &sorted {
+        if f.contains(['"', '$', '\r', '\n']) {
+            return Err(format!("{f}: a file name NSIS cannot take as it is"));
+        }
+        let win = f.replace('/', "\\");
+        out.push_str(&format!("Delete \"$INSTDIR\\{win}\"\r\n"));
+        let mut parts: Vec<&str> = f.split('/').collect();
+        parts.pop();
+        while !parts.is_empty() {
+            let d = parts.join("\\");
+            if !dirs.contains(&d) {
+                dirs.push(d);
+            }
+            parts.pop();
+        }
+    }
+    dirs.sort_by(|a, b| {
+        b.matches('\\')
+            .count()
+            .cmp(&a.matches('\\').count())
+            .then(a.cmp(b))
+    });
+    for d in dirs {
+        out.push_str(&format!("RMDir \"$INSTDIR\\{d}\"\r\n"));
+    }
+    out.push_str("RMDir \"$INSTDIR\"\r\n");
+    Ok(out)
+}
+
+// ---------------------------------------------------------------------------------------- portable
+
+pub fn portable_folder_name(version: &str) -> String {
+    format!("Pyxee_{version}_x64-portable")
+}
+
+pub fn portable_zip_name(version: &str) -> String {
+    format!("{}.zip", portable_folder_name(version))
+}
+
+pub const PORTABLE_MARKER_BODY: &str = "This file turns on Pyxee's portable mode: the library, settings and logs are kept in the data folder next to Pyxee.exe. Delete it to use the normal per-user folder.\r\n";
+
+pub const PORTABLE_README: &str = "Pyxee (portable)\r\n\
+\r\n\
+Run Pyxee.exe. Nothing is installed and nothing is written outside this folder:\r\n\
+your library, settings and logs are kept in the data folder next to Pyxee.exe\r\n\
+(it exists because of the file portable.txt; delete portable.txt to use the\r\n\
+normal %LOCALAPPDATA% folder instead).\r\n\
+\r\n\
+Do not delete or empty the data folder: it also holds the files Pyxee's window\r\n\
+needs to start (app.so, icudtl.dat and flutter_assets).\r\n\
+\r\n\
+To update: download the new zip from https://github.com/Pylxyr/Pyxee/releases and\r\n\
+unpack it over this folder. Your library and settings are not in the zip, so they\r\n\
+stay. Settings > Updates still updates yt-dlp, into data\\tools.\r\n\
+\r\n\
+Licences: THIRD_PARTY_NOTICES.txt, FFmpeg-LGPL-2.1.txt,\r\n\
+GPL-3.0.txt and yt-dlp-THIRD_PARTY_LICENSES.txt (yt-dlp.exe is a GPLv3+ combined work).\r\n";
+
+/// Checks the entry names of a finished zip (`Folder/name`): everything is inside the one top folder and the app
+/// folder inside passes `check_app_files` as a portable one.
 pub fn check_portable_entries(top: &str, entries: &[String]) -> Res<()> {
     let prefix = format!("{top}/");
+    let mut inside = Vec::with_capacity(entries.len());
     for e in entries {
         let Some(rest) = e.strip_prefix(&prefix) else {
             return Err(format!("{e} is not inside {top}/"));
         };
-        if rest.starts_with("data/") || rest == "data" {
-            return Err(format!("{e}: a data folder must never be shipped"));
-        }
-        let file = rest.rsplit('/').next().unwrap_or(rest);
-        if is_ffmpeg_binary(file) {
-            return Err(format!(
-                "{e}: an ffmpeg program or libav DLL, but libav is linked in statically"
-            ));
-        }
+        inside.push(rest.to_string());
     }
-    for want in portable_entries() {
-        if !entries
-            .iter()
-            .any(|e| e == &format!("{prefix}{}", want.name))
-        {
-            return Err(format!("{top}/{} is missing from the zip", want.name));
-        }
-    }
-    Ok(())
+    check_app_files(&inside, true).map_err(|e| format!("{top}: {e}"))
+}
+
+/// Where a zip entry's bytes come from.
+pub enum Source {
+    Path(PathBuf),
+    Bytes(Vec<u8>),
 }
 
 /// Writes a zip with every file under `top/`, forward slashes, deflate, a fixed timestamp (so the same inputs give
-/// the same bytes). `files` are `(name inside the folder, bytes)`.
-pub fn write_zip(out: &Path, top: &str, files: &[(String, Vec<u8>)]) -> Res<()> {
+/// the same bytes). `files` are `(name inside the folder, source)`.
+pub fn write_zip(out: &Path, top: &str, files: &[(String, Source)]) -> Res<()> {
     let tmp = out.with_extension("zip.part");
     let result = (|| -> Res<()> {
         let file = std::fs::File::create(&tmp)
@@ -306,10 +394,17 @@ pub fn write_zip(out: &Path, top: &str, files: &[(String, Vec<u8>)]) -> Res<()> 
         let options = zip::write::SimpleFileOptions::default()
             .compression_method(zip::CompressionMethod::Deflated)
             .last_modified_time(zip::DateTime::default());
-        for (name, bytes) in files {
+        for (name, source) in files {
             zip.start_file(format!("{top}/{name}"), options)
                 .map_err(|e| format!("zip: {e}"))?;
-            zip.write_all(bytes).map_err(|e| format!("zip: {e}"))?;
+            match source {
+                Source::Bytes(bytes) => zip.write_all(bytes).map_err(|e| format!("zip: {e}"))?,
+                Source::Path(path) => {
+                    let mut f = std::fs::File::open(path)
+                        .map_err(|e| format!("cannot read {}: {e}", path.display()))?;
+                    std::io::copy(&mut f, &mut zip).map_err(|e| format!("zip: {e}"))?;
+                }
+            }
         }
         zip.finish().map_err(|e| format!("zip: {e}"))?;
         Ok(())
@@ -449,30 +544,6 @@ mod tests {
     }
 
     #[test]
-    fn the_signing_config_calls_xtask_and_keeps_the_rest_of_the_bundle_config() {
-        let base =
-            json!({"bundle": {"externalBin": ["binaries/yt-dlp"], "resources": ["licenses/*"]}});
-        let conf = signed_tauri_config(&base, Path::new(r"C:\repo\target\debug\xtask.exe"));
-        assert_eq!(conf["bundle"]["externalBin"][0], "binaries/yt-dlp");
-        assert_eq!(
-            conf["bundle"]["windows"]["signCommand"]["cmd"],
-            r"C:\repo\target\debug\xtask.exe"
-        );
-        assert_eq!(
-            conf["bundle"]["windows"]["signCommand"]["args"],
-            json!(["sign-file", "%1"])
-        );
-        assert!(
-            !conf.to_string().to_lowercase().contains("password"),
-            "no secret in the config"
-        );
-        assert!(
-            base["bundle"].get("windows").is_none(),
-            "the input is not changed"
-        );
-    }
-
-    #[test]
     fn an_unsigned_build_is_allowed_unless_signing_is_required() {
         assert!(unsigned_notice(false).unwrap().contains("SmartScreen"));
         assert!(unsigned_notice(true)
@@ -481,8 +552,17 @@ mod tests {
     }
 
     #[test]
-    fn every_release_is_built_as_nsis_only() {
-        assert_eq!(BUNDLES, "nsis");
+    fn the_installer_is_named_the_way_the_updater_looks_for_it() {
+        let name = installer_name("0.2.0-rc1");
+        assert_eq!(name, "Pyxee_0.2.0-rc1_x64-setup.exe");
+        assert!(name.ends_with("-setup.exe"));
+    }
+
+    #[test]
+    fn a_version_becomes_four_numbers_for_the_file_properties() {
+        assert_eq!(numeric_version("0.5.2"), "0.5.2.0");
+        assert_eq!(numeric_version("0.5.2-rc1"), "0.5.2.0");
+        assert_eq!(numeric_version("1.0"), "1.0.0.0");
     }
 
     #[test]
@@ -492,15 +572,6 @@ mod tests {
             portable_zip_name("0.2.0-rc1"),
             "Pyxee_0.2.0-rc1_x64-portable.zip"
         );
-    }
-
-    #[test]
-    fn the_portable_zip_carries_the_gpl_texts_that_go_with_yt_dlp() {
-        let names: Vec<&str> = portable_entries().iter().map(|e| e.name).collect();
-        for n in ["GPL-3.0.txt", "yt-dlp-THIRD_PARTY_LICENSES.txt"] {
-            assert!(names.contains(&n), "{n}");
-        }
-        assert!(PORTABLE_README.contains("GPL-3.0.txt"));
     }
 
     #[test]
@@ -519,51 +590,192 @@ mod tests {
             "yt-dlp.exe",
             "FFmpeg-LGPL-2.1.txt",
             "avatar.dll",
-            "WebView2Loader.dll",
+            "flutter_windows.dll",
         ] {
             assert!(!is_ffmpeg_binary(n), "{n}");
         }
     }
 
-    fn good(top: &str) -> Vec<String> {
-        portable_entries()
-            .iter()
-            .map(|e| format!("{top}/{}", e.name))
-            .collect()
+    #[test]
+    fn only_what_pyxee_writes_is_user_data_not_flutters_own_data_folder() {
+        for n in [
+            "data/library.db",
+            "data/library.db-wal",
+            "data/shell.json",
+            "data/session.json",
+            "data/ui_prefs.json",
+            "data/.env",
+            "data/logs/pyxee.log",
+            "data/tools/yt-dlp.exe",
+            "data/shell.json.tmp",
+        ] {
+            assert!(is_user_data(n), "{n}");
+        }
+        for n in [
+            "data/app.so",
+            "data/icudtl.dat",
+            "data/flutter_assets/AssetManifest.bin",
+            "Pyxee.exe",
+            "tools/x",
+        ] {
+            assert!(!is_user_data(n), "{n}");
+        }
+    }
+
+    /// A file list that passes: what the staged folder holds, plus the portable extras when asked.
+    fn good(portable: bool) -> Vec<String> {
+        let mut v: Vec<String> = vec![
+            APP_EXE.into(),
+            YTDLP_EXE.into(),
+            FLUTTER_DLL.into(),
+            BRIDGE_DLL.into(),
+            "data/icudtl.dat".into(),
+            "data/app.so".into(),
+            "data/flutter_assets/AssetManifest.bin".into(),
+            "tray_manager_plugin.dll".into(),
+        ];
+        v.extend(VC_RUNTIME_DLLS.iter().map(|s| s.to_string()));
+        v.extend(NOTICE_FILES.iter().map(|(_, n)| n.to_string()));
+        if portable {
+            v.push(PORTABLE_MARKER.into());
+            v.push("README.txt".into());
+        }
+        v
     }
 
     #[test]
-    fn a_complete_portable_zip_passes() {
-        assert!(check_portable_entries("P", &good("P")).is_ok());
+    fn a_complete_app_folder_passes() {
+        assert!(check_app_files(&good(false), false).is_ok());
+        assert!(check_app_files(&good(true), true).is_ok());
     }
 
     #[test]
-    fn a_portable_zip_that_is_incomplete_or_wrong_is_refused() {
-        let mut missing = good("P");
-        missing.retain(|e| !e.ends_with("yt-dlp.exe"));
-        assert!(check_portable_entries("P", &missing)
+    fn the_notices_that_go_with_yt_dlp_and_ffmpeg_are_required() {
+        for n in [
+            "GPL-3.0.txt",
+            "yt-dlp-THIRD_PARTY_LICENSES.txt",
+            "FFmpeg-LGPL-2.1.txt",
+        ] {
+            let mut files = good(false);
+            files.retain(|f| f != n);
+            assert!(
+                check_app_files(&files, false).unwrap_err().contains(n),
+                "{n}"
+            );
+        }
+        assert!(PORTABLE_README.contains("GPL-3.0.txt"));
+    }
+
+    #[test]
+    fn an_app_folder_that_is_incomplete_or_wrong_is_refused() {
+        for (drop, why) in [
+            (YTDLP_EXE, "yt-dlp.exe"),
+            (BRIDGE_DLL, "pyxee_bridge.dll"),
+            ("vcruntime140.dll", "vcruntime140.dll"),
+            ("data/icudtl.dat", "icudtl.dat"),
+        ] {
+            let mut files = good(false);
+            files.retain(|f| f != drop);
+            assert!(
+                check_app_files(&files, false).unwrap_err().contains(why),
+                "{drop}"
+            );
+        }
+        let mut no_assets = good(false);
+        no_assets.retain(|f| !f.starts_with("data/flutter_assets/"));
+        assert!(check_app_files(&no_assets, false)
             .unwrap_err()
-            .contains("yt-dlp.exe"));
-        let mut no_marker = good("P");
-        no_marker.retain(|e| !e.ends_with(PORTABLE_MARKER));
-        assert!(check_portable_entries("P", &no_marker)
+            .contains("flutter_assets"));
+        let mut ff = good(false);
+        ff.push("avcodec-61.dll".into());
+        assert!(check_app_files(&ff, false).unwrap_err().contains("libav"));
+        let mut data = good(false);
+        data.push("data/library.db".into());
+        assert!(check_app_files(&data, false)
+            .unwrap_err()
+            .contains("user's data"));
+    }
+
+    #[test]
+    fn the_portable_marker_belongs_in_the_portable_zip_only() {
+        let mut installed = good(false);
+        installed.push(PORTABLE_MARKER.into());
+        assert!(check_app_files(&installed, false)
+            .unwrap_err()
+            .contains("portable mode"));
+        let mut no_marker = good(true);
+        no_marker.retain(|f| f != PORTABLE_MARKER);
+        assert!(check_app_files(&no_marker, true)
             .unwrap_err()
             .contains(PORTABLE_MARKER));
-        let mut ff = good("P");
-        ff.push("P/avcodec-61.dll".into());
-        assert!(check_portable_entries("P", &ff)
-            .unwrap_err()
-            .contains("libav"));
-        let mut data = good("P");
-        data.push("P/data/library.db".into());
-        assert!(check_portable_entries("P", &data)
-            .unwrap_err()
-            .contains("data folder"));
-        let mut stray = good("P");
+    }
+
+    #[test]
+    fn a_portable_zip_must_keep_everything_inside_its_one_folder() {
+        let inside: Vec<String> = good(true).iter().map(|n| format!("P/{n}")).collect();
+        assert!(check_portable_entries("P", &inside).is_ok());
+        let mut stray = inside.clone();
         stray.push("Other/x.txt".into());
         assert!(check_portable_entries("P", &stray)
             .unwrap_err()
             .contains("not inside"));
+        let mut missing = inside;
+        missing.retain(|e| !e.ends_with("yt-dlp.exe"));
+        assert!(check_portable_entries("P", &missing)
+            .unwrap_err()
+            .contains("yt-dlp.exe"));
+    }
+
+    #[test]
+    fn the_uninstall_list_deletes_files_then_folders_deepest_first() {
+        let files: Vec<String> = [
+            "Pyxee.exe",
+            "data/app.so",
+            "data/flutter_assets/fonts/a.otf",
+            "data/flutter_assets/AssetManifest.bin",
+        ]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+        let script = uninstall_script(&files).unwrap();
+        let lines: Vec<&str> = script.lines().collect();
+        assert!(lines.contains(&"Delete \"$INSTDIR\\data\\flutter_assets\\fonts\\a.otf\""));
+        let rm = |d: &str| {
+            lines
+                .iter()
+                .position(|l| *l == format!("RMDir \"$INSTDIR\\{d}\""))
+        };
+        let fonts = rm("data\\flutter_assets\\fonts").unwrap();
+        let assets = rm("data\\flutter_assets").unwrap();
+        let data = rm("data").unwrap();
+        assert!(fonts < assets && assets < data, "{script}");
+        let last_delete = lines.iter().rposition(|l| l.starts_with("Delete")).unwrap();
+        assert!(last_delete < fonts, "all files go before any folder");
+        assert_eq!(*lines.last().unwrap(), "RMDir \"$INSTDIR\"");
+        assert!(!script.contains("/r"), "never a recursive delete");
+    }
+
+    #[test]
+    fn a_file_name_nsis_cannot_take_is_an_error_not_a_broken_script() {
+        assert!(uninstall_script(&["a$b.txt".to_string()]).is_err());
+        assert!(uninstall_script(&["a\"b.txt".to_string()]).is_err());
+    }
+
+    #[test]
+    fn collecting_files_gives_sorted_relative_names_with_forward_slashes() {
+        let dir = std::env::temp_dir().join(format!("pyxee-xtask-collect-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("data/flutter_assets")).unwrap();
+        std::fs::write(dir.join("b.txt"), "b").unwrap();
+        std::fs::write(dir.join("a.txt"), "a").unwrap();
+        std::fs::write(dir.join("data/flutter_assets/x.bin"), "x").unwrap();
+        let names: Vec<String> = collect_files(&dir)
+            .unwrap()
+            .into_iter()
+            .map(|f| f.0)
+            .collect();
+        assert_eq!(names, ["a.txt", "b.txt", "data/flutter_assets/x.bin"]);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
@@ -571,11 +783,17 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("pyxee-xtask-zip-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
+        let on_disk = dir.join("from-disk.bin");
+        std::fs::write(&on_disk, b"disk").unwrap();
         let out = dir.join("p.zip");
-        let files: Vec<(String, Vec<u8>)> = portable_entries()
-            .iter()
-            .map(|e| (e.name.to_string(), e.name.as_bytes().to_vec()))
+        let mut files: Vec<(String, Source)> = good(true)
+            .into_iter()
+            .map(|n| {
+                let bytes = n.as_bytes().to_vec();
+                (n, Source::Bytes(bytes))
+            })
             .collect();
+        files.push(("data/extra.bin".into(), Source::Path(on_disk)));
         write_zip(&out, "Pyxee_x", &files).unwrap();
         let names = zip_names(&out).unwrap();
         assert!(
@@ -584,6 +802,7 @@ mod tests {
                 .all(|n| n.starts_with("Pyxee_x/") && !n.contains('\\')),
             "{names:?}"
         );
+        assert!(names.contains(&"Pyxee_x/data/extra.bin".to_string()));
         check_portable_entries("Pyxee_x", &names).unwrap();
         let first = std::fs::read(&out).unwrap();
         write_zip(&out, "Pyxee_x", &files).unwrap();
@@ -592,13 +811,14 @@ mod tests {
             std::fs::read(&out).unwrap(),
             "the same inputs give the same bytes"
         );
-        let left: Vec<_> = std::fs::read_dir(&dir)
+        let mut left: Vec<_> = std::fs::read_dir(&dir)
             .unwrap()
-            .map(|e| e.unwrap().file_name())
+            .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
             .collect();
+        left.sort();
         assert_eq!(
             left,
-            vec![std::ffi::OsString::from("p.zip")],
+            ["from-disk.bin", "p.zip"],
             "no .part file is left behind"
         );
         let _ = std::fs::remove_dir_all(&dir);

@@ -1,50 +1,8 @@
 # Releasing
 
-> **The pipeline below still builds the Tauri app.** `release.yml`, `cut-release.yml`, `packaging/windows/installer.nsi` and the
-> `installer`, `portable`, `signing-config` and `sign-file` commands of `cargo xtask` have not been changed since the Tauri
-> removal, so they do not work on this branch. The next section is the plan to replace them; nothing in it is built yet.
-
-## Flutter release pipeline (proposal, waiting for approval)
-
-Same shape as today: **Cut release** runs CI, bumps the version (`scripts/bump_version.py` now also sets
-`ui_flutter/pubspec.yaml`), tags, and calls the release workflow. The release workflow would, on a Windows runner:
-
-1. **Native pieces.** Set up Rust (the pin in `rust-toolchain.toml`) and the cached FFmpeg (`.github/actions/ffmpeg`), run
-   `cargo xtask tools` (the pinned yt-dlp, checksum verified), then `cargo build -p pyxee-bridge --release --locked`. The two
-   build-time variables are set here, because they are compiled in: `PYXEE_UPDATE_PUBLIC_KEY` (the key that checks
-   `SHA256SUMS.txt`) and `PYXEE_DISCORD_CLIENT_ID`. Secret handling and the signing key stay exactly as they are.
-2. **Flutter build.** `subosito/flutter-action` pinned by commit SHA (`1a449444c387b1966244ae4d4f8c696479add0b2`, tag v2.23.0, looked
-   up with `git ls-remote`) with the exact Flutter version the app was developed against, then `flutter pub get` and
-   `flutter build windows --release` in `ui_flutter`. The result is in `ui_flutter\build\windows\x64\runner\Release` (older Flutter
-   documentation shows the path without `x64`; confirm on the first run). It holds the exe, `flutter_windows.dll`,
-   `pyxee_bridge.dll` (copied by the native-assets hook), plugin DLLs and `data\`.
-3. **Staging folder.** The Release folder plus what Flutter does not bring: `yt-dlp.exe` next to the exe (where the app looks for
-   it), the Visual C++ runtime DLLs `msvcp140.dll`, `vcruntime140.dll` and `vcruntime140_1.dll` (Flutter's documentation says a
-   PC without the redistributable needs them next to the exe), the texts in `licenses\` and the third-party notices. Then a
-   smoke test: start the exe, wait about ten seconds, check it is still running, `yt-dlp.exe --version` works.
-4. **Installer (NSIS).** The current `installer.nsi` is a Tauri template full of `{{#each}}` placeholders, so it needs a plain
-   rewrite: install the staging folder, shortcuts, an uninstaller that keeps the data folder. Name it
-   `Pyxee_<version>_x64-setup.exe`: the in-app updater picks the asset that ends in `-setup.exe`. The updater starts the
-   installer with no arguments right after Pyxee closes, so it has to work as a normal wizard over a copy that was running a
-   moment ago. NSIS would be installed in the job (for example with Chocolatey); it is not assumed to be on the runner.
-5. **Portable zip.** The staging folder plus an empty `portable.txt` next to the exe (that is how the app recognises a portable
-   copy and keeps its data in `data\` beside it), named `Pyxee_<version>_x64-portable.zip`.
-6. **Checksums, signatures, attestation: as today.** `SHA256SUMS.txt` lists the installer and the zip, `cargo xtask sign-sums`
-   writes `SHA256SUMS.txt.sig` (both names are what the updater looks for), the build attestation step stays, and the
-   Authenticode signing of the installer stays as configured (the updater compares the installer's signature with the running
-   exe's when the exe is signed).
-7. **Release notes and notices.** `scripts/release_notes.py` needs `crates/bridge/` and `ui_flutter/` added to its areas (it
-   still sorts files by the old `crates/app/` and `ui/` paths). `licenses/THIRD_PARTY.txt` still lists npm packages and has to be
-   regenerated for the Dart and Flutter packages before the first release.
-
-**Updates.** The in-app updater is back (Settings > Updates, a silent check at start, "What's new", installing Pyxee, updating
-yt-dlp) and works the way it did, so nothing replaces it: the pipeline only has to publish what it expects (the `-setup.exe`,
-`SHA256SUMS.txt`, `SHA256SUMS.txt.sig`). I recommend keeping it as it is, because without the yt-dlp updater songs stop loading
-whenever YouTube changes. Please confirm that this is what you want.
-
----
-
-The rest of this page describes the Tauri pipeline as it was.
+Pyxee is two builds that are shipped together: the Rust bridge (`pyxee_bridge.dll`, with FFmpeg's libav linked in) and the
+Flutter window (`ui_flutter`) that loads it. `cargo xtask` gathers them, `yt-dlp.exe`, the Visual C++ runtime and the notices
+in one folder (`target\stage\Pyxee`), and turns that folder into the installer and the portable zip.
 
 ## One click
 
@@ -53,14 +11,18 @@ The rest of this page describes the Tauri pipeline as it was.
 
 That is all. The workflow then:
 
-1. runs the full CI on `main` (UI check/tests/build, `cargo fmt`, clippy, tests, generated bindings, the release scripts' own tests). If anything fails, nothing is bumped or tagged;
+1. runs the full CI on `main` (`cargo fmt`, clippy and tests on Windows and Linux, the Flutter analysis and a release build of the app, the release scripts' own tests). If anything fails, nothing is bumped or tagged;
 2. works out the next version, writes it into every file that carries it, commits `Release X.Y.Z` and pushes the commit and the tag `vX.Y.Z` in one atomic push (if `main` moved in the meantime the push is refused and nothing is released);
-3. builds on Windows: builds the minimal static FFmpeg libraries the audio decoder links (cached; there is no ffmpeg program, audio is decoded in-app), downloads the pinned yt-dlp (SHA-256 checked against the value pinned in the repo), builds the UI, builds the installer, **installs it silently, checks that no ffmpeg program or libav DLL slipped in and that the FFmpeg LGPL text is installed, and runs the bundled yt-dlp from where it landed**;
-4. writes the release notes (below), creates the release as a draft, uploads the installers, `SHA256SUMS.txt`, the third-party notices and the FFmpeg LGPL text, then publishes it. A signed build-provenance attestation is added when the repository allows it.
+3. builds on Windows, in steps of its own so a failed log says which one broke: the minimal static FFmpeg libraries the audio decoder links (cached; there is no ffmpeg program, audio is decoded in-app), the pinned yt-dlp (SHA-256 checked against the value pinned in the repo), the Rust bridge (`cargo build -p pyxee-bridge --release`, with `PYXEE_UPDATE_PUBLIC_KEY` and `PYXEE_DISCORD_CLIENT_ID` compiled in) and the Flutter app (`flutter build windows --release`). Then `cargo xtask installer` and `cargo xtask portable` (with `PYXEE_BUILD_READY=1`, so they only gather, package and sign) make the two downloads. The workflow **unpacks the zip and starts it, installs the installer silently and starts that, checks that no ffmpeg program or libav DLL slipped in and that the licence texts are installed, and uninstalls it again to see that the uninstaller removes what the installer wrote**;
+4. writes the release notes (below), creates the release as a draft, uploads the installer, the portable zip, `SHA256SUMS.txt`, the third-party notices and the FFmpeg LGPL text, then publishes it. A signed build-provenance attestation is added when the repository allows it.
 
 The first release ever (no `v*.*.*` tag yet) publishes the version already in the files as it is. `0.0.1` is the current one.
 
-Every version, pre-releases (`-rc1`...) included, gets the NSIS installer (`Pyxee_x.y.z_x64-setup.exe`) and the portable zip. There is no MSI.
+Every version, pre-releases (`-rc1`...) included, gets the NSIS installer (`Pyxee_x.y.z_x64-setup.exe`, a plain NSIS script in `packaging/windows/installer.nsi`) and the portable zip. There is no MSI.
+
+## Building the same thing locally
+
+On Windows, with Rust, the Flutter SDK, MSYS2 (for FFmpeg), the Visual Studio C++ tools and NSIS (`makensis`; set `PYXEE_MAKENSIS` if it is not in its default folder): `cargo xtask installer` and `cargo xtask portable` build everything they need (`cargo xtask ffmpeg`, the bridge, the Flutter app) and write `target\installer\Pyxee_<version>_x64-setup.exe` and `target\portable\Pyxee_<version>_x64-portable.zip`. `cargo xtask stage` stops after gathering the folder, and `cargo xtask smoke [folder]` starts a staged or installed copy for a few seconds (`PYXEE_SMOKE_SECONDS`) and runs its `yt-dlp.exe --version`. `scripts\check-windows.cmd -Installer` does all of that and inspects the results.
 
 ## Release notes
 
@@ -84,7 +46,7 @@ Preview the notes for any two tags on your own machine: `python scripts/release_
 
 ## Dry run
 
-**Actions -> Release -> Run workflow**, enter a version. It checks, builds and tests the installer and uploads it as a workflow artifact, and publishes nothing. The version must already be in the files (`python scripts/bump_version.py 0.2.0` first, on a branch).
+**Actions -> Release -> Run workflow**, enter a version. It builds the installer and the portable zip, tests both and uploads them as a workflow artifact, and publishes nothing. The version must already be in the files (`python scripts/bump_version.py 0.2.0` first, on a branch).
 
 ## If a release fails
 
@@ -101,12 +63,12 @@ The run summary says what to do. Short version: a flaky step (network, runner) -
 `python scripts/bump_version.py 0.2.0` sets every file (`Cargo.toml`, `Cargo.lock` and `ui_flutter/pubspec.yaml`); `--check v0.2.0` verifies them; `--next minor` prints the next version. CI runs the check on every push so the files cannot drift apart.
 
 ## Portable build
-`cargo xtask portable` (Windows) builds the program without an installer and writes `target/portable/Pyxee_<version>_x64-portable.zip`. The zip holds one folder: `Pyxee.exe`, `yt-dlp.exe`, `THIRD_PARTY_NOTICES.txt`, `FFmpeg-LGPL-2.1.txt`, `GPL-3.0.txt`, `yt-dlp-THIRD_PARTY_LICENSES.txt`, `README.txt` and `portable.txt`. `portable.txt` next to the program is what turns portable mode on: the library, settings and logs live in `data\` beside `Pyxee.exe` (nothing in the user's profile, no Roaming-to-Local move); deleting `portable.txt` gives the normal per-user folder. The zip never contains a `data` folder, an ffmpeg program or a libav DLL (libav is linked in statically); the packer refuses to finish if one slips in, and `scripts\check-windows.cmd -Installer` opens the finished zip again to prove it. It needs the WebView2 runtime (part of Windows 11 and current Windows 10), which the installer would otherwise download.
+`cargo xtask portable` (Windows) writes `target/portable/Pyxee_<version>_x64-portable.zip`. The zip holds one folder: the app exactly as the installer installs it (`Pyxee.exe`, `yt-dlp.exe`, `pyxee_bridge.dll`, `flutter_windows.dll`, the plugin DLLs, the Visual C++ runtime, Flutter's `data\` folder and the licence texts) plus `README.txt` and `portable.txt`. `portable.txt` next to the program is what turns portable mode on: the library, settings and logs live in `data\` beside `Pyxee.exe` (nothing in the user's profile, no Roaming-to-Local move); deleting `portable.txt` gives the normal per-user folder. That `data\` folder is also where Flutter keeps `app.so`, `icudtl.dat` and `flutter_assets`, and the two never use the same names, so the zip carries Flutter's files and never the user's (`library.db`, `shell.json`, `session.json`, `ui_prefs.json`, `.env`, `logs\`, `tools\`). It never contains an ffmpeg program or a libav DLL (libav is linked in statically); the packer refuses to finish if any of these slips in, and `scripts\check-windows.cmd -Installer` opens the finished zip again to prove it. It needs nothing installed: the window is Flutter's own and the Visual C++ runtime is in the folder.
 
-The release workflow builds the zip after the installers, unpacks it, runs the bundled `yt-dlp.exe --version`, and attaches it to the release; it is covered by `SHA256SUMS.txt` like the installers. A portable copy never runs an installer: Settings > Updates tells it to download the new zip and unpack it over the folder (`data\` is not in the zip, so it stays). yt-dlp still updates in place, into `data\tools`.
+The release workflow builds the zip, unpacks it, runs `cargo xtask smoke` on it (`yt-dlp.exe --version`, then Pyxee started for ten seconds) and attaches it to the release; it is covered by `SHA256SUMS.txt` like the installer. A portable copy never runs an installer: Settings > Updates tells it to download the new zip and unpack it over the folder (the user's files are not in the zip, so they stay). yt-dlp still updates in place, into `data\tools`.
 
 ## Notices
-`licenses/` holds the licence texts and notices that ship with the app (the FFmpeg LGPL text and notice, the yt-dlp licences); the release uploads them next to the installers. They are plain committed files: nothing generates or checks them, so update them by hand when the FFmpeg or yt-dlp version changes.
+`licenses/` holds the licence texts and notices that ship with the app (the FFmpeg LGPL text and notice, the yt-dlp licences); the release uploads them next to the installers. They are plain committed files, and `cargo xtask stage` refuses to continue if one is missing. Nothing checks their content, so update them by hand when the FFmpeg or yt-dlp version changes. `THIRD_PARTY.txt` names the Rust crates and the Flutter and Dart packages by pointing at `Cargo.lock` and `ui_flutter/pubspec.lock`; the app's window also carries the Dart packages' own licence texts inside it (Flutter collects them when it builds).
 
 ## Bumping the bundled yt-dlp
 Installers and the portable zip bundle one pinned yt-dlp release, so two builds of a tag contain the same `yt-dlp.exe`. The pin is `YTDLP_VERSION` and `YTDLP_SHA256` in `xtask/src/main.rs`; `cargo xtask tools` downloads that exact release and stops if the bytes do not match. The in-app updater is separate and still pulls the latest release at run time, which is what keeps users working when YouTube changes.
@@ -118,7 +80,7 @@ To bump it:
 4. Run `cargo test -p xtask` and `python -m unittest discover -s scripts/tests`; the release workflow's smoke tests then run the new exe with the app's real format selector.
 
 ## Code signing
-Signing is wired in and **off until a certificate exists**. Nothing is faked: without a certificate the build is unsigned and says so (and the release notes say "not code-signed"). It is configured with environment variables, so no secret is ever in the repository, in a Tauri config or on a printed command line:
+Signing is wired in and **off until a certificate exists**. Nothing is faked: without a certificate the build is unsigned and says so (and the release notes say "not code-signed"). It is configured with environment variables, so no secret is ever in the repository, in the installer script or on a printed command line:
 
 | Variable | Meaning |
 |---|---|
@@ -128,17 +90,17 @@ Signing is wired in and **off until a certificate exists**. Nothing is faked: wi
 | `PYXEE_SIGNTOOL` | path to `signtool.exe` (default: newest Windows SDK, then PATH) |
 | `PYXEE_REQUIRE_SIGNING=1` | a build without a certificate is an error |
 
-With a certificate configured, `cargo xtask installer` and `cargo xtask portable` sign everything Tauri produces (the program, the uninstaller, the NSIS installer, through `bundle.windows.signCommand` calling `cargo xtask sign-file`) and `Pyxee.exe` in the zip (`yt-dlp.exe` is someone else's program and is left as published), then check each file with `Get-AuthenticodeSignature` and fail unless it is `Valid`. To sign releases from GitHub Actions add the repository secrets `WINDOWS_CERT_PFX_BASE64` (the `.pfx`, base64) and `WINDOWS_CERT_PASSWORD`; the workflow then sets the variables above, requires signing, and the release notes drop the "not code-signed" line. **Blocked on the operator**: a code-signing certificate (an OV or EV certificate from a CA, or Azure Trusted Signing through `PYXEE_SIGNTOOL`). Also still to confirm on a Windows machine with a certificate: that the installed Tauri CLI accepts the `{cmd, args}` form of `signCommand` used here.
+With a certificate configured, `cargo xtask stage` signs `Pyxee.exe` (so the same signed program is in the installer and in the zip; `yt-dlp.exe` is someone else's program and is left as published, and the DLLs are not signed), the installer script signs the uninstaller it generates (`!uninstfinalize` calling `cargo xtask sign-file`), and `cargo xtask installer` signs the installer last. Each signed file is then checked with `Get-AuthenticodeSignature` and the build fails unless it is `Valid`. To sign releases from GitHub Actions add the repository secrets `WINDOWS_CERT_PFX_BASE64` (the `.pfx`, base64) and `WINDOWS_CERT_PASSWORD`; the workflow then sets the variables above, requires signing, and the release notes drop the "not code-signed" line. **Blocked on the operator**: a code-signing certificate (an OV or EV certificate from a CA, or Azure Trusted Signing through `PYXEE_SIGNTOOL`). Also still to confirm on a Windows machine with a certificate: that NSIS's `!uninstfinalize` signs the uninstaller (the installer script is written for it, but only a run with a certificate shows it).
 
 **What the in-app updater does with signing.** The installer is always checked against `SHA256SUMS.txt` from the same release. In addition, when the running Pyxee has a valid Authenticode signature, the downloaded installer must also be validly signed with the same signer subject (the certificate's distinguished name, compared ignoring case and spacing) before it is run; otherwise it is deleted and the update is refused. A running copy that is unsigned keeps the checksum-only check, so people on today's unsigned releases can still update. The consequence for you: once releases are signed, keep the same certificate subject across renewals, or users on the old signed version will be refused the next installer. (`pyxee_shell::update::check_publisher`; signatures are read with Windows PowerShell's `Get-AuthenticodeSignature`.)
 
 ## Discord Rich Presence ID
 Releases are built with the Discord application ID baked in, so users set nothing. The ID ships inside the exe, so it cannot be truly secret, but it is kept out of logs, the UI and the docs: it is a repository **secret** (Settings > Secrets and variables > Actions > **Secrets** > `PYXEE_DISCORD_CLIENT_ID`), so Actions masks it in public logs. The release workflow passes it to the build; unset or empty builds with presence off, as do forks. Users cannot override it at run time. Never store the application's client secret or any bot token anywhere; Pyxee does not use them.
 
-Last.fm scrobbling works the same way: releases are built with the Last.fm API account's key and shared secret baked in. Both are repository **secrets** (`PYXEE_LASTFM_API_KEY` and `PYXEE_LASTFM_API_SECRET`, same place as above), passed by `cut-release.yml` to `release.yml` and on to the build. Unset or empty builds with scrobbling unavailable, as do forks. Each user signs in to their own Last.fm account in the browser; only their session key is saved, in the Windows Credential Manager (older versions kept it in `shell.json`; it is moved there the first time it is seen).
+Last.fm scrobbling is not in the Flutter app yet (see `docs/migration.md`), so the release workflows no longer pass the Last.fm key and secret. When it comes back, they are three lines to add again, in `release.yml` (the `workflow_call` secrets and the build job's `env`) and in `cut-release.yml`.
 
 ## In-app updates
-Settings > Updates asks `api.github.com/repos/Pylxyr/Pyxee/releases` for the newest release (drafts never count; pre-releases count only when the running build is one or when Settings > Updates > "Include pre-releases" is on, which is `checkPrereleases` in `shell.json`, off by default). "Download and install" fetches the `-setup.exe`, checks it against the release's `SHA256SUMS.txt` (written by the workflow above), starts it and quits Pyxee. The installer is kept in `%TEMP%\pyxee-update` while it runs and removed at the next start. A copy of Pyxee that is signed also refuses to update when it cannot read its own signature (Windows could not be asked), since it could not then compare the publisher; the release page has the installer. The checksum list is published with the installer in the same release, so it proves the download is intact, not that the release itself is trustworthy: that is what the publisher check (once signing is on) and the build attestation are for. A release without an installer and checksum list is reported with its page instead. The installers are unsigned until a certificate is configured (see Code signing), so SmartScreen may still ask. The decisions are in `pyxee_shell::update` (unit tested); the network and process calls are in `crates/app/src/updater.rs`.
+Settings > Updates asks `api.github.com/repos/Pylxyr/Pyxee/releases` for the newest release (drafts never count; pre-releases count only when the running build is one or when Settings > Updates > "Include pre-releases" is on, which is `checkPrereleases` in `shell.json`, off by default). "Download and install" fetches the `-setup.exe`, checks it against the release's `SHA256SUMS.txt` (written by the workflow above), starts it and quits Pyxee. The installer is kept in `%TEMP%\pyxee-update` while it runs and removed at the next start. A copy of Pyxee that is signed also refuses to update when it cannot read its own signature (Windows could not be asked), since it could not then compare the publisher; the release page has the installer. The checksum list is published with the installer in the same release, so it proves the download is intact, not that the release itself is trustworthy: that is what the publisher check (once signing is on) and the build attestation are for. A release without an installer and checksum list is reported with its page instead. The installers are unsigned until a certificate is configured (see Code signing), so SmartScreen may still ask. The decisions are in `pyxee_shell::update` (unit tested); the network and process calls are in `crates/bridge/src/updater.rs`.
 
 yt-dlp is updated separately: its published `SHA2-256SUMS` is compared with the copy in use, a newer one is downloaded, verified, test-run (`--version`) and only then renamed over `<data folder>\tools\yt-dlp.exe`, which `YtDlpSource` prefers over the installed copy (so no restart). If any step fails the working copy is untouched; no backup copy is kept. `PYXEE_YTDLP` pins a copy and disables the updater. A Linux or macOS build is deliberately not part of this.
 

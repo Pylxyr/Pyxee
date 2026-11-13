@@ -7,8 +7,8 @@
 use crate::advanced::{self, EnvState};
 use crate::discord::{self, Discord};
 use crate::dto::{
-    state_dto, CommandDto, ExploreShelfDto, FilterInfoDto, GenreDto, NoticeDto, PlayerStateDto, PositionDto,
-    SearchErrorDto, SearchFilterDto, SearchItemDto, SearchResponseDto, TrackDto,
+    state_dto, CommandDto, ExploreShelfDto, FilterInfoDto, GenreDto, NoticeDto, PlayerStateDto,
+    PositionDto, SearchErrorDto, SearchFilterDto, SearchItemDto, SearchResponseDto, TrackDto,
 };
 use crate::engine::{Engine, Host};
 use crate::library_service::LibraryService;
@@ -22,7 +22,9 @@ use pyxee_audio::pipeline::Volume;
 use pyxee_audio::AudioError;
 use pyxee_core::{Command, Effect, EngineEvent, Failure, Player};
 use pyxee_lyrics::{fetch, Cooldown, Lyrics, Query, LRCLIB};
-use pyxee_shell::audiodev::{Action as DeviceAction, DeviceRef, DeviceWatch, Observation, UserEffect};
+use pyxee_shell::audiodev::{
+    Action as DeviceAction, DeviceRef, DeviceWatch, Observation, UserEffect,
+};
 use pyxee_shell::progress::Phase;
 use pyxee_shell::sleep::{SleepSetting, SleepTimer};
 use pyxee_sources::jsruntime::JsRuntime;
@@ -33,7 +35,10 @@ use pyxee_sources::{CompositeSource, MusicSource};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use souvlaki::{MediaControlEvent, MediaControls, MediaMetadata, MediaPlayback, MediaPosition, PlatformConfig, SeekDirection};
+use souvlaki::{
+    MediaControlEvent, MediaControls, MediaMetadata, MediaPlayback, MediaPosition, PlatformConfig,
+    SeekDirection,
+};
 use std::collections::{HashMap, VecDeque};
 use std::ffi::{c_char, CString};
 use std::panic::{catch_unwind, AssertUnwindSafe};
@@ -123,7 +128,12 @@ impl log::Log for StderrLog {
     }
     fn log(&self, record: &log::Record) {
         if self.enabled(record.metadata()) {
-            eprintln!("[{}] {}: {}", record.level(), record.target(), record.args());
+            eprintln!(
+                "[{}] {}: {}",
+                record.level(),
+                record.target(),
+                record.args()
+            );
         }
     }
     fn flush(&self) {}
@@ -149,7 +159,9 @@ fn init_logging() {
 // ------------------------------------------------------------------ setup
 
 fn env_dir(name: &str) -> Option<PathBuf> {
-    std::env::var_os(name).filter(|v| !v.is_empty()).map(PathBuf::from)
+    std::env::var_os(name)
+        .filter(|v| !v.is_empty())
+        .map(PathBuf::from)
 }
 
 /// The folders earlier versions of Pyxee used (`dev.pyxee.app` under Local, the former one under Roaming), so the
@@ -235,7 +247,8 @@ fn build() -> App {
         remote,
         local: LocalSource,
     });
-    let library = LibraryService::open_or_memory(data_dir.as_ref().map(|d| d.join("library.db")).as_deref());
+    let library =
+        LibraryService::open_or_memory(data_dir.as_ref().map(|d| d.join("library.db")).as_deref());
     let (tx, rx) = channel();
     App {
         player: Mutex::new(player),
@@ -353,7 +366,9 @@ impl App {
     fn publish(&self, f: impl FnOnce(&mut Player) -> Vec<Effect>) {
         // Effects go to the engine while the player is still locked, so that two threads publishing at once reach it
         // in the order their changes were made. Lock order is always player, then engine.
-        let Ok(mut player) = self.player.lock() else { return };
+        let Ok(mut player) = self.player.lock() else {
+            return;
+        };
         let effects = f(&mut player);
         let mut dto = state_dto(&player);
         dto.seq = self.seq.fetch_add(1, Ordering::SeqCst) + 1;
@@ -397,12 +412,16 @@ impl App {
     }
 
     fn save_session(&self) {
-        let Some(path) = &self.session_path else { return };
+        let Some(path) = &self.session_path else {
+            return;
+        };
         let persisted = match self.player.lock() {
             Ok(p) => p.persisted(),
             Err(_) => return,
         };
-        let Ok(mut last) = self.last_saved.lock() else { return };
+        let Ok(mut last) = self.last_saved.lock() else {
+            return;
+        };
         if let Err(e) = session::save_if_changed(path, &persisted, &mut last) {
             log::warn!("could not save session: {e}");
         }
@@ -414,7 +433,9 @@ impl App {
         let entry = s.current.and_then(|id| s.queue.iter().find(|e| e.id == id));
         let phase = match &s.transport {
             crate::dto::TransportDto::Idle => Phase::Idle,
-            crate::dto::TransportDto::Loading { .. } | crate::dto::TransportDto::Stalled { .. } => Phase::Loading,
+            crate::dto::TransportDto::Loading { .. } | crate::dto::TransportDto::Stalled { .. } => {
+                Phase::Loading
+            }
             crate::dto::TransportDto::Playing { .. } => Phase::Playing,
             crate::dto::TransportDto::Paused { .. } => Phase::Paused,
             crate::dto::TransportDto::Failed { .. } => Phase::Failed,
@@ -428,9 +449,15 @@ impl App {
                 discord.on_state(phase, entry.map(|e| &e.track), s.position_ms);
             }
         }
-        let Ok(mut sent) = self.sent.lock() else { return };
-        let Ok(mut media) = self.media.lock() else { return };
-        let Some(controls) = media.as_mut() else { return };
+        let Ok(mut sent) = self.sent.lock() else {
+            return;
+        };
+        let Ok(mut media) = self.media.lock() else {
+            return;
+        };
+        let Some(controls) = media.as_mut() else {
+            return;
+        };
         let track_key: TrackKey = entry.map(|e| (e.id, e.track.thumbnail.clone()));
         if sent.track != track_key {
             sent.track.clone_from(&track_key);
@@ -464,7 +491,9 @@ impl App {
             let progress = has_track.then(|| MediaPosition(Duration::from_millis(s.position_ms)));
             let state = match phase {
                 Phase::Playing => MediaPlayback::Playing { progress },
-                Phase::Paused | Phase::Loading | Phase::Failed if has_track => MediaPlayback::Paused { progress },
+                Phase::Paused | Phase::Loading | Phase::Failed if has_track => {
+                    MediaPlayback::Paused { progress }
+                }
                 _ => MediaPlayback::Stopped,
             };
             if let Err(e) = controls.set_playback(state) {
@@ -493,7 +522,9 @@ fn on_media_event(event: MediaControlEvent) {
         MediaControlEvent::Next => Command::Next,
         MediaControlEvent::Previous => Command::Previous,
         MediaControlEvent::Seek(dir) => Command::Seek(seek_target(position(), dir, 10_000)),
-        MediaControlEvent::SeekBy(dir, by) => Command::Seek(seek_target(position(), dir, by.as_millis() as u64)),
+        MediaControlEvent::SeekBy(dir, by) => {
+            Command::Seek(seek_target(position(), dir, by.as_millis() as u64))
+        }
         MediaControlEvent::SetPosition(MediaPosition(to)) => Command::Seek(to.as_millis() as u64),
         // MPRIS `Raise` / `Quit`: clicking the player in a KDE or GNOME media widget.
         MediaControlEvent::Raise => return emit("window", json!({ "action": "show" })),
@@ -506,7 +537,9 @@ fn on_media_event(event: MediaControlEvent) {
 /// Windows' System Media Transport Controls need the window handle, which only the shell knows; Linux (MPRIS) does
 /// not. Called once the window exists.
 fn attach_media(app: &App, hwnd: i64) {
-    let Ok(mut slot) = app.media.lock() else { return };
+    let Ok(mut slot) = app.media.lock() else {
+        return;
+    };
     if slot.is_some() {
         return;
     }
@@ -636,7 +669,9 @@ struct BridgeHost {
 impl BridgeHost {
     /// Feeds listening into the history: what became audible, and how long it has been heard.
     fn record(&self, app: &App, e: &EngineEvent) {
-        let Ok(mut rec) = self.recorder.lock() else { return };
+        let Ok(mut rec) = self.recorder.lock() else {
+            return;
+        };
         let track_of = |id: pyxee_core::EntryId| {
             app.player
                 .lock()
@@ -720,7 +755,12 @@ fn run_engine(rx: Receiver<Effect>) {
     });
     let first = DeviceInfo::default_output();
     let rate = first.as_ref().map_or(FALLBACK_RATE, DeviceInfo::rate);
-    let mut engine = Engine::new(host.clone(), Arc::clone(&app.source), rate, app.volume.clone());
+    let mut engine = Engine::new(
+        host.clone(),
+        Arc::clone(&app.source),
+        rate,
+        app.volume.clone(),
+    );
     let (err_tx, err_rx) = channel::<String>();
     let clock = Instant::now();
     let since_start = || clock.elapsed().as_millis() as u64;
@@ -755,7 +795,9 @@ fn run_engine(rx: Receiver<Effect>) {
                     Effect::StartTrack { id, .. } if watch.is_lost() => {
                         host.engine_event(EngineEvent::LoadFailed {
                             id,
-                            failure: Failure::Other("No audio output device. Connect one and press play again.".into()),
+                            failure: Failure::Other(
+                                "No audio output device. Connect one and press play again.".into(),
+                            ),
                         })
                     }
                     effect => engine.handle(effect),
@@ -785,12 +827,20 @@ fn run_engine(rx: Receiver<Effect>) {
                     match open_output(&mut engine, &err_tx) {
                         Ok(o) => {
                             while err_rx.try_recv().is_ok() {}
-                            todo.extend(watch.rebuilt(&watched(o.ident()), o.rate(), since_start()));
+                            todo.extend(watch.rebuilt(
+                                &watched(o.ident()),
+                                o.rate(),
+                                since_start(),
+                            ));
                             output = Some(o);
                         }
                         Err(e) => {
                             log::debug!("audio output rebuild ({reason}) failed: {e}");
-                            todo.extend(watch.rebuild_failed(&e.to_string(), since_start(), engine.is_playing()));
+                            todo.extend(watch.rebuild_failed(
+                                &e.to_string(),
+                                since_start(),
+                                engine.is_playing(),
+                            ));
                         }
                     }
                 }
@@ -820,7 +870,10 @@ pub struct CallError {
 
 impl From<String> for CallError {
     fn from(message: String) -> Self {
-        Self { message, kind: None }
+        Self {
+            message,
+            kind: None,
+        }
     }
 }
 
@@ -832,7 +885,9 @@ impl From<&str> for CallError {
 
 impl From<SearchErrorDto> for CallError {
     fn from(e: SearchErrorDto) -> Self {
-        let kind = serde_json::to_value(&e.kind).ok().and_then(|v| v.as_str().map(str::to_owned));
+        let kind = serde_json::to_value(&e.kind)
+            .ok()
+            .and_then(|v| v.as_str().map(str::to_owned));
         Self {
             message: e.message,
             kind,
@@ -883,7 +938,9 @@ pub fn call_async(request: Option<String>, id: u64) {
 /// clears it and stops when it is off.
 fn sync_discord(app: &App, on: bool) {
     let stopped = {
-        let Ok(mut slot) = app.discord.lock() else { return };
+        let Ok(mut slot) = app.discord.lock() else {
+            return;
+        };
         if on {
             if slot.is_none() {
                 *slot = discord::init();
@@ -902,7 +959,8 @@ fn sync_discord(app: &App, on: bool) {
 }
 
 fn handle_text(request: &str) -> Result<Value, CallError> {
-    let request: Request = serde_json::from_str(request).map_err(|e| CallError::from(format!("bad request: {e}")))?;
+    let request: Request =
+        serde_json::from_str(request).map_err(|e| CallError::from(format!("bad request: {e}")))?;
     let app = app().ok_or("the bridge is not started")?;
     handle(app, &request.method, &request.params)
 }
@@ -918,17 +976,29 @@ fn json_of<T: Serialize>(value: T) -> Result<Value, CallError> {
 
 fn read_library<T>(f: impl FnOnce(&LibraryService) -> Result<T, String>) -> Result<T, CallError> {
     let app = app().ok_or("the bridge is not started")?;
-    let lib = app.library.lock().map_err(|_| CallError::from("The library is unavailable."))?;
+    let lib = app
+        .library
+        .lock()
+        .map_err(|_| CallError::from("The library is unavailable."))?;
     f(&lib).map_err(CallError::from)
 }
 
 /// Runs a library change; on success tells the listener the library changed.
-fn with_library<T>(f: impl FnOnce(&mut LibraryService) -> Result<T, String>) -> Result<T, CallError> {
+fn with_library<T>(
+    f: impl FnOnce(&mut LibraryService) -> Result<T, String>,
+) -> Result<T, CallError> {
     let app = app().ok_or("the bridge is not started")?;
     let (result, snapshot) = {
-        let mut lib = app.library.lock().map_err(|_| CallError::from("The library is unavailable."))?;
+        let mut lib = app
+            .library
+            .lock()
+            .map_err(|_| CallError::from("The library is unavailable."))?;
         let result = f(&mut lib);
-        let snapshot = if result.is_ok() { lib.snapshot().ok() } else { None };
+        let snapshot = if result.is_ok() {
+            lib.snapshot().ok()
+        } else {
+            None
+        };
         (result, snapshot)
     };
     if let Some(snapshot) = snapshot {
@@ -940,14 +1010,17 @@ fn with_library<T>(f: impl FnOnce(&mut LibraryService) -> Result<T, String>) -> 
 fn handle(app: &App, method: &str, params: &Value) -> Result<Value, CallError> {
     match method {
         "getState" => {
-            let player = app.player.lock().map_err(|_| CallError::from("player state unavailable"))?;
+            let player = app
+                .player
+                .lock()
+                .map_err(|_| CallError::from("player state unavailable"))?;
             let mut dto = state_dto(&player);
             dto.seq = app.seq.load(Ordering::SeqCst);
             json_of(dto)
         }
         "dispatch" => {
-            let command: CommandDto =
-                serde_json::from_value(params.clone()).map_err(|e| CallError::from(format!("bad command: {e}")))?;
+            let command: CommandDto = serde_json::from_value(params.clone())
+                .map_err(|e| CallError::from(format!("bad command: {e}")))?;
             app.publish(|player| player.command(command.into()));
             Ok(Value::Null)
         }
@@ -1026,7 +1099,12 @@ fn handle(app: &App, method: &str, params: &Value) -> Result<Value, CallError> {
         }
         "explore" => {
             let shelves = pyxee_sources::gate::background(|| app.source.explore())?;
-            json_of(shelves.iter().map(ExploreShelfDto::from).collect::<Vec<_>>())
+            json_of(
+                shelves
+                    .iter()
+                    .map(ExploreShelfDto::from)
+                    .collect::<Vec<_>>(),
+            )
         }
         "genres" => {
             let genres = pyxee_sources::gate::background(|| app.source.genres())?;
@@ -1035,7 +1113,12 @@ fn handle(app: &App, method: &str, params: &Value) -> Result<Value, CallError> {
         "genre" => {
             let id: String = arg(params, "params")?;
             let shelves = app.source.genre(&id)?;
-            json_of(shelves.iter().map(ExploreShelfDto::from).collect::<Vec<_>>())
+            json_of(
+                shelves
+                    .iter()
+                    .map(ExploreShelfDto::from)
+                    .collect::<Vec<_>>(),
+            )
         }
         "playlistTracks" => {
             let id: String = arg(params, "id")?;
@@ -1046,13 +1129,20 @@ fn handle(app: &App, method: &str, params: &Value) -> Result<Value, CallError> {
             use pyxee_sources::SearchFilter as F;
             let supported = app.source.supported_filters();
             json_of(
-                [F::All, F::Songs, F::Videos, F::Albums, F::Artists, F::Playlists]
-                    .into_iter()
-                    .map(|f| FilterInfoDto {
-                        filter: f.into(),
-                        supported: supported.contains(&f),
-                    })
-                    .collect::<Vec<_>>(),
+                [
+                    F::All,
+                    F::Songs,
+                    F::Videos,
+                    F::Albums,
+                    F::Artists,
+                    F::Playlists,
+                ]
+                .into_iter()
+                .map(|f| FilterInfoDto {
+                    filter: f.into(),
+                    supported: supported.contains(&f),
+                })
+                .collect::<Vec<_>>(),
             )
         }
         "lyrics" => json_of(lyrics(app, params)?),
@@ -1068,7 +1158,9 @@ fn handle(app: &App, method: &str, params: &Value) -> Result<Value, CallError> {
         "playlistCreate" => {
             let name: String = arg(params, "name")?;
             let tracks: Vec<TrackDto> = arg(params, "tracks")?;
-            json_of(with_library(|l| l.create_playlist(&name, &tracks, now_ms()))?)
+            json_of(with_library(|l| {
+                l.create_playlist(&name, &tracks, now_ms())
+            })?)
         }
         "playlistRename" => {
             let id: i64 = arg(params, "id")?;
@@ -1158,10 +1250,16 @@ fn lyrics(app: &App, params: &Value) -> Result<LyricsDto, CallError> {
     }
     let now = || u64::try_from(app.clock.elapsed().as_millis()).unwrap_or(u64::MAX);
     // A service that just refused the app is left alone, so flipping songs cannot hammer a block.
-    let waiting = app.cooldown.lock().ok().and_then(|c| c.remaining_secs(now()));
+    let waiting = app
+        .cooldown
+        .lock()
+        .ok()
+        .and_then(|c| c.remaining_secs(now()));
     if let Some(secs) = waiting {
         return Ok(LyricsDto::Error {
-            message: format!("the lyrics service asked the app to wait, try again in about {secs} s"),
+            message: format!(
+                "the lyrics service asked the app to wait, try again in about {secs} s"
+            ),
         });
     }
     let query = Query::new(&title, &artist, duration_ms);
@@ -1180,7 +1278,9 @@ fn lyrics(app: &App, params: &Value) -> Result<LyricsDto, CallError> {
             if let Ok(mut c) = app.cooldown.lock() {
                 c.record(&e, now());
             }
-            Ok(LyricsDto::Error { message: e.to_string() })
+            Ok(LyricsDto::Error {
+                message: e.to_string(),
+            })
         }
     }
 }

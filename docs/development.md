@@ -78,10 +78,12 @@ release-built bridge does not look there by itself, so if the app says yt-dlp wa
 full path or put `yt-dlp.exe` next to the app. To use FFmpeg libraries built elsewhere set `PYXEE_FFMPEG_DIR`.
 
 ## Build a release and the installer
-Not written yet for the Flutter app. `flutter build windows --release` produces the app in
-`ui_flutter\build\windows\x64\runner\Release`. The installer, the portable zip, signing and updates are described as a
-proposal in [releasing.md](releasing.md); the `installer`, `portable`, `signing-config` and `sign-file` commands of `cargo xtask` and the
-release workflows still belong to the Tauri build and are waiting for that plan to be approved.
+On Windows, `cargo xtask installer` builds the Rust bridge and the Flutter app (`flutter build windows --release`, which leaves
+the app in `ui_flutter\build\windows\x64\runner\Release`), gathers it with `yt-dlp.exe`, the Visual C++ runtime and the
+licence texts in `target\stage\Pyxee`, and writes the NSIS installer to `target\installer`. `cargo xtask portable` writes the
+portable zip to `target\portable`, `cargo xtask stage` stops after gathering, and `cargo xtask smoke` starts a staged or installed
+copy. The installer needs NSIS (`makensis`; `PYXEE_MAKENSIS` if it is not in its default folder). Signing, the installer script and
+how the release workflow uses all this are in [releasing.md](releasing.md).
 
 ## Test
 Run each line on its own (PowerShell 5 does not accept `&&`):
@@ -105,11 +107,14 @@ not blocking (`continue-on-error`) while the baseline is not clean.
 `.env` file) · `crates/net` HTTP defaults (certificate store, one retry for a stale connection) · `crates/bridge` the C interface the
 Flutter app loads, with the engine, the library service, the session and the contract types · `crates/spike` milestone 1 harness ·
 `ui_flutter/` the Flutter app · `xtask/` tool downloader and build helpers · `licenses/` licence texts · `tools/` downloaded yt-dlp
-(git-ignored) · `packaging/windows/` the NSIS script (waiting for the release plan) · `assets/` logo and icons.
+(git-ignored) · `packaging/windows/` the NSIS installer script · `scripts/` version, release-notes and check scripts · `assets/` logo and icons.
 
 ## Checking a build on Windows
-`scripts\check-windows.cmd` was written for the Tauri build: it still runs the UI's npm steps and the `pyxee-app` tests, so it fails
-at the start until it is rewritten for this layout. Its Rust build, test and live YouTube checks are the part worth keeping.
+`scripts\check-windows.cmd` builds and tests everything (`cargo fmt`, clippy, `cargo test`, the Flutter analysis, tests and a release
+build), proves no ffmpeg process is started, runs live YouTube checks and writes one report. With `-Installer` it also builds the
+installer and the portable zip, starts the staged app, installs the installer silently into a temporary folder, starts that and
+uninstalls it; `-Ci` replays the release workflow's build steps in their order. `scripts\test-build.ps1` is the short version: it
+builds the bridge and runs the app with `flutter run`.
 
 ## Linux
 The Rust workspace builds, passes clippy and passes its tests on Linux (the `linux` job in CI); Windows-only code is behind
