@@ -41,6 +41,43 @@ jobs:
       - run: cargo clippy --workspace --all-targets --locked -- -D warnings
       - run: cargo test --workspace --locked
 
+  # The Flutter window (ui_flutter) around the Rust core. It needs the built bridge library (the native-assets hook
+  # copies it in), so the bridge is built first. Analysis, tests when there are any, and a real Windows release build:
+  # the same build the release workflow packages.
+  flutter:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Rust toolchain (from rust-toolchain.toml)
+        shell: bash
+        run: |
+          rustup toolchain install
+          rustc --version
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          shared-key: ci-flutter
+      - uses: ./.github/actions/ffmpeg
+      - run: cargo build -p pyxee-bridge --release --locked
+      # The stable channel; ui_flutter/pubspec.yaml states the oldest Flutter and Dart it accepts.
+      - uses: subosito/flutter-action@1508160852fb97248640997f7cfb38da241df0ba # v2.9.1
+        with:
+          channel: stable
+          cache: true
+      - name: Flutter packages
+        working-directory: ui_flutter
+        run: flutter pub get
+      - name: Analyze
+        working-directory: ui_flutter
+        run: flutter analyze
+      - name: Tests
+        if: ${{ hashFiles('ui_flutter/test/**') != '' }}
+        working-directory: ui_flutter
+        run: flutter test
+      - name: Release build
+        working-directory: ui_flutter
+        run: flutter build windows --release
+
   # The Linux build: the whole workspace compiles, passes clippy and its tests on Linux too. The minimal
   # static FFmpeg is built here (about 10 minutes) and cached on the build script.
   linux:
@@ -103,7 +140,7 @@ jobs:
   # One required check for branch protection: it fails if any job above failed or was cancelled.
   ci-ok:
     if: always()
-    needs: [windows, linux, scripts, deny]
+    needs: [windows, flutter, linux, scripts, deny]
     runs-on: ubuntu-latest
     steps:
       - name: All jobs passed
