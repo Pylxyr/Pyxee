@@ -456,7 +456,6 @@ fn a_volume_chosen_while_silent_applies_from_the_first_sample_of_the_next_track(
 
 /// An idle producer sleeps until something changes instead of waking every few milliseconds (it used to run 100
 /// times a second doing nothing).
-#[cfg(target_os = "linux")]
 #[test]
 fn an_idle_producer_barely_wakes() {
     let (p, _c, _rx) = setup();
