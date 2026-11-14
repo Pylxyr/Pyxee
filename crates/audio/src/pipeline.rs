@@ -73,11 +73,11 @@ impl Default for Volume {
 /// Seconds of audio kept decoded ahead of the device.
 const BUFFER_SECS: usize = 2;
 const CHUNK_SAMPLES: usize = 4096;
-/// Linux: the longest the producer sleeps with a full buffer or with nothing queued. Every change that matters wakes it
+/// The longest the producer sleeps with a full buffer or with nothing queued. Every change that matters wakes it
 /// at once; these only bound the harm if a wake-up were ever missed.
 const FULL_LIMIT: Duration = Duration::from_millis(250);
 const IDLE_LIMIT: Duration = Duration::from_millis(500);
-/// Linux: with a full buffer the producer waits until this fraction of it (1/4: half a second of audio) is free,
+/// With a full buffer the producer waits until this fraction of it (1/4: half a second of audio) is free,
 /// then fills it up in one go, so playing costs a few wake-ups a second instead of one per chunk.
 const REFILL_DIVISOR: usize = 4;
 
@@ -110,9 +110,9 @@ enum Change {
     ClearQueued,
 }
 
-/// What the producer thread sleeps on. On Linux it blocks until something changes (a track was queued, the buffer
+/// What the producer thread sleeps on, on every OS: it blocks until something changes (a track was queued, the buffer
 /// has room again, the pipeline is dropped), so an idle player wakes it a few times a second instead of every few
-/// milliseconds; elsewhere it still sleeps the fixed time it is given.
+/// milliseconds (on Windows it used to poll about 200 times a second).
 struct Wake {
     epoch: Mutex<u64>,
     cv: Condvar,
@@ -144,23 +144,18 @@ impl Wake {
         *lock(&self.epoch)
     }
 
-    /// Waits for a `notify` since `seen`, but not longer than `limit`. Off Linux: sleeps `poll`.
-    fn wait(&self, seen: u64, limit: Duration, poll: Duration) {
-        if cfg!(target_os = "linux") {
-            let g = lock(&self.epoch);
-            if *g == seen {
-                drop(self.cv.wait_timeout(g, limit));
-            }
-        } else {
-            thread::sleep(poll);
+    /// Waits for a `notify` since `seen`, but not longer than `limit`.
+    fn wait(&self, seen: u64, limit: Duration) {
+        let g = lock(&self.epoch);
+        if *g == seen {
+            drop(self.cv.wait_timeout(g, limit));
         }
     }
 
     /// Like `wait`, for a full buffer: the device side calls `space_freed` once enough has been played.
-    fn wait_for_space(&self, seen: u64, limit: Duration, poll: Duration) {
-        self.space_wanted
-            .store(cfg!(target_os = "linux"), Ordering::Relaxed);
-        self.wait(seen, limit, poll);
+    fn wait_for_space(&self, seen: u64, limit: Duration) {
+        self.space_wanted.store(true, Ordering::Relaxed);
+        self.wait(seen, limit);
     }
 
     /// The device took audio out of the buffer: wake a producer that waits for room, once there is enough of it.
@@ -387,8 +382,7 @@ fn produce(s: &Shared) {
             if busy {
                 thread::sleep(Duration::from_millis(5));
             } else {
-                s.wake
-                    .wait_for_space(seen, FULL_LIMIT, Duration::from_millis(5));
+                s.wake.wait_for_space(seen, FULL_LIMIT);
             }
             continue;
         }
@@ -406,7 +400,7 @@ fn produce(s: &Shared) {
         }
         if n == 0 && events.is_empty() {
             drop(src);
-            s.wake.wait(seen, IDLE_LIMIT, Duration::from_millis(10));
+            s.wake.wait(seen, IDLE_LIMIT);
             continue;
         }
         let mut inner = lock(&s.inner);
