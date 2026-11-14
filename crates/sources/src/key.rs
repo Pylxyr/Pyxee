@@ -1,6 +1,6 @@
 //! Track keys: the one place that says what `yt:<id>` and `file:<path>` mean. A key travels through the player, the
 //! queue, the library and the UI as text, so everything that builds or reads one goes through here, and a key from
-//! outside (the UI can send any text) is parsed once, with the same rules everywhere.
+//! outside (the webview can send any text) is parsed once, with the same rules everywhere.
 
 use std::path::Path;
 
@@ -93,7 +93,7 @@ mod tests {
 
     #[test]
     fn a_network_or_device_path_is_not_a_file_key() {
-        // The UI can send any key; naming a network share must not get as far as touching it.
+        // The webview can send any key; naming a network share must not get as far as touching it.
         for bad in [
             r"file:\\attacker\share\a.mp3",
             "file://attacker/share/a.mp3",

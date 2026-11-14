@@ -1,6 +1,6 @@
 name: Release
 
-# Builds the Windows installer and portable zip (Rust bridge + Flutter app) and publishes a GitHub release. You normally never run this by hand:
+# Builds the Windows installer and publishes a GitHub release. You normally never run this by hand:
 # use "Cut release" (cut-release.yml). Other ways in:
 #   - push a tag vX.Y.Z whose version matches every version file   -> checks, build, publish
 #   - Run workflow here with a version                             -> dry run: builds, uploads artifacts, publishes nothing
@@ -29,7 +29,13 @@ on:
     # they are for a tag push or a manual run: an unset one is empty and the matching step is skipped or unsigned.
     secrets:
       PYXEE_DISCORD_CLIENT_ID:
-        description: "Discord application ID built into the app (Rich Presence); unset means presence off"
+        description: "Discord application ID built into the exe (Rich Presence); unset means presence off"
+        required: false
+      PYXEE_LASTFM_API_KEY:
+        description: "Last.fm API key built into the exe (scrobbling); unset means scrobbling unavailable"
+        required: false
+      PYXEE_LASTFM_API_SECRET:
+        description: "Last.fm shared secret built into the exe (scrobbling); unset means scrobbling unavailable"
         required: false
       WINDOWS_CERT_PFX_BASE64:
         description: "Base64 of the code-signing .pfx; unset means an unsigned build"
@@ -100,10 +106,6 @@ jobs:
 
   # Runs alongside `checks`, not after it: nothing here needs their output, and waiting would put the whole CI run in
   # front of the build. Nothing leaves this job except a workflow artifact; `publish` waits for both.
-  #
-  # The app is two builds: the Rust bridge (`pyxee_bridge.dll`, with FFmpeg's libav linked in) and the Flutter
-  # window around it. Each has a step of its own, so a failed log says which one broke; `cargo xtask installer` and
-  # `cargo xtask portable` then only gather and package (PYXEE_BUILD_READY) and sign.
   build:
     needs: version-guard
     if: ${{ !cancelled() && needs.version-guard.result == 'success' }}
@@ -113,10 +115,14 @@ jobs:
       signed: ${{ steps.signing.outputs.signed }}
     env:
       VERSION: ${{ needs.version-guard.outputs.version }}
-      # Discord Rich Presence: the application ID ships inside the bridge library, so it cannot be truly secret. It is
-      # a repository *secret* so that Actions masks it in public logs; it is kept out of logs, UI and docs.
+      # Discord Rich Presence: the application ID ships inside the exe, so it cannot be truly secret. It is a
+      # repository *secret* so that Actions masks it in public logs; it is kept out of logs, UI and docs.
       # Unset or empty means the release is built with presence off.
       PYXEE_DISCORD_CLIENT_ID: ${{ secrets.PYXEE_DISCORD_CLIENT_ID }}
+      # Last.fm scrobbling: the application's key and shared secret ship inside the exe, like the Discord ID, and are
+      # repository *secrets* for the same reason. Both unset or empty means the release has scrobbling unavailable.
+      PYXEE_LASTFM_API_KEY: ${{ secrets.PYXEE_LASTFM_API_KEY }}
+      PYXEE_LASTFM_API_SECRET: ${{ secrets.PYXEE_LASTFM_API_SECRET }}
       # The public half of the update-signing key (a repository *variable*: it is not secret). Built into the program,
       # which then installs only releases whose checksum list is signed with the matching key. Unset: no check.
       PYXEE_UPDATE_PUBLIC_KEY: ${{ vars.PYXEE_UPDATE_PUBLIC_KEY }}
@@ -124,6 +130,11 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ inputs.tag }}
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
       - name: Rust toolchain (from rust-toolchain.toml)
         shell: bash
         run: |
@@ -133,13 +144,6 @@ jobs:
         with:
           shared-key: release
       - uses: ./.github/actions/ffmpeg # the audio crate's static libav (in-process; no ffmpeg program is bundled)
-      # The stable channel; ui_flutter/pubspec.yaml states the oldest Flutter and Dart it accepts.
-      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
-        with:
-          channel: stable
-          cache: true
-      - name: Flutter version
-        run: flutter --version
       # yt-dlp, checked against its published SHA-256 (nothing is used if it does not match).
       # Audio is decoded inside the app (libav, linked in), so yt-dlp is the only bundled tool: there is no ffmpeg program.
       - name: Download yt-dlp
@@ -147,7 +151,7 @@ jobs:
       - name: Bundled tools run, and no ffmpeg is bundled
         shell: pwsh
         run: |
-          $bin = "tools"
+          $bin = "crates/app/binaries"
           & "$bin/yt-dlp-x86_64-pc-windows-msvc.exe" --version
           if ($LASTEXITCODE -ne 0) { throw "yt-dlp does not run" }
           $ff = @(Get-ChildItem $bin -Filter "ffmpeg*" -ErrorAction SilentlyContinue)
@@ -163,6 +167,8 @@ jobs:
           $global:LASTEXITCODE = 0 # the connection error above is expected; only a selector error is a failure
           if ($out -match 'Invalid filter|SyntaxError|Traceback|Failed to execute script') { throw "yt-dlp rejects the app's format selector [$selector]:`n$out" }
           Write-Host "yt-dlp accepts the app's format selector: $selector"
+      - run: npm ci --prefix ui
+      - run: npm run build --prefix ui
       # Code signing. Optional: with no certificate secret the release is built unsigned (and says so). To sign, add
       # the secrets WINDOWS_CERT_PFX_BASE64 (the .pfx, base64) and WINDOWS_CERT_PASSWORD; see docs/releasing.md.
       # Once the secret exists, a build that fails to sign fails the release instead of shipping unsigned.
@@ -184,89 +190,77 @@ jobs:
           "PYXEE_SIGN_CERT_PASSWORD=$env:PFX_PASSWORD" >> $env:GITHUB_ENV
           "PYXEE_REQUIRE_SIGNING=1" >> $env:GITHUB_ENV
           "signed=true" >> $env:GITHUB_OUTPUT
-      - name: Build the Rust bridge
-        run: cargo build -p pyxee-bridge --release --locked
-      - name: Build the Flutter app
-        working-directory: ui_flutter
-        run: |
-          flutter pub get
-          flutter build windows --release
-      # NSIS is on the runner image; this fails early, with a clear message, if that ever changes.
-      - name: NSIS is available
-        shell: pwsh
-        run: |
-          $nsis = Join-Path ${env:ProgramFiles(x86)} "NSIS\makensis.exe"
-          if (-not (Test-Path $nsis)) { choco install nsis -y --no-progress; if ($LASTEXITCODE -ne 0) { throw "NSIS is not installed and could not be" } }
-          & $nsis /VERSION
-      # `cargo xtask installer` stages the app (and signs Pyxee.exe), writes the uninstall list, runs makensis and signs
-      # the installer; the uninstaller is signed by the installer script. PYXEE_BUILD_READY: built in the steps above.
+      # Same as `cargo xtask installer`: the NSIS installer only.
       - name: Build the installer
+        working-directory: crates/app
         shell: pwsh
-        env:
-          PYXEE_BUILD_READY: "1"
         run: |
-          cargo xtask installer
-          if ($LASTEXITCODE -ne 0) { throw "cargo xtask installer failed" }
+          # The plain bundle config, or the one that signs everything when a certificate is configured.
+          $conf = (cargo xtask signing-config | Select-Object -Last 1)
+          if ($LASTEXITCODE -ne 0) { throw "cargo xtask signing-config failed" }
+          & "$env:GITHUB_WORKSPACE/ui/node_modules/.bin/tauri.cmd" build --config $conf --bundles nsis
+          if ($LASTEXITCODE -ne 0) { throw "tauri build failed ($LASTEXITCODE)" }
+          if ($env:PYXEE_SIGN_CERT_FILE) {
+            foreach ($f in @(Get-ChildItem "$env:GITHUB_WORKSPACE/target/release/bundle/nsis/*-setup.exe")) {
+              $st = (Get-AuthenticodeSignature -LiteralPath $f.FullName).Status
+              if ($st -ne 'Valid') { throw "$($f.Name) is not validly signed ($st)" }
+            }
+          }
       - name: Build the portable zip
         shell: pwsh
         env:
-          PYXEE_BUILD_READY: "1"
+          # `npm ci` and the UI build ran above; without this `cargo xtask portable` repeats both.
+          PYXEE_UI_READY: "1"
         run: |
           cargo xtask portable
           if ($LASTEXITCODE -ne 0) { throw "cargo xtask portable failed" }
-      # Unpack the zip and run what it carries: yt-dlp must start, the marker must be there, and Pyxee must stay up.
-      - name: Portable zip works
-        shell: pwsh
-        run: |
           $zip = Get-ChildItem "target/portable/*_x64-portable.zip" | Select-Object -First 1
           if (-not $zip) { throw "the portable zip was not built" }
+          # Unpack it and run what it carries: yt-dlp must start, and the marker must be there.
           $dir = Join-Path $env:RUNNER_TEMP "pyxee-portable"
           Expand-Archive -LiteralPath $zip.FullName -DestinationPath $dir -Force
           $root = Get-ChildItem $dir -Directory | Select-Object -First 1
           if (-not (Test-Path (Join-Path $root.FullName "portable.txt"))) { throw "portable.txt is missing" }
-          cargo xtask smoke $root.FullName
-          if ($LASTEXITCODE -ne 0) { throw "the portable copy does not start" }
-      # Install the built installer for real, silently, run what it installed, then uninstall it. This proves the
-      # installed layout is what the app expects, and that the uninstaller removes what the installer wrote.
+          & (Join-Path $root.FullName "yt-dlp.exe") --version
+          if ($LASTEXITCODE -ne 0) { throw "the portable yt-dlp does not run" }
+      # Install the built installer for real, silently, and run what it installed. This proves the installed layout
+      # (the app with yt-dlp next to it, and no ffmpeg) is what the app expects.
       - name: Installed layout works
         shell: pwsh
         run: |
-          $installer = Get-ChildItem "target/installer/*-setup.exe" | Select-Object -First 1
+          $installer = Get-ChildItem "target/release/bundle/nsis/*-setup.exe" | Select-Object -First 1
           if (-not $installer) { throw "NSIS installer not found" }
           $dir = Join-Path $env:RUNNER_TEMP "pyxee-installed"
-          $p = Start-Process -FilePath $installer.FullName -ArgumentList "/S", "/D=$dir" -Wait -PassThru
-          if ($p.ExitCode -ne 0) { throw "the installer exited with $($p.ExitCode)" }
-          foreach ($f in "Pyxee.exe", "yt-dlp.exe", "flutter_windows.dll", "pyxee_bridge.dll", "uninstall.exe", "data\icudtl.dat", "data\app.so", "THIRD_PARTY_NOTICES.txt", "FFmpeg-LGPL-2.1.txt", "GPL-3.0.txt", "yt-dlp-THIRD_PARTY_LICENSES.txt") {
-            if (-not (Test-Path (Join-Path $dir $f))) { throw "Missing from the installed app: $f" }
-          }
-          if (Test-Path (Join-Path $dir "portable.txt")) { throw "portable.txt is in the installed app: it would turn portable mode on" }
+          Start-Process -FilePath $installer.FullName -ArgumentList "/S", "/D=$dir" -Wait
+          Get-ChildItem $dir -Recurse -Filter *.exe | ForEach-Object { "{0}: {1:N1} MB" -f $_.FullName.Substring($dir.Length), ($_.Length / 1MB) }
+          $app = Get-ChildItem $dir -Filter *.exe | Where-Object { $_.Name -notmatch '^(uninstall|yt-dlp)' } | Select-Object -First 1
+          if (-not $app) { throw "The app executable is missing from the installed folder" }
+          if (-not (Test-Path (Join-Path $dir "yt-dlp.exe"))) { throw "Missing from the installed app: yt-dlp.exe" }
           # An ffmpeg program or a libav DLL. (FFmpeg-LGPL-2.1.txt, the licence text, is meant to be there.)
           $ffBinary = @(Get-ChildItem $dir -Recurse -File -ErrorAction SilentlyContinue | Where-Object { $_.Name -match '^(ffmpeg|ffprobe|ffplay)\.exe$|^(avcodec|avformat|avutil|swresample)(-\d+)?\.dll$' })
           if ($ffBinary.Count -gt 0) { throw "an ffmpeg program or libav DLL is in the installed app, but libav is linked in statically: $($ffBinary.Name -join ', ')" }
-          cargo xtask smoke $dir
-          if ($LASTEXITCODE -ne 0) { throw "the installed copy does not start" }
-          # `_?=` makes the uninstaller run in place and wait, instead of copying itself to a temp folder and returning.
-          $u = Start-Process -FilePath (Join-Path $dir "uninstall.exe") -ArgumentList "/S", "_?=$dir" -Wait -PassThru
-          if ($u.ExitCode -ne 0) { throw "the uninstaller exited with $($u.ExitCode)" }
-          foreach ($f in "Pyxee.exe", "yt-dlp.exe", "pyxee_bridge.dll", "data\app.so") {
-            if (Test-Path (Join-Path $dir $f)) { throw "the uninstaller left $f behind" }
+          if (-not (Get-ChildItem $dir -Recurse -Filter "FFmpeg-LGPL-2.1.txt" -ErrorAction SilentlyContinue)) { throw "the installed app does not carry FFmpeg-LGPL-2.1.txt (the LGPL text must ship with it)" }
+          foreach ($lic in "GPL-3.0.txt", "yt-dlp-THIRD_PARTY_LICENSES.txt") {
+            if (-not (Get-ChildItem $dir -Recurse -Filter $lic -ErrorAction SilentlyContinue)) { throw "the installed app does not carry $lic (yt-dlp.exe is a GPLv3+ combined work)" }
           }
+          & (Join-Path $dir "yt-dlp.exe") --version
+          if ($LASTEXITCODE -ne 0) { throw "The installed yt-dlp does not run" }
       - name: Collect release files
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path release | Out-Null
-          $files = @(Get-ChildItem "target/installer/*-setup.exe")
+          $files = @(Get-ChildItem "target/release/bundle/nsis/*-setup.exe")
           $files += @(Get-ChildItem "target/portable/*_x64-portable.zip")
           if ($files.Count -eq 0) { throw "No installers were built" }
           foreach ($f in $files) {
             if ($f.Name -notlike "*$($env:VERSION)*") { throw "$($f.Name) does not carry version $($env:VERSION)" }
             Copy-Item $f.FullName release/
           }
-          Copy-Item licenses/THIRD_PARTY.txt release/THIRD_PARTY_NOTICES.txt
-          Copy-Item licenses/FFmpeg-LGPL-2.1.txt release/FFmpeg-LGPL-2.1.txt
-          # yt-dlp.exe is a GPLv3+ combined work: its licence texts go next to the notices (committed in licenses/).
-          Copy-Item licenses/GPL-3.0.txt release/GPL-3.0.txt
-          Copy-Item licenses/yt-dlp-THIRD_PARTY_LICENSES.txt release/yt-dlp-THIRD_PARTY_LICENSES.txt
+          Copy-Item crates/app/licenses/THIRD_PARTY.txt release/THIRD_PARTY_NOTICES.txt
+          Copy-Item crates/app/licenses/FFmpeg-LGPL-2.1.txt release/FFmpeg-LGPL-2.1.txt
+          # yt-dlp.exe is a GPLv3+ combined work: its licence texts go next to the notices (committed in crates/app/licenses).
+          Copy-Item crates/app/licenses/GPL-3.0.txt release/GPL-3.0.txt
+          Copy-Item crates/app/licenses/yt-dlp-THIRD_PARTY_LICENSES.txt release/yt-dlp-THIRD_PARTY_LICENSES.txt
           Get-ChildItem release | ForEach-Object { "{0}: {1:N1} MB" -f $_.Name, ($_.Length / 1MB) }
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
@@ -356,11 +350,11 @@ jobs:
             echo "## About these builds"
             echo
             if [ "${{ needs.build.outputs.signed }}" = "true" ]; then
-              echo "The Windows installer and \`Pyxee.exe\` in the portable zip are code-signed. \`yt-dlp.exe\` in the zip is the official, unmodified build."
+              echo "The Windows installers and \`Pyxee.exe\` in the portable zip are code-signed. \`yt-dlp.exe\` in the zip is the official, unmodified build."
             else
-              echo "The Windows installer and the portable zip are **not code-signed**, so SmartScreen will warn about them."
+              echo "The Windows installers and the portable zip are **not code-signed**, so SmartScreen will warn about them."
             fi
-            echo "Portable: unpack \`Pyxee_${VERSION}_x64-portable.zip\` anywhere; your library and settings stay in its \`data\` folder."
+            echo "Portable: unpack \`Pyxee_${VERSION}_x64-portable.zip\` anywhere; everything stays in its \`data\` folder."
             if [ "${{ steps.attest.outcome }}" = "success" ]; then
               echo "Build provenance: verify with \`gh attestation verify <file> --repo ${GITHUB_REPOSITORY}\`."
             fi

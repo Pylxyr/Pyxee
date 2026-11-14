@@ -1,9 +1,9 @@
 [workspace]
 resolver = "2"
-members = ["crates/core", "crates/lyrics", "crates/shell", "crates/audio", "crates/sources", "crates/spike", "crates/library", "crates/net", "crates/bridge", "xtask"]
+members = ["crates/core", "crates/lyrics", "crates/shell", "crates/audio", "crates/sources", "crates/spike", "crates/app", "crates/library", "crates/net", "xtask"]
 
 [workspace.package]
-version = "0.6.0-rc1"
+version = "0.5.2"
 edition = "2021"
 license = "MIT"
 rust-version = "1.88"
@@ -11,7 +11,7 @@ rust-version = "1.88"
 [workspace.lints.clippy]
 all = { level = "warn", priority = -1 }
 
-# For a Linux package (none exists yet, see docs/linux.md): the same code as the Windows one, compiled for speed instead of for compile time.
+# The Linux build (packaging/arch): the same code as the Windows one, compiled for speed instead of for compile time.
 # Whole-program optimisation and one code-generation unit make the program faster and smaller, and the build slower
 # (use it with `--profile release-linux`; the Windows installer keeps the default `release` profile).
 [profile.release-linux]
@@ -23,7 +23,7 @@ strip = "symbols"
 # about 8% on the Rust resampler and saves 5 MB of the binary (18.5 -> 13.4 MB when measured).
 opt-level = "s"
 
-# souvlaki 0.9.3's MPRIS service (zbus 5) still wakes every 10 ms for as long as the program runs,
+# souvlaki 0.9.3's MPRIS service (zbus 5, like Tauri's plugins) still wakes every 10 ms for as long as the program runs,
 # to look for a message. The copy in vendor/souvlaki is upstream 0.9.3 with two changes, both in the MPRIS code
 # (src/platform/mpris/zbus.rs): it blocks until a message comes, and it publishes the `DesktopEntry` property
 # (`PlatformConfig::desktop_entry`) so KDE and GNOME can show Pyxee's icon in their media widgets. Windows uses a

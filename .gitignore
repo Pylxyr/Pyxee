@@ -1,9 +1,13 @@
 /target
 *.wav.out
 /out
+ui/node_modules
+ui/dist
+ui/dist-single
+crates/app/gen
 # downloaded by `cargo xtask tools`
-tools/*
-!tools/README.md
+crates/app/binaries/*
+!crates/app/binaries/README.md
 /dist
 pyxee-check/
 

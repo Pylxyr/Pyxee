@@ -1,55 +1,64 @@
 # Windows checklist (things the sandbox could not run)
 
-Run each command on its own line in PowerShell 5. Tick an item when it works. For anything that does not, start Pyxee
-from a terminal with `PYXEE_LOG=debug` (see [advanced.md](advanced.md)) and paste the console output.
+Run each command on its own line in PowerShell 5. Tick an item when it works; paste the log
+(`%LOCALAPPDATA%\dev.pyxee.app\logs\pyxee.log`, Taipei time) for anything that does not.
 
-## Build and start
+## WP1 (bugs)
 
-- [ ] From the repo root: `cargo xtask ffmpeg`, `cargo xtask tools`, `cargo build -p pyxee-bridge --release`, then in `ui_flutter`: `flutter pub get`, `flutter analyze`, `flutter run -d windows`. The window opens and Home fills with music.
-- [ ] `cargo test --workspace` passes (it includes the engine tests in `crates/bridge`).
-- [ ] The window, taskbar and Alt+Tab icon is the red disc, crisp at 100% and at your display scale. (If it is the blue Flutter logo, replace `ui_flutter/windows/runner/resources/app_icon.ico` with `assets/icons/icon.ico`. If Windows still shows an old icon it is the icon cache: run `ie4uinit.exe -show`, or restart Explorer.)
-- [ ] The top-tabs logo is the new mark on Dark and on a light theme, and the accent (seek bar, likes, focus ring) is the same red.
-
-## Playing
-
-- [ ] A YouTube song plays (search "Songs", pick one). If it says yt-dlp was not found, see [development.md](development.md) (`PYXEE_YTDLP`, or `cargo xtask tools` and a rebuilt bridge).
-- [ ] After a song starts from a Songs search, the artist, length and a sharp cover appear (queue, player bar, Now Playing); the seek bar works by click and drag.
+- [ ] `git pull` the bundle, then `cargo test -p pyxee-audio --test headers`, `cargo test -p pyxee-app engine_tests`, `npm test --prefix ui`.
+- [ ] 403: play `yt:Ni5jPjvGxtw` (search "Songs", pick it). It should play. If not, send the log lines with "refused the stream URL", "resolving again", "details for".
+- [ ] After a song starts from a Songs search, the artist, length and a sharp cover appear (queue, player bar, Now Playing); the seek bar works.
 - [ ] A song with unknown length shows a striped "length unknown" bar and only the elapsed time.
 - [ ] Art: no black bars; sharp at Now Playing size on your display scale.
-- [ ] Search opens on Songs. Pick Videos, close and reopen the app: still Videos.
+- [ ] Log timestamps end in `+08:00` and match Taipei clock time.
+- [ ] Gear icon (top right) opens "Settings"; Customize theme opens ON TOP of it; Now Playing open + Settings: sheet is above.
 - [ ] Queue page: drag a row by its handle (mouse), arrows work, Esc cancels a drag. Now Playing > Up next: drag, "Play next", arrows. Try with shuffle on.
-- [ ] Expand button (the player deck) and the cover in the dock open Now Playing, and Esc closes it.
 
-## Window, tray and system
+## WP2 (search filter)
 
-- [ ] Gear icon (top right) opens Settings; Customize theme opens on top of it; with Now Playing open, the Settings sheet is above it.
-- [ ] Title bar: drag, double-click to maximise, the maximise/restore icon follows, F11 goes full screen.
-- [ ] **Media keys**: play/pause, next, previous work with the window in the background; Windows' volume flyout and the lock screen show title, artist and cover.
-- [ ] **Tray**: the icon appears; right-click shows Open Pyxee, Play/Pause, Next, Previous, Quit.
-- [ ] **Close to tray** (Settings): closing the window keeps the music playing and the icon in the tray; Quit from the tray exits at once (the window and the icon disappear immediately); with it off, closing exits.
-- [ ] **Lyrics**: Now Playing > Lyrics shows lines for a popular song and highlights the current one; clicking a line seeks; an obscure song says "No lyrics found". Turn the network off: "Could not get the lyrics" with Try again.
-- [ ] **Sleep timer** (moon button on Now Playing): "15 minutes" pauses at the end and the volume fades over the last 15 s (set 1 minute to check); "End of this song" lets the song finish and does not start the next.
-- [ ] Mica backdrop (Settings): it shows behind the window and the colours still read well on Dark and Light.
-- [ ] **Advanced settings** (Settings): the sheet lists the settings with their current values. Type a Cookie file path, Save, and `.env` in the data folder has the line; empty the field, Save, and the line is gone. Restart: the value is used.
-- [ ] **Updates** (Settings): Check for updates says what it found. With a newer release: "What's new" lists the changes, Download and install shows progress, starts the installer and Pyxee closes by itself. Check yt-dlp, then Update yt-dlp, says the new version and the next search uses it.
-- [ ] **Updates at start**: with a newer release out, the "What's new" sheet opens by itself a moment after start; with none (or offline) nothing appears.
-- [ ] **Discord** (a build made with `PYXEE_DISCORD_CLIENT_ID`): with Discord running and the toggle on, your status shows the song and its progress and clears on pause or quit; off clears it at once.
+- [ ] Fresh start: Search opens on Songs. Pick Videos, close and reopen the app: still Videos.
+
+## WP3 (icon)
+
+- [ ] Rebuild (`cargo xtask installer` or `cargo run -p pyxee-app`): the window, taskbar and Alt+Tab icon is the red disc; check it is crisp at 100% and at your display scale.
+- [ ] Explorer: set the folder view to Extra large / Small icons on the built exe or installer; the 16 px and 256 px versions look right (16 px has the bolder stem and no centre dot).
+- [ ] Top-tabs logo is the new mark, on Dark and on a light theme; the accent (seek bar, likes, focus ring) is the same red as the logo.
+- [ ] If Windows still shows the old icon: it is the icon cache. Run `ie4uinit.exe -show`, or restart Explorer.
+
+## WP4 (milestone 6)
+
+Build and test: `cargo test -p pyxee-shell`, `cargo test -p pyxee-lyrics`, `cargo test -p pyxee-app`, `npm test --prefix ui`.
+
+- [ ] **Lyrics**: Now Playing > Lyrics shows lines for a popular song and highlights the current one as it plays; clicking a line seeks; an obscure song says "No lyrics found". Turn the network off: "Could not get the lyrics" with Try again.
+- [ ] **Sleep timer** (moon button on Now Playing, or Settings): "15 minutes" pauses at the end and the volume fades over the last 15 s (set it to 1 min to check); "End of this song" lets the song finish and then does NOT start the next (play starts it); "After 2 songs"; "+15 min"; Turn off.
+- [ ] **Media keys**: play/pause, next, previous keys work with the window in the background; Windows' volume flyout and the lock screen show title, artist and cover.
+- [ ] **Taskbar**: progress bar under the icon follows the song (green playing, yellow paused, red failed, pulsing while loading).
+- [ ] **Tray**: icon appears (right-click: Open, Play/Pause, Previous, Next, Mini player, Quit). Tooltip shows the song. Left click opens the flyout above the icon; Esc or clicking elsewhere closes it; clicking the icon while open closes it (does not flicker open again). Try the taskbar at the bottom, at the top and at a side, and on a second monitor / at a different display scale.
+- [ ] **Close to tray** (Settings > Windows): closing the window keeps the music playing and the icon in the tray; Quit really exits; with it off, closing exits.
+- [ ] **Single instance**: starting Pyxee again brings the first one to the front instead of opening a second.
+- [ ] **Start with Windows**: turn on, sign out and in; Pyxee starts (in the tray if close-to-tray is on). Turn off: Task Manager > Startup no longer lists it.
+- [ ] **Toast** (off by default): turn on, minimise the window, let the song change: a notification with title and artist.
+- [ ] **Mini player** (tray menu > Mini player): always on top, drag it anywhere, close and reopen: same place. Unplug the monitor it was on: it comes back on the main screen.
+- [ ] **Sleep / resume**: put the PC to sleep during a song and wake it: playback resumes or the song retries. Switch Wi-Fi off during a song and on again: "Back online. Trying again." when it had failed.
+- [ ] **Opt-in** `cargo check -p pyxee-app --features win-extras`: if it compiles, run with the feature and check the three thumbnail buttons on the taskbar preview and the jump list (right-click the taskbar icon: Play/Pause, Next, Previous, Mini player). Paste any compiler errors; they are confined to `shell/winextras.rs`.
+- [ ] Flyout and mini player colours match the app theme; the Mica backdrop shows (same as the main window).
 
 ## Release pipeline (first real run)
 
-The release workflow (`.github/workflows/release.yml`, started by **Cut release**, described in [releasing.md](releasing.md))
-builds the bridge and the Flutter app, then the installer and the portable zip, and tests both. Tick these on its first real run:
+The workflows were linted and their scripts tested, but the Windows build itself has not run on a GitHub runner yet.
+After the first **Cut release**, tick these (the run log and summary show the details):
 
-- [ ] CI is green on `main` before you start, including the Flutter job.
-- [ ] The workflow's own checks pass: yt-dlp runs, the portable zip starts, the silent install starts, and the uninstall leaves nothing behind.
-- [ ] The release has `Pyxee_x.y.z_x64-setup.exe`, the portable zip, `SHA256SUMS.txt` with its `.sig`, `THIRD_PARTY_NOTICES.txt` and the FFmpeg LGPL text; the checksum of the downloaded installer matches.
-- [ ] The installed folder lists `Pyxee.exe`, `pyxee_bridge.dll`, `yt-dlp.exe` and the Flutter files (and no ffmpeg or libav DLL: libav is linked in statically). Task Manager and the file properties call the program "Pyxee".
-- [ ] Install the downloaded installer over an older Pyxee: SmartScreen at most asks for "More info -> Run anyway", the app starts, a YouTube song plays, and your library and settings are still there.
-- [ ] On that older copy, Settings > Updates finds the new release and installs it.
+- [ ] CI is green on the Windows runner, including the informational "win-extras compiles" step (note whether it passes).
+- [ ] **Installed layout works** step: the installed folder lists the app exe plus `yt-dlp.exe` (and no ffmpeg). If a name differs from what the step expects, fix the filter in `release.yml`.
+- [ ] The release has `Pyxee_x.y.z_x64-setup.exe`, `SHA256SUMS.txt` and `THIRD_PARTY_NOTICES.txt`; the checksum of the downloaded installer matches.
+- [ ] Release notes read sensibly, and say which layer wrote them (AI line at the bottom of the changes, or commit-message sections).
+- [ ] Install the downloaded installer on a clean user profile: SmartScreen "More info -> Run anyway" works, the app starts, a YouTube song plays.
+- [ ] A pre-release (`Cut release` with version `0.0.2-rc1`) builds the NSIS installer only and is marked as a pre-release.
 
 ### FFmpeg licence (LGPL v2.1+, statically linked)
 
 Pyxee is MIT; the FFmpeg libraries it links are LGPL v2.1 or later (not legal advice). Keep it simple:
 
-- [ ] The release page has `THIRD_PARTY_NOTICES.txt` and `FFmpeg-LGPL-2.1.txt` next to the installers, and the FFmpeg section of the notices names the tag and commit that `scripts/build-ffmpeg.sh` builds (update `licenses/THIRD_PARTY.txt` when you change them).
+- [ ] The release page has `THIRD_PARTY_NOTICES.txt` and `FFmpeg-LGPL-2.1.txt` next to the installers, and the FFmpeg section of the notices names the tag and commit that `scripts/build-ffmpeg.sh` builds (update `crates/app/licenses/THIRD_PARTY.txt` when you change that pin).
+- [ ] The **Installed layout works** step passed (it also fails if an ffmpeg program or a libav DLL is in the installed app: libav is linked in statically).
 - [ ] The source stays public, so anyone can rebuild with another FFmpeg (`cargo xtask ffmpeg` and a normal build).

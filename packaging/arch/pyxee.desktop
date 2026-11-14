@@ -1,0 +1,30 @@
+[Desktop Entry]
+Type=Application
+Name=Pyxee
+GenericName=Music Player
+Comment=Search for songs, queue them up and play them gapless
+Keywords=music;audio;player;youtube;lyrics;playlist;
+Exec=pyxee-app
+Icon=pyxee
+Terminal=false
+Categories=AudioVideo;Audio;Music;Player;
+# The window's class (X11) or app id (Wayland) is the program name; this is how the desktop finds this file for it.
+StartupWMClass=pyxee-app
+SingleMainWindow=true
+Actions=PlayPause;Next;Previous;Mini;
+
+[Desktop Action PlayPause]
+Name=Play / Pause
+Exec=pyxee-app --toggle
+
+[Desktop Action Next]
+Name=Next
+Exec=pyxee-app --next
+
+[Desktop Action Previous]
+Name=Previous
+Exec=pyxee-app --previous
+
+[Desktop Action Mini]
+Name=Mini player
+Exec=pyxee-app --mini

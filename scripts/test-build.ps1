@@ -5,18 +5,18 @@
 .DESCRIPTION
   1. Checks for yt-dlp and downloads it (cargo xtask tools) if it is missing.
   2. Checks for the minimal static FFmpeg libraries and builds them (cargo xtask ffmpeg) if they are missing.
-  3. Builds the Rust bridge (cargo build -p pyxee-bridge --release), the library the Flutter app loads.
-  4. Gets the Flutter packages and launches the app (flutter run -d windows). Close the app window to end the run.
+  3. Installs the UI packages if needed, builds the UI, then compiles the app (cargo build -p pyxee-app).
+  4. Launches the app (UI dev server + tauri dev, like the old dev.cmd). Close the app window to end the run.
   Stops at the first failure and prints a summary.
 
 .PARAMETER Installer
-  Also build the installer afterwards (cargo xtask installer; slow; needs NSIS).
+  Also build the full installer afterwards (cargo xtask installer; slow).
 
 .PARAMETER NoRun
   Build and check only; do not launch the app at the end.
 
 .PARAMETER Release
-  Run the app in Flutter's release mode instead of debug (the bridge is always built in release mode).
+  Compile the app in release mode instead of debug.
 
 .EXAMPLE
   powershell -ExecutionPolicy Bypass -File scripts\test-build.ps1
@@ -62,17 +62,17 @@ function Step($name, [scriptblock]$cmd) {
 }
 
 # ---- Prerequisites on PATH
-foreach ($tool in @('cargo', 'rustc', 'flutter')) {
+foreach ($tool in @('cargo', 'rustc', 'node', 'npm')) {
   if (-not (Get-Command $tool -ErrorAction SilentlyContinue)) {
     Add-Result 'FAIL' "prereq-$tool" "$tool was not found on PATH"
     Finish
   }
 }
-Add-Result 'PASS' 'prerequisites' 'cargo, rustc and flutter found'
+Add-Result 'PASS' 'prerequisites' 'cargo, rustc, node and npm found'
 
 # ---- yt-dlp
 $ytdlpName = 'yt-dlp-x86_64-pc-windows-msvc.exe'
-$ytdlpPath = Join-Path $root "tools\$ytdlpName"
+$ytdlpPath = Join-Path $root "crates\app\binaries\$ytdlpName"
 function Find-Ytdlp {
   if ($env:PYXEE_YTDLP -and (Test-Path -LiteralPath $env:PYXEE_YTDLP -PathType Leaf)) { return $env:PYXEE_YTDLP }
   if (Test-Path -LiteralPath $ytdlpPath -PathType Leaf) { return $ytdlpPath }
@@ -122,44 +122,56 @@ if (-not $missing) {
   Add-Result 'PASS' 'ffmpeg' "built: $prefix"
 }
 
-# ---- Rust bridge (the library the Flutter app loads). The app's native-assets hook (ui_flutter/hook/build.dart) copies
-# it from target\release, so it is always built in release mode; rebuild it after every Rust change.
-Step 'cargo build -p pyxee-bridge --release' { cargo build -p pyxee-bridge --release }
-$dll = Join-Path $root 'target\release\pyxee_bridge.dll'
-if (Test-Path -LiteralPath $dll) {
-  $mb = [math]::Round((Get-Item -LiteralPath $dll).Length / 1MB, 1)
-  Add-Result 'PASS' 'bridge-library' "$dll ($mb MB)"
+# ---- UI
+if (-not (Test-Path (Join-Path $root 'ui\node_modules'))) {
+  Step 'npm install --prefix ui' { npm install --prefix ui }
+}
+Step 'npm run build --prefix ui' { npm run build --prefix ui }
+
+# ---- App
+$profileDir = if ($Release) { 'release' } else { 'debug' }
+if ($Release) { Step 'cargo build -p pyxee-app --release' { cargo build -p pyxee-app --release } }
+else { Step 'cargo build -p pyxee-app' { cargo build -p pyxee-app } }
+$exe = Join-Path $root "target\$profileDir\pyxee-app.exe"
+if (Test-Path -LiteralPath $exe) {
+  $mb = [math]::Round((Get-Item -LiteralPath $exe).Length / 1MB, 1)
+  Add-Result 'PASS' 'app-binary' "$exe ($mb MB)"
 } else {
-  Add-Result 'FAIL' 'bridge-library' "build finished but $dll does not exist"
+  Add-Result 'FAIL' 'app-binary' "build finished but $exe does not exist"
   Finish
 }
-
-# ---- Flutter packages
-Push-Location (Join-Path $root 'ui_flutter')
-try {
-  Step 'flutter pub get' { flutter pub get }
-} finally { Pop-Location }
 
 # ---- Installer (optional)
 if ($Installer) {
   Step 'cargo xtask installer' { cargo xtask installer }
-  $out = Join-Path $root 'target\installer'
-  $files = @(Get-ChildItem -LiteralPath $out -Filter *-setup.exe -ErrorAction SilentlyContinue)
+  $bundle = Join-Path $root 'target\release\bundle'
+  $files = @(Get-ChildItem -LiteralPath $bundle -Recurse -Include *-setup.exe -ErrorAction SilentlyContinue)
   if ($files.Count -gt 0) { foreach ($f in $files) { Add-Result 'PASS' 'installer' $f.FullName } }
-  else { Add-Result 'FAIL' 'installer' "no installer found under $out" }
+  else { Add-Result 'FAIL' 'installer' "no installer found under $bundle" }
 }
 
-# ---- Launch the app
+# ---- Launch the app (UI dev server in its own window, then tauri dev), as dev.cmd did
 if (-not $NoRun) {
   Write-Host ''
   Write-Host '==> Launching Pyxee (close the app window to finish)' -ForegroundColor Cyan
-  Push-Location (Join-Path $root 'ui_flutter')
-  try {
-    if ($Release) { & flutter run -d windows --release } else { & flutter run -d windows }
-    $appCode = $LASTEXITCODE
-  } finally { Pop-Location }
+  $dev = Start-Process -FilePath 'cmd.exe' -ArgumentList '/k', 'npm run dev --prefix ui' -WorkingDirectory $root -PassThru
+  $ready = $false
+  for ($i = 0; $i -lt 120; $i++) {
+    if (Test-NetConnection -ComputerName localhost -Port 5173 -InformationLevel Quiet -WarningAction SilentlyContinue) { $ready = $true; break }
+    Start-Sleep -Seconds 1
+  }
+  if (-not $ready) {
+    Add-Result 'FAIL' 'ui-dev-server' 'nothing answered on http://localhost:5173 after 120 s'
+    & taskkill /T /F /PID $dev.Id 2>&1 | Out-Null
+    Finish
+  }
+  Add-Result 'PASS' 'ui-dev-server' 'http://localhost:5173 is up'
+  $env:PATH = (Join-Path $root 'ui\node_modules\.bin') + ';' + $env:PATH
+  Push-Location (Join-Path $root 'crates\app')
+  try { & tauri dev; $appCode = $LASTEXITCODE } finally { Pop-Location }
+  & taskkill /T /F /PID $dev.Id 2>&1 | Out-Null
   if ($appCode -eq 0) { Add-Result 'PASS' 'app-run' 'the app ran and was closed normally' }
-  else { Add-Result 'FAIL' 'app-run' "flutter run exited with code $appCode" }
+  else { Add-Result 'FAIL' 'app-run' "tauri dev exited with code $appCode" }
 }
 
 Finish

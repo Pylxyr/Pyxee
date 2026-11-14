@@ -3,7 +3,7 @@
 
     python scripts/make_installer_art.py
 
-Writes assets/icons/installer/header.bmp (150x57, top right of the pages) and sidebar.bmp (164x314, the welcome
+Writes crates/app/icons/installer/header.bmp (150x57, top right of the pages) and sidebar.bmp (164x314, the welcome
 and finish pages). NSIS wants 24-bit BMPs without transparency. Needs Pillow. The results are committed, so this is
 only run when the icon changes.
 """
@@ -12,8 +12,8 @@ from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont
 
 ROOT = Path(__file__).resolve().parent.parent
-ICON = ROOT / "assets/icons/icon.png"
-OUT = ROOT / "assets/icons/installer"
+ICON = ROOT / "crates/app/icons/icon.png"
+OUT = ROOT / "crates/app/icons/installer"
 SCALE = 4  # drawn four times as large, then shrunk, so the edges are smooth
 
 INK = (15, 15, 15)  # the icon's black

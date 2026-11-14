@@ -1,0 +1,437 @@
+//! Logging to a file the user can find: `<app data>\logs\pyxee.log` (one older copy, `pyxee.log.1`, is kept
+//! when it passes 2 MB, so the logs never exceed about 4 MB; identical records in a row are cut to two lines and a count). Everything is also copied to the console, which is what `tauri dev` shows.
+//!
+//! Set `PYXEE_LOG` to `error`, `warn` (default), `info`, `debug` or `trace` for more or less detail. The default is `warn`
+//! so a quiet app writes next to nothing to the disk; `PYXEE_PERF=1` raises it to `info`, which its lines need.
+
+use log::{Level, LevelFilter, Log, Metadata, Record};
+use std::fs::{self, File, OpenOptions};
+use std::io::Write;
+use std::path::{Path, PathBuf};
+use std::sync::Mutex;
+
+pub const MAX_BYTES: u64 = 2 * 1024 * 1024;
+
+#[derive(Debug, Clone)]
+pub struct LogInfo {
+    pub dir: PathBuf,
+    pub file: PathBuf,
+}
+
+/// Identical records in a row (a failing device retried in a loop, a stream erroring on every buffer) are written
+/// `REPEATS_KEPT` times, then counted and summarised when something else is logged, so one fault cannot fill the disk
+/// or bury the line before it.
+pub const REPEATS_KEPT: u32 = 2;
+
+#[derive(Default)]
+pub struct Repeats {
+    last: Option<String>,
+    run: u32,
+    skipped: u32,
+}
+
+impl Repeats {
+    /// For each record: `(how many repeats were swallowed just before this one, whether to write this one)`.
+    pub fn feed(&mut self, key: &str) -> (u32, bool) {
+        if self.last.as_deref() == Some(key) {
+            self.run += 1;
+            if self.run > REPEATS_KEPT {
+                self.skipped += 1;
+                return (0, false);
+            }
+            return (0, true);
+        }
+        let swallowed = std::mem::take(&mut self.skipped);
+        self.last = Some(key.to_string());
+        self.run = 1;
+        (swallowed, true)
+    }
+}
+
+pub struct FileLogger {
+    path: PathBuf,
+    file: Mutex<File>,
+    repeats: Mutex<Repeats>,
+    level: LevelFilter,
+    max_bytes: u64,
+    to_stderr: bool,
+}
+
+/// Log times are Taipei time: UTC+8 all year (Taiwan has no daylight saving), so a fixed offset is
+/// exact and no time zone database is needed.
+pub const TAIPEI_OFFSET_MS: i64 = 8 * 3_600_000;
+
+/// `1700000000123` -> `2023-11-15 06:13:20.123+08:00`.
+pub fn format_taipei(ms: i64) -> String {
+    let local = ms + TAIPEI_OFFSET_MS;
+    let (secs, millis) = (local.div_euclid(1000), local.rem_euclid(1000));
+    let (days, tod) = (secs.div_euclid(86_400), secs.rem_euclid(86_400));
+    // Civil-from-days (Howard Hinnant's algorithm).
+    let z = days + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z.rem_euclid(146_097);
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let day = doy - (153 * mp + 2) / 5 + 1;
+    let month = if mp < 10 { mp + 3 } else { mp - 9 };
+    let year = yoe + era * 400 + i64::from(month <= 2);
+    format!(
+        "{year:04}-{month:02}-{day:02} {:02}:{:02}:{:02}.{millis:03}+08:00",
+        tod / 3600,
+        tod % 3600 / 60,
+        tod % 60
+    )
+}
+
+pub fn format_line(now_ms: i64, level: Level, target: &str, message: &str) -> String {
+    // Keep one record on one line, so the file can be searched and pasted.
+    format!(
+        "{} {:<5} {} {}\n",
+        format_taipei(now_ms),
+        level,
+        target,
+        message.replace('\n', "\n    ")
+    )
+}
+
+fn now_ms() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_millis() as i64)
+}
+
+impl FileLogger {
+    pub fn open(
+        path: &Path,
+        level: LevelFilter,
+        max_bytes: u64,
+        to_stderr: bool,
+    ) -> std::io::Result<Self> {
+        if let Some(dir) = path.parent() {
+            fs::create_dir_all(dir)?;
+        }
+        let file = OpenOptions::new().create(true).append(true).open(path)?;
+        Ok(Self {
+            path: path.to_path_buf(),
+            file: Mutex::new(file),
+            repeats: Mutex::new(Repeats::default()),
+            level,
+            max_bytes,
+            to_stderr,
+        })
+    }
+
+    fn rotate(&self, file: &mut File) {
+        if file.metadata().map_or(0, |m| m.len()) <= self.max_bytes {
+            return;
+        }
+        let old = self.path.with_extension("log.1");
+        let _ = fs::remove_file(&old);
+        if fs::rename(&self.path, &old).is_ok() {
+            if let Ok(fresh) = OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(&self.path)
+            {
+                *file = fresh;
+            }
+        }
+    }
+}
+
+impl Log for FileLogger {
+    fn enabled(&self, m: &Metadata) -> bool {
+        // Our own crates follow the chosen level; libraries only speak up about problems.
+        let ours = m.target().starts_with("pyxee") || m.target().starts_with("xtask");
+        m.level()
+            <= if ours {
+                self.level
+            } else {
+                self.level.min(LevelFilter::Warn)
+            }
+    }
+
+    fn log(&self, r: &Record) {
+        if !self.enabled(r.metadata()) {
+            return;
+        }
+        let message = pyxee_sources::scrub(&r.args().to_string());
+        let key = format!("{} {} {message}", r.level(), r.target());
+        let (swallowed, write) = self
+            .repeats
+            .lock()
+            .map_or((0, true), |mut rep| rep.feed(&key));
+        if swallowed > 0 {
+            let note = format_line(
+                now_ms(),
+                Level::Info,
+                "pyxee::log",
+                &format!("the line above was repeated {swallowed} more times"),
+            );
+            if let Ok(mut f) = self.file.lock() {
+                let _ = f.write_all(note.as_bytes());
+            }
+        }
+        if !write {
+            return;
+        }
+        let line = format_line(now_ms(), r.level(), r.target(), &message);
+        if self.to_stderr {
+            eprint!("{line}");
+        }
+        if let Ok(mut f) = self.file.lock() {
+            self.rotate(&mut f);
+            let _ = f.write_all(line.as_bytes());
+        }
+    }
+
+    fn flush(&self) {
+        if let Ok(mut f) = self.file.lock() {
+            let _ = f.flush();
+        }
+    }
+}
+
+pub fn level_from(text: Option<&str>) -> LevelFilter {
+    match text.map(|t| t.trim().to_ascii_lowercase()).as_deref() {
+        Some("error") => LevelFilter::Error,
+        Some("warn") => LevelFilter::Warn,
+        Some("debug") => LevelFilter::Debug,
+        Some("trace") => LevelFilter::Trace,
+        Some("info") => LevelFilter::Info,
+        _ => LevelFilter::Warn,
+    }
+}
+
+/// The level the log really runs at: what `PYXEE_LOG` asks for, but at least `info` while the performance log
+/// (`PYXEE_PERF=1`) is on, because its lines are written at that level and would otherwise never reach the file.
+pub fn effective_level(asked: LevelFilter, perf: bool) -> LevelFilter {
+    if perf && asked < LevelFilter::Info {
+        LevelFilter::Info
+    } else {
+        asked
+    }
+}
+
+/// Starts logging for the whole process. If the log folder cannot be used the app still runs (console only)
+/// and the reason is returned.
+pub fn init(dir: &Path) -> (LogInfo, Option<String>) {
+    let file = dir.join("pyxee.log");
+    let info = LogInfo {
+        dir: dir.to_path_buf(),
+        file: file.clone(),
+    };
+    let perf = std::env::var("PYXEE_PERF").is_ok_and(|v| v.trim() == "1");
+    let level = effective_level(level_from(std::env::var("PYXEE_LOG").ok().as_deref()), perf);
+    match FileLogger::open(&file, level, MAX_BYTES, true) {
+        Ok(logger) => {
+            if log::set_boxed_logger(Box::new(logger)).is_ok() {
+                log::set_max_level(level);
+            }
+            let default_hook = std::panic::take_hook();
+            std::panic::set_hook(Box::new(move |p| {
+                log::error!("panic: {p}\n{}", std::backtrace::Backtrace::force_capture());
+                default_hook(p);
+            }));
+            log::info!(
+                "Pyxee {} starting on {} (log level {level}); log file: {}",
+                env!("CARGO_PKG_VERSION"),
+                std::env::consts::OS,
+                file.display()
+            );
+            (info, None)
+        }
+        Err(e) => (
+            info,
+            Some(format!(
+                "could not open the log file {}: {e}",
+                file.display()
+            )),
+        ),
+    }
+}
+
+/// Opens the folder in the system file manager.
+pub fn open_folder(dir: &Path) -> Result<(), String> {
+    fs::create_dir_all(dir).map_err(|e| format!("cannot create {}: {e}", dir.display()))?;
+    crate::opener::open_folder(dir)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn temp(name: &str) -> PathBuf {
+        let d = std::env::temp_dir().join(format!("pyxee-log-{}-{name}", std::process::id()));
+        let _ = fs::remove_dir_all(&d);
+        d
+    }
+
+    fn write(l: &FileLogger, level: Level, target: &str, msg: &str) {
+        l.log(
+            &Record::builder()
+                .level(level)
+                .target(target)
+                .args(format_args!("{msg}"))
+                .build(),
+        );
+    }
+
+    #[test]
+    fn timestamps_are_taipei_time_with_a_fixed_plus_eight_label() {
+        // Epoch is 08:00 in Taipei.
+        assert_eq!(format_taipei(0), "1970-01-01 08:00:00.000+08:00");
+        assert_eq!(
+            format_taipei(1_700_000_000_123),
+            "2023-11-15 06:13:20.123+08:00"
+        );
+        // Leap day: 2000-02-29 00:00 UTC is 08:00 in Taipei the same day.
+        assert_eq!(
+            format_taipei(951_782_400_000),
+            "2000-02-29 08:00:00.000+08:00"
+        );
+        // Crossing midnight: 16:00 UTC is already the next day in Taipei.
+        assert_eq!(
+            format_taipei(1_782_864_000_000 - 8 * 3_600_000),
+            "2026-07-01 00:00:00.000+08:00"
+        );
+        assert_eq!(
+            format_taipei(1_782_864_000_000 - 8 * 3_600_000 - 1),
+            "2026-06-30 23:59:59.999+08:00"
+        );
+        // No daylight saving: July and January use the same offset.
+        assert!(format_taipei(1_752_000_000_000).ends_with("+08:00"));
+        assert!(format_taipei(1_736_000_000_000).ends_with("+08:00"));
+        assert_eq!(format_taipei(-1), "1970-01-01 07:59:59.999+08:00");
+    }
+
+    #[test]
+    fn a_line_has_time_level_source_and_message_and_stays_greppable() {
+        let l = format_line(
+            0,
+            Level::Warn,
+            "pyxee_app::engine",
+            "could not start \"Song\"",
+        );
+        assert_eq!(
+            l,
+            "1970-01-01 08:00:00.000+08:00 WARN  pyxee_app::engine could not start \"Song\"\n"
+        );
+        let multi = format_line(0, Level::Error, "t", "panic\nline two");
+        assert!(multi.ends_with("panic\n    line two\n"), "{multi:?}");
+    }
+
+    #[test]
+    fn our_crates_follow_the_level_and_libraries_only_report_problems() {
+        let dir = temp("levels");
+        let l = FileLogger::open(&dir.join("p.log"), LevelFilter::Info, MAX_BYTES, false).unwrap();
+        write(&l, Level::Debug, "pyxee_app::engine", "too detailed");
+        write(&l, Level::Info, "pyxee_app::engine", "visible info");
+        write(&l, Level::Info, "hyper::client", "library chatter");
+        write(&l, Level::Warn, "hyper::client", "library problem");
+        let text = fs::read_to_string(dir.join("p.log")).unwrap();
+        assert!(text.contains("visible info") && text.contains("library problem"));
+        assert!(!text.contains("too detailed") && !text.contains("library chatter"));
+    }
+
+    #[test]
+    fn a_storm_of_identical_records_is_cut_to_a_few_lines_and_a_count() {
+        let mut r = Repeats::default();
+        let written: Vec<bool> = (0..6).map(|_| r.feed("ERROR a boom").1).collect();
+        assert_eq!(written, [true, true, false, false, false, false]);
+        assert_eq!(
+            r.feed("INFO a fine"),
+            (4, true),
+            "the count is reported when something else is logged"
+        );
+        assert_eq!(r.feed("INFO a fine"), (0, true));
+        assert_eq!(
+            r.feed("ERROR a boom"),
+            (0, true),
+            "a record that comes back later is new again"
+        );
+    }
+
+    #[test]
+    fn the_file_is_rotated_at_the_limit_and_nothing_recent_is_lost() {
+        let dir = temp("rotate");
+        let path = dir.join("p.log");
+        let l = FileLogger::open(&path, LevelFilter::Info, 300, false).unwrap();
+        for i in 0..20 {
+            write(
+                &l,
+                Level::Info,
+                "pyxee_app",
+                &format!("line number {i:02} with some padding text"),
+            );
+        }
+        let old = fs::read_to_string(dir.join("p.log.1")).expect("an older copy is kept");
+        let new = fs::read_to_string(&path).unwrap();
+        assert!(!old.is_empty() && !new.is_empty());
+        assert!(
+            new.contains("line number 19"),
+            "the newest line is in the current file"
+        );
+        assert!(
+            fs::metadata(&path).unwrap().len() < 600,
+            "the current file stays small"
+        );
+        assert_eq!(
+            fs::read_dir(&dir).unwrap().count(),
+            2,
+            "only one old copy is kept"
+        );
+    }
+
+    #[test]
+    fn logs_from_earlier_runs_are_kept_when_the_app_restarts() {
+        let dir = temp("restart");
+        let path = dir.join("p.log");
+        write(
+            &FileLogger::open(&path, LevelFilter::Info, MAX_BYTES, false).unwrap(),
+            Level::Info,
+            "pyxee",
+            "first run",
+        );
+        write(
+            &FileLogger::open(&path, LevelFilter::Info, MAX_BYTES, false).unwrap(),
+            Level::Info,
+            "pyxee",
+            "second run",
+        );
+        let text = fs::read_to_string(&path).unwrap();
+        assert!(text.find("first run").unwrap() < text.find("second run").unwrap());
+    }
+
+    #[test]
+    fn the_level_comes_from_the_environment_value() {
+        assert_eq!(level_from(None), LevelFilter::Warn);
+        assert_eq!(level_from(Some(" DEBUG ")), LevelFilter::Debug);
+        assert_eq!(level_from(Some("warn")), LevelFilter::Warn);
+        assert_eq!(level_from(Some("info")), LevelFilter::Info);
+        assert_eq!(level_from(Some("nonsense")), LevelFilter::Warn);
+    }
+
+    #[test]
+    fn the_performance_log_needs_at_least_info() {
+        assert_eq!(effective_level(LevelFilter::Warn, true), LevelFilter::Info);
+        assert_eq!(effective_level(LevelFilter::Error, true), LevelFilter::Info);
+        assert_eq!(
+            effective_level(LevelFilter::Debug, true),
+            LevelFilter::Debug
+        );
+        assert_eq!(effective_level(LevelFilter::Warn, false), LevelFilter::Warn);
+    }
+
+    #[test]
+    fn an_unusable_log_folder_is_reported_not_fatal() {
+        let dir = temp("blocked");
+        fs::create_dir_all(&dir).unwrap();
+        let blocker = dir.join("not-a-folder");
+        fs::write(&blocker, b"x").unwrap();
+        assert!(
+            FileLogger::open(&blocker.join("p.log"), LevelFilter::Info, MAX_BYTES, false).is_err()
+        );
+    }
+}

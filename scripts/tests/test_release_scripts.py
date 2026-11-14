@@ -44,24 +44,19 @@ class NextVersion(unittest.TestCase):
         self.assertEqual(len(versions), 1, versions)
 
 
-class PubspecRegex(unittest.TestCase):
-    PUBSPEC = "name: pyxee\nversion: 0.5.2+3\nenvironment:\n  sdk: ^3.12.0\n"
+class PkgverRegex(unittest.TestCase):
+    PKGBUILD = "# Maintainer: x\npkgname=pyxee\npkgver=0.5.0\npkgrel=1\n"
 
-    def test_only_the_version_line_changes_and_the_build_number_stays(self):
-        out = bv.PUBSPEC_VERSION.sub(lambda m: f"{m.group(1)}9.9.9{m.group(3) or ''}", self.PUBSPEC, count=1)
-        self.assertIn("\nversion: 9.9.9+3\n", out)
-        self.assertIn("\nenvironment:\n  sdk: ^3.12.0\n", out)
-        self.assertEqual(bv.PUBSPEC_VERSION.search(self.PUBSPEC).group(2), "0.5.2")
+    def test_only_the_pkgver_line_changes(self):
+        out = bv.PKGVER.sub(lambda m: f"{m.group(1)}9.9.9", self.PKGBUILD, count=1)
+        self.assertIn("\npkgver=9.9.9\n", out)
+        self.assertIn("\npkgrel=1\n", out)
+        self.assertEqual(bv.PKGVER.search(self.PKGBUILD).group(2), "0.5.0")
 
-    def test_a_version_without_a_build_number(self):
-        found = bv.PUBSPEC_VERSION.search("version: 1.0.0-rc1\n")
-        self.assertEqual((found.group(2), found.group(3)), ("1.0.0-rc1", None))
-
-    def test_the_repo_pubspec_is_one_of_the_checked_files(self):
-        self.assertIn("ui_flutter/pubspec.yaml", bv.read_versions())
-
-    def test_the_current_version_comes_from_cargo_toml(self):
-        self.assertEqual(bv.current_version(), bv.read_versions()["Cargo.toml [workspace.package]"])
+    def test_the_repo_pkgbuild_follows_a_final_release_only(self):
+        versions = bv.read_versions()
+        workspace = versions["Cargo.toml [workspace.package]"]
+        self.assertEqual("packaging/arch/PKGBUILD pkgver" in versions, "-" not in workspace)
 
 
 class LockfileRegex(unittest.TestCase):
@@ -102,14 +97,14 @@ class Classify(unittest.TestCase):
 
 class CodeAnalysis(unittest.TestCase):
     DIFF = (
-        "+++ b/crates/bridge/src/channel.rs\n+        \"setVolume\" => {\n"
+        "+++ b/crates/app/src/main.rs\n+            commands::set_volume,\n"
         "+++ b/crates/shell/src/settings.rs\n+    pub close_to_tray: bool,\n"
         "+++ b/crates/audio/src/volume.rs\n+pub struct Volume {\n+pub fn gain() -> f32 {\n-pub fn old_gain() -> f32 {\n"
     )
 
     def test_detects_commands_settings_and_public_items(self):
         seen = rn.detect_logic(self.DIFF)
-        self.assertEqual(seen["commands"]["added"], {"setVolume"})
+        self.assertEqual(seen["commands"]["added"], {"set_volume"})
         self.assertEqual(seen["settings"]["added"], {"close_to_tray"})
         self.assertEqual(seen["code"]["added"], {"Volume", "gain()"})
         self.assertEqual(seen["code"]["removed"], {"old_gain()"})
@@ -124,17 +119,12 @@ class CodeAnalysis(unittest.TestCase):
 
     def test_areas_and_labels(self):
         self.assertEqual(rn.area_of("crates/audio/src/pipeline.rs"), "Audio engine")
-        self.assertEqual(rn.area_of("tools/README.md"), "Documentation")
-        self.assertEqual(rn.area_of("ui_flutter/test/widget_test.dart"), "Tests")
-        self.assertEqual(rn.area_of("ui_flutter/lib/features/home/home_page.dart"), "User interface")
-        self.assertEqual(rn.area_of("ui_flutter/assets/tray.png"), "Icons and artwork")
-        self.assertEqual(rn.area_of("crates/bridge/src/channel.rs"), "App and engine bridge (updates, Discord, settings)")
-        self.assertEqual(rn.area_of("packaging/windows/installer.nsi"), "Build and release")
-        self.assertEqual(rn.area_of("licenses/GPL-3.0.txt"), "Documentation")
+        self.assertEqual(rn.area_of("crates/app/binaries/README.md"), "Documentation")
+        self.assertEqual(rn.area_of("ui/src/App.test.ts"), "Tests")
         self.assertEqual(rn.area_of("somewhere/else.txt"), "Other")
-        group = ["crates/bridge/src/main.rs", "xtask/src/main.rs", "ui_flutter/lib/app/shell/shell.dart"]
+        group = ["crates/app/src/main.rs", "xtask/src/main.rs", "ui/src/App.svelte"]
         self.assertNotEqual(rn._label(group[0], group), rn._label(group[1], group))
-        self.assertEqual(rn._label(group[2], group), "shell.dart")
+        self.assertEqual(rn._label(group[2], group), "App.svelte")
 
     def test_net_file_state(self):
         net, counts = rn.merge_file_states(
@@ -158,7 +148,7 @@ class AiPlumbing(unittest.TestCase):
 
     def test_prompt_stays_in_budget_and_drops_lockfiles(self):
         diff = "diff --git a/Cargo.lock b/Cargo.lock\n+x\n" + "".join(
-            f"diff --git a/ui_flutter/lib/f{i}.dart b/ui_flutter/lib/f{i}.dart\n+" + "y" * 2000 + "\n" for i in range(30)
+            f"diff --git a/ui/src/F{i}.svelte b/ui/src/F{i}.svelte\n+" + "y" * 2000 + "\n" for i in range(30)
         )
         prompt = rn.build_prompt("v1.0.0", "v0.9.0", [("a", "Add x")], "stat", diff, 10_000)
         self.assertLess(len(prompt), 10_000)

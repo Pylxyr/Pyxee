@@ -7,10 +7,10 @@
   tool missing) so the UI can explain failures.
 - `crates/audio`: `Pipeline` (producer thread -> small buffer -> device `Consumer`) with instant flush, pause, heard
   position, and the `HeardTracker` fed from real consumption; in-place seek; typed track failures; `output` (cpal/WASAPI).
-- `crates/bridge/src/engine.rs`: turns the player's effects into resolve -> open -> prefetch -> play and the pipeline's reports
-  into engine events. No thread of its own: driven by `handle(effect)` and `poll()`, so it is tested step by step
-  (`engine_tests.rs`, and `sim.rs`, a stand-in used by tests). `channel.rs` runs it on a thread, or a stand-in that fails
-  honestly when no audio device exists. The old simulator run mode (`PYXEE_SIM=1`) is gone, see [migration.md](migration.md).
+- `crates/app/src/engine.rs`: turns the player's effects into resolve -> open -> prefetch -> play and the pipeline's reports
+  into engine events. No thread of its own: driven by `handle(effect)` and `poll()`, so it is tested step by step.
+  `runner.rs` runs it on a thread, or a stand-in that fails honestly when no audio device exists, or the simulator
+  (`PYXEE_SIM=1`) for UI work.
 - UI: search (live suggestions, filters, loading/empty/error states with retry), row menus, and the queue screen
   (drag to reorder, move up/down buttons, remove and clear with Undo).
 
@@ -61,9 +61,8 @@ track now waits until the track being re-opened is queued, then follows it. `see
 reproduces this with a slow local HTTP server (0.02 s of the seeked song before the next one cut in, before the fix).
 
 ## Logs and messages (added after the first Windows run)
-The engine, sources and audio crates log through the standard `log` facade. The bridge prints it to the console (standard error, set
-the level with `PYXEE_LOG`); the earlier shell also wrote `pyxee.log` (rotated at 2 MB, Taipei-time timestamps, panics included), which
-this version does not, see [migration.md](migration.md). A song's life is traceable: `start`, `resolved` (format, codec, bitrate and
+`crates/app/src/logging.rs` writes `pyxee.log` (rotated at 2 MB, Taipei-time timestamps (fixed UTC+8, `+08:00`), panics included); the engine, sources and
+audio crates log through the standard `log` facade. A song's life is traceable: `start`, `resolved` (format, codec, bitrate and
 the host the stream comes from, never the full URL), `ready`, `audible`, `ended ... after N ms (expected M ms)`, and for failures
 `could not start ...: <reason>` plus yt-dlp's own error output.
 
@@ -158,7 +157,7 @@ libavformat through read/seek callbacks), no filters, devices or programs.
 - Output is always stereo `f32` at the stream's own rate (libswresample downmixes surround); `rubato` still resamples to the device.
 - Updating FFmpeg: change the tag and commit in `scripts/build-ffmpeg.sh`, then rerun `cargo xtask ffmpeg`; the C shim is the
   only code that touches libav structs. FFmpeg is LGPL and linked statically; the source is public and `scripts/build-ffmpeg.sh` rebuilds it, which
-  is what lets anyone relink, and the LGPL text and notice ship with the app (`licenses/`).
+  is what lets anyone relink, and the LGPL text and notice ship with the app (`crates/app/licenses/`).
 The `*_frag.m4a` test fixtures were made once, with ffmpeg as a dev-time tool, by stream-copying the plain m4a fixtures
 into a fragmented layout (500 ms fragments, empty moov, global sidx); nothing at runtime uses it.
 

@@ -1,10 +1,10 @@
 # Advanced settings
 
-**Settings** -> **Advanced settings** lists the environment variables Pyxee understands. Type a value, press **Save** and
-restart Pyxee. The values are kept in a file called `.env` in Pyxee's data folder, one `NAME="value"` per line, so you can
-also edit it by hand. A variable you set in the system itself wins over the file. An empty field means the default.
+**Settings** -> **Advanced** lists the environment variables Pyxee understands. Type a value, press **Save** and restart
+Pyxee. The values are kept in a file called `.env` in Pyxee's data folder, one `NAME="value"` per line, so you can also
+edit it by hand. A variable you set in the system itself wins over the file. An empty field means the default.
 
-| System | Data folder (holds `.env` and `session.json`) |
+| System | Data folder (holds `.env`, `session.json` and `logs\pyxee.log`) |
 |---|---|
 | Windows | `%LOCALAPPDATA%\dev.pyxee.app`, or `data\` next to `Pyxee.exe` for a portable copy |
 | Linux | `~/.local/share/dev.pyxee.app` |
@@ -18,7 +18,9 @@ also edit it by hand. A variable you set in the system itself wins over the file
 | `PYXEE_YTDLP_PLAYER_CLIENT` | The YouTube client yt-dlp uses (`--extractor-args youtube:player_client=...`). By default Pyxee skips `tv_samsung`, whose stream URLs YouTube refuses with HTTP 403 as of yt-dlp 2026.10.21. | A client name such as `visionos`, or several separated by commas. `default,-name` drops one from yt-dlp's own list. `none` passes nothing and leaves it to yt-dlp. Leave it empty for Pyxee's default. |
 | `PYXEE_YTMUSIC_DIRECT` | Whether songs search and the Explore page ask YouTube Music directly (on by default). See the note below. | `0` turns it off: songs are then searched with yt-dlp only and there is no Explore page. Leave it empty or `1` to keep it on. |
 | `PYXEE_SUGGESTIONS` | Whether the search box asks Google for suggestions while you type (on by default). | `0` turns it off: nothing you type is sent anywhere until you run a search. Leave it empty or `1` to keep it on. |
-| `PYXEE_LOG` | How much Pyxee writes to the console (standard error). There is no log file in this version. | `error`, `warn`, `info`, `debug` or `trace`; `off` writes nothing; empty means `warn`. Use `debug` when you report a problem with a song, and start Pyxee from a terminal to see it. |
+| `PYXEE_PERF` | Writes to the log, every ten seconds, how many events the window received and how many page changes, running animations and slow tasks it had (off by default; while it is on the log runs at `info` or more, so the file grows). For finding what keeps the window busy: see [performance.md](performance.md). | `1` turns it on. |
+| `PYXEE_SEEK_MODE` | How the filled part of the seek bar moves (for comparing their cost: see [performance.md](performance.md)). | `step` (the default, once a second), `pixel` (each time it has gone one pixel further), `glide` (one animation) or `steps` (the same animation in a few jumps a second). |
+| `PYXEE_LOG` | How much Pyxee writes to its log file. | `error`, `warn` (the default), `info`, `debug` or `trace`. Use `debug` when you report a problem with a song. |
 
 **About asking YouTube Music directly.** With `PYXEE_YTMUSIC_DIRECT` on, Pyxee sends the same requests the YouTube Music website sends for its Songs tab and Explore page. That is an undocumented interface, not an official API, so it can stop working whenever YouTube changes it. Set `PYXEE_YTMUSIC_DIRECT=0` to use yt-dlp only.
 

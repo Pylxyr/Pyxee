@@ -1,20 +1,14 @@
 //! Developer tasks. `cargo xtask tools` downloads yt-dlp (with checksum verification);
-//! `cargo xtask ffmpeg` builds the minimal static FFmpeg the audio crate links. Audio is decoded in-process (libav),
-//! so yt-dlp is the only helper program.
-//!
-//! Packaging (Windows): `cargo xtask stage` builds the Rust bridge and the Flutter app and gathers the folder that
-//! is shipped; `cargo xtask installer` and `cargo xtask portable` turn that folder into the NSIS installer and the
-//! portable zip; `cargo xtask smoke` starts a staged or installed copy. The installer, its uninstaller, `Pyxee.exe`
-//! and the installer are code-signed when a certificate is configured (see `release.rs`).
+//! `cargo xtask ffmpeg` builds the minimal static FFmpeg the audio crate links; `cargo xtask installer` builds the Windows installer with it bundled. Audio is decoded in-process
+//! (libav), so yt-dlp is the only helper program. `cargo xtask portable` makes the portable zip; both it and the
+//! installer are code-signed when a certificate is configured (see `release.rs`).
 
 mod release;
 
 use release::{
-    check_app_files, check_portable_entries, collect_files, installer_name, numeric_version,
-    portable_folder_name, portable_zip_name, redacted, uninstall_script, unsigned_notice,
-    write_zip, zip_names, Cert, Signing, Source, APP_EXE, FLUTTER_EXE, FLUTTER_RELEASE_DIRS,
-    NOTICE_FILES, PORTABLE_MARKER, PORTABLE_MARKER_BODY, PORTABLE_README, VC_RUNTIME_DLLS,
-    YTDLP_EXE,
+    check_portable_entries, portable_entries, portable_folder_name, portable_zip_name, redacted,
+    signed_tauri_config, unsigned_notice, write_zip, zip_names, Cert, Signing, BUNDLES,
+    PORTABLE_MARKER, PORTABLE_README,
 };
 use sha2::{Digest, Sha256};
 use std::io::Read;
@@ -27,12 +21,12 @@ const YTDLP_VERSION: &str = "2026.10.21";
 /// SHA-256 of that release's `yt-dlp.exe` (from its published SHA2-256SUMS). `cargo xtask tools` refuses any other bytes.
 const YTDLP_SHA256: &str = "33121d192d706e62f684a06f80918e3f3a8ba52ac3a65213b6951c39c7d9f555";
 
-/// Where the pinned release's files are. The in-app updater (removed with the old shell, see docs/migration.md) was separate on purpose: it
-/// pulled the latest release at run time, which is how users get a yt-dlp that keeps up with YouTube.
+/// Where the pinned release's files are. The in-app updater (crates/app/src/updater.rs) is separate on purpose: it
+/// pulls the latest release at run time, which is how users get a yt-dlp that keeps up with YouTube.
 fn ytdlp_base() -> String {
     format!("https://github.com/yt-dlp/yt-dlp/releases/download/{YTDLP_VERSION}")
 }
-/// `cargo xtask tools` saves yt-dlp as `yt-dlp-<target triple>.exe` (the bridge looks for that name in a development tree).
+/// Tauri finds sidecars by `<name>-<target triple>.exe`.
 const TRIPLE: &str = "x86_64-pc-windows-msvc";
 
 type Res<T> = Result<T, String>;
@@ -42,14 +36,13 @@ fn main() {
     let result = match args.first().map(String::as_str) {
         Some("tools") => tools(&args[1..]),
         Some("ffmpeg") => ffmpeg(),
-        Some("stage") => stage().map(|_| ()),
         Some("installer") => installer(),
         Some("portable") => portable(),
-        Some("smoke") => smoke(&args[1..]),
         Some("sign-file") => sign_file(&args[1..]),
+        Some("signing-config") => signing_config(),
         Some("update-keygen") => update_keygen(),
         Some("sign-sums") => sign_sums(&args[1..]),
-        _ => Err("usage:\n  cargo xtask tools [--update] [--dir <folder>]   download the pinned yt-dlp (--update: download it again)\n  cargo xtask ffmpeg                              build the minimal static FFmpeg (once per FFmpeg change)\n  cargo xtask stage                               build the bridge and the Flutter app and gather the folder that is shipped (target/stage/Pyxee)\n  cargo xtask installer                           build the Windows installer (signed when a certificate is configured)\n  cargo xtask portable                            build the portable zip (signed program when a certificate is configured)\n  cargo xtask smoke [folder]                      start a staged or installed copy for a few seconds and run its yt-dlp\n  cargo xtask sign-file <file>                    sign one file with the configured certificate (the installer script calls it for the uninstaller)\n  cargo xtask update-keygen                       make the key pair that signs release checksum lists (once; see docs/releasing.md)\n  cargo xtask sign-sums <SHA256SUMS.txt>          write <file>.sig, signed with PYXEE_UPDATE_SIGNING_SEED (used by the release workflow)".into()),
+        _ => Err("usage:\n  cargo xtask tools [--update] [--dir <folder>]   download the pinned yt-dlp (--update: download it again)\n  cargo xtask ffmpeg                              build the minimal static FFmpeg (once per FFmpeg change)\n  cargo xtask installer                           build the Windows installer (signed when a certificate is configured)\n  cargo xtask portable                            build the portable zip (signed program when a certificate is configured)\n  cargo xtask signing-config                      print the tauri bundle config to use (CI builds the installer with it)\n  cargo xtask sign-file <file>                    sign one file with the configured certificate (used by tauri build)\n  cargo xtask update-keygen                       make the key pair that signs release checksum lists (once; see docs/releasing.md)\n  cargo xtask sign-sums <SHA256SUMS.txt>          write <file>.sig, signed with PYXEE_UPDATE_SIGNING_SEED (used by the release workflow)".into()),
     };
     if let Err(e) = result {
         eprintln!("\nerror: {e}");
@@ -436,7 +429,7 @@ fn fetch_pinned(label: &str, url: &str, expected: &str) -> Res<Vec<u8>> {
 
 fn tools(args: &[String]) -> Res<()> {
     let mut update = false;
-    let mut dir = workspace_root().join("tools");
+    let mut dir = workspace_root().join("crates/app/binaries");
     let mut it = args.iter();
     while let Some(a) = it.next() {
         match a.as_str() {
@@ -469,7 +462,7 @@ fn tools(args: &[String]) -> Res<()> {
     }
 
     println!("\nDone. The app finds it automatically in development; the installer bundles it.");
-    println!("Licenses: yt-dlp.exe is a GPLv3+ combined work (a separate program, not linked); the FFmpeg libraries are LGPL v2.1+ (see licenses/).");
+    println!("Licenses: yt-dlp.exe is a GPLv3+ combined work (a separate program, not linked); the FFmpeg libraries are LGPL v2.1+ (see crates/app/licenses/).");
     Ok(())
 }
 
@@ -485,6 +478,16 @@ fn run(cmd: &mut Command, what: &str) -> Res<()> {
     } else {
         Err(format!("{what} failed ({status})"))
     }
+}
+
+fn npm() -> Command {
+    Command::new(if cfg!(windows) { "npm.cmd" } else { "npm" })
+}
+
+/// Where npm puts the Tauri CLI launcher for this repo.
+pub fn tauri_cli(root: &Path) -> PathBuf {
+    root.join("ui/node_modules/.bin")
+        .join(if cfg!(windows) { "tauri.cmd" } else { "tauri" })
 }
 
 // ---------------------------------------------------------------------- signing
@@ -518,8 +521,8 @@ fn find_signtool() -> PathBuf {
         .unwrap_or_else(|| PathBuf::from("signtool"))
 }
 
-/// `cargo xtask sign-file <file>`: signs one file. The installer script calls this for the uninstaller it generates
-/// (`!uninstfinalize`), so the certificate password is read from the environment here and never appears in a script.
+/// `cargo xtask sign-file <file>`: signs one file. `tauri build` calls this for every file it signs (its
+/// `signCommand`), so the certificate password is read from the environment here and never appears in a config.
 fn sign_file(args: &[String]) -> Res<()> {
     let file = args.first().ok_or("usage: cargo xtask sign-file <file>")?;
     let signing = signing_from_env()?.ok_or(
@@ -583,151 +586,177 @@ fn verify_signed(files: &[PathBuf]) -> Res<()> {
     Ok(())
 }
 
-// ------------------------------------------------------- build, stage, installer, portable
-
-fn cargo() -> Command {
-    Command::new(std::env::var_os("CARGO").unwrap_or_else(|| "cargo".into()))
-}
-
-fn flutter() -> Command {
-    Command::new(if cfg!(windows) {
-        "flutter.bat"
-    } else {
-        "flutter"
-    })
-}
-
-/// `PYXEE_BUILD_READY=1` says the Rust bridge and the Flutter app were built just before (the release workflow does
-/// that in steps of its own, so its log shows which one failed), so staging does not build them again. Unset, empty
-/// or `0`: it always builds them, as it does on a developer's machine.
-fn build_ready(value: Option<std::ffi::OsString>) -> bool {
-    value.is_some_and(|v| !v.is_empty() && v != "0")
-}
-
-/// The first of `FLUTTER_RELEASE_DIRS` that `exists`.
-fn pick_release_dir(root: &Path, exists: impl Fn(&Path) -> bool) -> Res<PathBuf> {
-    FLUTTER_RELEASE_DIRS
-        .iter()
-        .map(|d| root.join(d))
-        .find(|d| exists(d))
-        .ok_or_else(|| {
-            format!(
-                "the Flutter release build was not found in {} (run `flutter build windows --release` in ui_flutter)",
-                FLUTTER_RELEASE_DIRS.join(" or ")
-            )
-        })
-}
-
-/// The Rust bridge (`pyxee_bridge.dll`, which the Flutter build copies in through `ui_flutter/hook/build.dart`),
-/// then the Flutter app. The two build-time variables `PYXEE_UPDATE_PUBLIC_KEY` and `PYXEE_DISCORD_CLIENT_ID` are
-/// compiled into the bridge, so they are read from the environment here.
-fn build_app(root: &Path) -> Res<()> {
-    run(
-        cargo()
-            .args(["build", "-p", "pyxee-bridge", "--release", "--locked"])
-            .current_dir(root),
-        "cargo build -p pyxee-bridge --release",
-    )?;
-    let ui = root.join("ui_flutter");
-    run(
-        flutter().args(["pub", "get"]).current_dir(&ui),
-        "flutter pub get",
-    )?;
-    run(
-        flutter()
-            .args(["build", "windows", "--release"])
-            .current_dir(&ui),
-        "flutter build windows --release",
-    )
-}
-
-fn copy_tree(src: &Path, dst: &Path) -> Res<()> {
-    std::fs::create_dir_all(dst).map_err(|e| format!("cannot create {}: {e}", dst.display()))?;
-    let rd = std::fs::read_dir(src).map_err(|e| format!("cannot read {}: {e}", src.display()))?;
-    for entry in rd.flatten() {
-        let from = entry.path();
-        let to = dst.join(entry.file_name());
-        if from.is_dir() {
-            copy_tree(&from, &to)?;
-        } else {
-            std::fs::copy(&from, &to)
-                .map_err(|e| format!("cannot copy {} to {}: {e}", from.display(), to.display()))?;
-        }
+/// The bundle config for `tauri build`: the plain one, or (when signing) one that also makes Tauri call `sign-file`.
+fn bundle_config(root: &Path, signing: &Option<Signing>) -> Res<PathBuf> {
+    let base_path = root.join("crates/app/tauri.bundle.conf.json");
+    if signing.is_none() {
+        return Ok(base_path);
     }
+    let text = std::fs::read_to_string(&base_path)
+        .map_err(|e| format!("cannot read {}: {e}", base_path.display()))?;
+    let base: serde_json::Value = serde_json::from_str(&text)
+        .map_err(|e| format!("{} is not valid JSON: {e}", base_path.display()))?;
+    let me = std::env::current_exe().map_err(|e| format!("cannot find xtask itself: {e}"))?;
+    let conf = signed_tauri_config(&base, &me);
+    let out = root.join("target/signing/tauri.bundle.signed.conf.json");
+    if let Some(dir) = out.parent() {
+        std::fs::create_dir_all(dir)
+            .map_err(|e| format!("cannot create {}: {e}", dir.display()))?;
+    }
+    let pretty = serde_json::to_string_pretty(&conf).map_err(|e| e.to_string())?;
+    std::fs::write(&out, pretty).map_err(|e| format!("cannot write {}: {e}", out.display()))?;
+    Ok(out)
+}
+
+/// Prints the path of the bundle config `tauri build` should use: the plain one, or the signing one when a
+/// certificate is configured (and an error when signing is required but nothing is configured).
+fn signing_config() -> Res<()> {
+    let signing = signing_from_env()?;
+    if signing.is_none() {
+        unsigned_notice(signing_required())?;
+    }
+    println!("{}", bundle_config(&workspace_root(), &signing)?.display());
     Ok(())
 }
 
-fn copy_file(from: &Path, to: &Path, what: &str) -> Res<()> {
-    std::fs::copy(from, to)
-        .map(|_| ())
-        .map_err(|e| format!("cannot copy {what} ({}): {e}", from.display()))
-}
+// ---------------------------------------------------------- installer and portable
 
-/// The folder that is shipped, gathered under `target/stage/Pyxee`.
-struct Staged {
+struct Prepared {
     root: PathBuf,
-    files: Vec<(String, PathBuf)>,
+    cli: PathBuf,
     signing: Option<Signing>,
 }
 
-/// What the installer and the portable zip both start from: yt-dlp, the built bridge and Flutter app, the Visual C++
-/// runtime, the licence texts, `Pyxee.exe` signed when a certificate is configured, and a check of the result.
-fn stage() -> Res<Staged> {
-    if !cfg!(windows) {
-        return Err("the app can only be packaged on Windows".into());
-    }
+/// `PYXEE_UI_READY=1` says the UI is already installed and built (the release workflow has just done both before it
+/// calls `cargo xtask portable`), so `prepare` does not repeat `npm ci` and `npm run build`. Unset, empty or `0`: it
+/// always does them, as it does on a developer's machine.
+fn ui_ready(value: Option<std::ffi::OsString>) -> bool {
+    value.is_some_and(|v| !v.is_empty() && v != "0")
+}
+
+/// What both packages need first: yt-dlp, FFmpeg libraries, the built UI, the Tauri CLI, the signing setup.
+fn prepare() -> Res<Prepared> {
     let root = workspace_root();
     let signing = signing_from_env()?;
     if signing.is_none() {
         unsigned_notice(signing_required())?;
     }
     tools(&[])?;
-    if build_ready(std::env::var_os("PYXEE_BUILD_READY")) {
-        println!("Build: the bridge and the Flutter app are already built (PYXEE_BUILD_READY), not building them again.");
+    ffmpeg()?;
+    if ui_ready(std::env::var_os("PYXEE_UI_READY")) {
+        if !root.join("ui/dist/index.html").is_file() {
+            return Err("PYXEE_UI_READY is set, but ui/dist/index.html is missing (run `npm run build --prefix ui` first)".into());
+        }
+        println!(
+            "UI: already installed and built (PYXEE_UI_READY), not repeating npm ci and the build."
+        );
     } else {
-        ffmpeg()?;
-        build_app(&root)?;
+        run(
+            npm().args(["ci", "--prefix", "ui"]).current_dir(&root),
+            "npm ci (UI dependencies)",
+        )?;
+        run(
+            npm()
+                .args(["run", "build", "--prefix", "ui"])
+                .current_dir(&root),
+            "npm run build (UI)",
+        )?;
     }
-    let release = pick_release_dir(&root, Path::is_dir)?;
-    let stage = root.join("target/stage/Pyxee");
-    let _ = std::fs::remove_dir_all(&stage);
-    copy_tree(&release, &stage)?;
-
-    let flutter_exe = stage.join(FLUTTER_EXE);
-    if !flutter_exe.is_file() {
+    // The Tauri CLI comes from the UI's npm dependencies (installed by `npm ci` above): no `cargo install`.
+    let cli = tauri_cli(&root);
+    if !cli.is_file() {
         return Err(format!(
-            "{FLUTTER_EXE} is not in {} (did BINARY_NAME in ui_flutter/windows/CMakeLists.txt change?)",
-            release.display()
+            "the Tauri CLI was not found at {} (did `npm ci --prefix ui` succeed?)",
+            cli.display()
         ));
     }
-    std::fs::rename(&flutter_exe, stage.join(APP_EXE))
-        .map_err(|e| format!("cannot rename {FLUTTER_EXE} to {APP_EXE}: {e}"))?;
-    // yt-dlp sits next to the program, where the bridge looks for it first after PYXEE_YTDLP.
-    copy_file(
-        &root.join("tools").join(format!("yt-dlp-{TRIPLE}.exe")),
-        &stage.join(YTDLP_EXE),
-        "yt-dlp (did `cargo xtask tools` run?)",
+    Ok(Prepared { root, cli, signing })
+}
+
+fn installer() -> Res<()> {
+    if !cfg!(windows) {
+        return Err("the installer can only be built on Windows".into());
+    }
+    let p = prepare()?;
+    let conf = bundle_config(&p.root, &p.signing)?;
+    run(
+        Command::new(&p.cli)
+            .args(["build", "--bundles", BUNDLES, "--config"])
+            .arg(&conf)
+            .current_dir(p.root.join("crates/app")),
+        "tauri build (installer with yt-dlp bundled)",
     )?;
-    let system = std::env::var_os("SystemRoot")
-        .map_or_else(|| PathBuf::from(r"C:\Windows"), PathBuf::from)
-        .join("System32");
-    for dll in VC_RUNTIME_DLLS {
-        let dest = stage.join(dll);
-        if !dest.is_file() {
-            copy_file(
-                &system.join(dll),
-                &dest,
-                &format!("{dll} (install the Visual C++ Redistributable)"),
-            )?;
+    let bundle = p.root.join("target/release/bundle");
+    println!("\nInstallers are in {}:", bundle.display());
+    let mut built = Vec::new();
+    if let Ok(rd) = std::fs::read_dir(bundle.join("nsis")) {
+        for e in rd
+            .flatten()
+            .filter(|e| e.path().extension().is_some_and(|x| x == "exe"))
+        {
+            println!("  {}", e.path().display());
+            built.push(e.path());
         }
     }
-    for (from, name) in NOTICE_FILES {
-        copy_file(&root.join(from), &stage.join(name), name)?;
+    if p.signing.is_some() {
+        verify_signed(&built)?;
+    } else {
+        println!(
+            "\nThe installer is {}.",
+            unsigned_notice(false).unwrap_or_default()
+        );
     }
+    Ok(())
+}
 
-    // Only Pyxee.exe is signed here. yt-dlp.exe is someone else's program and is left as published.
-    let exe = stage.join(APP_EXE);
-    if signing.is_some() {
+/// The portable zip: `Pyxee.exe`, `yt-dlp.exe`, the licence texts, `portable.txt` (which turns on portable mode: the
+/// data folder is `data\` beside the program) and a readme, all in one folder inside the zip.
+fn portable() -> Res<()> {
+    if !cfg!(windows) {
+        return Err("the portable build can only be made on Windows".into());
+    }
+    let p = prepare()?;
+    let conf = bundle_config(&p.root, &p.signing)?;
+    run(
+        Command::new(&p.cli)
+            .args(["build", "--no-bundle", "--config"])
+            .arg(&conf)
+            .current_dir(p.root.join("crates/app")),
+        "tauri build --no-bundle (the program, no installer)",
+    )?;
+    let version = env!("CARGO_PKG_VERSION");
+    let top = portable_folder_name(version);
+    let out_dir = p.root.join("target/portable");
+    let stage = out_dir.join(&top);
+    let _ = std::fs::remove_dir_all(&stage);
+    std::fs::create_dir_all(&stage)
+        .map_err(|e| format!("cannot create {}: {e}", stage.display()))?;
+    for e in portable_entries() {
+        let dest = stage.join(e.name);
+        match e.from {
+            Some(rel) => {
+                let src = p.root.join(rel);
+                std::fs::copy(&src, &dest).map_err(|err| {
+                    format!(
+                        "cannot copy {} for the portable zip: {err} (did the build above produce it?)",
+                        src.display()
+                    )
+                })?;
+            }
+            None => {
+                let body = if e.name == PORTABLE_MARKER {
+                    "This file turns on Pyxee's portable mode: the library, settings and logs are kept in the data folder next to Pyxee.exe. Delete it to use the normal per-user folder.\r\n"
+                } else {
+                    PORTABLE_README
+                };
+                std::fs::write(&dest, body)
+                    .map_err(|err| format!("cannot write {}: {err}", dest.display()))?;
+            }
+        }
+    }
+    // yt-dlp.exe is somebody else's program and is left as published. Only Pyxee.exe is signed.
+    let exe = stage.join("Pyxee.exe");
+    if p.signing.is_some() {
         sign_file(&[exe.to_string_lossy().into_owned()])?;
         verify_signed(&[exe])?;
     } else {
@@ -736,111 +765,13 @@ fn stage() -> Res<Staged> {
             unsigned_notice(false).unwrap_or_default()
         );
     }
-    let files = collect_files(&stage)?;
-    let names: Vec<String> = files.iter().map(|f| f.0.clone()).collect();
-    check_app_files(&names, false)?;
-    println!("\nStaged {} files in {}", files.len(), stage.display());
-    Ok(Staged {
-        root,
-        files,
-        signing,
-    })
-}
-
-/// `makensis.exe`: `PYXEE_MAKENSIS`, else the default install folders, else whatever is on PATH.
-fn find_makensis() -> PathBuf {
-    if let Some(p) = std::env::var_os("PYXEE_MAKENSIS").filter(|p| !p.is_empty()) {
-        return p.into();
+    let mut files = Vec::new();
+    for e in portable_entries() {
+        let path = stage.join(e.name);
+        let bytes =
+            std::fs::read(&path).map_err(|err| format!("cannot read {}: {err}", path.display()))?;
+        files.push((e.name.to_string(), bytes));
     }
-    ["ProgramFiles(x86)", "ProgramFiles"]
-        .iter()
-        .filter_map(std::env::var_os)
-        .map(|pf| PathBuf::from(pf).join("NSIS").join("makensis.exe"))
-        .find(|p| p.is_file())
-        .unwrap_or_else(|| PathBuf::from("makensis"))
-}
-
-fn installer() -> Res<()> {
-    let st = stage()?;
-    let version = env!("CARGO_PKG_VERSION");
-    let out_dir = st.root.join("target/installer");
-    std::fs::create_dir_all(&out_dir)
-        .map_err(|e| format!("cannot create {}: {e}", out_dir.display()))?;
-    let names: Vec<String> = st.files.iter().map(|f| f.0.clone()).collect();
-    let list = out_dir.join("uninstall-files.nsh");
-    std::fs::write(&list, uninstall_script(&names)?)
-        .map_err(|e| format!("cannot write {}: {e}", list.display()))?;
-    let out = out_dir.join(installer_name(version));
-    let _ = std::fs::remove_file(&out);
-
-    let mut cmd = Command::new(find_makensis());
-    cmd.args(["/V2", "/INPUTCHARSET", "UTF8"])
-        .arg(format!("/DVERSION={version}"))
-        .arg(format!("/DVI_VERSION={}", numeric_version(version)))
-        .arg(format!(
-            "/DSTAGEDIR={}",
-            st.root.join("target/stage/Pyxee").display()
-        ))
-        .arg(format!("/DOUTFILE={}", out.display()))
-        .arg(format!("/DUNINSTALL_LIST={}", list.display()))
-        .arg(format!(
-            "/DASSETS={}",
-            st.root.join("assets/icons").display()
-        ));
-    if st.signing.is_some() {
-        // The installer script signs the uninstaller it generates by calling `xtask sign-file`.
-        let me = std::env::current_exe().map_err(|e| format!("cannot find xtask itself: {e}"))?;
-        cmd.arg(format!("/DSIGN_XTASK={}", me.display()));
-    }
-    cmd.arg(st.root.join("packaging/windows/installer.nsi"))
-        .current_dir(&st.root);
-    run(&mut cmd, "makensis (the installer)")
-        .map_err(|e| format!("{e}. Install NSIS (https://nsis.sourceforge.io) or set PYXEE_MAKENSIS to makensis.exe."))?;
-    if !out.is_file() {
-        return Err(format!("makensis did not produce {}", out.display()));
-    }
-    if st.signing.is_some() {
-        sign_file(&[out.to_string_lossy().into_owned()])?;
-        verify_signed(std::slice::from_ref(&out))?;
-    } else {
-        println!(
-            "\nThe installer is {}.",
-            unsigned_notice(false).unwrap_or_default()
-        );
-    }
-    let bytes = std::fs::read(&out).map_err(|e| format!("cannot read {}: {e}", out.display()))?;
-    println!(
-        "\nInstaller: {}  ({}, sha256 {})",
-        out.display(),
-        mb(&bytes),
-        sha256_hex(&bytes)
-    );
-    Ok(())
-}
-
-/// The portable zip: the staged folder plus `portable.txt` (which turns on portable mode: the data folder is
-/// `data\` beside the program) and a readme, all in one folder inside the zip.
-fn portable() -> Res<()> {
-    let st = stage()?;
-    let version = env!("CARGO_PKG_VERSION");
-    let top = portable_folder_name(version);
-    let out_dir = st.root.join("target/portable");
-    std::fs::create_dir_all(&out_dir)
-        .map_err(|e| format!("cannot create {}: {e}", out_dir.display()))?;
-    let mut files: Vec<(String, Source)> = st
-        .files
-        .iter()
-        .map(|(name, path)| (name.clone(), Source::Path(path.clone())))
-        .collect();
-    files.push((
-        PORTABLE_MARKER.into(),
-        Source::Bytes(PORTABLE_MARKER_BODY.as_bytes().to_vec()),
-    ));
-    files.push((
-        "README.txt".into(),
-        Source::Bytes(PORTABLE_README.as_bytes().to_vec()),
-    ));
-    files.sort_by(|a, b| a.0.cmp(&b.0));
     let zip = out_dir.join(portable_zip_name(version));
     write_zip(&zip, &top, &files)?;
     check_portable_entries(&top, &zip_names(&zip)?)?;
@@ -854,102 +785,17 @@ fn portable() -> Res<()> {
     Ok(())
 }
 
-/// How long the smoke test lets the program run: `PYXEE_SMOKE_SECONDS`, default 10.
-fn smoke_seconds(value: Option<String>) -> u64 {
-    value
-        .and_then(|v| v.trim().parse::<u64>().ok())
-        .filter(|s| *s > 0)
-        .unwrap_or(10)
-}
-
-/// `cargo xtask smoke [folder]`: runs the folder's `yt-dlp.exe --version`, then starts `Pyxee.exe` from a portable
-/// copy of the folder (so nothing is written to the user's profile, and a copy that was installed is left alone),
-/// waits, and fails if it is no longer running. The folder is `target/stage/Pyxee` unless one is given (the
-/// release workflow also points it at the folder the installer has just installed into).
-fn smoke(args: &[String]) -> Res<()> {
-    if !cfg!(windows) {
-        return Err("the smoke test can only run on Windows".into());
-    }
-    let dir = args.first().map_or_else(
-        || workspace_root().join("target/stage/Pyxee"),
-        PathBuf::from,
-    );
-    if !dir.join(APP_EXE).is_file() {
-        return Err(format!("{} is not in {}", APP_EXE, dir.display()));
-    }
-    let out = Command::new(dir.join(YTDLP_EXE))
-        .arg("--version")
-        .output()
-        .map_err(|e| format!("cannot run {YTDLP_EXE}: {e}"))?;
-    if !out.status.success() {
-        return Err(format!("{YTDLP_EXE} --version failed ({})", out.status));
-    }
-    println!("yt-dlp {}", String::from_utf8_lossy(&out.stdout).trim());
-
-    let copy = std::env::temp_dir().join(format!("pyxee-smoke-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&copy);
-    copy_tree(&dir, &copy)?;
-    std::fs::write(copy.join(PORTABLE_MARKER), PORTABLE_MARKER_BODY)
-        .map_err(|e| format!("cannot write {PORTABLE_MARKER}: {e}"))?;
-    let seconds = smoke_seconds(std::env::var("PYXEE_SMOKE_SECONDS").ok());
-    println!("Starting {APP_EXE} for {seconds} seconds...");
-    let mut child = Command::new(copy.join(APP_EXE))
-        .current_dir(&copy)
-        .spawn()
-        .map_err(|e| format!("cannot start {APP_EXE}: {e}"))?;
-    let mut result = Ok(());
-    for _ in 0..seconds {
-        std::thread::sleep(std::time::Duration::from_secs(1));
-        if let Ok(Some(status)) = child.try_wait() {
-            result = Err(format!(
-                "{APP_EXE} stopped by itself after less than {seconds} seconds ({status})"
-            ));
-            break;
-        }
-    }
-    let _ = child.kill();
-    let _ = child.wait();
-    let _ = std::fs::remove_dir_all(&copy);
-    result?;
-    println!("{APP_EXE} was still running after {seconds} seconds.");
-    Ok(())
-}
-
 #[cfg(test)]
 mod tests {
 
     #[test]
-    fn build_ready_only_for_a_real_value() {
+    fn ui_ready_only_for_a_real_value() {
+        use super::*;
         use std::ffi::OsString;
-        assert!(!build_ready(None));
-        assert!(!build_ready(Some(OsString::new())));
-        assert!(!build_ready(Some(OsString::from("0"))));
-        assert!(build_ready(Some(OsString::from("1"))));
-    }
-
-    #[test]
-    fn the_flutter_release_folder_is_found_with_or_without_x64() {
-        let root = Path::new("repo");
-        let with_x64 = root.join(FLUTTER_RELEASE_DIRS[0]);
-        let without = root.join(FLUTTER_RELEASE_DIRS[1]);
-        assert_eq!(pick_release_dir(root, |p| p == with_x64).unwrap(), with_x64);
-        assert_eq!(pick_release_dir(root, |p| p == without).unwrap(), without);
-        assert_eq!(
-            pick_release_dir(root, |_| true).unwrap(),
-            with_x64,
-            "x64 wins when both exist"
-        );
-        assert!(pick_release_dir(root, |_| false)
-            .unwrap_err()
-            .contains("flutter build windows"));
-    }
-
-    #[test]
-    fn the_smoke_test_waits_ten_seconds_unless_told_otherwise() {
-        assert_eq!(smoke_seconds(None), 10);
-        assert_eq!(smoke_seconds(Some("25".into())), 25);
-        assert_eq!(smoke_seconds(Some("0".into())), 10);
-        assert_eq!(smoke_seconds(Some("soon".into())), 10);
+        assert!(!ui_ready(None));
+        assert!(!ui_ready(Some(OsString::new())));
+        assert!(!ui_ready(Some(OsString::from("0"))));
+        assert!(ui_ready(Some(OsString::from("1"))));
     }
 
     #[test]
@@ -1045,6 +891,21 @@ mod tests {
                 && err.contains("nothing was installed"),
             "{err}"
         );
+    }
+
+    #[test]
+    fn the_tauri_cli_is_taken_from_the_ui_dependencies() {
+        let p = tauri_cli(Path::new("repo"));
+        assert!(
+            p.starts_with("repo/ui/node_modules/.bin")
+                || p.starts_with("repo\\ui\\node_modules\\.bin"),
+            "{p:?}"
+        );
+        assert!(p
+            .file_name()
+            .unwrap()
+            .to_string_lossy()
+            .starts_with("tauri"));
     }
 
     #[test]

@@ -6,11 +6,11 @@
 
 **Search it. Queue it. Let it play.**
 
-A gapless music player for Windows that plays music found online. (A Linux version is being worked on.)
+A gapless music player for Windows and Linux that plays music found online.
 
 [![Latest release](https://img.shields.io/github/v/release/Pylxyr/Pyxee?include_prereleases&color=e8061f&label=release)](https://github.com/Pylxyr/Pyxee/releases/latest)
 [![Downloads](https://img.shields.io/github/downloads/Pylxyr/Pyxee/total?color=111111&label=downloads)](https://github.com/Pylxyr/Pyxee/releases)
-[![Platforms](https://img.shields.io/badge/platforms-Windows%2010%20%7C%2011-111111)](#install)
+[![Platforms](https://img.shields.io/badge/platforms-Windows%2010%20%7C%2011%20%7C%20Linux-111111)](#install)
 [![CI](https://img.shields.io/github/actions/workflow/status/Pylxyr/Pyxee/ci.yml?branch=main&label=CI)](https://github.com/Pylxyr/Pyxee/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/github/license/Pylxyr/Pyxee?color=blue)](LICENSE)
 
@@ -34,8 +34,8 @@ A gapless music player for Windows that plays music found online. (A Linux versi
 | **Lyrics** | Shows lyrics for the song that is playing. |
 | **Sleep timer** | Stops playback by itself when you fall asleep. |
 | **Tray controls** | Playback controls from the system tray. |
-| **Discord** | Shows what you are listening to. Turn it on or off in **Settings**. |
 | **Themes** | Ink (the default), Frost, OLED black and more. **Match system** follows your light or dark mode, **Customize...** edits a theme's colours, and **Export** and **Import a theme** let you share them. Find them under **Settings** (the gear icon, top right) -> **Appearance**. |
+| **Discord** | Shows what you are listening to. Turn it on or off in **Settings**. |
 
 ## Install
 
@@ -44,7 +44,7 @@ A gapless music player for Windows that plays music found online. (A Linux versi
 Windows 10 (22H2) and Windows 11.
 
 1. Open the [Releases page](https://github.com/Pylxyr/Pyxee/releases/latest) and download `Pyxee_x.y.z_x64-setup.exe` from the newest release.
-2. Run it. The installer sets up everything Pyxee needs.
+2. Run it. The installer sets up everything Pyxee needs, and downloads the WebView2 runtime if your PC does not have it.
 
 Prefer no installer? Each release also has a portable zip. Unzip it anywhere and run `Pyxee.exe`; everything it saves stays in a `data` folder next to it.
 
@@ -53,14 +53,48 @@ Prefer no installer? Each release also has a portable zip. Unzip it anywhere and
 
 ### Linux
 
-There is no Linux version to install yet: the Linux package of the earlier release was built for the old window system and
-has been removed, and the new one has not been built or tested. See [Pyxee on Linux](docs/linux.md) for what works today.
+Pyxee is built from source on your own machine, which tunes it for your CPU. There is no prebuilt Linux download.
+
+**Arch Linux and CachyOS** (a package is built and installed with `pacman`). Open a terminal (`Ctrl+Alt+T`) and copy these lines in:
+
+```
+sudo pacman -S --needed base-devel git
+git clone https://github.com/Pylxyr/Pyxee.git ~/Pyxee
+cd ~/Pyxee/packaging/arch
+makepkg -sic
+```
+
+- It asks for your password, and later `Proceed? [Y/n]`: type your password (nothing shows while you type) or `Y`, then Enter.
+- The first build takes a while (roughly half an hour on a fast PC) and is quiet for long stretches. That is normal.
+- It cleans up after itself: the build files (several gigabytes) are deleted when it finishes.
+- Start Pyxee from your application menu, or run `pyxee-app`.
+
+**To update later**, copy these lines in. They show the version you have and the version available; if the numbers match, you are already up to date:
+
+```
+cd ~/Pyxee
+git restore packaging/arch/PKGBUILD
+git pull
+pacman -Q pyxee
+grep ^pkgver packaging/arch/PKGBUILD
+```
+
+If the second number is newer, build it (your library and settings are kept):
+
+```
+cd ~/Pyxee/packaging/arch
+makepkg -sic
+```
+
+**Debian, Ubuntu, Fedora and other distributions** build from source with Rust and Node.js.
+
+The full guide covers both, step by step for beginners and with options for advanced users: **[Pyxee on Linux](docs/linux.md)**.
 
 ## Updates
 
-Open **Settings** -> **Updates**. Pyxee checks for a newer version, shows what is new, and installs it for you (a portable copy tells you where to download the new zip instead). It also looks once by itself when it starts and only speaks up when there is something new.
-
-**Updates** also keeps yt-dlp, the part that finds your music, up to date. This fixes most "it suddenly stopped finding songs" problems.
+- **Windows:** open **Settings** -> **Updates**. Pyxee checks for a newer version and installs it for you (a portable copy downloads the new zip instead).
+- **Linux:** Pyxee does not replace itself. The two short update steps are in the [Linux install](#linux) above, with more in [Pyxee on Linux](docs/linux.md#updating). **Updates** still tells you when a newer version is out.
+- **Both:** **Updates** also keeps yt-dlp, the part that finds your music, up to date. This fixes most "it suddenly stopped finding songs" problems.
 
 ## If something goes wrong
 
@@ -71,9 +105,19 @@ Open **Settings** -> **Updates**. Pyxee checks for a newer version, shows what i
 
 First try **Settings** -> **Updates** and update.
 
-If it keeps happening, signing in helps a lot. Open **Settings** -> **Advanced settings**, fill in **Cookie file** (an exported `cookies.txt`) or **Cookies from a browser**, press **Save** and restart Pyxee. An exported file is more reliable than reading the browser's cookies. How to get the file is described in [Advanced settings](docs/advanced.md).
+If it keeps happening, signing in helps a lot. Open **Settings** -> **Advanced**, fill in **Cookie file** (an exported `cookies.txt`) or **Cookies from a browser**, press **Save** and restart Pyxee. An exported file is more reliable than reading the browser's cookies. How to get the file is described in [Advanced settings](docs/advanced.md).
 
-This version has no log file. Start Pyxee from a terminal with `PYXEE_LOG` set to `debug` (in PowerShell: `$env:PYXEE_LOG="debug"` and then run `Pyxee.exe`), play the song again, and copy the lines about it from the terminal. When you [open an issue](https://github.com/Pylxyr/Pyxee/issues), include them.
+> [!WARNING]
+> Signing in this way can get the Google account restricted or blocked by YouTube. Use a throwaway account, not your main one. With **Cookies from a browser**, use a separate browser profile that is signed in only to that account (for Firefox, `firefox:profile-name`), so nothing else in your normal profile is read.
+
+</details>
+
+<details>
+<summary><b>A song misbehaves</b></summary>
+
+<br />
+
+Pyxee keeps a log. Open **Settings** -> **Diagnostics** -> **Open log folder** and search `pyxee.log` for the song's name. When you [open an issue](https://github.com/Pylxyr/Pyxee/issues), include the lines around it. For more detail, set **Log detail** to `debug` in **Settings** -> **Advanced**.
 
 </details>
 
@@ -98,9 +142,8 @@ Still stuck? [Open an issue](https://github.com/Pylxyr/Pyxee/issues).
 
 **Using Pyxee**
 
-- [Pyxee on Linux](docs/linux.md): the state of the Linux version.
-- [Advanced settings](docs/advanced.md): every setting in **Settings** -> **Advanced settings**, and where Pyxee keeps its files.
-- [What changed from the Tauri version](docs/migration.md): features that carried over and features that are not back yet.
+- [Pyxee on Linux](docs/linux.md): installing, updating and troubleshooting on Linux, and what is different from Windows.
+- [Advanced settings](docs/advanced.md): every setting in **Settings** -> **Advanced**, and where Pyxee keeps its files.
 
 **Building and changing Pyxee**
 
@@ -109,7 +152,7 @@ Still stuck? [Open an issue](https://github.com/Pylxyr/Pyxee/issues).
 
 ## Built with
 
-[Rust](https://www.rust-lang.org/), [Flutter](https://flutter.dev/) and [Dart](https://dart.dev/).
+[Rust](https://www.rust-lang.org/), [Tauri 2](https://tauri.app/), [Svelte](https://svelte.dev/), [TypeScript](https://www.typescriptlang.org/) and [Tailwind CSS](https://tailwindcss.com/).
 
 ## Licence
 

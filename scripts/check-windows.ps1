@@ -5,13 +5,13 @@
 
 .DESCRIPTION
   Run it from anywhere:   scripts\check-windows.cmd        (or:  powershell -File scripts\check-windows.ps1)
-  Needs: Rust (rustup, with rustfmt + clippy), the Flutter SDK, git, internet, plus MSYS2 (make, nasm, diffutils,
+  Needs: Rust (rustup, with rustfmt + clippy), Node.js, git, internet, plus MSYS2 (make, nasm, diffutils,
   pkgconf) and the Visual Studio C++ build tools to build the minimal static FFmpeg libraries the decoder links
   in-process (`cargo xtask ffmpeg`, built once). No ffmpeg.exe is used or wanted: the tripwire below proves it.
   Output: pyxee-check\report-<time>.txt  (paste its contents back). Full logs: pyxee-check\logs\.
   The report never contains stream URLs (only hosts), cookie paths/values, or your user name.
 
-.PARAMETER Ytdlp          Path to yt-dlp.exe (default: PYXEE_YTDLP, tools, then PATH).
+.PARAMETER Ytdlp          Path to yt-dlp.exe (default: PYXEE_YTDLP, crates\app\binaries, then PATH).
 .PARAMETER Query1/2       Search queries used for the two live tracks (default: two CC-licensed songs).
 .PARAMETER CookieFile     Netscape cookies.txt to use (sets PYXEE_COOKIES for this run only).
 .PARAMETER CookieBrowser  e.g. firefox (sets PYXEE_COOKIES_FROM_BROWSER for this run only).
@@ -19,12 +19,13 @@
 .PARAMETER SkipLive       NOT RECOMMENDED. Skip everything that talks to YouTube. Without it the live checks always run, and
                           a live phase that could not run (no FFmpeg libraries, no yt-dlp, rate limited) is a FAIL.
 .PARAMETER SkipTools      Do not run `cargo xtask tools` (the yt-dlp download flow).
-.PARAMETER Ui             Kept for old command lines. The Flutter checks (pub get, analyze, test when there are tests, a release build of the app) always run in a full run.
+.PARAMETER Ui             Kept for old command lines. The UI checks (npm ci / check / test / build, the named tests of the UI rebuild and the UI size report) always run now; the static UI facts run even with -SkipTests.
 .PARAMETER SelfTest       Only run the redaction self-test (it also runs first in every full run) and exit.
-.PARAMETER Installer      Also build the installer and the portable zip (`cargo xtask installer` / `portable`, slow), inspect them, start the staged app (`cargo xtask smoke`) and run the installer silently into a temp folder and uninstall it again. Needs NSIS (makensis).
-.PARAMETER Ci            Replay the release workflow's build the way a clean GitHub runner meets it: the bridge and the Flutter app built in
-                          steps of their own, then `cargo xtask installer` and `portable` with PYXEE_BUILD_READY=1, then unpack the zip and
-                          start it, install the installer silently, start that, and uninstall it. Slow; catches bugs that only show on a clean machine.
+.PARAMETER Installer      Also build the installer and the portable zip (`cargo xtask installer` / `portable`, slow) and inspect them.
+.PARAMETER Ci            Replay the release workflow's "Build the portable zip" step the way a clean GitHub runner meets it: the
+                          FFmpeg libraries already built (a cache hit), and MSYS2 starting for the very first time (a fresh home
+                          folder, so its one-time "Copying skeleton files" output appears), then unpack the zip and run what it
+                          carries, as release.yml does. Slow (builds the app); catches bugs that only show on a clean machine.
 .PARAMETER UpdateYtdlp    Run `yt-dlp -U` first (an old yt-dlp is the most common cause of YouTube failures).
 .PARAMETER Manual         After the automatic part, ask you to confirm things in the real app (y/n), including the UI items (each window and view, light and dark, keyboard only, narrow and wide, high DPI).
 .PARAMETER AnalyzeLog     Summarise the app's own log file (run after using the app).
@@ -311,11 +312,11 @@ Write-Report ("windows   : {0}   powershell {1}" -f [Environment]::OSVersion.Ver
 Write-Report ("git       : {0}  ({1} changed file(s) in working tree)" -f (Get-FirstLine 'git rev-parse --short HEAD'), @(& git status --porcelain 2>$null | Where-Object { $_ -notmatch 'pyxee-check' }).Count)
 Write-Report ("rustc     : {0}" -f (Get-FirstLine 'rustc --version'))
 Write-Report ("cargo     : {0}" -f (Get-FirstLine 'cargo --version'))
-Write-Report ("flutter   : {0}" -f (Get-FirstLine 'flutter --version'))
+Write-Report ("node      : {0}" -f (Get-FirstLine 'node --version'))
 Write-Report ("cookies   : {0}" -f $cookieKind)
 $envset = @('PYXEE_YTDLP', 'PYXEE_JS_RUNTIME', 'PYXEE_COOKIES', 'PYXEE_COOKIES_FROM_BROWSER', 'PYXEE_LOG', 'CARGO_TARGET_DIR') | ForEach-Object { $v = [Environment]::GetEnvironmentVariable($_); if ($v) { "$_=set" } }
 Write-Report ("env       : {0}" -f $(if ($envset) { $envset -join ', ' } else { '(none of the PYXEE_* / CARGO_TARGET_DIR variables are set)' }))
-Write-Report ("options   : SkipTests=$SkipTests SkipLive=$SkipLive SkipTools=$SkipTools Flutter=$true Installer=$Installer Ci=$Ci Manual=$Manual AnalyzeLog=$AnalyzeLog")
+Write-Report ("options   : SkipTests=$SkipTests SkipLive=$SkipLive SkipTools=$SkipTools Ui=$true Installer=$Installer Ci=$Ci Manual=$Manual AnalyzeLog=$AnalyzeLog")
 
 foreach ($tool in @('cargo', 'rustc', 'git')) {
   if (-not (Have $tool)) { Add-Result 'FAIL' "tool-$tool" "$tool is not on PATH; install it and re-run"; Write-Report 'Cannot continue.'; exit 2 }
@@ -328,7 +329,7 @@ if ($realFfmpeg.Count -gt 0) { Add-Result 'INFO' 'system-ffmpeg' 'a real ffmpeg 
 
 # The tests added or changed by the review fixes. The full `cargo test` run asks for everything; this asks for each of
 # these by name, and fails when one did not run (renamed, removed, or its crate did not build) or did not pass. The
-# pyxee-audio and pyxee-bridge ones can only run on Windows: their crates need the FFmpeg libraries.
+# pyxee-audio and pyxee-app ones can only run on Windows: their crates need the FFmpeg libraries and WebView2.
 function Test-EditedTests {
   $groups = @(
     @{ Crate = 'pyxee-sources'; Names = @(
@@ -362,7 +363,8 @@ function Test-EditedTests {
       'playing_an_empty_list_changes_nothing',
       'adding_after_a_clear_forgets_the_clear_so_undo_cannot_overwrite_the_new_songs') },
     @{ Crate = 'pyxee-audio'; Names = @('flush_returns_at_once_while_the_producer_waits_for_a_chunk_that_never_arrives') },
-    @{ Crate = 'pyxee-bridge'; Names = @(
+    @{ Crate = 'pyxee-shell'; Names = @('borderless_is_on_by_default_also_for_a_file_from_before_it_existed') },
+    @{ Crate = 'pyxee-app'; Names = @(
       'a_seek_after_pausing_and_starting_another_song_is_not_silent',
       'a_second_install_is_refused_until_the_first_is_done',
       'only_the_build_time_id_counts_and_nothing_means_off') }
@@ -379,18 +381,314 @@ function Test-EditedTests {
   }
 }
 
+# Static facts about the review fixes F1-F10: cheap, and they run even with -SkipTests, so a later edit that undoes one of
+# them is noticed. The behaviour itself is covered by Test-EditedTests (cargo) and by the manual items below.
+function Test-ReviewFixes {
+  $read = { param([string]$rel) $p = Join-Path $Root $rel; if (Test-Path -LiteralPath $p) { Get-Content -LiteralPath $p -Raw } else { '' } }
+  $expect = { param([string]$name, [bool]$ok, [string]$detail) if ($ok) { Add-Result 'PASS' $name $detail } else { Add-Result 'FAIL' $name $detail } }
+  $ytdlp = & $read 'crates\sources\src\ytdlp.rs'
+  $http = & $read 'crates\audio\src\http.rs'
+  & $expect 'fix-f1-no-args-in-logs' ($ytdlp -notmatch '\{args:\?\}') 'the yt-dlp timeout log does not print the argument list (cookie path, browser profile)'
+  & $expect 'fix-f1-scrub-wired' ((((& $read 'crates\sources\src\lib.rs') -match 'pub use scrub::scrub') -and ((& $read 'crates\app\src\logging.rs') -match 'pyxee_sources::scrub'))) 'pyxee_sources::scrub exists and the file logger runs every message through it'
+  & $expect 'fix-f2-cancel-token' (((& $read 'crates\audio\src\pipeline.rs') -match 'pub fn cancel_token') -and ($http -match 'pub fn open_with_cancel') -and ((& $read 'crates\app\src\engine.rs') -match 'open_with_cancel')) 'the pipeline has a cancel token and the engine opens streams with it'
+  $fullLimit = $http -match 'FULL_LIMIT: u64 = 64 \* 1024 \* 1024'
+  & $expect 'fix-f10-http-hardening' ($fullLimit -and ($http -match 'server ignored the range request')) 'FULL_LIMIT is 64 MiB and a reply without 206 + a matching Content-Range is refused'
+  & $expect 'fix-f10-ignore-config' ($ytdlp -match '--ignore-config') 'every yt-dlp run starts with --ignore-config'
+  $envvars = & $read 'ui\src\lib\envvars.ts'
+  $readme = & $read 'README.md'
+  $release = & $read '.github\workflows\release.yml'
+  $discord = & $read 'crates\app\src\shell\discord.rs'
+  $envfile = & $read 'crates\shell\src\envfile.rs'
+  $f7 = ($envvars -notmatch 'DISCORD') -and ($envfile -notmatch 'DISCORD') -and ($readme -notmatch 'DISCORD_CLIENT_ID') -and ((& $read 'crates\app\src\advanced.rs') -notmatch 'DISCORD')
+  & $expect 'fix-f7-discord-id-not-user-settable' $f7 'the Discord application ID is not in Settings > Advanced, the .env loader or the README: users cannot change it'
+  & $expect 'fix-f7-discord-id-is-a-secret-in-ci' (($release -match 'secrets\.PYXEE_DISCORD_CLIENT_ID') -and ($release -notmatch 'vars\.PYXEE_DISCORD_CLIENT_ID')) 'release.yml reads the ID from a repository secret, not a variable'
+  & $expect 'fix-f7-discord-log-text' (($discord -match 'this build has no Discord application') -and ($discord -notmatch 'is not set\)')) 'the Discord log line no longer asks for a variable'
+  try {
+    $mode = (Get-Content -LiteralPath (Join-Path $Root 'crates\app\tauri.conf.json') -Raw | ConvertFrom-Json).bundle.windows.webviewInstallMode
+    & $expect 'fix-f8-webview2-bootstrapper' (($mode.type -eq 'embedBootstrapper') -and ($mode.silent -eq $false)) 'WebView2 is installed by the embedded bootstrapper, not silently (it shows its own progress)'
+  } catch { Add-Result 'FAIL' 'fix-f8-webview2-bootstrapper' "could not read crates\app\tauri.conf.json: $($_.Exception.Message)" }
+  & $expect 'fix-f8-progress-binding' ((Test-Path -LiteralPath (Join-Path $Root 'ui\src\lib\bindings\UpdateProgressDto.ts')) -and ((& $read 'crates\app\src\updater.rs') -match 'update-progress')) 'UpdateProgressDto.ts exists and the updater emits update-progress'
+}
+
+# Static facts about the page power diagnostics (webview_power.rs): wiring the Linux tests cannot see, because it only
+# compiles on Windows. The behaviour is covered by the manual items (the log lines) and by docs\measuring.md.
+function Test-WebviewPower {
+  $read = { param([string]$rel) $p = Join-Path $Root $rel; if (Test-Path -LiteralPath $p) { Get-Content -LiteralPath $p -Raw } else { '' } }
+  $expect = { param([string]$name, [bool]$ok, [string]$detail) if ($ok) { Add-Result 'PASS' $name $detail } else { Add-Result 'FAIL' $name $detail } }
+  $power = & $read 'crates\app\src\shell\webview_power.rs'
+  & $expect 'power-issuspended-logged' (($power -match 'IsSuspended\(&mut flag\)') -and ($power -match 'IsSuspended = \{\} after TrySuspend')) 'IsSuspended is read and logged right after every TrySuspend'
+  & $expect 'power-recheck-delay' (($power -match 'RECHECK_DELAY: Duration = Duration::from_secs\(5\)') -and ($power -match 'still asleep after') -and ($power -match 'awake again')) 'a one-off check runs 5 s after a page is put to sleep and logs whether it stayed asleep'
+  & $expect 'power-recheck-cancelled-by-newer-request' (($power -match 'fn is_current') -and ($power -match 'next_generation\(window\.label\(\)\)')) 'a sleep or wake request cancels the pending check of an older one'
+  $noted = ((& $read 'crates\app\src\runner.rs') -match 'emit_noted') -and ((& $read 'crates\app\src\shell\power.rs') -match 'emit_noted') -and ((& $read 'crates\app\src\updater.rs') -match 'emit_noted')
+  & $expect 'power-wake-sources-noted' $noted 'events sent to every window (notice, update progress) are noted as possible wake sources'
+  & $expect 'power-measuring-doc' (Test-Path -LiteralPath (Join-Path $Root 'docs\measuring.md')) 'docs\measuring.md describes how to measure the four states'
+}
+
+# Static facts about the main window having no native frame: the config and permissions the custom title bar needs.
+# The behaviour itself (dragging, resizing, maximizing, close to tray) is in the manual items.
+function Test-FramelessWindow {
+  $read = { param([string]$rel) $p = Join-Path $Root $rel; if (Test-Path -LiteralPath $p) { Get-Content -LiteralPath $p -Raw } else { '' } }
+  $expect = { param([string]$name, [bool]$ok, [string]$detail) if ($ok) { Add-Result 'PASS' $name $detail } else { Add-Result 'FAIL' $name $detail } }
+  try {
+    $main = @((Get-Content -LiteralPath (Join-Path $Root 'crates\app\tauri.conf.json') -Raw | ConvertFrom-Json).app.windows) | Where-Object { $_.label -eq 'main' } | Select-Object -First 1
+    & $expect 'frame-main-window-config' (($null -ne $main) -and ($main.decorations -eq $false) -and ($main.shadow -eq $true) -and ($main.transparent -eq $true)) 'the main window is created without a native frame, with a shadow, and transparent for Mica'
+  } catch { Add-Result 'FAIL' 'frame-main-window-config' "could not read crates\app\tauri.conf.json: $($_.Exception.Message)" }
+  $cap = & $read 'crates\app\capabilities\default.json'
+  & $expect 'frame-permissions' (($cap -match 'core:window:allow-minimize') -and ($cap -match 'core:window:allow-toggle-maximize') -and ($cap -match 'core:window:allow-close') -and ($cap -match 'core:window:allow-start-dragging')) 'the page may minimize, maximize, close and drag the main window'
+  $bar = & $read 'ui\src\components\TitleBar.svelte'
+  & $expect 'frame-title-bar-drag-region' (($bar -match 'data-tauri-drag-region') -and ($bar -match 'aria-label="Minimize"') -and ($bar -match 'Maximize') -and ($bar -match 'aria-label="Close"')) 'the title bar is a drag region with minimize, maximize/restore and close buttons'
+  $shell = & $read 'crates\app\src\shell\mod.rs'
+  & $expect 'frame-setting-applied' (($shell -match 'pub fn sync_window_frame') -and ($shell -match 'set_decorations\(!borderless\)') -and ($shell -match '(?s)sync_discord\(app\);\s*sync_window_frame\(app\);') -and ((& $read 'crates\app\src\shell\commands.rs') -match 'sync_window_frame\(&app\)')) 'the saved window frame is applied at start-up (before the window is shown) and whenever the setting is saved'
+  & $expect 'frame-fullscreen' (($cap -match 'core:window:allow-set-fullscreen') -and ((& $read 'ui\src\lib\shortcuts.ts') -match 'F11') -and ((& $read 'ui\src\App.svelte') -match 'setFullscreen')) 'F11 switches full screen, and the page may do that to the main window'
+  $win = & $read 'crates\app\src\window.rs'
+  & $expect 'frame-backdrop-extended' (($win -match 'DwmExtendFrameIntoClientArea') -and ($win -match '(?s)is_decorated\(\)\.is_ok_and\(\|decorated\| !decorated\)\s*\{\s*extend_frame\(window\);') -and ($win -match 'left: -1')) 'a window without a native frame extends the DWM frame over the whole page, so the Mica backdrop shows through it (framed windows are left as they were)'
+  $app = & $read 'ui\src\App.svelte'
+  & $expect 'frame-title-bar-in-app' (($app -match 'TitleBar') -and ($app -match 'data-titlebar')) 'the main page draws the title bar and tells the overlays to start below it'
+}
+
+# Static facts about Explore's genres: the commands exist and are registered, genre pages leave albums out, and the
+# page is built from the new pieces. What the real website answers is checked live (phase "genres") and by hand.
+function Test-ExploreGenres {
+  $read = { param([string]$rel) $p = Join-Path $Root $rel; if (Test-Path -LiteralPath $p) { Get-Content -LiteralPath $p -Raw } else { '' } }
+  $expect = { param([string]$name, [bool]$ok, [string]$detail) if ($ok) { Add-Result 'PASS' $name $detail } else { Add-Result 'FAIL' $name $detail } }
+  $main = & $read 'crates\app\src\main.rs'
+  & $expect 'genres-commands-registered' (($main -match 'commands::genres_get') -and ($main -match 'commands::genre_get') -and ($main -match 'commands::playlist_tracks_get')) 'genres_get, genre_get and playlist_tracks_get are registered with Tauri'
+  $yt = & $read 'crates\sources\src\ytmusic.rs'
+  & $expect 'genres-pages-asked-for' (($yt -match 'FEmusic_moods_and_genres"') -and ($yt -match 'FEmusic_moods_and_genres_category') -and ($yt -match 'format!\("VL\{id\}"\)')) 'the requests name the genres page, a genre page and a playlist (VL<id>)'
+  & $expect 'genres-no-albums-on-genre-pages' (($yt -match 'Album shelves \("New albums", "New releases"\) are left out on purpose') -and ($yt -notmatch '(?s)pub fn parse_genre\(.{0,3000}ExploreShelf::Albums')) 'a genre page keeps playlists and songs and leaves album shelves out'
+  $page = & $read 'ui\src\pages\Explore.svelte'
+  & $expect 'genres-page-wired' (($page -match 'GenreChips') -and ($page -match 'PlaylistGrid') -and ($page -match 'playlistTracksGet')) 'Explore shows the genre chips, a genre''s playlists as covers, and plays a playlist through the backend'
+  & $expect 'genres-albums-last' (((& $read 'ui\src\lib\explore.svelte.ts') -match 'albumsLast\(page\)')) 'the new albums and singles shelf comes after the other shelves on the main page'
+  $live = & $read 'crates\spike\src\bin\livecheck.rs'
+  & $expect 'genres-live-phase' (($live -match '"genres" => genres\(&o\)') -and ((& $read 'scripts\check-windows.ps1') -match "@\('search', 'genres', 'stream'\)")) 'the live checks ask the real website for the genres, a genre page and a playlist'
+}
+
+# ---------------------------------------------------------------- UI rebuild: static facts, named tests, report
+# What svelte-check and the unit tests do not see about the UI rebuild ("Rail, Page, Stage", see docs\ui.md): remote
+# resources, removed components, the windows and entry points, the test ids the tests rely on, the dependency list.
+# The before figures were measured on the commit that holds the review fixes, just before the rebuild.
+$script:UiBefore = @{ Components = 35; SvelteLines = 2528; CssLines = 252; TsLines = 2516; ClassTokens = 338; Tests = 330 }
+
+# Tests the rebuild added or changed (their vitest titles). The full `npm test` run asks for everything; this asks for
+# each of these by name and fails when one did not run (renamed or removed) or did not pass.
+$script:UiNamedTests = @(
+  @{ File = 'App.test.ts'; Names = @(
+    'uses the bottom bar when narrow, with the four destinations',
+    'wide layout puts the wordmark, the four destinations and Settings in a side rail, and the player on the right',
+    'the wide layout shows what plays on the stage: transport, a preview of Up next, and a way to play from it',
+    'marks the song that is playing in every list it appears in') },
+  @{ File = 'motion.test.ts'; Names = @(
+    'keeps the given lengths when the system does not ask for less motion',
+    'drops lengths and distances to nothing when it does',
+    'leaving is quicker than arriving') }
+)
+# 330 before; two App.test.ts tests were rewritten (same count) and 2 + 3 were added.
+$script:UiExpectedTests = 374
+
+function Get-UiSources([string[]]$Ext = @('.svelte', '.ts', '.css', '.html')) {
+  $ui = Join-Path $Root 'ui'
+  $files = @(Get-ChildItem -LiteralPath (Join-Path $ui 'src') -Recurse -File -ErrorAction SilentlyContinue | Where-Object { ($Ext -contains $_.Extension) -and ($_.Name -notmatch '\.test\.ts$') -and ($_.FullName -notmatch '\\bindings\\') })
+  $index = Join-Path $ui 'index.html'
+  if (($Ext -contains '.html') -and (Test-Path -LiteralPath $index)) { $files += Get-Item -LiteralPath $index }
+  return ,$files
+}
+
+function Get-LineCount($files) { $n = 0; foreach ($f in $files) { $n += @(Get-Content -LiteralPath $f.FullName).Count }; return $n }
+
+function Get-GzipSize([string]$path) {
+  $bytes = [IO.File]::ReadAllBytes($path)
+  $ms = New-Object IO.MemoryStream
+  $gz = New-Object IO.Compression.GZipStream($ms, [IO.Compression.CompressionLevel]::Optimal)
+  $gz.Write($bytes, 0, $bytes.Length)
+  $gz.Close()
+  return $ms.ToArray().Length
+}
+
+function Test-UiRebuild {
+  $expect = { param([string]$name, [bool]$ok, [string]$detail) if ($ok) { Add-Result 'PASS' $name $detail } else { Add-Result 'FAIL' $name $detail } }
+  $ui = Join-Path $Root 'ui'
+  $files = Get-UiSources
+  if ($files.Count -eq 0) { Add-Result 'FAIL' 'ui-sources' 'ui\src was not found'; return }
+  $text = @{}
+  foreach ($f in $files) { $text[$f.FullName] = Get-Content -LiteralPath $f.FullName -Raw }
+  $rel = { param($f) $f.FullName.Substring($Root.Length + 1) }
+  $hits = { param([string]$pattern) @($files | Where-Object { $text[$_.FullName] -match $pattern } | ForEach-Object { & $rel $_ }) }
+  $read = { param([string]$relPath) $p = Join-Path $Root $relPath; if (Test-Path -LiteralPath $p) { Get-Content -LiteralPath $p -Raw } else { '' } }
+
+  # (b1) Nothing remote: the CSP blocks remote scripts, styles, fonts and images, so one that sneaks in fails silently on the PC.
+  $remote = & $hits '(?i)@import\s+url\(|url\(\s*[''"]?https?:|<link[^>]+href=["'']?https?:|<script[^>]+src=["'']?https?:|fonts\.googleapis|fonts\.gstatic|unpkg\.com|cdn\.jsdelivr|cdnjs\.'
+  & $expect 'ui-no-remote-resources' ($remote.Count -eq 0) $(if ($remote.Count -eq 0) { 'no remote stylesheet, script, @import or font host in ui\src or index.html' } else { 'remote resource in: ' + ($remote -join ', ') })
+  $fontRef = & $hits '(?i)@font-face|\.(woff2?|ttf|otf)\b'
+  $fontFiles = @(foreach ($d in @('src', 'public')) { $p = Join-Path $ui $d; if (Test-Path -LiteralPath $p) { Get-ChildItem -LiteralPath $p -Recurse -File | Where-Object { $_.Extension -match '^\.(woff2?|ttf|otf)$' } } })
+  & $expect 'ui-system-fonts-only' (($fontRef.Count -eq 0) -and ($fontFiles.Count -eq 0)) $(if (($fontRef.Count -eq 0) -and ($fontFiles.Count -eq 0)) { 'no @font-face and no font file: the text is Segoe UI Variable from Windows' } else { 'font reference or file: ' + (($fontRef + @($fontFiles | ForEach-Object { $_.Name })) -join ', ') })
+  $css = & $read 'ui\src\app.css'
+  & $expect 'ui-font-stack' (($css -match 'Segoe UI Variable Text') -and ($css -match 'Segoe UI Variable Display') -and ($css -notmatch 'Fredoka')) 'app.css names Segoe UI Variable Text and Display with system fallbacks'
+
+  # (b2) Removed components must stay removed, in code and in docs.
+  $gone = @('DeckNav', 'PlayerBar', 'BottomNav')
+  $goneFiles = @($gone | Where-Object { Test-Path -LiteralPath (Join-Path $Root ('ui\src\components\' + $_ + '.svelte')) })
+  $goneRefs = @(& git grep -n -E '\b(DeckNav|PlayerBar|BottomNav)\b' -- ui/src docs/ui.md 2>$null)
+  & $expect 'ui-no-removed-components' (($goneFiles.Count -eq 0) -and ($goneRefs.Count -eq 0)) $(if (($goneFiles.Count -eq 0) -and ($goneRefs.Count -eq 0)) { 'DeckNav, PlayerBar and BottomNav are gone and nothing refers to them' } else { 'still there: ' + (($goneFiles + ($goneRefs | Select-Object -First 3)) -join ' | ') })
+
+  # (b3) Windows and entry points: main, mini player and tray flyout, each with its page or view.
+  $main = & $read 'ui\src\main.ts'
+  $miniRs = & $read 'crates\app\src\shell\mini.rs'
+  $flyRs = & $read 'crates\app\src\shell\flyout.rs'
+  & $expect 'ui-entry-points' (($main -match "view === 'flyout'") -and ($main -match "view === 'mini'") -and ($main -match 'Flyout') -and ($main -match 'Mini') -and ($miniRs -match 'index\.html\?view=mini') -and ($flyRs -match 'index\.html\?view=flyout')) 'main.ts picks App, Mini or Flyout from ?view=, and the Rust side opens index.html?view=mini and ?view=flyout'
+  $need = @('App.svelte', 'views\Mini.svelte', 'views\Flyout.svelte', 'views\Compact.svelte', 'views\Boot.ts', 'pages\Home.svelte', 'pages\Explore.svelte', 'pages\Library.svelte', 'pages\Playlist.svelte', 'pages\Queue.svelte', 'pages\Search.svelte', 'components\Navigation.svelte', 'components\Stage.svelte', 'components\Dock.svelte', 'components\NowPlaying.svelte', 'components\SettingsSheet.svelte', 'components\ThemeEditor.svelte', 'components\TrackMenu.svelte')
+  $missing = @($need | Where-Object { -not (Test-Path -LiteralPath (Join-Path $Root ('ui\src\' + $_))) })
+  & $expect 'ui-windows-and-views-present' ($missing.Count -eq 0) $(if ($missing.Count -eq 0) { "all $($need.Count) shell, view, page and sheet files exist" } else { 'missing: ' + ($missing -join ', ') })
+  $app = & $read 'ui\src\App.svelte'
+  $wired = @('Navigation', 'TopBar', 'Dock', 'Stage', 'NowPlaying', 'Snackbar', 'TrackMenu', 'PlaylistPicker', 'NameSheet', 'ThemeEditor', 'SleepSheet', 'SettingsSheet', 'Home', 'Explore', 'Library', 'Queue', 'Playlist', 'Search')
+  $unwired = @($wired | Where-Object { $app -notmatch ('<' + $_ + '\b') })
+  & $expect 'ui-app-wires-everything' ($unwired.Count -eq 0) $(if ($unwired.Count -eq 0) { 'App.svelte renders the rail/bar, top bar, dock, stage, Now Playing, every page and every sheet' } else { 'App.svelte does not render: ' + ($unwired -join ', ') })
+
+  # (b4) The test ids, roles and live regions that tests and assistive technology rely on must still be in the code.
+  $ids = @('player-bar', 'np-root', 'np-header', 'np-tabs', 'np-art', 'np-controls', 'np-scroll', 'page-header', 'page-scroll', 'drag-handle', 'upnext-handle', 'resume', 'compact-title', 'compact-art', 'mini', 'flyout', 'log-path', 'sleep-chip', 'sleep-status', 'lyrics', 'related')
+  $noId = @($ids | Where-Object { (& $hits ('data-testid="' + $_ + '"')).Count -eq 0 })
+  & $expect 'ui-test-ids' ($noId.Count -eq 0) $(if ($noId.Count -eq 0) { "all $($ids.Count) data-testid values the tests use are present" } else { 'missing data-testid: ' + ($noId -join ', ') })
+  $snack = & $read 'ui\src\components\Snackbar.svelte'
+  $sheet = & $read 'ui\src\components\Sheet.svelte'
+  $np = & $read 'ui\src\components\NowPlaying.svelte'
+  $scroll = & $read 'ui\src\components\ScrollPage.svelte'
+  $seek = & $read 'ui\src\components\Seek.svelte'
+  $a11y = ($snack -match 'aria-live="polite"') -and ($snack -match 'role="status"') -and ($sheet -match 'role="dialog"') -and ($sheet -match 'aria-modal="true"') -and ($sheet -match "key === 'Escape'") -and ($np -match 'role="alert"') -and ($np -match 'role="tabpanel"') -and ($scroll -match 'data-scroll[^>]*tabindex="0"') -and ($seek -match 'type="range"') -and ($seek -match 'aria-valuetext')
+  & $expect 'ui-accessibility-structure' $a11y 'snackbar is a polite live region, sheets are modal dialogs that close on Escape, failures use role=alert, tab panels and scroll areas are reachable, seek is a real range input'
+  $icon = & $read 'ui\src\components\IconButton.svelte'
+  $clickDiv = & $hits '<(div|span|li|p|section)\b[^>]*\sonclick='
+  & $expect 'ui-real-buttons' (($icon -match 'aria-label=\{label\}') -and ($clickDiv.Count -eq 0)) $(if ($clickDiv.Count -eq 0) { 'IconButton always carries an accessible name, and no div, span or li has a click handler' } else { 'click handler on a non-button in: ' + ($clickDiv -join ', ') })
+  & $expect 'ui-focus-and-motion-rules' (($css -match ':focus-visible') -and ($css -match 'prefers-reduced-motion') -and ((& $read 'ui\src\lib\motion.ts') -match 'prefers-reduced-motion')) 'a visible focus rule exists, and reduced motion is honoured in CSS (app.css) and in script (lib\motion.ts)'
+
+  # (b5) The design rules of this rebuild: tokens, no tracked capitals, no colour literals in components.
+  $tok = @('--layer', '--hover', '--press', '--selected', '--stage-wash', '--r-sm', '--r-md', '--r-lg', '--dur-fast', '--dur-base', '--ease', '--rail-w', '--stage-w', '--page-pad')
+  $noTok = @($tok | Where-Object { $css -notmatch ([regex]::Escape($_) + ':') })
+  & $expect 'ui-design-tokens' (($noTok.Count -eq 0) -and ($css -match '@layer components') -and ($css -match 'container-type:\s*inline-size')) $(if ($noTok.Count -eq 0) { "$($tok.Count) semantic tokens, a component layer and the list container query are in app.css" } else { 'app.css lacks: ' + ($noTok -join ', ') })
+  $caps = & $hits '\buppercase\b|\btracking-(wide|wider|widest)\b|text-transform:\s*uppercase'
+  & $expect 'ui-no-tracked-capitals' ($caps.Count -eq 0) $(if ($caps.Count -eq 0) { 'no uppercase or tracked-out labels (the type is sentence case)' } else { 'uppercase or tracking in: ' + ($caps -join ', ') })
+  $hex = @($files | Where-Object { ($_.Extension -eq '.svelte') -and ($_.Name -ne 'Logo.svelte') -and ($text[$_.FullName] -match '#[0-9a-fA-F]{6}\b') } | ForEach-Object { & $rel $_ })
+  & $expect 'ui-no-colour-literals' ($hex.Count -eq 0) $(if ($hex.Count -eq 0) { 'components take colours from tokens; only the logo has its own' } else { 'hex colour in: ' + ($hex -join ', ') })
+
+  # (b6) No new npm dependencies: package-lock.json cannot be regenerated by the rebuild, so `npm ci` must keep working.
+  try {
+    $pkg = (& $read 'ui\package.json') | ConvertFrom-Json
+    $deps = @($pkg.dependencies.PSObject.Properties.Name | Sort-Object)
+    $dev = @($pkg.devDependencies.PSObject.Properties.Name | Sort-Object)
+    $wantDeps = @('@tauri-apps/api')
+    $wantDev = @('@sveltejs/vite-plugin-svelte', '@tailwindcss/vite', '@tauri-apps/cli', '@testing-library/svelte', '@types/node', 'jsdom', 'svelte', 'svelte-check', 'tailwindcss', 'typescript', 'vite', 'vitest')
+    $extra = @($deps + $dev | Where-Object { ($wantDeps + $wantDev) -notcontains $_ })
+    & $expect 'ui-no-new-dependencies' ($extra.Count -eq 0) $(if ($extra.Count -eq 0) { 'ui\package.json has the same packages as before the rebuild' } else { 'new package(s): ' + ($extra -join ', ') + ' (package-lock.json would be out of date)' })
+  } catch { Add-Result 'FAIL' 'ui-no-new-dependencies' "could not read ui\package.json: $($_.Exception.Message)" }
+
+  # (a) Every test the rebuild added or changed is still in the test files under its title.
+  foreach ($g in $script:UiNamedTests) {
+    $tf = Get-ChildItem -LiteralPath (Join-Path $ui 'src') -Recurse -File -Filter $g.File -ErrorAction SilentlyContinue | Select-Object -First 1
+    $src = if ($tf) { Get-Content -LiteralPath $tf.FullName -Raw } else { '' }
+    foreach ($n in $g.Names) {
+      $slug = ($n -replace '[^A-Za-z0-9]+', '-').Trim('-').ToLower()
+      if ($slug.Length -gt 60) { $slug = $slug.Substring(0, 60) }
+      & $expect ('ui-test-defined-' + $slug) ($src.Contains("'" + $n + "'")) ($g.File + ': ' + $n)
+    }
+  }
+
+  # (c, static part) Size of the UI source before and after.
+  $sv = @($files | Where-Object { $_.Extension -eq '.svelte' })
+  $cssFiles = @($files | Where-Object { $_.Extension -eq '.css' })
+  $tsFiles = @($files | Where-Object { $_.Extension -eq '.ts' })
+  $svLines = Get-LineCount $sv
+  Add-Result 'INFO' 'ui-components' ("{0} components (.svelte files), before the rebuild {1}: {2}" -f $sv.Count, $script:UiBefore.Components, $(if ($sv.Count -gt $script:UiBefore.Components) { 'smaller and more focused pieces' } else { 'not split further' }))
+  Add-Result 'INFO' 'ui-lines' ("Svelte {0} lines (before {1}), app.css {2} (before {3}), TypeScript without tests {4} (before {5}); the design now lives in app.css tokens and classes instead of in markup" -f $svLines, $script:UiBefore.SvelteLines, (Get-LineCount $cssFiles), $script:UiBefore.CssLines, (Get-LineCount $tsFiles), $script:UiBefore.TsLines)
+  $tokens = @{}
+  foreach ($f in $sv) { foreach ($m in [regex]::Matches($text[$f.FullName], 'class="([^"]*)"')) { foreach ($t in ($m.Groups[1].Value -split '[\s{}]+')) { if ($t -and ($t -notmatch '^[''$?:]')) { $tokens[$t] = 1 } } } }
+  Add-Result 'INFO' 'ui-class-vocabulary' ("{0} distinct class names in the markup (before {1}); fewer one-off utilities, more shared classes" -f $tokens.Count, $script:UiBefore.ClassTokens)
+  $big = @($sv | ForEach-Object { [pscustomobject]@{ Name = $_.Name; Lines = @(Get-Content -LiteralPath $_.FullName).Count } } | Sort-Object Lines -Descending | Select-Object -First 3)
+  Add-Result 'INFO' 'ui-largest-components' (($big | ForEach-Object { '{0} {1} lines' -f $_.Name, $_.Lines }) -join ', ')
+  $huge = @($big | Where-Object { $_.Lines -gt 250 })
+  if ($huge.Count -gt 0) { Add-Result 'WARN' 'ui-component-size' ('over 250 lines, consider splitting: ' + (($huge | ForEach-Object { $_.Name }) -join ', ')) }
+}
+
+# (a) The named tests, looked up in vitest's JSON report so a renamed, removed or failing one is named in the report.
+function Test-UiNamedTests {
+  $json = Join-Path $LogDir 'ui-named-tests.json'
+  $names = @($script:UiNamedTests | ForEach-Object { $_.File })
+  $r = Invoke-Logged 'ui-named-tests' ('npm test --prefix ui -- --reporter=json --outputFile="{0}" {1}' -f $json, ($names -join ' '))
+  $all = @()
+  if (Test-Path -LiteralPath $json) {
+    try {
+      $data = Get-Content -LiteralPath $json -Raw | ConvertFrom-Json
+      foreach ($tr in $data.testResults) { foreach ($a in $tr.assertionResults) { $all += [pscustomobject]@{ File = (Split-Path $tr.name -Leaf); Title = $a.title; Status = $a.status } } }
+    } catch { Add-Result 'FAIL' 'ui-named-tests' "could not read vitest's JSON report: $($_.Exception.Message)"; return }
+  } else { Add-Result 'FAIL' 'ui-named-tests' 'vitest wrote no JSON report: see the log'; Show-LogTail $r.Log 20; return }
+  foreach ($g in $script:UiNamedTests) {
+    foreach ($n in $g.Names) {
+      $m = @($all | Where-Object { ($_.File -eq $g.File) -and ($_.Title -eq $n) })
+      if ($m.Count -eq 0) { Add-Result 'FAIL' "ui-test-$($g.File)" "did not run (renamed or removed): $n" }
+      elseif ($m[0].Status -eq 'passed') { Add-Result 'PASS' "ui-test-$($g.File)" "ran and passed: $n" }
+      else { Add-Result 'FAIL' "ui-test-$($g.File)" "$($m[0].Status): $n" }
+    }
+  }
+}
+
+# (c) Size of what the UI build produced; compared with the previous run's figures when there are any.
+function Add-UiBundleReport {
+  $assets = Join-Path $Root 'ui\dist\assets'
+  if (-not (Test-Path -LiteralPath $assets)) { Add-Result 'WARN' 'ui-bundle' 'ui\dist\assets does not exist (the UI build did not run)'; return }
+  $now = @{}
+  foreach ($kind in @(@('js', '*.js'), @('css', '*.css'))) {
+    $fs = @(Get-ChildItem -LiteralPath $assets -Recurse -File -Filter $kind[1])
+    $raw = 0; $gz = 0
+    foreach ($f in $fs) { $raw += $f.Length; $gz += (Get-GzipSize $f.FullName) }
+    $now[$kind[0] + 'Raw'] = $raw; $now[$kind[0] + 'Gzip'] = $gz; $now[$kind[0] + 'Files'] = $fs.Count
+    Add-Result 'INFO' ('ui-bundle-' + $kind[0]) ('{0} file(s), {1:N1} KB, {2:N1} KB gzipped' -f $fs.Count, ($raw / 1KB), ($gz / 1KB))
+  }
+  $other = @(Get-ChildItem -LiteralPath (Join-Path $Root 'ui\dist') -Recurse -File | Where-Object { $_.Extension -notin @('.js', '.css', '.html') })
+  Add-Result 'INFO' 'ui-bundle-other-files' ("{0} other file(s) in ui\dist ({1:N1} KB): fonts and images the build copied, expected none but the logo and icons" -f $other.Count, ((($other | Measure-Object Length -Sum).Sum) / 1KB))
+  if ($now.cssRaw -gt (200 * 1KB)) { Add-Result 'WARN' 'ui-bundle-css-size' ('the stylesheet is {0:N0} KB: check for utilities or a library that should not be there' -f ($now.cssRaw / 1KB)) }
+  $last = Join-Path $OutDir 'ui-bundle-last.json'
+  if (Test-Path -LiteralPath $last) {
+    try {
+      $prev = Get-Content -LiteralPath $last -Raw | ConvertFrom-Json
+      Add-Result 'INFO' 'ui-bundle-vs-previous-run' ('JS {0:+0.0;-0.0;0.0} KB gzipped, CSS {1:+0.0;-0.0;0.0} KB gzipped compared with the previous run ({2})' -f (($now.jsGzip - $prev.jsGzip) / 1KB), (($now.cssGzip - $prev.cssGzip) / 1KB), $prev.when)
+    } catch { Add-Result 'INFO' 'ui-bundle-vs-previous-run' 'the previous figures could not be read' }
+  } else { Add-Result 'INFO' 'ui-bundle-vs-previous-run' 'no earlier run to compare with (run this script on the commit before the rebuild to get a baseline)' }
+  try { ([pscustomobject]@{ when = (Get-Date -Format 'yyyy-MM-dd HH:mm'); jsGzip = $now.jsGzip; cssGzip = $now.cssGzip; jsRaw = $now.jsRaw; cssRaw = $now.cssRaw } | ConvertTo-Json) | Set-Content -LiteralPath $last -Encoding UTF8 } catch { }
+}
+
+# The number of tests vitest ran, against what the rebuild should have left (330 before, +5).
+function Add-UiTestCount([string]$logFile) {
+  $txt = if (Test-Path -LiteralPath $logFile) { Get-Content -LiteralPath $logFile -Raw } else { '' }
+  $m = [regex]::Match($txt, '(?m)^\s*Tests\s+(?:(\d+) failed \| )?(\d+) passed(?: \| (\d+) skipped)? \((\d+)\)')
+  if (-not $m.Success) { Add-Result 'WARN' 'ui-test-count' 'could not read the test count from the vitest log'; return }
+  $total = [int]$m.Groups[4].Value
+  if ($total -eq $script:UiExpectedTests) { Add-Result 'PASS' 'ui-test-count' "$total tests ($($script:UiBefore.Tests) before + $($script:UiExpectedTests - $script:UiBefore.Tests) added by the rebuild)" }
+  else { Add-Result 'WARN' 'ui-test-count' "$total tests ran, the rebuild should leave $($script:UiExpectedTests) ($($script:UiBefore.Tests) before + $($script:UiExpectedTests - $script:UiBefore.Tests)); a test was removed or added since" }
+}
+
 # ---------------------------------------------------------------- 1. static: ffmpeg is gone from the repo
 
 Section 'no ffmpeg process in code, build and packaging (libav is linked in-process)'
-$bin = Join-Path $Root 'tools'
+$bin = Join-Path $Root 'crates\app\binaries'
 $ff = @(Get-ChildItem $bin -Filter 'ffmpeg*' -ErrorAction SilentlyContinue)
-if ($ff.Count -eq 0) { Add-Result 'PASS' 'no-ffmpeg-sidecar-file' 'tools has no ffmpeg*' } else { Add-Result 'FAIL' 'no-ffmpeg-sidecar-file' ($ff.Name -join ', ') }
+if ($ff.Count -eq 0) { Add-Result 'PASS' 'no-ffmpeg-sidecar-file' 'crates\app\binaries has no ffmpeg*' } else { Add-Result 'FAIL' 'no-ffmpeg-sidecar-file' ($ff.Name -join ', ') }
+try {
+  $conf = Get-Content (Join-Path $Root 'crates\app\tauri.bundle.conf.json') -Raw | ConvertFrom-Json
+  $bins = @($conf.bundle.externalBin)
+  if (($bins -join ' ') -match 'ffmpeg') { Add-Result 'FAIL' 'bundle-externalBin' ($bins -join ', ') } else { Add-Result 'PASS' 'bundle-externalBin' ("sidecars: " + ($bins -join ', ')) }
+} catch { Add-Result 'WARN' 'bundle-externalBin' "could not parse tauri.bundle.conf.json: $($_.Exception.Message)" }
 $code = @(& git grep -n -i -E 'FfmpegPipe|ffmpeg\.exe|PYXEE_FFMPEG_(PATH|BIN|EXE)|Command::new\(.*ffmpeg|externalBin.*ffmpeg|AudioError::Ffmpeg' -- '*.rs' '*.toml' '*.json' '*.cmd' '*.yml' ':!scripts' ':!xtask/src/release.rs' 2>$null)
 if ($code.Count -eq 0) { Add-Result 'PASS' 'no-ffmpeg-in-code' 'no ffmpeg process/sidecar/config references in .rs .toml .json .cmd .yml' }
 else { Add-Result 'FAIL' 'no-ffmpeg-in-code' "$($code.Count) reference(s)"; $code | Select-Object -First 10 | ForEach-Object { Write-Report "    $_" } }
 $any = @(& git grep -n -i ffmpeg -- . ':!Cargo.lock' ':!scripts' 2>$null)
 Add-Result 'INFO' 'ffmpeg-mentions-left' "$($any.Count) line(s) mention the word (expected: the in-process libav build scripts, docs and comments, plus the fixture-provenance note)"
 $any | Select-Object -First 25 | ForEach-Object { Write-Report ("    " + $_.Substring(0, [math]::Min($_.Length, 170))) }
+Test-ReviewFixes
+Test-WebviewPower
+Test-FramelessWindow
+Test-ExploreGenres
+
+# ---------------------------------------------------------------- 1b. static: the UI rebuild
+
+Section 'UI rebuild: static facts the compiler and the tests do not see'
+Test-UiRebuild
 
 # ---------------------------------------------------------------- 2. yt-dlp (tools flow)
 
@@ -466,24 +764,29 @@ if (-not $YtdlpPath) {
 
 # ---------------------------------------------------------------- 3. build + tests
 
-# The Flutter app (ui_flutter) needs the Rust bridge library built first: the native-assets hook copies it in.
-function Invoke-FlutterSteps {
-  if (-not (Have 'flutter')) { Add-Result 'FAIL' 'flutter' 'flutter is not on PATH (install the Flutter SDK, see docs/development.md)'; return }
-  $r = Invoke-Logged 'bridge-build' 'cargo build --locked -p pyxee-bridge --release'
-  if ($r.Code -eq 0) { Add-Result 'PASS' 'bridge-build' "$($r.Seconds)s" } else { Add-Result 'FAIL' 'bridge-build' "exit $($r.Code)"; Show-LogTail $r.Log 30; return }
-  $ui = Join-Path $Root 'ui_flutter'
-  $steps = @(@('flutter-pub-get', 'flutter pub get'), @('flutter-analyze', 'flutter analyze'))
-  if (Test-Path (Join-Path $ui 'test')) { $steps += , @('flutter-test', 'flutter test') }
-  $steps += , @('flutter-build', 'flutter build windows --release')
-  foreach ($st in $steps) {
-    $r = Invoke-Logged $st[0] $st[1] $ui
-    if ($r.Code -eq 0) { Add-Result 'PASS' $st[0] "$($r.Seconds)s" } else { Add-Result 'FAIL' $st[0] "exit $($r.Code)"; Show-LogTail $r.Log 30; if ($st[0] -eq 'flutter-pub-get') { return } }
+function Test-UiBuilt { return (Test-Path (Join-Path $Root 'ui\dist\index.html')) }
+function Invoke-UiSteps([bool]$full) {
+  if (-not (Have 'npm')) { Add-Result 'FAIL' 'npm' 'npm is not on PATH'; return }
+  $r = Invoke-Logged 'ui-npm-ci' 'npm ci --prefix ui'
+  if ($r.Code -ne 0) { Add-Result 'FAIL' 'ui-npm-ci' "exit $($r.Code)"; Show-LogTail $r.Log 20; return } else { Add-Result 'PASS' 'ui-npm-ci' "$($r.Seconds)s" }
+  if ($full) {
+    foreach ($s in @(@('ui-check', 'npm run check --prefix ui'), @('ui-test', 'npm test --prefix ui'))) {
+      $r = Invoke-Logged $s[0] $s[1]
+      if ($r.Code -eq 0) { Add-Result 'PASS' $s[0] "$($r.Seconds)s" } else { Add-Result 'FAIL' $s[0] "exit $($r.Code)"; Show-LogTail $r.Log 25 }
+      if ($s[0] -eq 'ui-test') { Add-UiTestCount $r.Log }
+    }
+    Test-UiNamedTests
   }
+  $r = Invoke-Logged 'ui-build' 'npm run build --prefix ui'
+  if ($r.Code -eq 0) { Add-Result 'PASS' 'ui-build' "$($r.Seconds)s"; Add-UiBundleReport } else { Add-Result 'FAIL' 'ui-build' "exit $($r.Code)"; Show-LogTail $r.Log 25 }
 }
 
 if (-not $SkipTests) {
   Section 'Rust build and tests (same steps as CI)'
   $before = Get-TripCount
+  # The UI checks are part of the full run (-Ui is accepted but no longer needed); the build also gives Tauri its ui\dist.
+  Invoke-UiSteps $true
+
   # The audio crate links a minimal static FFmpeg (built once from a pinned commit, LGPL only).
   if (-not (Get-Command cl.exe -ErrorAction SilentlyContinue)) {
     # Not in a VS Native Tools prompt: import the MSVC environment the way vcvars64.bat would.
@@ -520,6 +823,11 @@ if (-not $SkipTests) {
   elseif ((Get-Content $r.Log -Raw) -match "no such command: .clippy") { Add-Result 'WARN' 'cargo-clippy' 'clippy is not installed (rustup component add clippy)' }
   else { Add-Result 'FAIL' 'cargo-clippy' "exit $($r.Code)"; Show-LogTail $r.Log 50 }
 
+  # The tests regenerate the ts-rs bindings: compare their content before and after (not `git status`, which would
+  # also flag a binding change that is simply not committed yet).
+  $bindDir = Join-Path $Root 'ui\src\lib\bindings'
+  $bindHash = { Get-ChildItem $bindDir -Filter '*.ts' -ErrorAction SilentlyContinue | Sort-Object Name | ForEach-Object { '{0}:{1}' -f $_.Name, (Get-FileHash -Algorithm SHA256 -LiteralPath $_.FullName).Hash } }
+  $bindBefore = @(& $bindHash)
   $r = Invoke-Logged 'cargo-test' 'cargo test --locked --workspace --no-fail-fast'
   $txt = Get-Content $r.Log -Raw
   $p = 0; $f = 0; $ig = 0
@@ -536,14 +844,13 @@ if (-not $SkipTests) {
   }
   Add-Result 'INFO' 'windows-note' 'the fake-yt-dlp tests in pyxee-sources are unix-only; the live phase "fake429" covers the same cooldown logic on this PC'
   Test-EditedTests
-  Invoke-FlutterSteps
 
   # Known timing-sensitive test (also flaky on the original code: 6 of 40 failures there).
   if ($FlakeRuns -gt 0) {
     $bad = 0
     $firstFailure = $null
     for ($i = 1; $i -le $FlakeRuns; $i++) {
-      $re = Invoke-Logged "flake-$i" 'cargo test --locked -p pyxee-bridge pause_freezes_the_position_and_resume_continues' $Root "pause-test repeat $i of $FlakeRuns"
+      $re = Invoke-Logged "flake-$i" 'cargo test --locked -p pyxee-app pause_freezes_the_position_and_resume_continues' $Root "pause-test repeat $i of $FlakeRuns"
       if ($re.Code -ne 0) {
         $bad++
         # Keep the first failing assertion: it says whether the position moved or audio reached the device.
@@ -565,104 +872,135 @@ if (-not $SkipTests) {
   Add-TripResult 'build-and-tests' $before
 
   $dirty = @(& git status --porcelain 2>$null | Where-Object { $_ -notmatch 'pyxee-check' })
+  if ($ffOk) {
+    $bindAfter = @(& $bindHash)
+    $changed = @(Compare-Object $bindBefore $bindAfter | ForEach-Object { ($_.InputObject -split ':')[0] } | Sort-Object -Unique)
+    if ($changed.Count -eq 0) { Add-Result 'PASS' 'bindings-up-to-date' 'the tests regenerated the ts-rs bindings and nothing changed' } else { Add-Result 'FAIL' 'bindings-up-to-date' ('the tests rewrote: ' + ($changed -join ', ') + ' (commit the regenerated files)') }
+  } else { Add-Result 'INFO' 'bindings-up-to-date' 'SKIPPED: the tests that regenerate them did not run' }
   Add-Result 'INFO' 'git-status-after-tests' "$($dirty.Count) changed/untracked path(s) (the first lines are the files this work changed or added)"
 }
 
 # ---------------------------------------------------------------- 4. optional installer
 
-# Shared by the installer section and the CI replay: what an app folder must and must not hold, and the proof that
-# it starts. `cargo xtask smoke <folder>` runs yt-dlp --version, then starts Pyxee.exe from a portable copy of the
-# folder for a few seconds and fails if it stopped by itself.
-function Test-AppFolder([string]$dir, [string]$label) {
-  foreach ($f in @('Pyxee.exe', 'yt-dlp.exe', 'flutter_windows.dll', 'pyxee_bridge.dll', 'data\icudtl.dat', 'data\app.so', 'THIRD_PARTY_NOTICES.txt', 'FFmpeg-LGPL-2.1.txt', 'GPL-3.0.txt', 'yt-dlp-THIRD_PARTY_LICENSES.txt')) {
-    if (Test-Path (Join-Path $dir $f)) { Add-Result 'PASS' "$label-has-$f" 'present' } else { Add-Result 'FAIL' "$label-has-$f" 'missing' }
-  }
-  $leak = @(Get-ChildItem $dir -Recurse -File -ErrorAction SilentlyContinue | Where-Object { $_.Name -match '^(ffmpeg|ffprobe|ffplay)\.exe$|^(avcodec|avformat|avutil|swresample)(-\d+)?\.dll$' })
-  if ($leak.Count -eq 0) { Add-Result 'PASS' "$label-has-no-ffmpeg" 'no ffmpeg program or libav DLL (libav is linked in statically)' } else { Add-Result 'FAIL' "$label-has-no-ffmpeg" (($leak | ForEach-Object { $_.Name }) -join ', ') }
-  $r = Invoke-Logged "$label-smoke" ('cargo xtask smoke "{0}"' -f $dir)
-  if ($r.Code -eq 0) { Add-Result 'PASS' "$label-starts" 'yt-dlp runs and Pyxee.exe stays up' } else { Add-Result 'FAIL' "$label-starts" "exit $($r.Code)"; Show-LogTail $r.Log 20 }
-}
-
-# The portable zip, opened again from the outside, then unpacked and started.
-function Test-PortableZip {
-  $zip = Get-ChildItem (Join-Path $Root 'target\portable') -Filter '*_x64-portable.zip' -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1
-  if (-not $zip) { Add-Result 'FAIL' 'portable-zip' 'no *_x64-portable.zip under target\portable'; return }
-  Add-Result 'INFO' 'portable-file' ("{0}  {1:N1} MB" -f $zip.Name, ($zip.Length / 1MB))
-  Add-Type -AssemblyName System.IO.Compression.FileSystem
-  $za = [IO.Compression.ZipFile]::OpenRead($zip.FullName)
+# The signing config is only used with a certificate, but whether the installed Tauri CLI accepts its shape
+# (bundle.windows.signCommand as {cmd, args}) is checked on every run, so a CLI upgrade cannot break it silently.
+$tauriCli = Join-Path $Root 'ui\node_modules\.bin\tauri.cmd'
+if (Test-Path $tauriCli) {
+  $env:PYXEE_SIGN_THUMBPRINT = ('0123456789ABCDEF' * 3).Substring(0, 40)
   try {
-    $names = @($za.Entries | ForEach-Object { $_.FullName })
-    foreach ($want in @('Pyxee.exe', 'yt-dlp.exe', 'portable.txt', 'README.txt', 'pyxee_bridge.dll', 'flutter_windows.dll', 'THIRD_PARTY_NOTICES.txt', 'FFmpeg-LGPL-2.1.txt')) {
-      if (@($names | Where-Object { $_ -like "*/$want" }).Count -eq 1) { Add-Result 'PASS' "portable-has-$want" 'present' } else { Add-Result 'FAIL' "portable-has-$want" 'missing from the zip' }
+    $r = Invoke-Logged 'signing-config' 'cargo xtask signing-config'
+    $conf = (Get-Content $r.Log -ErrorAction SilentlyContinue | Where-Object { $_ -match 'tauri\.bundle\.signed\.conf\.json' } | Select-Object -Last 1)
+    if ($r.Code -ne 0 -or -not $conf) { Add-Result 'FAIL' 'tauri-signcommand' 'cargo xtask signing-config produced no config' }
+    else {
+      # `tauri info` takes no --config; the CLI merges the TAURI_CONFIG environment variable into the config it loads.
+      $env:TAURI_CONFIG = (Get-Content -Raw -LiteralPath $conf.Trim())
+      try { $r2 = Invoke-Logged 'tauri-signcommand' ('"{0}" info' -f $tauriCli) (Join-Path $Root 'crates\app') } finally { Remove-Item Env:\TAURI_CONFIG -ErrorAction SilentlyContinue }
+      $txt = (Get-Content $r2.Log -ErrorAction SilentlyContinue) -join "`n"
+      if ($txt -match '(?i)signCommand|unknown field|invalid type|did not match any variant') { Add-Result 'FAIL' 'tauri-signcommand' 'the installed Tauri CLI rejected the signing config (see the log)'; Show-LogTail $r2.Log 15 }
+      elseif ($r2.Code -eq 0) { Add-Result 'PASS' 'tauri-signcommand' 'the Tauri CLI accepts the signCommand {cmd, args} config' }
+      else { Add-Result 'WARN' 'tauri-signcommand' "could not validate (tauri info exited $($r2.Code) for another reason)" }
     }
-    # Flutter's own data\ folder (app.so, icudtl.dat, flutter_assets) is meant to be there; the user's files never are.
-    $bad = @($names | Where-Object { $_ -match '(^|/)data/(library\.db|shell\.json|session\.json|ui_prefs\.json|\.env|logs/|tools/)|(^|/)(ffmpeg|ffprobe|ffplay)\.exe$|(^|/)(avcodec|avformat|avutil|swresample)(-\d+)?\.dll$' })
-    if ($bad.Count -eq 0) { Add-Result 'PASS' 'portable-clean' 'no user data, no ffmpeg program, no libav DLL' } else { Add-Result 'FAIL' 'portable-clean' ($bad -join ', ') }
-  } finally { $za.Dispose() }
-  $dir = Join-Path ([IO.Path]::GetTempPath()) ('pyxee-portable-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
-  try {
-    Expand-Archive -LiteralPath $zip.FullName -DestinationPath $dir -Force
-    $root = Get-ChildItem $dir -Directory | Select-Object -First 1
-    if ($root) { Test-AppFolder $root.FullName 'portable' } else { Add-Result 'FAIL' 'portable-unpack' 'the zip has no top folder' }
-  } finally { if (Test-Path $dir) { Remove-Item $dir -Recurse -Force -ErrorAction SilentlyContinue } }
-}
-
-# The installer, run for real and silently into a temp folder, started, and uninstalled again: proves the installed layout
-# and that the uninstaller removes what the installer wrote (and nothing else).
-function Test-InstalledCopy {
-  $setup = Get-ChildItem (Join-Path $Root 'target\installer') -Filter '*-setup.exe' -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1
-  if (-not $setup) { Add-Result 'FAIL' 'installer-file' 'no *-setup.exe under target\installer'; return }
-  Add-Result 'INFO' 'installer-file' ("{0}  {1:N1} MB" -f $setup.Name, ($setup.Length / 1MB))
-  Add-Result 'INFO' 'installer-signature' ("{0}: {1} (NotSigned is expected without a certificate; see docs/releasing.md)" -f $setup.Name, (Get-AuthenticodeSignature -LiteralPath $setup.FullName).Status)
-  $dir = Join-Path ([IO.Path]::GetTempPath()) ('pyxee-installed-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
-  try {
-    $p = Start-Process -FilePath $setup.FullName -ArgumentList '/S', "/D=$dir" -Wait -PassThru
-    if ($p.ExitCode -ne 0) { Add-Result 'FAIL' 'installer-silent-install' "exit $($p.ExitCode)"; return }
-    Add-Result 'PASS' 'installer-silent-install' 'installed into a temp folder'
-    if (Test-Path (Join-Path $dir 'portable.txt')) { Add-Result 'FAIL' 'installed-has-no-portable-marker' 'portable.txt is in the installed app: it would turn portable mode on' } else { Add-Result 'PASS' 'installed-has-no-portable-marker' 'absent' }
-    Test-AppFolder $dir 'installed'
-    $u = Start-Process -FilePath (Join-Path $dir 'uninstall.exe') -ArgumentList '/S', "_?=$dir" -Wait -PassThru
-    $left = @('Pyxee.exe', 'yt-dlp.exe', 'pyxee_bridge.dll', 'data\app.so') | Where-Object { Test-Path (Join-Path $dir $_) }
-    if ($u.ExitCode -eq 0 -and $left.Count -eq 0) { Add-Result 'PASS' 'installer-uninstall' 'the uninstaller removed the installed files' } else { Add-Result 'FAIL' 'installer-uninstall' "exit $($u.ExitCode); left behind: $($left -join ', ')" }
-  } finally { if (Test-Path $dir) { Remove-Item $dir -Recurse -Force -ErrorAction SilentlyContinue } }
+  } finally { Remove-Item Env:\PYXEE_SIGN_THUMBPRINT -ErrorAction SilentlyContinue }
 }
 
 if ($Installer) {
   Section 'Installer build (slow)'
   $before = Get-TripCount
   $r = Invoke-Logged 'xtask-installer' 'cargo xtask installer'
-  if ($r.Code -eq 0) { Add-Result 'PASS' 'cargo-xtask-installer' "built in $($r.Seconds)s" } else { Add-Result 'FAIL' 'cargo-xtask-installer' "exit $($r.Code) (NSIS missing? set PYXEE_MAKENSIS)"; Show-LogTail $r.Log 30 }
-  # xtask itself refuses a build without Pyxee.exe, yt-dlp.exe, the Flutter files and notices, or with an ffmpeg program,
-  # a libav DLL or user data in it; here the results are opened again from the outside.
-  Test-InstalledCopy
+  if ($r.Code -eq 0) { Add-Result 'PASS' 'cargo-xtask-installer' "built in $($r.Seconds)s" } else { Add-Result 'FAIL' 'cargo-xtask-installer' "exit $($r.Code)"; Show-LogTail $r.Log 30 }
+  $rel = Join-Path $Root 'target\release'
+  # An ffmpeg program or a libav DLL (libav is linked in statically). FFmpeg-LGPL-2.1.txt is meant to be there.
+  $leak = @(Get-ChildItem $rel -Recurse -File -ErrorAction SilentlyContinue | Where-Object { $_.Name -match '^(ffmpeg|ffprobe|ffplay)\.exe$|^(avcodec|avformat|avutil|swresample)(-\d+)?\.dll$' -and $_.FullName -notlike "*\deps\*" -and $_.FullName -notlike "*\build\*" })
+  if ($leak.Count -eq 0) { Add-Result 'PASS' 'installer-has-no-ffmpeg' 'no ffmpeg program or libav DLL under target\release' } else { Add-Result 'FAIL' 'installer-has-no-ffmpeg' (($leak | ForEach-Object { $_.Name }) -join ', ') }
+  $setup = @(Get-ChildItem (Join-Path $rel 'bundle') -Recurse -Include '*.exe' -ErrorAction SilentlyContinue)
+  foreach ($s in $setup) { Add-Result 'INFO' 'installer-file' ("{0}  {1:N1} MB" -f $s.Name, ($s.Length / 1MB)) }
+  Add-TripResult 'installer-build' $before
+  # F8: the installer carries Microsoft's WebView2 bootstrapper in non-silent mode. Its progress window only shows on a PC
+  # that has no WebView2 runtime yet, which cannot be arranged from here.
+  Add-Result 'INFO' 'webview2-progress-manual' 'MANUAL: run the installer built above on a PC without the WebView2 runtime (a fresh Windows 10 VM): the Microsoft bootstrapper window must show download progress. The portable zip needs no change (the update happens in the browser).'
+
+  # The portable zip: xtask itself refuses a zip without Pyxee.exe / yt-dlp.exe / portable.txt or with a data folder or
+  # ffmpeg program in it; here the finished zip is opened again from the outside.
   $r = Invoke-Logged 'xtask-portable' 'cargo xtask portable'
   if ($r.Code -eq 0) { Add-Result 'PASS' 'cargo-xtask-portable' "built in $($r.Seconds)s" } else { Add-Result 'FAIL' 'cargo-xtask-portable' "exit $($r.Code)"; Show-LogTail $r.Log 30 }
-  Test-PortableZip
-  Add-TripResult 'installer-build' $before
+  $zip = Get-ChildItem (Join-Path $Root 'target\portable') -Filter '*_x64-portable.zip' -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+  if (-not $zip) { Add-Result 'FAIL' 'portable-zip' 'no *_x64-portable.zip under target\portable' }
+  else {
+    Add-Result 'INFO' 'portable-file' ("{0}  {1:N1} MB" -f $zip.Name, ($zip.Length / 1MB))
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    $za = [IO.Compression.ZipFile]::OpenRead($zip.FullName)
+    try {
+      $names = @($za.Entries | ForEach-Object { $_.FullName })
+      foreach ($want in @('Pyxee.exe', 'yt-dlp.exe', 'portable.txt', 'README.txt', 'THIRD_PARTY_NOTICES.txt', 'FFmpeg-LGPL-2.1.txt')) {
+        if (@($names | Where-Object { $_ -like "*/$want" }).Count -eq 1) { Add-Result 'PASS' "portable-has-$want" 'present' } else { Add-Result 'FAIL' "portable-has-$want" 'missing from the zip' }
+      }
+      $bad = @($names | Where-Object { $_ -match '(^|/)data(/|$)|(^|/)(ffmpeg|ffprobe|ffplay)\.exe$|(^|/)(avcodec|avformat|avutil|swresample)(-\d+)?\.dll$' })
+      if ($bad.Count -eq 0) { Add-Result 'PASS' 'portable-clean' 'no data folder, no ffmpeg program, no libav DLL' } else { Add-Result 'FAIL' 'portable-clean' ($bad -join ', ') }
+    } finally { $za.Dispose() }
+    foreach ($f in @($setup | Select-Object -First 3)) { Add-Result 'INFO' 'installer-signature' ("{0}: {1} (NotSigned is expected without a certificate; see docs/releasing.md)" -f $f.Name, (Get-AuthenticodeSignature -LiteralPath $f.FullName).Status) }
+  }
 }
 
 # ---------------------------------------------------------------- 4b. CI simulation
 
-# release.yml builds on a clean runner, in steps: the Rust bridge, the Flutter app, then `cargo xtask installer` and
-# `cargo xtask portable` with PYXEE_BUILD_READY=1 (they only gather, package and sign), then it unpacks and starts both
-# results. Here the same steps run in the same order, so a mistake in that order or in what the packaging steps assume
-# shows on this PC and not only in a release.
+# release.yml's portable step runs on a clean runner: the FFmpeg libraries come from the cache (so the MSYS2 login that
+# the FFmpeg step would have made never happens) and the first MSYS2 login therefore happens inside `cargo xtask portable`,
+# where MSYS2 prints its first-run notice on stdout. A developer PC has long since passed that first login, which is why
+# this only showed up in CI. Here a throwaway HOME makes MSYS2 meet it as new, for the child processes of this section only.
 if ($Ci) {
-  Section 'CI simulation (release workflow: separate build steps, then package with PYXEE_BUILD_READY)'
+  Section 'CI simulation (release workflow: cached FFmpeg, first MSYS2 login)'
   $before = Get-TripCount
-  $r = Invoke-Logged 'ci-bridge-build' 'cargo build -p pyxee-bridge --release --locked'
-  if ($r.Code -eq 0) { Add-Result 'PASS' 'ci-bridge-build' "$($r.Seconds)s" } else { Add-Result 'FAIL' 'ci-bridge-build' "exit $($r.Code)"; Show-LogTail $r.Log 30 }
-  $r = Invoke-Logged 'ci-flutter-build' 'flutter build windows --release' (Join-Path $Root 'ui_flutter')
-  if ($r.Code -eq 0) { Add-Result 'PASS' 'ci-flutter-build' "$($r.Seconds)s" } else { Add-Result 'FAIL' 'ci-flutter-build' "exit $($r.Code)"; Show-LogTail $r.Log 30 }
-  $env:PYXEE_BUILD_READY = '1'
+  $ciBash = if ($env:PYXEE_BASH) { $env:PYXEE_BASH } else { 'C:\msys64\usr\bin\bash.exe' }
+  $ciFfDir = if ($env:PYXEE_FFMPEG_DIR) { $env:PYXEE_FFMPEG_DIR } else { Join-Path $Root 'target\ffmpeg\x86_64-pc-windows-msvc' }
+  $oldHome = $env:HOME
+  $ciHomes = New-Object System.Collections.Generic.List[string]
+  $newCiHome = { $h = Join-Path ([IO.Path]::GetTempPath()) ('pyxee-ci-home-' + [guid]::NewGuid().ToString('N').Substring(0, 8)); $ciHomes.Add($h); return $h }
   try {
-    $r = Invoke-Logged 'ci-xtask-installer' 'cargo xtask installer'
-    if ($r.Code -eq 0) { Add-Result 'PASS' 'ci-cargo-xtask-installer' "built in $($r.Seconds)s" } else { Add-Result 'FAIL' 'ci-cargo-xtask-installer' "exit $($r.Code) (what release.yml reports as: cargo xtask installer failed)"; Show-LogTail $r.Log 40 }
-    $r = Invoke-Logged 'ci-xtask-portable' 'cargo xtask portable'
-    if ($r.Code -eq 0) { Add-Result 'PASS' 'ci-cargo-xtask-portable' "built in $($r.Seconds)s" } else { Add-Result 'FAIL' 'ci-cargo-xtask-portable' "exit $($r.Code) (what release.yml reports as: cargo xtask portable failed)"; Show-LogTail $r.Log 40 }
-  } finally { Remove-Item Env:\PYXEE_BUILD_READY -ErrorAction SilentlyContinue }
-  Test-PortableZip
-  Test-InstalledCopy
+    if (-not (Test-Path $ciBash)) {
+      Add-Result 'FAIL' 'ci-msys2' ('MSYS2 bash not found at ' + $ciBash + ' (see ffmpeg-prereq above for the one-time setup)')
+    } else {
+      # The workflow's cache hit: the libraries exist before the portable step. Build them with the normal home if absent.
+      if (-not (Test-Path (Join-Path $ciFfDir 'include\libavformat\avformat.h'))) {
+        $r = Invoke-Logged 'ci-ffmpeg-build' 'cargo xtask ffmpeg'
+        if ($r.Code -eq 0) { Add-Result 'PASS' 'ci-ffmpeg-build' "libraries built first, like a cache hit ($($r.Seconds)s)" } else { Add-Result 'FAIL' 'ci-ffmpeg-build' "exit $($r.Code)"; Show-LogTail $r.Log 40 }
+      }
+
+      # Prove the fresh-home trick works on this PC; if it does not, the portable run below would not be a faithful replay.
+      $h = & $newCiHome
+      $env:HOME = $h
+      $r = Invoke-Logged 'ci-msys2-first-login' ('"{0}" -lc "echo pyxee-ready"' -f $ciBash)
+      $loginTxt = Get-Content $r.Log -Raw -ErrorAction SilentlyContinue
+      if ($loginTxt -match 'Copying skeleton files') { Add-Result 'PASS' 'ci-first-login-reproduced' 'a fresh HOME makes MSYS2 print its first-run notice, as on a clean runner' }
+      else { Add-Result 'WARN' 'ci-first-login-reproduced' 'a fresh HOME did not trigger the MSYS2 first-run notice here, so the replay below is weaker than CI (MSYS2 ignored HOME?)' }
+      Remove-Item $h -Recurse -Force -ErrorAction SilentlyContinue
+
+      # A new fresh home for the real run: the probe above used up the first login of the previous one.
+      $env:HOME = (& $newCiHome)
+      $r = Invoke-Logged 'ci-xtask-portable' 'cargo xtask portable'
+      if ($r.Code -eq 0) { Add-Result 'PASS' 'ci-cargo-xtask-portable' "built in $($r.Seconds)s on a first MSYS2 login" } else { Add-Result 'FAIL' 'ci-cargo-xtask-portable' "exit $($r.Code) (what release.yml reports as: cargo xtask portable failed)"; Show-LogTail $r.Log 30 }
+    }
+  } finally {
+    if ($null -eq $oldHome) { Remove-Item Env:\HOME -ErrorAction SilentlyContinue } else { $env:HOME = $oldHome }
+    foreach ($h in $ciHomes) { if (Test-Path $h) { Remove-Item $h -Recurse -Force -ErrorAction SilentlyContinue } }
+  }
+
+  # The rest of release.yml's step: unpack the zip and run what it carries.
+  $ciZip = Get-ChildItem (Join-Path $Root 'target\portable') -Filter '*_x64-portable.zip' -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+  if (-not $ciZip) { Add-Result 'FAIL' 'ci-portable-zip' 'the portable zip was not built' }
+  else {
+    $ciDir = Join-Path ([IO.Path]::GetTempPath()) ('pyxee-ci-portable-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
+    try {
+      Expand-Archive -LiteralPath $ciZip.FullName -DestinationPath $ciDir -Force
+      $ciRoot = Get-ChildItem $ciDir -Directory | Select-Object -First 1
+      if (-not $ciRoot -or -not (Test-Path (Join-Path $ciRoot.FullName 'portable.txt'))) { Add-Result 'FAIL' 'ci-portable-marker' 'portable.txt is missing from the unpacked zip' }
+      else { Add-Result 'PASS' 'ci-portable-marker' 'portable.txt is in the unpacked zip' }
+      $ciYt = if ($ciRoot) { Join-Path $ciRoot.FullName 'yt-dlp.exe' } else { $null }
+      if ($ciYt -and (Test-Path $ciYt)) {
+        $ver = & $ciYt --version 2>&1 | Select-Object -First 1
+        if ($LASTEXITCODE -eq 0) { Add-Result 'PASS' 'ci-portable-ytdlp-runs' "yt-dlp $ver" } else { Add-Result 'FAIL' 'ci-portable-ytdlp-runs' 'the portable yt-dlp does not run' }
+      } else { Add-Result 'FAIL' 'ci-portable-ytdlp-runs' 'yt-dlp.exe is missing from the unpacked zip' }
+    } finally { if (Test-Path $ciDir) { Remove-Item $ciDir -Recurse -Force -ErrorAction SilentlyContinue } }
+  }
   Add-TripResult 'ci-simulation' $before
 }
 
@@ -788,20 +1126,35 @@ if ($Manual) {
     @('app-clear-then-add', 'Clear the queue, then add a song: Undo no longer offers to bring the cleared list back over the new song?'),
     @('app-autoplay-failure', 'Optional: with Autoplay on, let the last song play out while the network is off: a notice says Autoplay could not load similar songs, and the bar does not show Playing with nothing audible (skip if you cannot try it)?'),
     @('app-update-progress', 'Settings > Updates: Check yt-dlp, then Update yt-dlp if one is offered (otherwise skip): a progress bar and text like "Downloading yt-dlp: 12.3 of 18.4 MB (67%)" show while it installs, then "Updated to ..."?'),
-    @('app-no-discord-id-field', 'Settings > Advanced has no Discord application ID field, and (with the Discord desktop app running, the Discord option on, and a build that has an application ID) "Listening to Pyxee" shows your song in Discord?'),
-    @('ui-wide', 'UI: maximise the window (1440 px or wider). Is the queue lane beside the page, the player deck at the bottom, and nothing cut off or overlapping?'),
-    @('ui-medium', 'UI: make the window about 1000 px wide. Is the player deck at the bottom with no queue lane, and is the song list still easy to read?'),
-    @('ui-narrow', 'UI: make the window about 600 px wide. Is there a dock plus a bottom bar instead of the deck, and does tapping the dock open Now Playing?'),
-    @('ui-smallest', 'UI: make the window as small as it goes. Is there no sideways scroll bar and nothing important cut off, on Home and on a song list?'),
-    @('ui-views', 'UI: open Home, Explore, Library, Queue, a playlist and a search. Does every page load, and do the column names line up with the rows?'),
-    @('ui-playing-mark', 'UI: play a song and look at every list it is in. Is the playing row marked, and does the mark stand still when you pause?'),
-    @('ui-now-playing', 'UI: open Now Playing (click the cover). Do the cover, title, seek bar and buttons fit, do the Up next / Lyrics / Related tabs work, and does Close take you back?'),
-    @('ui-dark-light', 'UI: in Settings switch between a dark and a light theme (and Match system). Is all text readable and every control clearly visible in both?'),
-    @('ui-custom-theme', 'UI: Settings > theme editor: create a theme, save it, then delete it. Does the whole app follow its colours while it is selected?'),
-    @('ui-keyboard-only', 'UI: using only the keyboard, can you reach the navigation, the search box, a song row, the player buttons and open a sheet (Esc closes it), with a visible focus mark everywhere?'),
-    @('ui-tray', 'Tray: with close to tray on, does Close hide the window while the music keeps playing, and does the tray icon bring it back and offer previous / play / next?'),
-    @('ui-high-dpi', 'UI: at 150% and at 200% display scaling (Settings > System > Display), is the text sharp and nothing blurry or cut off?'),
-    @('ui-system-font', 'UI: does the text look like Windows 11 system text (Segoe UI Variable) everywhere, with no empty boxes where an icon should be?')
+    @('app-no-discord-id-field', 'Settings > Advanced has no Discord application ID field, and (with the Discord desktop app running and the Discord option on) "Listening to Pyxee" still shows your song in Discord?'),
+    @('ui-wide', 'UI: maximise the window (1280 px or wider). Is there a rail on the left with the icons AND their names, the search box on top of the page, the player (cover, controls, Up next) on the right, and nothing cut off or overlapping?'),
+    @('ui-medium', 'UI: make the window about 1000 px wide. Does the rail show icons only (a tooltip on each), does the player stay on the right, and is the song list still easy to read?'),
+    @('ui-narrow', 'UI: make the window about 400 px wide. Are the rail and the player column gone, a one-line player (dock) above the bottom bar, Settings at the top right, and does tapping the dock open Now Playing?'),
+    @('ui-smallest', 'UI: make the window as small as it goes (360 x 560). Is there no sideways scroll bar and nothing important cut off, on Home and on a song list?'),
+    @('ui-views', 'UI: open Home, Explore, Library (all four tabs), Queue, a playlist and a search. Does every view keep its title at the top while the list scrolls, and do the column names (#, Title, Artist, Time) line up with the rows?'),
+    @('ui-playing-mark', 'UI: play a song and look at every list it is in. Does its row show moving bars and an accent-coloured title, and do the bars stand still when you pause?'),
+    @('ui-stage', 'UI: in the wide layout, do the player on the right (seek, previous / play / next, like, volume) and its Up next preview work, does clicking an Up next song play it, and does Open queue open the Queue?'),
+    @('ui-now-playing', 'UI: open Now Playing (click the cover). At a normal window height do the cover, title, seek bar and buttons fit without scrolling, do the Up next / Lyrics / Related tabs work, and does Close take you back?'),
+    @('ui-dark-light', 'UI: in Settings > Appearance switch between a dark and a light theme (and try Match system). Is all text readable, the chosen place in the rail, the playing row, the buttons and the switches all clearly visible in both?'),
+    @('ui-mica', 'UI: on Windows 11 does the backdrop show through the rail and the page edge, while menus, sheets, the search suggestions and Now Playing are NOT see-through (on Windows 10: everything solid)?'),
+    @('ui-custom-theme', 'UI: Settings > Customize: create a theme, save it, then delete it. Does the whole app (rail, page, player, sheets) follow its colours while it is selected?'),
+    @('ui-settings', 'UI: in Settings, does every switch work with the mouse and with Space, can you tell on from off by the position of the knob and not only by colour, and do all five sections show?'),
+    @('ui-keyboard-only', 'UI: using only the keyboard, can you reach the rail, the search box, a song row (its like and menu buttons appear when focused), the player buttons and open a sheet (focus stays inside, Esc closes it and focus comes back), with a visible focus ring at every stop? Do Space, arrows, N and P still work?'),
+    @('ui-mini-flyout', 'UI: do the mini player and the tray flyout show cover, title, thin progress line and previous / play / next without cutting anything off, and do their buttons work?'),
+    @('ui-high-dpi', 'UI: at 150% and at 200% display scaling (Settings > System > Display), is the text sharp, are the thin lines and icons crisp, and is nothing blurry or cut off?'),
+    @('ui-reduced-motion', 'UI: turn off Windows Settings > Accessibility > Visual effects > Animation effects. Do sheets and Now Playing now appear without sliding, and do the playing bars stand still?'),
+    @('power-log-hidden', 'Power: start the app with PYXEE_LOG=debug, play a song, close the window to the tray, wait 10 s, reopen it. Does the log have, for main, a line ending in asleep (or a warning that WebView2 declined), a line IsSuspended = ... after TrySuspend, and 5 s later still asleep (or a warning awake again with what was sent)? Is the music uninterrupted and the window correct on reopening?'),
+    @('power-log-mini-flyout', 'Power: with the same logging, open and hide the mini player and the tray flyout. Do mini and flyout each log the same lines, and do they reopen showing the current song and state?'),
+    @('frame-drag-resize', 'Borderless: is there no Windows title bar on the main window, only Pyxee''s slim bar with the three buttons at the top right? Can you drag the window by the empty part of the bar, double-click it to maximize and restore, and resize it from every edge and corner (the mouse pointer changes at the edges)?'),
+    @('frame-buttons-tray', 'Borderless: do Minimize, Maximize/Restore and Close work, and does the middle icon switch between maximize and restore (also after Win+Up and Win+Down)? With "Keep playing in the tray" on, does Close hide the window and the music keep playing; does reopening from the tray show the bar again?'),
+    @('frame-maximized-fill', 'Borderless: a maximized window fills the screen above the taskbar (nothing hidden under it, no gap, no controls cut off at the top or right). Does Mica show through as before and the corners look right when not maximized?'),
+    @('frame-overlays', 'Borderless: with Settings, a sheet or Now Playing open, the title bar and its buttons stay visible and usable, and nothing in the sheet or Now Playing is hidden under the bar. Do the mini player and the tray flyout look and behave as before?'),
+    @('frame-setting', 'Borderless: Settings > Windows > "Borderless window" switched off gives the main window the normal Windows title bar at once (Mica still shows, the content is not cut off, Pyxee''s own bar is gone); switched on again takes it away. Does the choice survive closing and starting Pyxee, also when it starts hidden in the tray and is opened from there?'),
+    @('frame-fullscreen', 'Full screen: F11 fills the whole screen with no title bar (Pyxee''s or Windows'') and covers the taskbar; F11 again brings the window and its bar back as they were (maximized or not). Music keeps playing, and Now Playing and Settings still open.'),
+    @('frame-mica', 'Mica: with the borderless window, does the Windows 11 backdrop show through the rail and the page as it did with the Windows title bar (also maximized, in light and dark)? Switch "Borderless window" off and on again: does Mica still show in both?'),
+    @('explore-genres', 'Explore: below the title are genre chips (For you first). With a region that lists them, are Anime, J-Pop and K-Pop the first ones after it? Pick one: does the page change to that genre''s playlists and songs (and no albums), and does a playlist cover start playing it? Pick For you again: is "New albums & singles" the last of YouTube Music''s shelves?'),
+    @('explore-genres-failure', 'Explore: turn the network off, pick a genre that you have not opened yet. Does it say it could not load (with Try again) and keep the chips, and does Try again work after the network is back?'),
+    @('ui-system-font', 'UI: does the text look like Windows 11 system text (Segoe UI Variable) everywhere, with no serif fallback and no empty boxes where an icon should be?')
   )
   foreach ($it in $items) {
     $a = ''

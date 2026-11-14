@@ -1,0 +1,506 @@
+import type { WindowTint } from './color';
+import type { Backend } from './backend';
+import { MockLibrary } from './mock-library';
+import type { CommandDto } from './bindings/CommandDto';
+import type { EntryDto } from './bindings/EntryDto';
+import type { PlayerStateDto } from './bindings/PlayerStateDto';
+import type { PerfReportDto } from './bindings/PerfReportDto';
+import type { PositionDto } from './bindings/PositionDto';
+import type { TrackDto } from './bindings/TrackDto';
+import type { WindowInfoDto } from './bindings/WindowInfoDto';
+import type { LyricsDto } from './bindings/LyricsDto';
+import type { ShellSettingsDto } from './bindings/ShellSettingsDto';
+import type { SleepSettingDto } from './bindings/SleepSettingDto';
+import type { SleepStateDto } from './bindings/SleepStateDto';
+import type { SleepStatusDto } from './bindings/SleepStatusDto';
+import type { ExploreShelfDto } from './bindings/ExploreShelfDto';
+import type { GenreDto } from './bindings/GenreDto';
+import type { FilterInfoDto } from './bindings/FilterInfoDto';
+import type { SearchFilterDto } from './bindings/SearchFilterDto';
+import type { SearchItemDto } from './bindings/SearchItemDto';
+import type { SearchResponseDto } from './bindings/SearchResponseDto';
+import type { AppUpdateDto } from './bindings/AppUpdateDto';
+import type { YtdlpUpdateDto } from './bindings/YtdlpUpdateDto';
+import type { EnvSettingsDto } from './bindings/EnvSettingsDto';
+import type { EnvVarDto } from './bindings/EnvVarDto';
+import { ENV_VARS } from './envvars';
+
+/** JSON round trip, like the real IPC boundary. (structuredClone rejects Svelte's reactive proxies.) */
+const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v)) as T;
+
+/** A square picture for demo track `i`: two soft colour blobs on a gradient, as a data URI (nothing to fetch). */
+function demoCover(i: number): string {
+  const h = (i * 47 + 20) % 360;
+  const svg =
+    `<svg xmlns="http://www.w3.org/2000/svg" width="480" height="480" viewBox="0 0 480 480">` +
+    `<defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="hsl(${h} 70% 38%)"/>` +
+    `<stop offset="1" stop-color="hsl(${(h + 70) % 360} 75% 22%)"/></linearGradient></defs>` +
+    `<rect width="480" height="480" fill="url(#g)"/>` +
+    `<circle cx="${140 + (i % 3) * 70}" cy="170" r="120" fill="hsl(${(h + 150) % 360} 80% 60%)" fill-opacity=".55"/>` +
+    `<circle cx="330" cy="${300 + (i % 2) * 40}" r="95" fill="hsl(${(h + 30) % 360} 90% 70%)" fill-opacity=".45"/></svg>`;
+  return `data:image/svg+xml,${encodeURIComponent(svg)}`;
+}
+
+export const DEMO_TRACKS: TrackDto[] = [
+  ['Neon Harbor', 'Lowtide', 38],
+  ['Paper Planes', 'Alma Vey', 31],
+  ['Slow Orbit', 'Kestrel Hall', 36],
+  ['Golden Hour Static', 'Marlow', 29],
+  ['Glass Rooms', 'Nova Fen', 34],
+  ['Afterimage', 'Dune Choir', 40],
+  ['Low Light Parade', 'Wren & Co.', 27],
+  ['Salt and Signal', 'Harbor Lines', 33],
+].map(([title, artist, secs], i) => ({
+  key: `demo:${i}`,
+  title: title as string,
+  artist: artist as string,
+  durationMs: (secs as number) * 1000,
+  thumbnail: demoCover(i),
+}));
+
+/**
+ * `?len=210` on the page's address makes every demo song that many seconds long. The built-in ones are 27-40 s, so a bar
+ * moves 10 times faster than for a real song of 3-4 minutes: use this when measuring anything that follows the position.
+ */
+{
+  const len = typeof location !== 'undefined' ? Number(new URLSearchParams(location.search).get('len')) : 0;
+  if (len >= 10 && len <= 7200) for (const t of DEMO_TRACKS) t.durationMs = Math.round(len * 1000);
+}
+
+/**
+ * Browser/test stand-in for the Rust backend. It models just enough of the real state machine
+ * (loading -> audible, gapless advance, queue edits, undo) to develop and test the UI without Tauri.
+ * The real behaviour lives in `pyxee-core`; do not add features here that core does not have.
+ */
+export class MockBackend extends MockLibrary implements Backend {
+  #s: PlayerStateDto = {
+    seq: 0, transport: { state: 'idle' }, audible: null, loading: null, positionMs: 0, repeat: 'off',
+    shuffle: false, autoplay: true, canUndo: false, queue: [], current: null, upcoming: [],
+  };
+  #next = 1;
+  #listeners = new Set<(s: PlayerStateDto) => void>();
+  #positionListeners = new Set<(p: PositionDto) => void>();
+  /** The last full state's content without `seq` and `positionMs`: a state that only differs in those is sent light. */
+  #lastKey = '';
+  #loadMs = 0;
+  #undo: ({ entry: EntryDto; index: number } | { cleared: EntryDto[]; current: number | null })[] = [];
+  #timer: ReturnType<typeof setInterval> | null = null;
+  /** Simulated search latency (ms); tests set it to 0. */
+  searchLatencyMs = 350;
+  #listenedMs = 0;
+  #counted = false;
+
+  /** A new listen begins (also when a repeated song starts over). */
+  #newListen() {
+    this.#listenedMs = 0;
+    this.#counted = false;
+  }
+
+  start(tickMs = 250) {
+    this.#timer ??= setInterval(() => this.tick(tickMs), tickMs);
+  }
+  stop() {
+    if (this.#timer) clearInterval(this.#timer);
+    this.#timer = null;
+  }
+
+  async getState() { return clone(this.#s); }
+  async windowInfo(): Promise<WindowInfoDto> { return { backdrop: 'none' }; }
+  /** The last window theme the UI asked for (`null` = follow the system), so tests can check it arrived. */
+  windowTheme: 'dark' | 'light' | null | undefined = undefined;
+  async setWindowTheme(theme: 'dark' | 'light' | null) { this.windowTheme = theme; }
+  /** The last native window tint the UI asked for (`null` = the system's), so tests can check it arrived. */
+  windowTint: WindowTint | null | undefined = undefined;
+  async setWindowTint(tint: WindowTint | null) { this.windowTint = tint; }
+  /** The last volume the UI asked for (0-100), so tests can check it arrived. */
+  volume = 100;
+  async setVolume(percent: number) { this.volume = percent; }
+  /** Demo log location, and a count of how many times the folder was opened. */
+  logFolderOpens = 0;
+  logError: string | null = null;
+  async logInfo() {
+    return {
+      dir: 'C:\\Users\\you\\AppData\\Local\\dev.pyxee.app\\logs',
+      file: 'C:\\Users\\you\\AppData\\Local\\dev.pyxee.app\\logs\\pyxee.log',
+      error: this.logError,
+    };
+  }
+  async openLogFolder() { this.logFolderOpens++; }
+  releasePageOpens = 0;
+  async openReleasePage() { this.releasePageOpens++; }
+  /** The `.env` values by variable name; set `envError` to make `envSet` reject. */
+  envValues: Record<string, string> = {};
+  envError: string | null = null;
+  #envState(): EnvSettingsDto {
+    return {
+      file: 'C:\\Users\\you\\AppData\\Local\\dev.pyxee.app\\.env',
+      vars: ENV_VARS.map((v) => ({ name: v.name, value: this.envValues[v.name] ?? '', fromWindows: false })),
+    };
+  }
+  /** `?perf` on the page's address turns the diagnostics on in the standalone demo. */
+  async perfEnabled() { return typeof location !== 'undefined' && /[?&]perf\b/.test(location.search); }
+  /** `?seek=pixel|glide|steps` on the page's address picks a seek-bar mode in the standalone demo (default: step). */
+  async seekMode() { return typeof location !== 'undefined' ? (new URLSearchParams(location.search).get('seek') ?? 'step') : 'step'; }
+  /** `?os=linux` on the page's address shows the demo as it looks on Linux (default: Windows). */
+  async platform() { return typeof location !== 'undefined' ? (new URLSearchParams(location.search).get('os') ?? 'windows') : 'windows'; }
+  async perfLog(report: PerfReportDto) { console.info('perf', JSON.stringify(report)); }
+  async envGet() { return this.#envState(); }
+  async envSet(vars: EnvVarDto[]) {
+    if (this.envError) throw this.envError;
+    this.envValues = Object.fromEntries(vars.map((v) => [v.name, v.value]));
+    return this.#envState();
+  }
+  /** What the update checks answer; set `updateFailure` to make any update call reject. */
+  appUpdate: AppUpdateDto = { current: '0.1.0', latest: '0.1.0', available: false, notesUrl: 'https://example.test/releases', notes: '', installable: true, portable: false };
+  ytdlpUpdate: YtdlpUpdateDto = { available: false, currentVersion: '2026.01.01' };
+  updateFailure: string | null = null;
+  updateCalls: string[] = [];
+  async updateCheckApp() { this.updateCalls.push('checkApp'); if (this.updateFailure) throw this.updateFailure; return clone(this.appUpdate); }
+  async updateInstallApp() { this.updateCalls.push('installApp'); if (this.updateFailure) throw this.updateFailure; }
+  async updateCheckYtdlp() { this.updateCalls.push('checkYtdlp'); if (this.updateFailure) throw this.updateFailure; return clone(this.ytdlpUpdate); }
+  async updateInstallYtdlp() { this.updateCalls.push('installYtdlp'); if (this.updateFailure) throw this.updateFailure; this.ytdlpUpdate = { available: false, currentVersion: '2026.10.01' }; return '2026.10.01'; }
+  async onUpdateProgress() { return () => {}; }
+  #noticeListeners = new Set<(m: string) => void>();
+  async onNotice(cb: (m: string) => void) {
+    this.#noticeListeners.add(cb);
+    return () => void this.#noticeListeners.delete(cb);
+  }
+  /** Simulates the backend telling the listener something (e.g. a song was skipped). */
+  emitNotice(message: string) {
+    for (const cb of this.#noticeListeners) cb(message);
+  }
+  async devCatalog() { return DEMO_TRACKS; }
+
+  // ---- lyrics, sleep timer, shell settings (simplified stand-ins for the Rust side) ----
+  /** Lyrics a test wants for a song key; otherwise demo lines every 5 s. Keys containing "nolyrics" / "instrumental" / "lyricsfail" give those answers. */
+  lyricsFor = new Map<string, LyricsDto>();
+  lyricsRequests: string[] = [];
+  async coverBytes(): Promise<ArrayBuffer> {
+    throw new Error('no cover in the demo');
+  }
+  async lyricsGet(track: TrackDto): Promise<LyricsDto> {
+    this.lyricsRequests.push(track.key);
+    const set = this.lyricsFor.get(track.key);
+    if (set) return set;
+    if (track.key.includes('nolyrics')) return { kind: 'notFound' };
+    if (track.key.includes('instrumental')) return { kind: 'instrumental' };
+    if (track.key.includes('lyricsfail')) return { kind: 'error', message: 'could not reach the lyrics service' };
+    const n = Math.max(2, Math.floor(((track.durationMs ?? 40_000) - 4_000) / 5_000));
+    return { kind: 'synced', lines: Array.from({ length: n }, (_, i) => ({ timeMs: 2_000 + i * 5_000, text: `${track.title}, line ${i + 1}` })) };
+  }
+  #sleep: SleepStatusDto | null = null;
+  #stopAfter = false;
+  #sleepListeners = new Set<(s: SleepStateDto) => void>();
+  #emitSleep() { for (const cb of this.#sleepListeners) cb({ status: this.#sleep ? { ...this.#sleep } : null }); }
+  async sleepSet(setting: SleepSettingDto) {
+    this.#sleep = setting.kind === 'minutes' ? (setting.minutes > 0 ? { kind: 'minutes', remainingMs: setting.minutes * 60_000 } : null)
+      : setting.kind === 'endOfTrack' ? { kind: 'endOfTrack' }
+      : setting.count > 0 ? { kind: 'tracks', left: setting.count } : null;
+    this.#syncStop();
+    this.#emitSleep();
+  }
+  async sleepCancel() { this.#sleep = null; this.#syncStop(); this.#emitSleep(); }
+  async sleepExtend(minutes: number) {
+    if (this.#sleep?.kind === 'minutes') this.#sleep = { kind: 'minutes', remainingMs: this.#sleep.remainingMs + minutes * 60_000 };
+    else if (!this.#sleep) this.#sleep = { kind: 'minutes', remainingMs: minutes * 60_000 };
+    this.#emitSleep();
+  }
+  async sleepGet(): Promise<SleepStateDto> { return { status: this.#sleep ? { ...this.#sleep } : null }; }
+  async onSleep(cb: (s: SleepStateDto) => void) {
+    this.#sleepListeners.add(cb);
+    return () => void this.#sleepListeners.delete(cb);
+  }
+  #syncStop() { this.#stopAfter = this.#sleep?.kind === 'endOfTrack' || (this.#sleep?.kind === 'tracks' && this.#sleep.left === 1); }
+  /** The sleep timer's clock, driven by `tick`. */
+  #sleepTick(ms: number) {
+    if (this.#sleep?.kind !== 'minutes') return;
+    const remainingMs = this.#sleep.remainingMs - ms;
+    if (remainingMs > 0) { this.#sleep = { kind: 'minutes', remainingMs }; this.#emitSleep(); return; }
+    this.#sleep = null;
+    if (this.#s.transport.state === 'playing') this.#s.transport = { state: 'paused', id: this.#s.transport.id, loaded: true };
+    this.#publish();
+    this.#emitSleep();
+  }
+  /** A song finished: count it for the sleep timer. Returns true when playback must stay stopped. */
+  #sleepSongEnded(): boolean {
+    if (this.#sleep?.kind === 'endOfTrack') { this.#sleep = null; this.#syncStop(); this.#emitSleep(); return true; }
+    if (this.#sleep?.kind === 'tracks') {
+      const left = this.#sleep.left - 1;
+      this.#sleep = left > 0 ? { kind: 'tracks', left } : null;
+      this.#syncStop();
+      this.#emitSleep();
+      return left <= 0;
+    }
+    return false;
+  }
+  shell: ShellSettingsDto = { closeToTray: false, startWithWindows: false, toastOnChange: false, trayControls: false, flyoutOnClick: true, discordPresence: true, lastfmScrobbling: false, borderless: true, checkPrereleases: false };
+  /** Set to make `shellSet` fail, to test how the UI reports it. */
+  shellError: string | null = null;
+  async shellGet() { return { ...this.shell }; }
+  async shellSet(settings: ShellSettingsDto) {
+    if (this.shellError) throw this.shellError;
+    this.shell = { ...settings };
+    return { ...this.shell };
+  }
+  trayCalls: string[] = [];
+  async flyoutHide() { this.trayCalls.push('flyoutHide'); }
+  async flyoutOpenMain() { this.trayCalls.push('flyoutOpenMain'); }
+  async miniToggle() { this.trayCalls.push('miniToggle'); }
+  async mainShow() { this.trayCalls.push('mainShow'); }
+  async searchFilters(): Promise<FilterInfoDto[]> {
+    return (['all', 'songs', 'videos', 'albums', 'artists', 'playlists'] as SearchFilterDto[]).map((filter) => ({
+      filter,
+      supported: filter !== 'albums',
+    }));
+  }
+  /** Set to make `relatedGet` reject, e.g. `{ kind: 'offline', message: '...' }`. */
+  relatedFailure: unknown = null;
+  relatedCalls: string[] = [];
+  async relatedGet(key: string, count: number): Promise<TrackDto[]> {
+    this.relatedCalls.push(key);
+    if (this.relatedFailure) throw this.relatedFailure;
+    return DEMO_TRACKS.filter((t) => t.key !== key).slice(0, count);
+  }
+  /** Set to make `genresGet`, `genreGet` or `playlistTracksGet` reject, e.g. `{ kind: 'offline', message: '...' }`. */
+  genreFailure: unknown = null;
+  genresCalls = 0;
+  genreCalls: string[] = [];
+  playlistCalls: string[] = [];
+  /** What `genresGet` answers: genres as YouTube Music lists them, in its order. */
+  genres: GenreDto[] = [
+    { title: 'Chill', params: 'p-chill' },
+    { title: 'Rock', params: 'p-rock' },
+    { title: 'K-Pop', params: 'p-kpop' },
+    { title: 'J-Pop', params: 'p-jpop' },
+    { title: 'Anime', params: 'p-anime' },
+  ];
+  /** What `genreGet` answers for any genre: a playlists shelf and a songs shelf, like a genre page. */
+  genreShelves: ExploreShelfDto[] = [
+    {
+      kind: 'playlists',
+      id: 'genre-0',
+      title: 'Featured playlists',
+      playlists: [
+        { id: 'RDdemo1', title: 'Essentials', subtitle: 'YouTube Music', thumbnail: null },
+        { id: 'RDdemo2', title: 'Rising', subtitle: 'YouTube Music', thumbnail: null },
+      ],
+    },
+    { kind: 'songs', id: 'genre-1', title: 'Top songs', tracks: DEMO_TRACKS.slice(0, 3) },
+  ];
+  async genresGet(): Promise<GenreDto[]> {
+    this.genresCalls++;
+    if (this.genreFailure) throw this.genreFailure;
+    return clone(this.genres);
+  }
+  async genreGet(params: string): Promise<ExploreShelfDto[]> {
+    this.genreCalls.push(params);
+    if (this.genreFailure) throw this.genreFailure;
+    return clone(this.genreShelves);
+  }
+  async playlistTracksGet(id: string): Promise<TrackDto[]> {
+    this.playlistCalls.push(id);
+    if (this.genreFailure) throw this.genreFailure;
+    return DEMO_TRACKS.slice(0, 3);
+  }
+  async suggest(prefix: string) {
+    const p = prefix.trim().toLowerCase();
+    if (!p) return [];
+    return DEMO_TRACKS.flatMap((t) => [t.title, t.artist]).filter((s, i, a) => s.toLowerCase().includes(p) && a.indexOf(s) === i).slice(0, 6);
+  }
+  /** Demo search. Queries starting with !offline, !ratelimit or !missing simulate those failures. */
+  async search(query: string, filter: SearchFilterDto): Promise<SearchResponseDto> {
+    await new Promise((r) => setTimeout(r, this.searchLatencyMs));
+    const q = query.trim().toLowerCase();
+    if (q.startsWith('!offline')) throw { kind: 'offline', message: "You're offline, or the music service can't be reached." };
+    if (q.startsWith('!ratelimit')) throw { kind: 'rateLimited', message: 'The music service is limiting requests right now. Try again in a moment.' };
+    if (q.startsWith('!missing')) throw { kind: 'toolMissing', message: 'yt-dlp was not found. Check that it is installed or set its path.' };
+    if (filter === 'albums') throw { kind: 'unsupported', message: 'Album search is not supported by this source yet.' };
+    const hits = DEMO_TRACKS.filter((t) => `${t.title} ${t.artist}`.toLowerCase().includes(q));
+    let items: SearchItemDto[];
+    if (filter === 'artists') {
+      items = [...new Set(hits.map((t) => t.artist))].map((name) => ({ type: 'artist', key: `demo-artist:${name}`, name, thumbnail: null }));
+    } else if (filter === 'playlists') {
+      items = hits.length ? [{ type: 'playlist', key: 'demo-playlist:1', title: `${query.trim()} mix`, uploader: 'Pyxee demo', thumbnail: null }] : [];
+    } else {
+      items = hits.map((track) => ({ type: 'track', track }));
+    }
+    return { items };
+  }
+  /** Like the real app: a state in which only the position moved arrives here, not through `onState`. */
+  async onPosition(cb: (p: PositionDto) => void) {
+    this.#positionListeners.add(cb);
+    return () => void this.#positionListeners.delete(cb);
+  }
+  async onState(cb: (s: PlayerStateDto) => void) {
+    this.#listeners.add(cb);
+    return () => void this.#listeners.delete(cb);
+  }
+
+  async dispatch(c: CommandDto) {
+    this.#apply(c);
+    this.#publish();
+  }
+
+  /** Advances simulated time. Exposed so tests can drive it deterministically. */
+  tick(ms: number) {
+    this.#sleepTick(ms);
+    const s = this.#s;
+    if (s.transport.state === 'loading') {
+      this.#loadMs -= ms;
+      if (this.#loadMs <= 0) {
+        this.#newListen();
+        s.audible = s.transport.id; s.loading = null;
+        s.transport = { state: 'playing', id: s.audible };
+      }
+    } else if (s.transport.state === 'playing') {
+      s.positionMs += ms;
+      const entry = this.#entry(s.transport.id);
+      const dur = entry?.track.durationMs ?? null;
+      this.#listenedMs += ms;
+      if (entry && !this.#counted && this.#listenedMs >= Math.min(30_000, dur ? dur / 2 : 30_000)) {
+        this.#counted = true;
+        this.recordPlay(entry.track);
+      }
+      if (dur != null && s.positionMs >= dur) this.#ended(s.transport.id);
+    } else {
+      return;
+    }
+    this.#publish();
+  }
+
+  #entry(id: number | null) { return this.#s.queue.find((e) => e.id === id); }
+  #index(id: number | null) { return this.#s.queue.findIndex((e) => e.id === id); }
+
+  #publish() {
+    const s = this.#s;
+    const i = this.#index(s.current);
+    s.upcoming = i < 0 ? s.queue.map((e) => e.id) : s.queue.slice(i + 1).map((e) => e.id);
+    s.canUndo = this.#undo.length > 0;
+    s.seq += 1;
+    const key = JSON.stringify({ ...s, seq: 0, positionMs: 0 });
+    if (key === this.#lastKey && this.#positionListeners.size > 0) {
+      const light = { seq: s.seq, positionMs: s.positionMs };
+      for (const cb of this.#positionListeners) cb(light);
+      return;
+    }
+    this.#lastKey = key;
+    const snapshot = clone(s);
+    for (const cb of this.#listeners) cb(snapshot);
+  }
+
+  #load(id: number, startMs = 0) {
+    const s = this.#s;
+    s.current = id; s.loading = id; s.audible = null; s.positionMs = startMs;
+    s.transport = { state: 'loading', id };
+    this.#loadMs = 500;
+  }
+
+  #stop() {
+    const s = this.#s;
+    s.transport = { state: 'idle' }; s.audible = null; s.loading = null; s.positionMs = 0;
+  }
+
+  #ended(id: number) {
+    const s = this.#s;
+    const park = this.#sleepSongEnded();
+    if (s.repeat === 'one' && !park) { s.positionMs = 0; this.#newListen(); return; }
+    const i = this.#index(id);
+    const next = s.queue[i + 1] ?? (s.repeat === 'all' ? s.queue[0] : undefined);
+    if (!next) return this.#stop();
+    if (park) {
+      // The sleep timer's last song: wait, paused, on the one that would have come next.
+      s.current = next.id; s.audible = null; s.positionMs = 0;
+      s.transport = { state: 'paused', id: next.id, loaded: false };
+      return;
+    }
+    // Gapless: the next track becomes audible immediately.
+    this.#newListen();
+    s.current = next.id; s.audible = next.id; s.positionMs = 0;
+    s.transport = { state: 'playing', id: next.id };
+  }
+
+  #apply(c: CommandDto) {
+    const s = this.#s;
+    switch (c.type) {
+      case 'playTracks': {
+        s.queue = c.tracks.map((track) => ({ id: this.#next++, track, origin: 'user' as const }));
+        this.#undo = [];
+        const first = s.queue[Math.min(c.start, s.queue.length - 1)];
+        if (first) this.#load(first.id);
+        break;
+      }
+      case 'playEntry': if (this.#entry(c.id)) this.#load(c.id); break;
+      case 'toggle':
+        if (s.transport.state === 'playing' || s.transport.state === 'stalled') this.#apply({ type: 'pause' });
+        else this.#apply({ type: 'resume' });
+        break;
+      case 'pause':
+        if (s.transport.state === 'playing') s.transport = { state: 'paused', id: s.transport.id, loaded: true };
+        break;
+      case 'resume':
+        if (s.transport.state === 'paused') {
+          if (s.transport.loaded) s.transport = { state: 'playing', id: s.transport.id };
+          else this.#load(s.transport.id, s.positionMs);
+        } else if (s.transport.state === 'idle') {
+          const id = s.current ?? s.queue[0]?.id;
+          if (id != null) this.#load(id);
+        }
+        break;
+      case 'next': {
+        const i = this.#index(s.current);
+        const next = s.queue[i + 1] ?? (s.repeat === 'all' ? s.queue[0] : undefined);
+        if (next) this.#load(next.id); else this.#stop();
+        break;
+      }
+      case 'previous': {
+        const prev = s.queue[this.#index(s.current) - 1];
+        if (s.positionMs > 3000 || !prev) s.positionMs = 0; else this.#load(prev.id);
+        break;
+      }
+      case 'seek': s.positionMs = c.ms; break;
+      case 'setRepeat': s.repeat = c.repeat; break;
+      case 'setShuffle': s.shuffle = c.on; break;
+      case 'setAutoplay': s.autoplay = c.on; break;
+      case 'addToQueue': s.queue.push({ id: this.#next++, track: c.track, origin: 'user' }); break;
+      case 'playNext': s.queue.splice(this.#index(s.current) + 1, 0, { id: this.#next++, track: c.track, origin: 'user' }); break;
+      case 'remove': {
+        const i = this.#index(c.id);
+        if (i < 0) break;
+        const [entry] = s.queue.splice(i, 1);
+        if (entry) this.#undo.push({ entry, index: i });
+        if (s.current === c.id) {
+          const next = s.queue[i];
+          if (next) this.#load(next.id); else { this.#stop(); s.current = null; }
+        }
+        break;
+      }
+      case 'move': {
+        const i = this.#index(c.id);
+        const [entry] = i < 0 ? [] : s.queue.splice(i, 1);
+        if (entry) s.queue.splice(Math.min(c.to, s.queue.length), 0, entry);
+        break;
+      }
+      case 'moveUpcoming': {
+        const base = this.#index(s.current) + 1;
+        const i = this.#index(c.id);
+        if (i < base || c.id === s.current) break;
+        const [entry] = s.queue.splice(i, 1);
+        if (entry) s.queue.splice(Math.min(base + c.to, s.queue.length), 0, entry);
+        break;
+      }
+      case 'stopAfterCurrent':
+        break; // the mock keeps its own sleep-timer flag (see #syncStop)
+      case 'clear':
+        if (s.queue.length) this.#undo.push({ cleared: s.queue, current: s.current });
+        s.queue = []; s.current = null; this.#stop();
+        break;
+      case 'undo': {
+        const u = this.#undo.pop();
+        if (u && 'cleared' in u) { s.queue = u.cleared; s.current = u.current; }
+        else if (u) s.queue.splice(Math.min(u.index, s.queue.length), 0, u.entry);
+        break;
+      }
+      case 'retry': break;
+    }
+  }
+}

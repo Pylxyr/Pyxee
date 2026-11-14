@@ -1,2 +1,6 @@
+# ts-rs writes LF. Without this, a Windows checkout (core.autocrlf=true, the default on GitHub runners and
+# Git for Windows) rewrites these to CRLF, and git then reports every regenerated file as modified.
+ui/src/lib/bindings/*.ts text eol=lf
+
 # Shell scripts run under bash (MSYS2 on Windows too): CRLF breaks them (\r: command not found).
 *.sh text eol=lf
