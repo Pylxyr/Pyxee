@@ -204,6 +204,9 @@ impl Library {
     }
 
     fn init(conn: Connection) -> Result<Self> {
+        // A writer that holds the file (another connection, an antivirus scan) is waited for, up to this long, instead of
+        // failing at once with "database is locked".
+        conn.busy_timeout(std::time::Duration::from_secs(5))?;
         conn.pragma_update(None, "foreign_keys", true)?;
         let version: i64 = conn.pragma_query_value(None, "user_version", |r| r.get(0))?;
         // A database from a newer Pyxee may have tables and columns this one does not know: writing to it could

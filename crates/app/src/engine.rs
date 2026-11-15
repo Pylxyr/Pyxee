@@ -21,6 +21,16 @@ use std::time::{Duration, Instant};
 
 const URL_TTL: Duration = Duration::from_secs(15 * 60);
 const RECOVER_AFTER: Duration = Duration::from_millis(600);
+/// How often the engine looks at its queues. Quick while something is being started or is about to change (a seek, the
+/// end of a song, a stall being watched); slower mid-song, where the only regular work is the once-a-second position
+/// report; slowest when nothing is audible.
+const POLL_BUSY: Duration = Duration::from_millis(25);
+const POLL_PLAYING: Duration = Duration::from_millis(100);
+const POLL_IDLE: Duration = Duration::from_millis(250);
+/// The quick poll goes on this long after any command (a seek re-opens the song; its first sound is waited for).
+const BUSY_AFTER_COMMAND: Duration = Duration::from_secs(2);
+/// A song this close to its end is watched closely: the next one becomes audible, and the UI hears of it, at once.
+const NEAR_END_MS: u64 = 4_000;
 
 /// Where the engine reports to. The app forwards these to the `Player`.
 pub trait Host: Send + Sync + 'static {
@@ -173,6 +183,8 @@ pub struct Engine {
     last_position_second: Option<(EntryId, u64)>,
     seen_underruns: u64,
     stalled_since: Option<(EntryId, Instant)>,
+    /// Polling stays quick until then (set by every command).
+    busy_until: Instant,
 }
 
 impl Engine {
@@ -213,6 +225,7 @@ impl Engine {
             last_position_second: None,
             seen_underruns: 0,
             stalled_since: None,
+            busy_until: Instant::now(),
         }
     }
 
@@ -221,16 +234,48 @@ impl Engine {
         self.pipeline.consumer()
     }
 
-    /// How long the thread that drives `poll()` may wait for a command before polling again. Quick while a song
-    /// plays or one is being started (events from the pipeline and the workers are answered within a few ms); slow
-    /// when nothing is audible (idle, paused), where the wait ends at once anyway when a command arrives (a quarter
-    /// of a second is as often as a worker's result or the output-device check needs to be looked at).
+    /// How long the thread that drives `poll()` may wait for a command before polling again. Quick while a song is
+    /// being started, just after a command, near the end of a song and while a fault is being watched (events from the
+    /// pipeline and the workers are answered within a few ms); 100 ms mid-song, where nothing is due but the
+    /// once-a-second position report; slow when nothing is audible (idle, paused), where the wait ends at once anyway
+    /// when a command arrives (a quarter of a second is as often as a worker's result or the output-device check needs
+    /// to be looked at).
     pub fn poll_interval(&self) -> Duration {
-        if self.is_playing() || self.start_id.is_some() {
-            Duration::from_millis(25)
+        // `start_id` stays set for as long as the song plays: it is a start that is still being waited for only until
+        // that song has been heard.
+        let starting = self.start_id.is_some_and(|id| !self.audible.contains(&id));
+        if starting {
+            POLL_BUSY
+        } else if self.is_playing() {
+            if self.watch_closely() {
+                POLL_BUSY
+            } else {
+                POLL_PLAYING
+            }
         } else {
-            Duration::from_millis(250)
+            POLL_IDLE
         }
+    }
+
+    /// Something is about to change, or is being waited for, while a song plays.
+    fn watch_closely(&self) -> bool {
+        Instant::now() < self.busy_until
+            || self.stalled_since.is_some()
+            || self.suppress_heard
+            || self.skip_audible_for.is_some()
+            || !self.failed_later.is_empty()
+            || self.held_prefetch.is_some()
+            || self.near_end()
+    }
+
+    /// The song that plays has at most `NEAR_END_MS` left (a song of unknown length is never "near").
+    fn near_end(&self) -> bool {
+        let Some((id, track)) = &self.current else {
+            return false;
+        };
+        track.duration_ms.is_some_and(|total| {
+            total.saturating_sub(self.last_heard_ms.get(id).copied().unwrap_or(0)) <= NEAR_END_MS
+        })
     }
 
     /// Something is loaded and not paused: silence from the device would be a fault, not a pause.
@@ -267,6 +312,18 @@ impl Engine {
     }
 
     pub fn handle(&mut self, effect: Effect) {
+        // What the listener did (play, seek, pause...) is followed closely for a moment; bookkeeping effects (saving the
+        // session, prefetching) arrive about once a second and must not keep the quick poll going all song long.
+        if matches!(
+            effect,
+            Effect::StartTrack { .. }
+                | Effect::Seek { .. }
+                | Effect::Pause
+                | Effect::Resume
+                | Effect::Stop
+        ) {
+            self.busy_until = Instant::now() + BUSY_AFTER_COMMAND;
+        }
         match effect {
             Effect::StartTrack {
                 id,
@@ -568,6 +625,18 @@ impl Engine {
                     self.notify_skip(id, &failure, true);
                     self.host
                         .engine_event(EngineEvent::PrefetchFailed { id, failure });
+                }
+            }
+            PipeEvent::ProducerFailed { message } => {
+                log::error!("the audio decoder thread stopped: {message}");
+                self.host.notice(
+                    "Audio decoding stopped unexpectedly. Restart Pyxee to get sound back.".into(),
+                );
+                if let Some(id) = self.start_id {
+                    self.host.engine_event(EngineEvent::LoadFailed {
+                        id,
+                        failure: Failure::Other("The audio decoder stopped unexpectedly.".into()),
+                    });
                 }
             }
             PipeEvent::Heard(_) if self.suppress_heard => {}

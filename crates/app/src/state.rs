@@ -8,7 +8,7 @@ use pyxee_sources::MusicSource;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::Sender;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, MutexGuard};
 use tauri::{AppHandle, Manager};
 
 pub const STATE_EVENT: &str = "player-state";
@@ -39,6 +39,16 @@ pub struct AppState {
 }
 
 impl AppState {
+    /// The player, locked. A panic on some thread while it held the lock poisons the mutex; refusing the lock after
+    /// that made every command a silent no-op, so the lock is taken anyway: the player is plain data, and a half-applied
+    /// change is better than a window that no longer answers. (The panic itself is logged by `main`'s hook.)
+    pub fn player(&self) -> MutexGuard<'_, Player> {
+        self.player.lock().unwrap_or_else(|poisoned| {
+            log::error!("the player state was poisoned by a panic; carrying on with it");
+            poisoned.into_inner()
+        })
+    }
+
     /// Asks for the session to be saved soon, by the writer thread: nothing here waits for the disk, which is what
     /// the thread that reports playback must not do (a write and flush can take a long time while an antivirus
     /// scans it). Use `save_session` where it has to be on disk when the call returns (quitting).
@@ -51,10 +61,7 @@ impl AppState {
         let Some(path) = &self.session_path else {
             return;
         };
-        let persisted = match self.player.lock() {
-            Ok(p) => p.persisted(),
-            Err(_) => return,
-        };
+        let persisted = self.player().persisted();
         let Ok(mut last) = self.last_saved.lock() else {
             return;
         };
@@ -71,9 +78,7 @@ pub fn publish(app: &AppHandle, f: impl FnOnce(&mut Player) -> Vec<Effect>) {
     // Effects go to the engine while the player is still locked: two threads publishing at once must reach the
     // engine in the order their changes were made to the player (a Pause must not overtake the Resume before it).
     // Lock order is always player, then engine; nothing locks them the other way round.
-    let Ok(mut p) = state.player.lock() else {
-        return; // a panic elsewhere poisoned the lock; nothing sensible to do
-    };
+    let mut p = state.player();
     let effects = f(&mut p);
     let mut dto = state_dto(&p);
     dto.seq = state.seq.fetch_add(1, Ordering::SeqCst) + 1;

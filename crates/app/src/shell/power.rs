@@ -38,12 +38,18 @@ pub fn spawn(app: AppHandle) {
     });
 }
 
-/// Is there a route out, and through which local address? (No packet is sent: UDP `connect` only picks a route.)
+/// The local address a UDP socket would use to reach `target` (no packet is sent: `connect` only picks a route).
+fn route_to(bind: &str, target: &str) -> std::io::Result<std::net::SocketAddr> {
+    let socket = UdpSocket::bind(bind)?;
+    socket.connect(target)?;
+    socket.local_addr()
+}
+
+/// Is there a route out, and through which local address? IPv4 is asked first; a network that has only IPv6 (some mobile
+/// and university networks) has no IPv4 route, and would otherwise read as offline all day.
 fn probe() -> NetState {
-    let local = UdpSocket::bind("0.0.0.0:0").and_then(|s| {
-        s.connect("1.1.1.1:53")?;
-        s.local_addr()
-    });
+    let local = route_to("0.0.0.0:0", "1.1.1.1:53")
+        .or_else(|_| route_to("[::]:0", "[2606:4700:4700::1111]:53"));
     match local {
         Ok(addr) => NetState {
             online: true,
@@ -60,9 +66,7 @@ fn situation(app: &AppHandle) -> Situation {
     let Some(state) = app.try_state::<crate::state::AppState>() else {
         return Situation::Other;
     };
-    let Ok(p) = state.player.lock() else {
-        return Situation::Other;
-    };
+    let p = state.player();
     match crate::dto::state_dto(&p).transport {
         TransportDto::Playing { .. } => Situation::Playing,
         TransportDto::Failed { failure, .. } => {
@@ -94,5 +98,22 @@ fn handle(app: &AppHandle, trigger: Trigger) {
                 );
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::route_to;
+
+    #[test]
+    fn a_route_names_the_local_address_it_would_use() {
+        let addr = route_to("127.0.0.1:0", "127.0.0.1:9").unwrap();
+        assert!(addr.ip().is_loopback());
+    }
+
+    #[test]
+    fn an_address_family_mismatch_is_no_route() {
+        // An IPv4 socket cannot reach an IPv6 target: that is what makes the probe try the other family next.
+        assert!(route_to("0.0.0.0:0", "[::1]:9").is_err());
     }
 }

@@ -139,6 +139,13 @@ fn main() {
             for name in &env_applied.from_windows {
                 log::info!("settings: {name} is set in Windows, so .env is not used for it");
             }
+            // Leftovers of a save that a crash or a power cut cut short (nothing is saving yet, so none is in use).
+            if let Some(dir) = &data_dir {
+                let swept = pyxee_shell::atomic::sweep_stale(dir);
+                if swept > 0 {
+                    log::info!("removed {swept} leftover temporary file(s) from the data folder");
+                }
+            }
             app.manage(advanced::EnvState {
                 file: env_file,
                 from_windows: env_applied.from_windows,

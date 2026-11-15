@@ -1402,3 +1402,54 @@ fn a_stream_that_fails_mid_song_says_why_in_words_not_in_enum_names() {
         assert!(!n.contains("RateLimited") && !n.contains("Network"), "{n}");
     }
 }
+
+#[test]
+fn polling_is_quick_around_commands_and_near_the_end_and_slow_mid_song() {
+    let dir = std::env::temp_dir().join(format!("pyxee-poll-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("long.wav");
+    std::fs::write(&path, make_wav(20)).unwrap();
+    let mut track = Track::new(&format!("file:{}", path.display()), "Long", "x");
+    track.duration_ms = Some(20_000);
+
+    let mut r = Rig::new(TestSource::local());
+    r.speed = 1.0; // the device takes audio in real time, so "mid-song" lasts long enough to look at
+    let (busy, playing, idle) = (
+        Duration::from_millis(25),
+        Duration::from_millis(100),
+        Duration::from_millis(250),
+    );
+    assert_eq!(r.engine.poll_interval(), idle, "nothing audible");
+    r.cmd(Command::SetAutoplay(false));
+    r.cmd(Command::PlayTracks {
+        tracks: vec![track],
+        start: 0,
+    });
+    assert!(r.run_until(10, |r| r.engine.is_playing()));
+    assert_eq!(r.engine.poll_interval(), busy, "a command was just given");
+
+    r.run_for(2300);
+    assert_eq!(r.engine.poll_interval(), playing, "mid-song, nothing due");
+
+    r.cmd(Command::Seek(14_000));
+    r.step();
+    assert_eq!(
+        r.engine.poll_interval(),
+        busy,
+        "a seek is being carried out"
+    );
+
+    // Once that is done, 6 s of the song are left and then fewer than 4 s: the end is watched closely.
+    r.run_for(2100);
+    assert!(r.engine.is_playing());
+    assert_eq!(
+        r.engine.poll_interval(),
+        busy,
+        "close to the end of the song"
+    );
+
+    r.cmd(Command::Pause);
+    r.run_for(100);
+    assert_eq!(r.engine.poll_interval(), idle, "paused");
+    let _ = std::fs::remove_dir_all(&dir);
+}

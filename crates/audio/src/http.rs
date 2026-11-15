@@ -294,8 +294,14 @@ impl HttpRangeSource {
         cancel: Arc<AtomicBool>,
     ) -> Result<Self, AudioError> {
         let agent = agent();
-        let first = with_headers(agent.get(url), headers).header(RANGE, "bytes=0-0");
-        let resp = match first.call() {
+        // The first request is a GET that may be sent twice: a connection kept from an earlier song that the server has
+        // since closed fails here, and one more try (on a fresh connection) is what the listener would do by hand.
+        let first = || {
+            with_headers(agent.get(url), headers)
+                .header(RANGE, "bytes=0-0")
+                .call()
+        };
+        let resp = match pyxee_net::retry_stale(first) {
             Ok(r) => r,
             Err(ureq::Error::StatusCode(c)) if is_expired(c) => {
                 log::warn!(

@@ -15,10 +15,7 @@ pub fn dispatch(app: AppHandle, command: CommandDto) {
 
 #[tauri::command]
 pub fn get_state(state: State<AppState>) -> Result<PlayerStateDto, String> {
-    let p = state
-        .player
-        .lock()
-        .map_err(|_| "player state unavailable".to_string())?;
+    let p = state.player();
     let mut dto = state_dto(&p);
     dto.seq = state.seq.load(std::sync::atomic::Ordering::SeqCst);
     Ok(dto)
@@ -187,6 +184,10 @@ pub fn search_filters(state: State<AppState>) -> Vec<FilterInfoDto> {
 }
 
 // ------------------------------------------------------------------ library
+//
+// These are `#[tauri::command(async)]`: Tauri then runs them on its worker pool instead of the thread that handles the
+// window's messages. They lock the library (SQLite on disk, which can take a while behind an antivirus scan or a busy
+// writer) and a sync command would hold the window's own thread for that long. (Not checked on Windows.)
 
 fn read_library<T>(
     state: &State<AppState>,
@@ -199,42 +200,42 @@ fn read_library<T>(
     f(&lib)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn get_library(state: State<AppState>) -> Result<LibrarySnapshotDto, String> {
     read_library(&state, |l| l.snapshot())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn library_set_liked(app: AppHandle, track: TrackDto, liked: bool) -> Result<(), String> {
     with_library(&app, |l| l.set_liked(&track, liked, now_ms()))
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn liked_get(state: State<AppState>) -> Result<Vec<TrackDto>, String> {
     read_library(&state, |l| l.liked())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn playlist_create(app: AppHandle, name: String, tracks: Vec<TrackDto>) -> Result<i64, String> {
     with_library(&app, |l| l.create_playlist(&name, &tracks, now_ms()))
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn playlist_rename(app: AppHandle, id: i64, name: String) -> Result<(), String> {
     with_library(&app, |l| l.rename_playlist(id, &name, now_ms()))
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn playlist_delete(app: AppHandle, id: i64) -> Result<PlaylistSnapshotDto, String> {
     with_library(&app, |l| l.delete_playlist(id))
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn playlist_restore(app: AppHandle, snapshot: PlaylistSnapshotDto) -> Result<(), String> {
     with_library(&app, |l| l.restore_playlist(&snapshot))
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn playlist_add(
     app: AppHandle,
     id: i64,
@@ -243,42 +244,42 @@ pub fn playlist_add(
     with_library(&app, |l| l.add_to_playlist(id, &tracks, now_ms()))
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn playlist_get(state: State<AppState>, id: i64) -> Result<PlaylistDto, String> {
     read_library(&state, |l| l.playlist(id))
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn playlist_remove_entry(app: AppHandle, entry_id: i64) -> Result<RemovedEntryDto, String> {
     with_library(&app, |l| l.remove_entry(entry_id, now_ms()))
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn playlist_restore_entry(app: AppHandle, removed: RemovedEntryDto) -> Result<i64, String> {
     with_library(&app, |l| l.restore_entry(&removed, now_ms()))
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn playlist_move_entry(app: AppHandle, entry_id: i64, to: usize) -> Result<(), String> {
     with_library(&app, |l| l.move_entry(entry_id, to, now_ms()))
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn history_get(state: State<AppState>, limit: usize) -> Result<Vec<HistoryItemDto>, String> {
     read_library(&state, |l| l.history(limit))
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn history_clear(app: AppHandle) -> Result<Vec<HistoryItemDto>, String> {
     with_library(&app, |l| l.clear_history())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn history_restore(app: AppHandle, items: Vec<HistoryItemDto>) -> Result<(), String> {
     with_library(&app, |l| l.restore_history(&items))
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn home_get(state: State<AppState>) -> Result<HomeDto, String> {
     read_library(&state, |l| l.home(now_ms()))
 }

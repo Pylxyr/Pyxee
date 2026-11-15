@@ -250,6 +250,7 @@ fn a_failing_track_is_reported_with_its_kind_and_the_next_track_still_plays() {
             match e {
                 PipeEvent::Heard(h) => log.push(h),
                 PipeEvent::Failed { id, kind, .. } => failed = Some((id, kind)),
+                PipeEvent::ProducerFailed { message } => panic!("the producer panicked: {message}"),
             }
         }
     }
@@ -483,4 +484,16 @@ fn a_queued_track_is_picked_up_at_once() {
         );
         sleep(Duration::from_millis(1));
     }
+}
+
+#[test]
+fn a_panic_payload_becomes_text() {
+    use pyxee_audio::pipeline::panic_message;
+    let from_str = std::panic::catch_unwind(|| panic!("plain")).unwrap_err();
+    assert_eq!(panic_message(from_str.as_ref()), "plain");
+    let from_string =
+        std::panic::catch_unwind(|| panic!("{}", String::from("formatted"))).unwrap_err();
+    assert_eq!(panic_message(from_string.as_ref()), "formatted");
+    let other = std::panic::catch_unwind(|| std::panic::panic_any(7u8)).unwrap_err();
+    assert_eq!(panic_message(other.as_ref()), "unknown panic");
 }

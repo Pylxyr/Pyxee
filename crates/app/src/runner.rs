@@ -43,10 +43,10 @@ impl AppHost {
                 let track = self
                     .app
                     .state::<AppState>()
-                    .player
-                    .lock()
-                    .ok()
-                    .and_then(|p| p.queue().get(*id).map(|entry| entry.track.clone()));
+                    .player()
+                    .queue()
+                    .get(*id)
+                    .map(|entry| entry.track.clone());
                 if let Some(track) = track {
                     rec.audible(*id, track);
                 }
@@ -65,10 +65,10 @@ impl AppHost {
                 let track = self
                     .app
                     .state::<AppState>()
-                    .player
-                    .lock()
-                    .ok()
-                    .and_then(|p| p.queue().get(*id).map(|entry| entry.track.clone()));
+                    .player()
+                    .queue()
+                    .get(*id)
+                    .map(|entry| entry.track.clone());
                 if let Some(track) = track {
                     if let Err(err) = with_library(&self.app, |l| l.refresh_track(&track)) {
                         log::warn!("could not update a saved song: {err}");
@@ -137,6 +137,24 @@ fn open_output(engine: &mut Engine, errors: &Sender<String>) -> Result<Output, A
 fn spawn_real(app: AppHandle, rx: Receiver<Effect>) {
     thread::spawn(move || {
         let host = Arc::new(AppHost::new(app.clone()));
+        // A panic in the engine loop would end this thread and leave every command unanswered, with the window still
+        // showing a player. Catch it, record it and tell the listener (the panic hook has logged the backtrace).
+        let loop_host = Arc::clone(&host);
+        if let Err(payload) = std::panic::catch_unwind(std::panic::AssertUnwindSafe(move || {
+            run_real(app, loop_host, rx);
+        })) {
+            let message = pyxee_audio::pipeline::panic_message(payload.as_ref());
+            log::error!("the audio engine thread panicked: {message}");
+            host.notice(
+                "The audio engine stopped unexpectedly. Restart Pyxee to get sound back.".into(),
+            );
+        }
+    });
+}
+
+/// The engine thread's work: owns the engine and the output stream until the app's command channel closes.
+fn run_real(app: AppHandle, host: Arc<AppHost>, rx: Receiver<Effect>) {
+    {
         let source = Arc::clone(&app.state::<AppState>().source);
         let first = DeviceInfo::default_output();
         let rate = first.as_ref().map_or(FALLBACK_RATE, DeviceInfo::rate);
@@ -251,7 +269,7 @@ fn spawn_real(app: AppHandle, rx: Receiver<Effect>) {
                 }
             }
         }
-    });
+    }
 }
 
 fn spawn_sim(app: AppHandle, rx: Receiver<Effect>) {
