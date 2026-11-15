@@ -6,6 +6,13 @@
 //!
 //! * **One run at a time.** Others wait in line.
 //! * **A quiet gap** (`min_gap`) after each run ends before the next may start.
+//! * **A shorter gap for what the listener waits for** (`interactive_gap`): a search or the song just picked starts
+//!   after a quarter of a second, not a second. Background work keeps the full gap.
+//! * **An hourly budget** (`hourly_budget`): YouTube's limit is a count per hour (yt-dlp's wiki puts it near 300
+//!   videos an hour for a guest), not a gap between two requests, so the gap alone cannot keep a long burst under it.
+//!   Runs are counted over a rolling hour. Once half the budget is used, background runs are spaced out to the hourly
+//!   rate (a run every 24 s for 150 an hour); once all of it is used, background runs are refused until the hour has
+//!   room again. What the listener asks for is never refused by the budget (it still counts).
 //! * **A cooldown** after a rate-limit answer: for `cooldown`, new runs are refused at once with
 //!   `SourceError::RateLimited` (the player already treats that as transient: it shows "rate
 //!   limited" with a Retry instead of skipping songs, and a failed prefetch is not retried). This
@@ -24,6 +31,7 @@
 
 use crate::SourceError;
 use std::cell::RefCell;
+use std::collections::VecDeque;
 use std::sync::{Condvar, Mutex, MutexGuard, PoisonError};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -35,6 +43,13 @@ const LOG_WAITS_OVER: Duration = Duration::from_millis(250);
 pub struct GateConfig {
     /// Quiet time after one yt-dlp run ends before the next may start.
     pub min_gap: Duration,
+    /// The quiet time before a run the listener is waiting for (see [`Priority::Interactive`]). Never longer than
+    /// `min_gap`.
+    pub interactive_gap: Duration,
+    /// How many runs a rolling `budget_window` may hold before background runs are refused (0: no budget).
+    pub hourly_budget: u32,
+    /// The window the budget is counted over.
+    pub budget_window: Duration,
     /// How long new runs are refused after a rate-limit answer. Zero disables the cooldown.
     pub cooldown: Duration,
     /// The longest a cooldown may grow to when rate limits keep coming back. At or below `cooldown`: it never grows.
@@ -42,16 +57,23 @@ pub struct GateConfig {
 }
 
 impl GateConfig {
-    /// What the app uses: 1 s between runs, 2 minutes of refusals after a rate limit, doubling each time it happens
-    /// again in a row (2, 4, 8, 16 minutes) up to 30 minutes.
+    /// What the app uses: 1 s between runs (a quarter of a second before one the listener waits for), 150 runs an
+    /// hour for background work, 2 minutes of refusals after a rate limit, doubling each time it happens again in a row
+    /// (2, 4, 8, 16 minutes) up to 30 minutes.
     pub const DEFAULT: Self = Self {
         min_gap: Duration::from_secs(1),
+        interactive_gap: Duration::from_millis(250),
+        hourly_budget: 150,
+        budget_window: Duration::from_secs(60 * 60),
         cooldown: Duration::from_secs(120),
         max_cooldown: Duration::from_secs(30 * 60),
     };
     /// No pacing at all (still one run at a time). For tests that are not about pacing.
     pub const NONE: Self = Self {
         min_gap: Duration::ZERO,
+        interactive_gap: Duration::ZERO,
+        hourly_budget: 0,
+        budget_window: Duration::from_secs(60 * 60),
         cooldown: Duration::ZERO,
         max_cooldown: Duration::ZERO,
     };
@@ -63,8 +85,9 @@ impl Default for GateConfig {
     }
 }
 
-/// How urgent a run is. Only the order of the line changes: the pacing (one run at a time, the gap after each, the
-/// cooldown after a rate limit) is the same for both, so this never means more requests.
+/// How urgent a run is. It sets the order of the line and how long the quiet gap before the run is (shorter for what
+/// the listener waits for), and only background work is held back by the hourly budget. The cooldown after a rate limit
+/// is the same for both.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Priority {
     /// Something the person is waiting for: a search, the song they just picked.
@@ -154,8 +177,10 @@ struct State {
     waiting: Vec<(u64, Priority)>,
     /// The ticket the slot was handed to.
     granted: Option<u64>,
-    /// Earliest start of the next run: the previous run's end plus `min_gap`.
-    quiet_until: Option<Instant>,
+    /// When the previous run ended; the next one starts a gap after it (which gap depends on who is asking).
+    last_end: Option<Instant>,
+    /// When recent runs started, oldest first, within the budget window (kept only when there is a budget).
+    started: VecDeque<Instant>,
     cooldown_until: Option<Instant>,
     /// Rate limits in a row, with no successful run between them. Sets how long the next cooldown is.
     strikes: u32,
@@ -171,15 +196,58 @@ impl State {
             .filter(|d| !d.is_zero())
     }
 
-    /// How long the caller that owns the slot must still wait before it may start.
-    fn pause(&self, now: Instant) -> Duration {
-        self.quiet_until
-            .map_or(Duration::ZERO, |t| t.saturating_duration_since(now))
+    /// How long the caller that owns the slot must still wait before it may start, given the gap that applies to it.
+    fn pause(&self, now: Instant, gap: Duration) -> Duration {
+        self.last_end
+            .map_or(Duration::ZERO, |t| (t + gap).saturating_duration_since(now))
+    }
+
+    /// Runs started within the budget window.
+    fn used(&mut self, now: Instant, cfg: GateConfig) -> usize {
+        while self
+            .started
+            .front()
+            .is_some_and(|&t| now.saturating_duration_since(t) >= cfg.budget_window)
+        {
+            self.started.pop_front();
+        }
+        self.started.len()
+    }
+
+    /// The quiet time that applies to a caller of this priority: short for the listener's own requests; for background
+    /// work the full gap, stretched to the budget's pace once half the budget is used.
+    fn gap_for(&mut self, now: Instant, cfg: GateConfig, priority: Priority) -> Duration {
+        match priority {
+            Priority::Interactive => cfg.interactive_gap.min(cfg.min_gap),
+            Priority::Background => {
+                let budget = cfg.hourly_budget as usize;
+                if budget > 0 && self.used(now, cfg) * 2 >= budget {
+                    cfg.min_gap.max(cfg.budget_window / cfg.hourly_budget)
+                } else {
+                    cfg.min_gap
+                }
+            }
+        }
+    }
+
+    /// Background work has used the whole budget: it is refused until the oldest run leaves the window.
+    fn over_budget(&mut self, now: Instant, cfg: GateConfig, priority: Priority) -> bool {
+        priority == Priority::Background
+            && cfg.hourly_budget > 0
+            && self.used(now, cfg) >= cfg.hourly_budget as usize
+    }
+
+    /// A run starts now: it counts against the budget.
+    fn record_start(&mut self, now: Instant, cfg: GateConfig) {
+        if cfg.hourly_budget > 0 {
+            self.used(now, cfg);
+            self.started.push_back(now);
+        }
     }
 
     /// A run ended: record the gap (and the cooldown after a rate limit, returning how long it is).
     fn finished(&mut self, now: Instant, cfg: GateConfig, outcome: Outcome) -> Option<Duration> {
-        self.quiet_until = Some(now + cfg.min_gap);
+        self.last_end = Some(now);
         let outcome = match outcome {
             Outcome::Forbidden => {
                 self.forbidden_in_a_row = self.forbidden_in_a_row.saturating_add(1);
@@ -284,6 +352,14 @@ impl Gate {
         SourceError::RateLimited
     }
 
+    fn refuse_budget(what: &str, cfg: GateConfig) -> SourceError {
+        log::info!(
+            "yt-dlp {what} refused: background runs have used the budget of {} an hour",
+            cfg.hourly_budget
+        );
+        SourceError::RateLimited
+    }
+
     /// Runs `f` (one yt-dlp run) when it is this caller's turn. During a cooldown it returns
     /// `RateLimited` at once without calling `f`. If `f` itself returns `RateLimited`, the
     /// cooldown starts. `what` names the operation in logs (never put URLs or secrets in it).
@@ -337,7 +413,15 @@ impl Gate {
             self.release(st);
             return Err(Self::refuse(what, left));
         }
-        let pause = st.pause(Instant::now());
+        let now = Instant::now();
+        let priority = current_priority();
+        if st.over_budget(now, self.cfg, priority) {
+            self.release(st);
+            return Err(Self::refuse_budget(what, self.cfg));
+        }
+        let gap = st.gap_for(now, self.cfg, priority);
+        let pause = st.pause(now, gap);
+        st.record_start(now + pause, self.cfg);
         drop(st);
         if !pause.is_zero() {
             thread::sleep(pause);
@@ -371,8 +455,10 @@ mod tests {
     fn cfg(gap_ms: u64, cooldown_ms: u64) -> GateConfig {
         GateConfig {
             min_gap: Duration::from_millis(gap_ms),
+            interactive_gap: Duration::from_millis(gap_ms), // the same gap for everyone: not what these tests are about
             cooldown: Duration::from_millis(cooldown_ms),
             max_cooldown: Duration::ZERO, // never grows: these tests are about the base cooldown
+            ..GateConfig::NONE
         }
     }
 
@@ -399,12 +485,103 @@ mod tests {
         let mut st = State::default();
         st.finished(t0, cfg(1_000, 120_000), Outcome::Succeeded);
         assert_eq!(st.cooling(t0), None, "no cooldown without a rate limit");
-        assert_eq!(st.pause(t0), Duration::from_secs(1));
+        let gap = Duration::from_secs(1);
+        assert_eq!(st.pause(t0, gap), Duration::from_secs(1));
         assert_eq!(
-            st.pause(t0 + Duration::from_millis(400)),
+            st.pause(t0 + Duration::from_millis(400), gap),
             Duration::from_millis(600)
         );
-        assert_eq!(st.pause(t0 + Duration::from_secs(5)), Duration::ZERO);
+        assert_eq!(st.pause(t0 + Duration::from_secs(5), gap), Duration::ZERO);
+    }
+
+    #[test]
+    fn what_the_listener_waits_for_starts_after_a_shorter_gap() {
+        let t0 = Instant::now();
+        let c = GateConfig::DEFAULT;
+        let mut st = State::default();
+        st.finished(t0, c, Outcome::Succeeded);
+        let quick = st.gap_for(t0, c, Priority::Interactive);
+        let slow = st.gap_for(t0, c, Priority::Background);
+        assert_eq!(quick, Duration::from_millis(250));
+        assert_eq!(slow, Duration::from_secs(1));
+        assert_eq!(st.pause(t0, quick), Duration::from_millis(250));
+        assert_eq!(st.pause(t0, slow), Duration::from_secs(1));
+        // an interactive gap set above the general one is capped by it
+        let odd = GateConfig {
+            interactive_gap: Duration::from_secs(5),
+            ..c
+        };
+        assert_eq!(
+            st.gap_for(t0, odd, Priority::Interactive),
+            Duration::from_secs(1)
+        );
+    }
+
+    fn budget(n: u32) -> GateConfig {
+        GateConfig {
+            min_gap: Duration::from_secs(1),
+            interactive_gap: Duration::from_millis(250),
+            hourly_budget: n,
+            budget_window: Duration::from_secs(3_600),
+            cooldown: Duration::from_secs(120),
+            max_cooldown: Duration::from_secs(1_800),
+        }
+    }
+
+    #[test]
+    fn background_runs_are_paced_to_the_hourly_rate_once_half_the_budget_is_used() {
+        let t0 = Instant::now();
+        let c = budget(100);
+        let mut st = State::default();
+        for i in 0..49 {
+            st.record_start(t0 + Duration::from_secs(i), c);
+        }
+        let now = t0 + Duration::from_secs(60);
+        assert_eq!(
+            st.gap_for(now, c, Priority::Background),
+            Duration::from_secs(1)
+        );
+        st.record_start(now, c); // the 50th: half the budget
+        assert_eq!(
+            st.gap_for(now, c, Priority::Background),
+            Duration::from_secs(36)
+        );
+        // the listener's own requests keep the short gap
+        assert_eq!(
+            st.gap_for(now, c, Priority::Interactive),
+            Duration::from_millis(250)
+        );
+    }
+
+    #[test]
+    fn background_runs_are_refused_when_the_budget_is_used_but_the_listeners_are_not() {
+        let t0 = Instant::now();
+        let c = budget(3);
+        let mut st = State::default();
+        for i in 0..3 {
+            st.record_start(t0 + Duration::from_secs(i), c);
+        }
+        let now = t0 + Duration::from_secs(10);
+        assert!(st.over_budget(now, c, Priority::Background));
+        assert!(!st.over_budget(now, c, Priority::Interactive));
+        // an interactive run still counts
+        st.record_start(now, c);
+        assert_eq!(st.used(now, c), 4);
+        // the hour rolls: the oldest runs leave and background work has room again
+        let later = t0 + Duration::from_secs(3_600 + 1);
+        assert_eq!(st.used(later, c), 2);
+        assert!(!st.over_budget(later, c, Priority::Background));
+    }
+
+    #[test]
+    fn no_budget_means_nothing_is_counted_or_refused() {
+        let t0 = Instant::now();
+        let mut st = State::default();
+        for i in 0..1_000 {
+            st.record_start(t0 + Duration::from_secs(i), GateConfig::NONE);
+        }
+        assert!(st.started.is_empty(), "nothing to grow without a budget");
+        assert!(!st.over_budget(t0, GateConfig::NONE, Priority::Background));
     }
 
     #[test]

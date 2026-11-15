@@ -105,3 +105,27 @@ export function listChangeMs(ms: number): number {
   const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
   return now - listChangedAt < LIST_CHANGE_WINDOW_MS ? motionMs(ms) : 0;
 }
+
+/**
+ * Runs `update` (the state change that brings another song's cover) as a view transition in which the old cover and the
+ * new one are the same named element, `cover-now`, so the browser dissolves one into the other on the compositor
+ * (a pair of snapshots fading, nothing re-laid-out). The cover is the one on the deck or the dock; with Now Playing open
+ * it is not on screen and `update` just runs, as it does without view transitions.
+ */
+export function crossfadeCover(update: () => void): boolean {
+  const cover = () => {
+    const el = document.querySelector<HTMLElement>('[data-np-source]');
+    return el && el.getClientRects().length > 0 && !el.closest('[inert]') ? el : null;
+  };
+  if (!cover()) {
+    update();
+    return false;
+  }
+  let named: HTMLElement | null = null;
+  const name = () => {
+    named?.style.removeProperty('view-transition-name');
+    named = cover();
+    named?.style.setProperty('view-transition-name', 'cover-now');
+  };
+  return withViewTransition(update, { before: name, during: name, after: () => named?.style.removeProperty('view-transition-name') });
+}

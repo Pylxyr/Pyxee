@@ -160,6 +160,9 @@ pub struct Engine {
     /// Bumped when the wanted prefetch changes or is cancelled.
     prefetch_token: u64,
     start_id: Option<EntryId>,
+    /// The start that `start_id` names failed: nothing is being waited for any more (`start_id` itself stays, as the
+    /// track that was asked for).
+    start_failed: Option<EntryId>,
     /// The track asked for by the latest StartTrack/Seek is in the pipeline (nothing may be queued before it).
     start_queued: bool,
     /// A prefetched track that finished before the start track did; queued right after it.
@@ -210,6 +213,7 @@ impl Engine {
             live_generation: Arc::new(AtomicU64::new(0)),
             prefetch_token: 0,
             start_id: None,
+            start_failed: None,
             start_queued: false,
             held_prefetch: None,
             current: None,
@@ -243,9 +247,18 @@ impl Engine {
     pub fn poll_interval(&self) -> Duration {
         // `start_id` stays set for as long as the song plays: it is a start that is still being waited for only until
         // that song has been heard.
-        let starting = self.start_id.is_some_and(|id| !self.audible.contains(&id));
+        let starting = self
+            .start_id
+            .is_some_and(|id| !self.audible.contains(&id) && self.start_failed != Some(id));
+        // A song that failed to load is still the current one (so `is_playing` holds), but nothing is audible or on its
+        // way: the engine is as idle as when paused.
+        let failed = self
+            .start_id
+            .is_some_and(|id| self.start_failed == Some(id) && !self.audible.contains(&id));
         if starting {
             POLL_BUSY
+        } else if failed {
+            POLL_IDLE
         } else if self.is_playing() {
             if self.watch_closely() {
                 POLL_BUSY
@@ -427,6 +440,7 @@ impl Engine {
         self.failed_later.clear();
         self.stalled_since = None;
         self.start_id = Some(id);
+        self.start_failed = None;
         self.start_queued = false;
         self.held_prefetch = None;
         self.known.insert(id, track.clone());
@@ -561,6 +575,7 @@ impl Engine {
                     }
                     (Purpose::Start, Err(failure)) => {
                         log::warn!("could not start {}: {failure:?}", self.describe(id));
+                        self.start_failed = Some(id);
                         self.held_prefetch = None;
                         self.notify_skip(id, &failure, false);
                         self.host
@@ -616,6 +631,7 @@ impl Engine {
                     // Still playing what was buffered before the failure; report it when it is heard.
                     self.failed_later.insert(id, (kind, frames_emitted));
                 } else if self.start_id == Some(id) {
+                    self.start_failed = Some(id);
                     let failure = failure_for(kind);
                     self.notify_skip(id, &failure, false);
                     self.host

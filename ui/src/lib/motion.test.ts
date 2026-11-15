@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { nav } from './nav.svelte';
-import { MOTION, motionMs, motionPx, prefersReducedMotion, springOut, springPop, withViewTransition } from './motion';
+import { MOTION, crossfadeCover, motionMs, motionPx, prefersReducedMotion, springOut, springPop, withViewTransition } from './motion';
 
 const original = window.matchMedia;
 function system(reduce: boolean) {
@@ -73,6 +73,53 @@ describe('motion', () => {
       });
       expect(started).toBe(true);
       await vi.waitFor(() => expect(order).toEqual(['before', 'update', 'during', 'after']));
+    });
+
+    describe('the cover dissolve', () => {
+      const cover = (html = '<span data-np-source>cover</span>') => {
+        document.body.innerHTML = html;
+        const el = document.querySelector<HTMLElement>('[data-np-source]')!;
+        el.getClientRects = () => [{}] as unknown as DOMRectList; // jsdom has no layout: say it is on screen
+        return el;
+      };
+
+      it('names the old and the new cover the same, runs the update between, and removes the name after', async () => {
+        system(false);
+        visible();
+        doc.startViewTransition = fake();
+        const old = cover();
+        let fresh: HTMLElement | null = null;
+        const started = crossfadeCover(() => {
+          expect(old.style.getPropertyValue('view-transition-name')).toBe('cover-now');
+          old.remove();
+          fresh = cover('<span data-np-source>new</span>');
+        });
+        expect(started).toBe(true);
+        await vi.waitFor(() => expect(fresh).not.toBeNull());
+        await vi.waitFor(() => expect(fresh!.style.getPropertyValue('view-transition-name')).toBe(''));
+      });
+
+      it('just runs the update when there is no cover on screen, or with Now Playing over it', () => {
+        system(false);
+        visible();
+        const start = fake();
+        doc.startViewTransition = start;
+        document.body.innerHTML = '';
+        let ran = 0;
+        expect(crossfadeCover(() => ran++)).toBe(false);
+        cover('<div inert><span data-np-source>c</span></div>');
+        expect(crossfadeCover(() => ran++)).toBe(false);
+        expect(ran).toBe(2);
+        expect(start).not.toHaveBeenCalled();
+      });
+
+      it('just runs the update where view transitions do not exist', () => {
+        system(false);
+        cover();
+        let ran = 0;
+        expect(crossfadeCover(() => ran++)).toBe(false);
+        expect(ran).toBe(1);
+      });
     });
 
     it('a search while on the search page, or a playlist while on a playlist, slides nothing', () => {

@@ -1564,6 +1564,7 @@ mod tests {
             // A long quiet gap: if the bad calls ran through the gate, the good one would wait for it.
             let gate = GateConfig {
                 min_gap: std::time::Duration::from_secs(3),
+                interactive_gap: std::time::Duration::from_secs(3),
                 ..GateConfig::NONE
             };
             let (url, _) = testserver::once(200, r#"{"contents":{}}"#);
@@ -1851,6 +1852,7 @@ esac"#,
                 min_gap: Duration::ZERO,
                 cooldown: Duration::from_secs(60),
                 max_cooldown: Duration::ZERO,
+                ..GateConfig::NONE
             };
             let s = YtDlpSource::new(&limited).with_gate(gate);
             assert_eq!(
@@ -1883,6 +1885,7 @@ esac"#,
                 min_gap: Duration::ZERO,
                 cooldown: Duration::from_millis(60),
                 max_cooldown: Duration::ZERO,
+                ..GateConfig::NONE
             };
             let s = YtDlpSource::new(&flaky).with_gate(gate);
             assert_eq!(

@@ -391,6 +391,16 @@ input[type='range'].slider:disabled {
   height: 100%;
   object-fit: cover;
 }
+/* A new song's cover: the old one dissolves into the new one in place. */
+::view-transition-group(cover-now) {
+  animation-duration: 420ms;
+  animation-timing-function: var(--ease-out);
+}
+::view-transition-old(cover-now),
+::view-transition-new(cover-now) {
+  height: 100%;
+  object-fit: cover;
+}
 ::view-transition-group(root) {
   animation-duration: 300ms;
 }
@@ -1299,6 +1309,12 @@ input[type='range'].slider:disabled {
   }
   .deck-art > * {
     animation: cover-in 460ms var(--ease-out) both;
+  }
+  /* The dissolve between covers is the view transition's (see `crossfadeCover`); the fade-up is for webviews without it. */
+  @supports (view-transition-name: none) {
+    .deck-art > * {
+      animation: none;
+    }
   }
   .deck-transport {
     display: flex;

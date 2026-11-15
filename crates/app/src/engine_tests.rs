@@ -1453,3 +1453,29 @@ fn polling_is_quick_around_commands_and_near_the_end_and_slow_mid_song() {
     assert_eq!(r.engine.poll_interval(), idle, "paused");
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+#[test]
+fn a_song_that_failed_to_load_does_not_keep_the_quick_poll_going_while_idle() {
+    let mut r = Rig::new(TestSource::local());
+    r.cmd(Command::SetAutoplay(false));
+    let missing = Track::new(
+        &format!(
+            "file:{}",
+            std::env::temp_dir()
+                .join("definitely_missing.mp3")
+                .display()
+        ),
+        "Gone Song",
+        "x",
+    );
+    r.cmd(Command::PlayTracks {
+        tracks: vec![missing],
+        start: 0,
+    });
+    r.run_for(500);
+    assert_eq!(
+        r.engine.poll_interval(),
+        Duration::from_millis(250),
+        "nothing is being waited for after the failure"
+    );
+}

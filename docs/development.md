@@ -36,7 +36,7 @@ The same variables can be set in **Settings** > **Advanced**, which saves them t
 | `PYXEE_DISCORD_CLIENT_ID` | Build time only: the Discord application ID (17 to 20 digits) baked into the build, which turns on Rich Presence ("Listening to Pyxee" with the current song). Unset: the feature is off. Not read at run time. See `shell.md`. |
 | `PYXEE_LASTFM_API_KEY`, `PYXEE_LASTFM_API_SECRET` | Build time only: the Last.fm API account's key and shared secret (32 hex characters each, from <https://www.last.fm/api/account/create>) baked into the build, which makes Settings > "Scrobble what I play to Last.fm" work. Both unset: the toggle only says scrobbling is not available. Set both or neither. Not read at run time; never logged. |
 
-yt-dlp is also paced by the app (one run at a time, 1 s apart, 2 minutes of refusals after a rate limit, doubling each time it repeats, up to 30 minutes); see `engine.md`.
+yt-dlp is also paced by the app (one run at a time, 1 s apart (a quarter of a second before something you are waiting for), at most 150 background runs an hour, 2 minutes of refusals after a rate limit, doubling each time it repeats, up to 30 minutes); see `engine.md`.
 
 ### yt-dlp and a JavaScript runtime (recommended, not required)
 Recent yt-dlp prints a warning that YouTube extraction without an external JavaScript runtime is deprecated, and some

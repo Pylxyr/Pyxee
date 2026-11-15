@@ -875,6 +875,7 @@ fn fake429(_o: &Opts) -> Result<()> {
         min_gap: Duration::ZERO,
         cooldown: Duration::from_millis(300),
         max_cooldown: Duration::ZERO,
+        ..GateConfig::NONE
     };
     let s2 = YtDlpSource::new(&script).with_gate(short);
     let before = calls();

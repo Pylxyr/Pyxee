@@ -1,4 +1,5 @@
 import type { Backend } from './backend';
+import { crossfadeCover } from './motion';
 import { perfCounters } from './perf';
 import type { CommandDto } from './bindings/CommandDto';
 import type { EntryDto } from './bindings/EntryDto';
@@ -81,8 +82,13 @@ export class PlayerStore {
   durationMs = $derived(this.shown?.track.durationMs ?? null);
   upNext = $derived(this.state.upcoming.map((id) => this.entry(id)).filter((e): e is EntryDto => e != null));
 
-  entry(id: number | null): EntryDto | null {
-    return id == null ? null : (this.state.queue.find((e) => e.id === id) ?? null);
+  entry(id: number | null, from: PlayerStateDto = this.state): EntryDto | null {
+    return id == null ? null : (from.queue.find((e) => e.id === id) ?? null);
+  }
+
+  /** The song `shown` would be for a state that has not been applied yet. */
+  #shownIn(s: PlayerStateDto): EntryDto | null {
+    return this.entry(s.audible, s) ?? this.entry(s.loading, s) ?? this.entry(s.current, s);
   }
 
   async init(backend: Backend) {
@@ -125,12 +131,19 @@ export class PlayerStore {
   #apply(s: PlayerStateDto) {
     if (s.seq < this.#stateSeq) return;
     const newer = s.seq < this.#seq ? { ms: this.positionMs, at: this.#positionAt, seq: this.#seq } : null;
-    this.state = s;
-    if (newer) {
-      this.positionMs = newer.ms;
-      this.#positionAt = newer.at;
-      this.#seq = newer.seq;
-    }
+    const commit = () => {
+      this.state = s;
+      if (newer) {
+        this.positionMs = newer.ms;
+        this.#positionAt = newer.at;
+        this.#seq = newer.seq;
+      }
+    };
+    // Another song's cover is coming up: let the browser dissolve the old cover into the new one.
+    const was = this.shown?.track.key ?? null;
+    const next = this.#shownIn(s)?.track.key ?? null;
+    if (was !== null && next !== null && was !== next) crossfadeCover(commit);
+    else commit();
   }
 
   /** Takes the backend's state again (what is shown stays if it cannot be read). */
