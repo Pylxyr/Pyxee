@@ -44,6 +44,32 @@ describe('Thumb after the window changes', () => {
   });
 });
 
+describe('Thumb keeps its picture visible', () => {
+  it('when the src string changes but the picture it maps to does not (the player swaps in the stream cover)', async () => {
+    const { container, rerender } = render(Thumb, { src: 'https://i.ytimg.com/vi/abc/hqdefault.jpg', seed: 'k', size: 40 });
+    const img = container.querySelector('img')!;
+    await fireEvent.load(img);
+    expect(img.classList.contains('thumb-loaded')).toBe(true);
+    // Another string for the same still: the same <img> URL, so no new load event will ever come.
+    await rerender({ src: 'https://i.ytimg.com/vi/abc/mqdefault.jpg', seed: 'k', size: 40 });
+    await new Promise((r) => setTimeout(r, 0));
+    const after = container.querySelector('img')!;
+    expect(after.getAttribute('src')).toBe(img.getAttribute('src'));
+    expect(after.classList.contains('thumb-loaded')).toBe(true);
+  });
+
+  it('a different picture hides until it has loaded, then shows', async () => {
+    const { container, rerender } = render(Thumb, { src: 'https://i.ytimg.com/vi/abc/hqdefault.jpg', seed: 'k', size: 40 });
+    await fireEvent.load(container.querySelector('img')!);
+    await rerender({ src: 'https://i.ytimg.com/vi/xyz/hqdefault.jpg', seed: 'k2', size: 40 });
+    await new Promise((r) => setTimeout(r, 0));
+    const img = container.querySelector('img')!;
+    expect(img.classList.contains('thumb-loaded')).toBe(false);
+    await fireEvent.load(img);
+    expect(img.classList.contains('thumb-loaded')).toBe(true);
+  });
+});
+
 async function failAll(container: HTMLElement) {
   for (let i = 0; i < 6; i++) {
     const img = container.querySelector('img');

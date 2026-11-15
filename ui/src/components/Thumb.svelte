@@ -63,9 +63,18 @@
   $effect(() => {
     src;
     tried = 0;
-    loaded = false;
     transient = false;
     retries = 0;
+  });
+  // The picture shows once the <img> has it. `loaded` starts again only when the URL asked for changes: another
+  // `src` string can map to the very same picture (the player swaps in the stream's own cover as a song starts), and
+  // then the browser sends no new `load` event, so waiting for one would leave the picture invisible. A picture that
+  // is already there (cached, or the same URL) is taken at once, for the same reason.
+  $effect(() => {
+    const url = current;
+    const node = el;
+    loaded = false;
+    if (url && node && node.complete && node.naturalWidth > 0 && node.getAttribute('src') === url) accept(node);
   });
   // A cover that could not be fetched is requested again, but only when it can work: never while the PC is offline
   // (the `online` event is the signal instead of polling), at most three times with growing waits, and never for a
@@ -86,7 +95,9 @@
     return () => clearTimeout(timer);
   });
   function onloaded(e: Event) {
-    const img = e.currentTarget as HTMLImageElement;
+    accept(e.currentTarget as HTMLImageElement);
+  }
+  function accept(img: HTMLImageElement) {
     // YouTube's grey "no picture" image arrives as a successful load: treat it as a miss and try the next URL.
     if (current && isMissingStill(current, img.naturalWidth, img.naturalHeight)) {
       noteMissing(current);
