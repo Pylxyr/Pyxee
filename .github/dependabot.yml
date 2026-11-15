@@ -32,3 +32,8 @@ updates:
         patterns: ["@tauri-apps/*"]
       frontend:
         patterns: ["*"]
+    ignore:
+      # svelte-check 4.x supports TypeScript 5 and 6 only; a new TypeScript major would break `npm run check`. Minor and
+      # patch updates still come through. Remove this when svelte-check supports the next major.
+      - dependency-name: typescript
+        update-types: ["version-update:semver-major"]
