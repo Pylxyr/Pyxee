@@ -253,8 +253,43 @@ describe('row menu (in-page sheet) and snackbars', () => {
     expect(dialog).toBeTruthy();
     await fireEvent.click(screen.getByRole('button', { name: 'Add to queue' }));
     await waitFor(() => expect(player.state.queue.map((e) => e.track.title)).toEqual(['Glass Rooms']));
-    expect(snackbar.items.at(-1)?.message).toBe('Added to queue');
+    expect(snackbar.items.at(-1)?.message).toBe('Glass Rooms is added to queue');
     await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Glass Rooms' })).toBeNull());
+  });
+
+  it('Play next names the song in its notice: "<song> will play next"', async () => {
+    await openApp();
+    await fireEvent.click(screen.getByRole('button', { name: 'More options for Glass Rooms' }));
+    await fireEvent.click(await screen.findByRole('button', { name: 'Play next' }));
+    expect(snackbar.items.at(-1)?.message).toBe('Glass Rooms will play next');
+  });
+
+  it('a very long title is cut short in the notice', async () => {
+    await openApp();
+    nav.menuTrack = { ...DEMO_TRACKS[0]!, title: 'A'.repeat(90) };
+    await fireEvent.click(await screen.findByRole('button', { name: 'Play next' }));
+    const message = snackbar.items.at(-1)!.message;
+    expect(message.endsWith('… will play next')).toBe(true);
+    expect(message.length).toBeLessThan(70);
+  });
+
+  it('asking for Play next twice puts the latest song first, right after the current one', async () => {
+    await openApp();
+    await fireEvent.click(screen.getByRole('button', { name: /^Neon Harbor/ }));
+    mock.tick(600);
+    await screen.findByRole('button', { name: 'Pause' });
+    const asked = async (title: string) => {
+      nav.menuTrack = DEMO_TRACKS.find((t) => t.title === title)!;
+      await fireEvent.click(await screen.findByRole('button', { name: 'Play next' }));
+    };
+    await asked('Glass Rooms');
+    await waitFor(() => expect(player.state.queue.map((e) => e.track.title)).toContain('Glass Rooms'));
+    await asked('Slow Orbit');
+    await waitFor(() => {
+      const titles = player.state.queue.map((e) => e.track.title);
+      const cur = titles.indexOf('Neon Harbor');
+      expect(titles.slice(cur + 1, cur + 3)).toEqual(['Slow Orbit', 'Glass Rooms']);
+    });
   });
 });
 
