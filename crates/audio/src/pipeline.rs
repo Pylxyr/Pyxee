@@ -93,6 +93,17 @@ pub enum PipeEvent {
         /// Frames of the track that played before it failed (where to resume from).
         frames_emitted: u64,
     },
+    /// The thread that decodes audio panicked and is gone: nothing more will be decoded until the pipeline is rebuilt.
+    ProducerFailed { message: String },
+}
+
+/// The text of a panic payload (`catch_unwind`'s error), for the log and for a notice.
+pub fn panic_message(payload: &(dyn std::any::Any + Send)) -> String {
+    payload
+        .downcast_ref::<&str>()
+        .map(|s| (*s).to_string())
+        .or_else(|| payload.downcast_ref::<String>().cloned())
+        .unwrap_or_else(|| "unknown panic".to_string())
 }
 
 struct Inner {
@@ -222,7 +233,19 @@ impl Pipeline {
             rate,
         });
         let s = Arc::clone(&shared);
-        let producer = thread::spawn(move || produce(&s));
+        let producer = thread::spawn(move || {
+            // A panic in a decoder must not leave the player silent without a word: say so, and let the engine tell
+            // the listener. (The panic hook has already logged it with a backtrace.)
+            if let Err(payload) =
+                std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| produce(&s)))
+            {
+                let message = panic_message(payload.as_ref());
+                log::error!("the audio producer thread panicked: {message}");
+                let _ = lock(&s.inner)
+                    .tx
+                    .send(PipeEvent::ProducerFailed { message });
+            }
+        });
         Self {
             shared,
             producer: Some(producer),

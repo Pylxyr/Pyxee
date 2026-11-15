@@ -621,11 +621,12 @@ fn toast_for(app: &AppHandle, id: u64) {
     {
         return;
     }
-    let track = app.state::<AppState>().player.lock().ok().and_then(|p| {
-        p.queue()
-            .get(pyxee_core::EntryId(id))
-            .map(|e| e.track.clone())
-    });
+    let track = app
+        .state::<AppState>()
+        .player()
+        .queue()
+        .get(pyxee_core::EntryId(id))
+        .map(|e| e.track.clone());
     if let Some(t) = track {
         if let Err(e) = app
             .notification()
@@ -644,9 +645,7 @@ pub(crate) fn current_phase(app: &AppHandle) -> (Phase, bool) {
     let Some(state) = app.try_state::<AppState>() else {
         return (Phase::Idle, false);
     };
-    let Ok(p) = state.player.lock() else {
-        return (Phase::Idle, false);
-    };
+    let p = state.player();
     let dto = crate::dto::state_dto(&p);
     let has_track = dto.current.is_some();
     let phase = match dto.transport {

@@ -60,12 +60,8 @@ fn seek_target(position_ms: u64, dir: SeekDirection, by_ms: u64) -> u64 {
 }
 
 fn on_event(app: &AppHandle, event: MediaControlEvent) {
-    let position = || {
-        app.state::<crate::state::AppState>()
-            .player
-            .lock()
-            .map_or(0, |p| crate::dto::state_dto(&p).position_ms)
-    };
+    let position =
+        || crate::dto::state_dto(&app.state::<crate::state::AppState>().player()).position_ms;
     let cmd = match event {
         MediaControlEvent::Play => Command::Resume,
         MediaControlEvent::Pause | MediaControlEvent::Stop => Command::Pause,

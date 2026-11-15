@@ -54,9 +54,36 @@ pub fn save_if_changed(path: &Path, p: &Persisted, last: &mut Vec<u8>) -> std::i
     Ok(true)
 }
 
-/// A missing or unreadable file is not an error: the app just starts empty.
+/// A missing file is not an error: the app just starts empty. A file that is there but cannot be read as a session is
+/// moved aside as `session.json.bad` (and logged), not silently overwritten by the next save, so it can still be looked at.
 pub fn load(path: &Path) -> Option<Persisted> {
-    serde_json::from_slice(&fs::read(path).ok()?).ok()
+    let bytes = match fs::read(path) {
+        Ok(bytes) => bytes,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return None,
+        Err(e) => {
+            log::warn!("could not read the session file {}: {e}", path.display());
+            return None;
+        }
+    };
+    match serde_json::from_slice(&bytes) {
+        Ok(p) => Some(p),
+        Err(e) => {
+            let mut name = path.file_name()?.to_os_string();
+            name.push(".bad");
+            let bad = path.with_file_name(name);
+            let _ = fs::remove_file(&bad); // renaming over a file fails on Windows
+            match fs::rename(path, &bad) {
+                Ok(()) => log::warn!(
+                    "the session file could not be read ({e}); it was kept as {} and the app starts empty",
+                    bad.display()
+                ),
+                Err(re) => log::warn!(
+                    "the session file could not be read ({e}) and could not be moved aside ({re}); the app starts empty"
+                ),
+            }
+            None
+        }
+    }
 }
 
 #[cfg(test)]
@@ -108,6 +135,19 @@ mod tests {
         let (woken, waited) = writer.join().unwrap();
         assert!(woken);
         assert!(waited < Duration::from_secs(5), "{waited:?}");
+    }
+
+    #[test]
+    fn an_unreadable_session_is_kept_as_bad_and_the_app_starts_empty() {
+        let d = dir("bad");
+        fs::create_dir_all(&d).unwrap();
+        let path = d.join("session.json");
+        fs::write(&path, b"{ not json").unwrap();
+        assert!(load(&path).is_none());
+        assert!(!path.exists());
+        assert_eq!(fs::read(d.join("session.json.bad")).unwrap(), b"{ not json");
+        assert!(load(&path).is_none(), "a missing file is simply empty");
+        let _ = fs::remove_dir_all(&d);
     }
 
     #[test]
