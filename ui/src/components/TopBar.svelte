@@ -8,8 +8,12 @@
   // also keep the Settings button here.
   let { showSettings = false }: { showSettings?: boolean } = $props();
 
-  let text = $state('');
+  let text = $state(search.query);
   let active = $state(-1);
+  // The box shows the query that is searched: "Go to artist" and the like run a search from elsewhere.
+  $effect(() => {
+    text = search.query;
+  });
   const open = $derived(search.suggestions.length > 0);
 
   // The suggestions go a moment after the box loses focus. Coming back to the box inside that moment keeps them:
@@ -58,6 +62,7 @@
         aria-autocomplete="list"
         aria-activedescendant={active >= 0 ? `suggest-${active}` : undefined}
         autocomplete="off"
+        data-search-input
         spellcheck="false"
         bind:value={text}
         {oninput}

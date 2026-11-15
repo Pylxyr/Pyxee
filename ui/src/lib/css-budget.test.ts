@@ -136,14 +136,8 @@ describe('no large blur, no backdrop filter', () => {
     for (const m of css.matchAll(/mix-blend-mode:\s*([\w-]+)/g)) expect(m[1]).toBe('normal');
   });
 
-  it('blurs only a few pixels, and only in a one-off keyframe', () => {
-    for (const b of all) {
-      for (const m of b.body.matchAll(/blur\(\s*([^)]*)\)/g)) {
-        const px = parseFloat(m[1]!);
-        expect(b.at, `blur in ${b.selector}: a blur belongs in a keyframe that finishes`).toMatch(/^@keyframes (focus-in)$/);
-        expect(px, `${b.selector}: blur(${m[1]})`).toBeLessThanOrEqual(8);
-      }
-    }
+  it('blurs nothing at run time: not in a rule, not in a keyframe', () => {
+    for (const b of all) expect(b.body, `blur in ${b.selector}`).not.toMatch(/blur\(/);
   });
 
   it('keeps the soft backdrops to a small canvas the browser only stretches (see lib/backdrop.ts), not a filter', () => {
@@ -154,6 +148,61 @@ describe('no large blur, no backdrop filter', () => {
     }
   });
 });
+
+/** Colour changes on hover and press: small, one-off, ended by themselves, never part of the playing state. */
+const PAINT_ONLY = new Set(['background-color', 'color', 'border-color', 'text-decoration-color']);
+
+describe('motion only moves transform and opacity', () => {
+  it('every keyframe a rule uses changes only transform and opacity', () => {
+    const names = new Set(all.flatMap((b) => [...b.body.matchAll(/animation(?:-name)?:\s*([a-z][\w-]*)/g)].map((m) => m[1]!)));
+    const known = [...css.matchAll(/@keyframes\s+([\w-]+)/g)].map((m) => m[1]!);
+    expect(known.length).toBeGreaterThan(5);
+    for (const name of known) {
+      expect(names.has(name), `@keyframes ${name} is not used by any rule`).toBe(true);
+      const props = keyframeProps(name);
+      expect(props.filter((p) => p !== 'transform' && p !== 'opacity'), `${name} must only change transform/opacity`).toEqual([]);
+    }
+  });
+
+  it('no transition moves a layout property, a filter or a shadow (colours on hover are the one allowance)', () => {
+    const allowed = new Set(['transform', 'opacity', 'none', 'all', ...PAINT_ONLY]);
+    const bad = all
+      .flatMap((b) => transitionedProps(b.body).filter((p) => !allowed.has(p) && !p.startsWith('--')).map((p) => `${b.selector}: ${p}`));
+    expect(bad).toEqual([]);
+    // (the check itself)
+    expect(transitionedProps('transition: width 200ms, opacity 1s;')).toEqual(['width', 'opacity']);
+  });
+
+  it('a transition on all is never used (it would pick up a layout change)', () => {
+    expect(all.filter((b) => transitionedProps(b.body).includes('all')).map((b) => b.selector)).toEqual([]);
+  });
+
+  it('the covers glow and brighten on a layer that is drawn once: no animated shadow, no brightness filter', () => {
+    expect(css).not.toMatch(/filter:\s*brightness/);
+    expect(keyframeProps('glow-in')).toEqual(['opacity']);
+  });
+});
+
+/** The properties a `transition` / `transition-property` declaration names. */
+function transitionedProps(body: string): string[] {
+  const out: string[] = [];
+  for (const m of body.matchAll(/transition(?:-property)?:\s*([^;]+)/g)) {
+    let depth = 0;
+    let item = '';
+    const items: string[] = [];
+    for (const ch of m[1]!) {
+      if (ch === '(') depth++;
+      if (ch === ')') depth--;
+      if (ch === ',' && depth === 0) {
+        items.push(item);
+        item = '';
+      } else item += ch;
+    }
+    items.push(item);
+    out.push(...items.map((i) => i.trim().split(/\s+/)[0]!));
+  }
+  return out;
+}
 
 describe('components', () => {
   it('have no style block or utility class that animates forever, blurs, or promotes layers', () => {

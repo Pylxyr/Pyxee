@@ -34,4 +34,35 @@ describe('SnackbarStore', () => {
     for (const m of ['a', 'b', 'c', 'd']) s.push(m);
     expect(s.items.map((i) => i.message)).toEqual(['b', 'c', 'd']);
   });
+  it('the same plain message is not stacked twice: its timer starts again', () => {
+    const s = new SnackbarStore();
+    const a = s.push('Could not reach the network');
+    vi.advanceTimersByTime(3000);
+    const b = s.push('Could not reach the network');
+    expect(b).toBe(a);
+    expect(s.items).toHaveLength(1);
+    vi.advanceTimersByTime(3000);
+    expect(s.items).toHaveLength(1);
+    vi.advanceTimersByTime(1100);
+    expect(s.items).toHaveLength(0);
+  });
+  it('two messages with an Undo each stay separate', () => {
+    const s = new SnackbarStore();
+    s.push('Removed', { action: { label: 'Undo', run: () => {} } });
+    s.push('Removed', { action: { label: 'Undo', run: () => {} } });
+    expect(s.items).toHaveLength(2);
+  });
+  it('a snack waits while the pointer or focus is on it, then runs out its time', () => {
+    const s = new SnackbarStore();
+    const id = s.push('Added to queue');
+    vi.advanceTimersByTime(2000);
+    s.pause(id);
+    vi.advanceTimersByTime(60_000);
+    expect(s.items).toHaveLength(1);
+    s.resume(id);
+    vi.advanceTimersByTime(1900);
+    expect(s.items).toHaveLength(1);
+    vi.advanceTimersByTime(200);
+    expect(s.items).toHaveLength(0);
+  });
 });

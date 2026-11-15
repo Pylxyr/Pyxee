@@ -37,6 +37,8 @@ export class SearchStore {
   error = $state<SearchErrorDto | null>(null);
   filters = $state<FilterInfoDto[]>(DEFAULT_FILTERS);
   suggestions = $state<string[]>([]);
+  /** The same query is being asked again with another filter: the old results stay on screen (dimmed) meanwhile. */
+  reloading = $state(false);
   #backend: Backend | null = null;
   #seq = 0;
   #suggestSeq = 0;
@@ -63,6 +65,7 @@ export class SearchStore {
 
   async run(query: string, filter: SearchFilterDto = this.filter) {
     const q = query.trim();
+    const sameQuery = q === this.query && this.items.length > 0 && this.status !== 'error';
     this.query = q;
     this.filter = filter;
     this.clearSuggestions();
@@ -71,17 +74,21 @@ export class SearchStore {
       this.status = 'idle';
       this.items = [];
       this.error = null;
+      this.reloading = false;
       return;
     }
     this.status = 'loading';
+    this.reloading = sameQuery;
     this.error = null;
     try {
       const r = await this.#backend.search(q, filter);
       if (seq !== this.#seq) return;
       this.items = r.items;
       this.status = 'ready';
+      this.reloading = false;
     } catch (e) {
       if (seq !== this.#seq) return;
+      this.reloading = false;
       this.items = [];
       this.error = toSearchError(e);
       this.status = 'error';

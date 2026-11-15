@@ -4,12 +4,21 @@ import { cleanup } from '@testing-library/svelte';
 // jsdom has no Web Animations API; Svelte transitions call element.animate().
 if (!Element.prototype.animate) {
   Element.prototype.animate = function () {
-    // Finish immediately: Svelte waits for `onfinish` before removing an element after its outro.
-    const a: Record<string, unknown> = { cancel() {}, finish() {}, finished: Promise.resolve(), _cb: null };
+    // Finish at once (next tick): Svelte waits for `onfinish` before removing an element after its outro. As in a
+    // browser, a cancelled animation never reports that it finished (Svelte cancels the ones of a block that is torn down).
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const a: Record<string, unknown> = {
+      cancel() {
+        clearTimeout(timer);
+      },
+      finish() {},
+      finished: Promise.resolve(),
+      _cb: null,
+    };
     Object.defineProperty(a, 'onfinish', {
       set(cb: (() => void) | null) {
         a._cb = cb;
-        setTimeout(() => cb?.(), 0);
+        timer = setTimeout(() => cb?.(), 0);
       },
       get: () => a._cb,
     });

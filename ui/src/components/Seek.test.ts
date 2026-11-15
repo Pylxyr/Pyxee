@@ -161,3 +161,40 @@ describe('seek bar, glide and steps modes', () => {
     expect(calls[0]!.opts.easing).toBe('steps(399, jump-end)'); // 190 s x 4 a second = 760, capped to the 399 px still to fill
   });
 });
+
+describe('seek bar, keyboard and release', () => {
+  it('arrow keys step 5 s, Shift 10 s, and repeated presses add up before the player reports', async () => {
+    const { fireEvent } = await import('@testing-library/svelte');
+    const seen: number[] = [];
+    show('paused', 60_000);
+    const { container } = render(Seek, { positionMs: 60_000, durationMs: DUR, onseek: (ms: number) => seen.push(ms) });
+    const input = container.querySelector('input')!;
+    await fireEvent.keyDown(input, { key: 'ArrowRight' });
+    await fireEvent.keyDown(input, { key: 'ArrowRight' });
+    await fireEvent.keyDown(input, { key: 'ArrowLeft', shiftKey: true });
+    expect(seen).toEqual([65_000, 70_000, 60_000]);
+  });
+
+  it('after a release the thumb stays at the target until the position reaches it', async () => {
+    const { fireEvent } = await import('@testing-library/svelte');
+    show('paused', 10_000);
+    const { container, rerender } = render(Seek, { positionMs: 10_000, durationMs: DUR, onseek: () => {} });
+    const input = container.querySelector<HTMLInputElement>('input')!;
+    await fireEvent.input(input, { target: { value: '150000' } });
+    await fireEvent.change(input, { target: { value: '150000' } });
+    expect(input.valueAsNumber).toBe(150_000); // not snapped back to 10 s
+    await rerender({ positionMs: 150_500, durationMs: DUR, onseek: () => {} });
+    expect(input.valueAsNumber).toBe(150_500); // the report arrived: the thumb follows the player again
+  });
+
+  it('lets go after a while when the position never arrives (a failed seek)', async () => {
+    const { fireEvent } = await import('@testing-library/svelte');
+    show('paused', 10_000);
+    const { container } = render(Seek, { positionMs: 10_000, durationMs: DUR, onseek: () => {} });
+    const input = container.querySelector<HTMLInputElement>('input')!;
+    await fireEvent.change(input, { target: { value: '150000' } });
+    vi.advanceTimersByTime(3100);
+    await Promise.resolve();
+    expect(input.valueAsNumber).toBe(10_000);
+  });
+});

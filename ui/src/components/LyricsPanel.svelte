@@ -2,6 +2,7 @@
   import { player, STALE_AFTER_MS } from '$lib/player.svelte';
   import { lyricsStore } from '$lib/lyrics.svelte';
   import { currentLine } from '$lib/lyrics';
+  import { prefersReducedMotion } from '$lib/motion';
 
   let { active }: { active: boolean } = $props();
 
@@ -41,7 +42,12 @@
   const byHand = () => (handScrolledAt = Date.now());
   $effect(() => {
     if (index < 0 || !box || Date.now() - handScrolledAt < 4000) return;
-    box.querySelector('[data-current="true"]')?.scrollIntoView?.({ block: 'center', behavior: 'smooth' });
+    // Scrolls this box only (scrollIntoView would scroll every ancestor too), and jumps when motion is reduced.
+    const line = box.querySelector<HTMLElement>('[data-current="true"]');
+    if (!line || typeof box.scrollTo !== 'function') return;
+    const b = box.getBoundingClientRect();
+    const r = line.getBoundingClientRect();
+    box.scrollTo({ top: box.scrollTop + (r.top - b.top) - (box.clientHeight - r.height) / 2, behavior: prefersReducedMotion() ? 'auto' : 'smooth' });
   });
 </script>
 

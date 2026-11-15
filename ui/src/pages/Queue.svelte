@@ -6,6 +6,8 @@
   import { messageOf } from '$lib/backend';
   import { snackbar } from '$lib/snackbar.svelte';
   import { reorder } from '$lib/reorder';
+  import { focusNeighbour } from '$lib/focus';
+  import { markListChange } from '$lib/motion';
   import Button from '../components/Button.svelte';
   import EditableRow from '../components/EditableRow.svelte';
   import EmptyState from '../components/EmptyState.svelte';
@@ -91,7 +93,7 @@
           {#snippet actions()}
             <IconButton icon="up" iconSize={18} label="Move {e.track.title} up" disabled={i === 0} onclick={() => move(e.id, i - 1)} />
             <IconButton icon="down" iconSize={18} label="Move {e.track.title} down" disabled={i === queue.length - 1} onclick={() => move(e.id, i + 1)} />
-            <IconButton icon="close" iconSize={18} label="Remove {e.track.title} from queue" onclick={() => removeFromQueue(e)} />
+            <IconButton icon="close" iconSize={18} label="Remove {e.track.title} from queue" onclick={(ev) => { markListChange(); focusNeighbour(ev.currentTarget); removeFromQueue(e); }} />
           {/snippet}
         </EditableRow>
       {/each}

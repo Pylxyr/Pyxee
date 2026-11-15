@@ -12,6 +12,10 @@
       transition:fly={{ y: motionPx(20), duration: motionMs(MOTION.base + 60), easing: backOut }}
       class="toast pointer-events-auto flex w-full max-w-md items-center gap-4 bg-fg px-4 py-3 text-on-fg"
       role="status"
+      onmouseenter={() => snackbar.pause(s.id)}
+      onmouseleave={() => snackbar.resume(s.id)}
+      onfocusin={() => snackbar.pause(s.id)}
+      onfocusout={() => snackbar.resume(s.id)}
     >
       <span class="flex-1">{s.message}</span>
       {#if s.action}

@@ -27,6 +27,8 @@ class NavStore {
   tab = $state<NowPlayingTab>('upnext');
   /** Track whose row menu is open (in-page sheet, never a native menu). */
   menuTrack = $state<TrackDto | null>(null);
+  /** The row that a right-click opened the menu from: the sheet gives focus back to it when it closes. */
+  menuOpener = $state.raw<HTMLElement | null>(null);
   themeSheetOpen = $state(false);
   sleepSheetOpen = $state(false);
   /** The theme editor (opened from the Settings sheet). */
@@ -101,6 +103,13 @@ class NavStore {
       () => {
         this.nowPlayingOpen = false;
         if (then) this.route = then;
+        // Focus goes back to the button that opened Now Playing (the cover on the deck or dock), not to the document.
+        if (!then) {
+          queueMicrotask(() => {
+            const opener = source()?.closest<HTMLElement>('button') ?? source();
+            if (opener?.isConnected && !opener.closest('[inert]')) opener.focus({ preventScroll: true });
+          });
+        }
       },
       {
         before: () => (this.morphing = true),

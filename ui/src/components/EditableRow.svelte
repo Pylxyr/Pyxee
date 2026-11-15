@@ -3,6 +3,9 @@
   import type { HTMLLiAttributes } from 'svelte/elements';
   import { formatTime } from '$lib/format';
   import { nav } from '$lib/nav.svelte';
+  import { MOTION, listChangeMs, motionPx } from '$lib/motion';
+  import { fly } from 'svelte/transition';
+  import { cubicIn, expoOut } from 'svelte/easing';
   import type { TrackDto } from '$lib/bindings/TrackDto';
   import Thumb from './Thumb.svelte';
 
@@ -28,12 +31,16 @@
   // Right-click (or the menu key) on the row opens the song's menu, as the "more" button of a list row does.
   function openMenu(e: MouseEvent) {
     e.preventDefault();
+    nav.menuOpener = (e.currentTarget as HTMLElement).querySelector<HTMLElement>('.row-edit-main');
     nav.menuTrack = track;
   }
 </script>
 
 <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-<li class="row-edit" data-current={current} data-over={over} data-dragging={dragging} oncontextmenu={openMenu} {...rest}>
+<li class="row-edit" data-current={current} data-over={over} data-dragging={dragging} oncontextmenu={openMenu}
+  in:fly={{ y: motionPx(8), duration: listChangeMs(MOTION.base), easing: expoOut }}
+  out:fly={{ x: motionPx(-24), duration: listChangeMs(MOTION.exit), easing: cubicIn }}
+  {...rest}>
   {@render handle?.()}
   <button class="row-edit-main" onclick={onplay}>
     {#if index !== undefined}<span class="t-caption muted nums w-6 shrink-0 text-center" aria-hidden="true">{index + 1}</span>{/if}

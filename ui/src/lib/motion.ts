@@ -60,3 +60,48 @@ export function withViewTransition(
   void t.finished.catch(quiet).finally(() => opts.after?.());
   return true;
 }
+
+/**
+ * A short pop on an element (transform only, a Web Animations animation that ends by itself, so nothing is promoted
+ * before or after it). Nothing under reduced motion or where there is no `animate`.
+ */
+export function pulse(el: Element, scale = 1.28): void {
+  if (prefersReducedMotion() || typeof el.animate !== 'function') return;
+  el.animate([{ transform: 'scale(0.78)' }, { transform: `scale(${scale})`, offset: 0.45 }, { transform: 'scale(1)' }], {
+    duration: 380,
+    easing: 'cubic-bezier(0.2, 0.8, 0.2, 1)',
+  });
+}
+
+/**
+ * Svelte action: pops the element when `value` changes (not when it first appears). Used for the heart: liking a song
+ * answers with a small pop, while a list that is drawn with hearts already set stays still.
+ */
+export function popOnChange(node: HTMLElement, value: unknown) {
+  let last = value;
+  return {
+    update(next: unknown) {
+      if (next !== last) {
+        last = next;
+        pulse(node);
+      }
+    },
+  };
+}
+
+// A row that leaves or comes back animates only when the person just did that (removed it, pressed Undo). A list that is
+// replaced as a whole (a new queue, new search results) swaps without it: old rows fading out while the new ones stand
+// below them would show two lists for a moment.
+let listChangedAt = -Infinity;
+const LIST_CHANGE_WINDOW_MS = 700;
+
+/** Call when the person removes a row or undoes a removal, just before the list changes. */
+export function markListChange(): void {
+  listChangedAt = typeof performance !== 'undefined' ? performance.now() : Date.now();
+}
+
+/** `ms` for a row's enter or exit, or 0 when the list was not just changed by the person (and under reduced motion). */
+export function listChangeMs(ms: number): number {
+  const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
+  return now - listChangedAt < LIST_CHANGE_WINDOW_MS ? motionMs(ms) : 0;
+}

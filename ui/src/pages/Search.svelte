@@ -12,6 +12,7 @@
   import Thumb from '../components/Thumb.svelte';
   import TrackList from '../components/TrackList.svelte';
   import TrackRow from '../components/TrackRow.svelte';
+  import { withKeys } from '$lib/keys';
 
   const labels: Record<SearchFilterDto, string> = {
     all: 'All', songs: 'Songs', videos: 'Videos', albums: 'Albums', artists: 'Artists', playlists: 'Playlists',
@@ -25,6 +26,21 @@
           ? 'Wait a little while before searching again.'
           : '',
   );
+  // The one short sentence a screen reader hears (the list itself is not a live region: it would read every row).
+  const status = $derived(
+    search.status === 'loading'
+      ? 'Searching'
+      : search.status === 'error'
+        ? 'The search failed'
+        : search.status === 'ready'
+          ? search.items.length === 0
+            ? 'Nothing found'
+            : `${search.items.length} ${search.items.length === 1 ? 'result' : 'results'}`
+          : '',
+  );
+  // Results of the same query stay up, dimmed, while another filter loads.
+  const showList = $derived(search.status === 'ready' || (search.status === 'loading' && search.reloading));
+  const rows = $derived(withKeys(search.items, (i) => (i.type === 'track' ? i.track.key : `${i.type}:${i.key}`)));
   const filters = $derived(
     search.filters.map((f) => ({
       id: f.filter,
@@ -47,8 +63,9 @@
   {#if !search.query && search.status === 'idle'}
     <EmptyState icon="search" title="Search" text="Find songs, videos, artists and playlists. Type above and press Enter." />
   {:else}
-    <div aria-live="polite">
-      {#if search.status === 'loading'}
+    <p class="sr-only" role="status">{status}</p>
+    <div aria-busy={search.status === 'loading'}>
+      {#if search.status === 'loading' && !search.reloading}
         <Skeleton rows={8} />
       {:else if search.status === 'error' && search.error}
         <div class="notice" role="alert">
@@ -60,9 +77,12 @@
         </div>
       {:else if search.status === 'ready' && search.items.length === 0}
         <EmptyState icon="search" title="No results" text="Nothing matched “{search.query}”. Try different words or another filter." />
-      {:else if search.status === 'ready'}
+      {:else if showList}
+        <div class="results" data-dim={search.status === 'loading'}>
         <TrackList label="Results" head={false}>
-          {#each search.items as item, i (i)}
+          {#each rows as r (r.key)}
+            {@const item = r.item}
+            {@const i = r.index}
             {#if item.type === 'track'}
               {@const t = item.track}
               <TrackRow track={t} index={i} onplay={() => player.playTracks([t])} />
@@ -93,6 +113,7 @@
             {/if}
           {/each}
         </TrackList>
+        </div>
       {/if}
     </div>
   {/if}

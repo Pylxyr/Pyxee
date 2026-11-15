@@ -4,19 +4,64 @@
   import { seekMode } from '$lib/seekmode.svelte';
   import { DRIFT_RESYNC_MS, animatedPositionMs, devicePixels, nextPixelDelayMs, pixelPct, stepsFor } from '$lib/seekbar';
 
-  let { positionMs, durationMs, onseek, label = 'Seek', accent = false, disabled = false }: {
+  let { positionMs, durationMs, onseek, label = 'Seek', accent = false, disabled = false, scrub = $bindable(null) }: {
     positionMs: number;
     durationMs: number | null;
     onseek: (ms: number) => void;
     label?: string;
     accent?: boolean;
     disabled?: boolean;
+    /** Where the thumb is being held (dragged, or just released and waiting for the player), or null. The time labels next to the bar show it. */
+    scrub?: number | null;
   } = $props();
+
+  // Arrow keys move the song by 5 s (10 s with Shift), as the global Left/Right keys do.
+  const KEY_STEP_MS = 5000;
+  // After a release or a key press the thumb stays at the target until the player's position report reaches it (the
+  // report comes once a second, so without this the thumb would snap back for up to a second). If the report never
+  // arrives (the seek failed) it lets go after this long.
+  const CATCH_UP_MS = 2000;
+  const HOLD_MAX_MS = 3000;
 
   // While dragging, show the thumb position instead of the (older) backend position.
   let dragging = $state<number | null>(null);
+  let held = $state<number | null>(null);
+  let holdTimer: ReturnType<typeof setTimeout> | undefined;
+  const hold = $derived(dragging ?? held);
   const max = $derived(durationMs ?? 0);
-  const value = $derived(Math.min(dragging ?? positionMs, max || positionMs));
+  const value = $derived(Math.min(hold ?? positionMs, max || positionMs));
+  $effect(() => {
+    scrub = hold;
+  });
+  $effect(() => {
+    if (held !== null && Math.abs(positionMs - held) <= CATCH_UP_MS) {
+      held = null;
+      clearTimeout(holdTimer);
+    }
+  });
+  // Another song: nothing is held for the old one.
+  $effect(() => {
+    void durationMs;
+    held = null;
+    clearTimeout(holdTimer);
+  });
+  $effect(() => () => clearTimeout(holdTimer));
+
+  function commit(ms: number) {
+    const target = Math.min(max, Math.max(0, ms));
+    onseek(target);
+    dragging = null;
+    held = target;
+    clearTimeout(holdTimer);
+    holdTimer = setTimeout(() => (held = null), HOLD_MAX_MS);
+  }
+  function onkeydown(e: KeyboardEvent) {
+    if (e.ctrlKey || e.altKey || e.metaKey || max <= 0) return;
+    const dir = e.key === 'ArrowRight' || e.key === 'ArrowUp' ? 1 : e.key === 'ArrowLeft' || e.key === 'ArrowDown' ? -1 : 0;
+    if (dir === 0) return;
+    e.preventDefault();
+    commit((hold ?? positionMs) + dir * (e.shiftKey ? 2 * KEY_STEP_MS : KEY_STEP_MS));
+  }
   const exactPct = $derived(max > 0 ? Math.min(100, (value / max) * 100) : 0);
 
   // How the fill moves (PYXEE_SEEK_MODE): `step` = once a second, with the reports; `pixel` = one timer per whole pixel;
@@ -78,7 +123,7 @@
   $effect(() => {
     if (!glide || !fill) return;
     void player.positionMs;
-    const drag = dragging;
+    const drag = hold;
     const playing = player.isPlaying;
     const now = player.estimatedPositionMs();
     const at = (ms: number) => (max > 0 ? Math.min(1, Math.max(0, ms / max)) : 0);
@@ -106,7 +151,7 @@
   });
   $effect(() => stopAnim);
 
-  const pct = $derived(glide ? 0 : mode === 'pixel' && dragging == null && px > 0 ? pixelPct(shownMs, max, px) : exactPct);
+  const pct = $derived(glide ? 0 : mode === 'pixel' && hold == null && px > 0 ? pixelPct(shownMs, max, px) : exactPct);
 </script>
 
 {#if !durationMs}
@@ -132,11 +177,9 @@
   {value}
   disabled={disabled || !durationMs}
   style="--pct:{pct}%"
+  {onkeydown}
   oninput={(e) => (dragging = e.currentTarget.valueAsNumber)}
-  onchange={(e) => {
-    onseek(e.currentTarget.valueAsNumber);
-    dragging = null;
-  }}
+  onchange={(e) => commit(e.currentTarget.valueAsNumber)}
 />
 {/snippet}
 {#if glide}

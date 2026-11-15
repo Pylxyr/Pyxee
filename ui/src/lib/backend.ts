@@ -143,6 +143,14 @@ export const UPDATE_PROGRESS_EVENT = 'update-progress';
 export const SLEEP_EVENT = 'sleep-state';
 
 /** Error text from a rejected call: Rust sends plain strings; anything else gets a generic sentence. */
+/**
+ * True when a read failed because the thing is gone (a deleted playlist), as opposed to a failure that may pass.
+ * Rust's `LibraryError::NotFound` and the mock both say "... no longer exists"; that sentence is the contract.
+ */
+export function isNotFound(e: unknown): boolean {
+  return /\bno longer exists\b/i.test(messageOf(e));
+}
+
 export function messageOf(e: unknown): string {
   if (typeof e === 'string') return e;
   if (e instanceof Error) return e.message;

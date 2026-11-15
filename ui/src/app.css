@@ -351,16 +351,18 @@ input[type='range'].slider:disabled {
     transform: translateX(calc(var(--axis-dir, 1) * 28px));
   }
 }
-@keyframes focus-in {
+/* A new cover comes into focus: it fades up from a slightly larger size (opacity and transform only; there is no blur, a
+   blurred layer would be redrawn on every frame of the arrival). */
+@keyframes cover-in {
   from {
     opacity: 0.2;
-    filter: blur(6px);
-    transform: scale(1.1);
+    transform: scale(1.08);
   }
 }
+/* The glow behind a cover is a layer drawn once; only its opacity changes. */
 @keyframes glow-in {
   from {
-    box-shadow: var(--shadow-art), 0 0 0 -8px transparent;
+    opacity: 0;
   }
 }
 @keyframes pop {
@@ -398,16 +400,18 @@ input[type='range'].slider:disabled {
     transform: translateY(8px);
   }
 }
-.route-in .trow:nth-child(-n + 8) {
-  animation: row-in 320ms var(--ease-out) both;
+/* The first eight rows arrive one after another: 20 ms apart and 160 ms each, so the last one is done by 300 ms. */
+.route-in .trow:nth-child(-n + 8),
+.route-in .row-edit:nth-child(-n + 8) {
+  animation: row-in 160ms var(--ease-out) both;
 }
-.route-in .trow:nth-child(2) { animation-delay: 30ms; }
-.route-in .trow:nth-child(3) { animation-delay: 60ms; }
-.route-in .trow:nth-child(4) { animation-delay: 90ms; }
-.route-in .trow:nth-child(5) { animation-delay: 120ms; }
-.route-in .trow:nth-child(6) { animation-delay: 150ms; }
-.route-in .trow:nth-child(7) { animation-delay: 180ms; }
-.route-in .trow:nth-child(8) { animation-delay: 210ms; }
+.route-in .trow:nth-child(2), .route-in .row-edit:nth-child(2) { animation-delay: 20ms; }
+.route-in .trow:nth-child(3), .route-in .row-edit:nth-child(3) { animation-delay: 40ms; }
+.route-in .trow:nth-child(4), .route-in .row-edit:nth-child(4) { animation-delay: 60ms; }
+.route-in .trow:nth-child(5), .route-in .row-edit:nth-child(5) { animation-delay: 80ms; }
+.route-in .trow:nth-child(6), .route-in .row-edit:nth-child(6) { animation-delay: 100ms; }
+.route-in .trow:nth-child(7), .route-in .row-edit:nth-child(7) { animation-delay: 120ms; }
+.route-in .trow:nth-child(8), .route-in .row-edit:nth-child(8) { animation-delay: 140ms; }
 @supports (view-transition-name: none) {
   .route-in {
     animation: none;
@@ -495,12 +499,14 @@ input[type='range'].slider:disabled {
 }
 .uprog-fill {
   height: 100%;
-  width: var(--pct);
-  min-width: 6px;
+  width: 100%;
   border-radius: inherit;
   background: var(--accent);
   box-shadow: 0 0 10px var(--glow);
-  transition: width 260ms linear;
+  /* Filled by scaling (--p is the done part, 0 to 1), never by resizing; a sliver shows from the start. */
+  transform-origin: left center;
+  transform: scaleX(max(var(--p, 0), 0.03));
+  transition: transform 260ms linear;
 }
 .uprog-track.indeterminate .uprog-fill {
   position: absolute;
@@ -510,6 +516,7 @@ input[type='range'].slider:disabled {
   background: linear-gradient(90deg, transparent, var(--accent) 40%, var(--accent) 60%, transparent);
   box-shadow: none;
   transition: none;
+  transform: none;
   animation: uprog-slide 1.3s var(--ease) infinite;
 }
 @keyframes uprog-slide {
@@ -532,6 +539,7 @@ input[type='range'].slider:disabled {
   .hero-bg,
   .pp-icon,
   .deck-art,
+  .deck-art::before,
   .deck-art > *,
   .route-in .trow {
     animation: none !important;
@@ -553,6 +561,7 @@ input[type='range'].slider:disabled {
   .uprog-track.indeterminate .uprog-fill {
     width: 100%;
     background: var(--accent);
+    transform: none;
     opacity: 0.35;
   }
   .tab-indicator {
@@ -659,11 +668,11 @@ input[type='range'].slider:disabled {
     font-size: 14px;
     line-height: 20px;
     white-space: nowrap;
-    transition: background-color var(--dur-fast) var(--ease), filter var(--dur-fast) var(--ease), transform 340ms var(--spring-pop);
+    transition: background-color var(--dur-fast) var(--ease), transform 340ms var(--spring-pop);
   }
   .btn:active:not(:disabled) {
     transform: scale(0.96);
-    transition-duration: var(--dur-fast), var(--dur-fast), 70ms;
+    transition-duration: var(--dur-fast), 70ms;
   }
   .btn:hover {
     background: var(--hover);
@@ -682,13 +691,38 @@ input[type='range'].slider:disabled {
     color: var(--on-accent);
     font-weight: 600;
   }
+  /* Hover and press tint the accent with a layer that is drawn once and only changes opacity (a brightness filter would
+     be re-rendered while it changes). It sits behind the label. */
+  .btn-primary {
+    position: relative;
+    isolation: isolate;
+  }
+  .btn-primary::before,
+  .play-btn::before {
+    content: '';
+    position: absolute;
+    inset: -1px;
+    z-index: -1;
+    border-radius: inherit;
+    background: #fff;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity var(--dur-fast) var(--ease);
+  }
   .btn-primary:hover {
     background: var(--accent);
-    filter: brightness(1.08);
+  }
+  .btn-primary:hover::before,
+  .play-btn:hover::before {
+    opacity: 0.14;
   }
   .btn-primary:active {
     background: var(--accent);
-    filter: brightness(0.94);
+  }
+  .btn-primary:active::before,
+  .play-btn:active::before {
+    background: #000;
+    opacity: 0.08;
   }
   .btn-quiet {
     border-color: transparent;
@@ -764,14 +798,13 @@ input[type='range'].slider:disabled {
     border-radius: 36%;
     background: var(--accent);
     color: var(--on-accent);
-    transition: filter var(--dur-fast) var(--ease), transform 380ms var(--spring-pop);
-  }
-  .play-btn:hover {
-    filter: brightness(1.08);
+    transition: transform 380ms var(--spring-pop);
+    position: relative;
+    isolation: isolate;
   }
   .play-btn:active {
     transform: scale(0.93);
-    transition-duration: var(--dur-fast), 70ms;
+    transition-duration: 70ms;
   }
   /* Play and pause trade places: the new icon pops in on a spring. */
   .pp-icon {
@@ -1094,18 +1127,19 @@ input[type='range'].slider:disabled {
     position: absolute;
     left: 0;
     bottom: -1px;
-    width: var(--ind-w, 0px);
+    /* A 100 px bar that is moved and stretched with a transform (--ind-s is the wanted width / 100), never resized. */
+    width: 100px;
     height: 3px;
-    border-radius: 2px 2px 0 0;
     background: var(--accent);
     opacity: 0;
-    transform: translateX(var(--ind-x, 0px));
+    transform-origin: left center;
+    transform: translateX(var(--ind-x, 0px)) scaleX(var(--ind-s, 0));
   }
   .tab-indicator[data-shown='true'] {
     opacity: 1;
   }
   .tab-indicator[data-armed='true'] {
-    transition: transform 460ms var(--spring), width 460ms var(--spring), opacity var(--dur-fast) var(--ease);
+    transition: transform 460ms var(--spring), opacity var(--dur-fast) var(--ease);
   }
   @media (max-width: 1099px) {
     .tabs-brand .wordmark {
@@ -1248,13 +1282,23 @@ input[type='range'].slider:disabled {
     flex: none;
     width: 64px;
     height: 64px;
-    overflow: hidden;
     border-radius: var(--r-sm);
-    box-shadow: var(--shadow-art), 0 0 28px -8px var(--glow);
+    box-shadow: var(--shadow-art);
+    isolation: isolate;
+  }
+  /* The accent glow: drawn once on its own layer behind the cover; a new song fades it in. */
+  .deck-art::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    border-radius: inherit;
+    box-shadow: 0 0 28px -8px var(--glow);
+    pointer-events: none;
     animation: glow-in 800ms var(--ease-out) both;
   }
   .deck-art > * {
-    animation: focus-in 460ms var(--ease-out) both;
+    animation: cover-in 460ms var(--ease-out) both;
   }
   .deck-transport {
     display: flex;
@@ -1633,6 +1677,19 @@ input[type='range'].slider:disabled {
     opacity: 1;
     transform: none;
   }
+  /* A tile lifts a little under the pointer and presses in when clicked (transform only, on the cover's own layer). */
+  .cover-tile .cover-art {
+    transition: transform 320ms var(--spring-pop);
+  }
+  @media (hover: hover) {
+    .cover-tile:hover .cover-art {
+      transform: translateY(-3px);
+    }
+  }
+  .cover-tile:active .cover-art {
+    transform: scale(0.97);
+    transition-duration: 70ms;
+  }
 
   /* Rows in settings, menus and pickers */
   .setting {
@@ -1833,6 +1890,32 @@ input[type='range'].slider:disabled {
   }
   .lyric:hover {
     opacity: 1;
+  }
+
+  /* A cover: the song's colour until the picture is there, then the picture fades in over it. */
+  .thumb {
+    display: block;
+    flex: none;
+    position: relative;
+    overflow: hidden;
+  }
+  .thumb-img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    opacity: 0;
+    transition: opacity var(--dur-base) var(--ease);
+  }
+  .thumb-img.thumb-loaded {
+    opacity: 1;
+  }
+  /* Results of the same search stay up while another filter loads. */
+  .results {
+    transition: opacity var(--dur-fast) var(--ease);
+  }
+  .results[data-dim='true'] {
+    opacity: 0.5;
   }
 
   /* A bar of actions above a list (Play all, Shuffle, the count), on a hairline. */

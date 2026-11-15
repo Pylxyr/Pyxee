@@ -114,19 +114,25 @@
 </script>
 
 {#if current}
-  {#key attempt}
-  <img
-    src={current}
-    alt=""
-    loading="lazy"
-    decoding="async"
-    class="shrink-0 object-cover {rounded} {fill ? 'h-full w-full' : ''}"
-    style={fill ? undefined : `width:${size}px;height:${size}px`}
-    bind:this={el}
-    onload={onloaded}
-    onerror={onfailed}
-  />
-  {/key}
+  <!-- The box shows the colour of the song until the picture has loaded, then the picture fades in over it (opacity only). -->
+  <span
+    class="thumb {rounded} {fill ? 'h-full w-full' : ''}"
+    style="{fill ? '' : `width:${size}px;height:${size}px;`}background:hsl({hueFor(seed)} 38% 32%)"
+  >
+    {#key attempt}
+    <img
+      src={current}
+      alt=""
+      loading="lazy"
+      decoding="async"
+      class="thumb-img h-full w-full"
+      class:thumb-loaded={loaded}
+      bind:this={el}
+      onload={onloaded}
+      onerror={onfailed}
+    />
+    {/key}
+  </span>
 {:else}
   <div
     class="flex shrink-0 items-center justify-center text-white/80 {rounded} {fill ? 'h-full w-full' : ''}"

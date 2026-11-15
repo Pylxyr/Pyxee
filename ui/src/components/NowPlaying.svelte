@@ -1,12 +1,13 @@
 <script lang="ts">
   import { fly } from 'svelte/transition';
-  import { expoOut } from 'svelte/easing';
+  import { cubicIn, expoOut } from 'svelte/easing';
   import { player, describeFailure } from '$lib/player.svelte';
   import { nav, type NowPlayingTab } from '$lib/nav.svelte';
   import { removeFromQueue } from '$lib/actions';
   import { formatTime } from '$lib/format';
   import { reorder } from '$lib/reorder';
-  import { MOTION, motionMs, motionPx } from '$lib/motion';
+  import { focusNeighbour } from '$lib/focus';
+  import { MOTION, markListChange, motionMs, motionPx } from '$lib/motion';
   import { sleep } from '$lib/sleep.svelte';
   import { sleepLabel } from '$lib/lyrics';
   import Button from './Button.svelte';
@@ -23,6 +24,7 @@
   import Thumb from './Thumb.svelte';
 
   const entry = $derived(player.shown);
+  let scrub = $state<number | null>(null);
   const tabs: { id: NowPlayingTab; label: string }[] = [
     { id: 'upnext', label: 'Up next' },
     { id: 'lyrics', label: 'Lyrics' },
@@ -45,7 +47,8 @@
     aria-label="Now Playing"
     onintroend={() => (nav.npCovering = nav.nowPlayingOpen)}
     onoutrostart={() => (nav.npCovering = false)}
-    transition:fly={{ y: motionPx(96), duration: nav.morphing ? 0 : motionMs(MOTION.slow), easing: expoOut }}
+    in:fly={{ y: motionPx(96), duration: nav.morphing ? 0 : motionMs(MOTION.slow), easing: expoOut }}
+    out:fly={{ y: motionPx(96), duration: nav.morphing ? 0 : motionMs(MOTION.base), easing: cubicIn }}
   >
     <Backdrop class="np-bg" src={entry.track.thumbnail} seed={entry.track.key} />
     <div class="page-pad flex shrink-0 items-center gap-2 py-3" data-testid="np-header">
@@ -74,9 +77,9 @@
           </div>
         </div>
         <div class="w-[min(80vw,22rem)] xl:w-[min(80vw,30rem)] 2xl:w-[min(80vw,40rem)]">
-          <Seek positionMs={player.positionMs} durationMs={player.durationMs} onseek={player.seek} accent label="Seek" />
+          <Seek positionMs={player.positionMs} durationMs={player.durationMs} onseek={player.seek} accent label="Seek" bind:scrub />
           <div class="t-caption muted nums flex justify-between">
-            <span>{formatTime(player.positionMs)}</span><span>{player.durationMs ? formatTime(player.durationMs) : 'length unknown'}</span>
+            <span>{formatTime(scrub ?? player.positionMs)}</span><span>{player.durationMs ? formatTime(player.durationMs) : 'length unknown'}</span>
           </div>
         </div>
         {#if player.failure}
@@ -142,7 +145,7 @@
                     <IconButton icon="top" iconSize={18} label="Play {e.track.title} next" title="Play next" disabled={i === 0} onclick={() => player.moveUpcoming(e.id, 0)} />
                     <IconButton icon="up" iconSize={18} label="Move {e.track.title} up" disabled={i === 0} onclick={() => player.moveUpcoming(e.id, i - 1)} />
                     <IconButton icon="down" iconSize={18} label="Move {e.track.title} down" disabled={i === player.upNext.length - 1} onclick={() => player.moveUpcoming(e.id, i + 1)} />
-                    <IconButton icon="close" iconSize={18} label="Remove {e.track.title} from queue" onclick={() => removeFromQueue(e)} />
+                    <IconButton icon="close" iconSize={18} label="Remove {e.track.title} from queue" onclick={(ev) => { markListChange(); focusNeighbour(ev.currentTarget); removeFromQueue(e); }} />
                   {/snippet}
                 </EditableRow>
               {:else}

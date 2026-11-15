@@ -2,6 +2,7 @@
   import { library } from '$lib/library.svelte';
   import { nav } from '$lib/nav.svelte';
   import { player } from '$lib/player.svelte';
+  import { Loaded } from '$lib/loaded.svelte';
   import type { HomeDto } from '$lib/bindings/HomeDto';
   import type { TrackDto } from '$lib/bindings/TrackDto';
   import Backdrop from '../components/Backdrop.svelte';
@@ -16,12 +17,14 @@
   import Thumb from '../components/Thumb.svelte';
   import TrackList from '../components/TrackList.svelte';
 
-  let home = $state<HomeDto | null>(null);
-
-  // Quick picks and recents come from what you play and like; they refresh as the library changes.
+  // Quick picks and recents come from what you play and like; they refresh as the library changes. A late answer
+  // never replaces a newer one, and a failed read keeps what is shown (with nothing shown yet, the page is just empty).
+  const source = new Loaded<HomeDto>();
+  const home = $derived<HomeDto | null>(source.data ?? (source.error ? { quickPicks: [], recent: [], likedCount: 0 } : null));
   $effect(() => {
     void library.revision;
-    library.backend?.homeGet().then((h) => (home = h)).catch(() => (home = { quickPicks: [], recent: [], likedCount: 0 }));
+    const b = library.backend;
+    if (b) void source.load(() => b.homeGet());
   });
 
   const hasLibrary = $derived(home !== null && (home.quickPicks.length > 0 || home.recent.length > 0));
@@ -66,7 +69,16 @@
     <div class="home-body shelves">
     {#if hero}
       {@const button = HERO_BUTTON[hero.action]}
-      <div class="hero" data-testid="resume">
+      <div
+        class="hero"
+        data-testid="resume"
+        role="presentation"
+        oncontextmenu={(e) => {
+          e.preventDefault();
+          nav.menuOpener = e.currentTarget.querySelector<HTMLElement>('button');
+          nav.menuTrack = hero.track;
+        }}
+      >
         <Backdrop class="hero-bg" src={hero.track.thumbnail} seed={hero.track.key} />
         <div class="hero-art"><Thumb src={hero.track.thumbnail} seed={hero.track.key} size={240} fill rounded="r-sm" /></div>
         <div class="min-w-0 flex-1">
