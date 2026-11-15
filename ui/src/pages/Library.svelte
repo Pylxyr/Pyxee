@@ -5,6 +5,8 @@
   import { snackbar } from '$lib/snackbar.svelte';
   import { messageOf } from '$lib/backend';
   import { groupByDay } from '$lib/format';
+  import { Loaded } from '$lib/loaded.svelte';
+  import { withKeys } from '$lib/keys';
   import type { HistoryItemDto } from '$lib/bindings/HistoryItemDto';
   import type { TrackDto } from '$lib/bindings/TrackDto';
   import Button from '../components/Button.svelte';
@@ -13,6 +15,7 @@
   import PageHeader from '../components/PageHeader.svelte';
   import ScrollPage from '../components/ScrollPage.svelte';
   import SectionHead from '../components/SectionHead.svelte';
+  import Skeleton from '../components/Skeleton.svelte';
   import Segmented from '../components/Segmented.svelte';
   import Thumb from '../components/Thumb.svelte';
   import TrackRow from '../components/TrackRow.svelte';
@@ -25,17 +28,20 @@
     { id: 'downloads', label: 'Downloads' },
   ];
 
-  let liked = $state<TrackDto[]>([]);
-  let history = $state<HistoryItemDto[]>([]);
-  let loadError = $state('');
+  // Each tab loads on its own: its own "arrived yet", its own error, and a read that finishes late never replaces a
+  // newer one. A failed read keeps what the tab already shows.
+  const likedSource = new Loaded<TrackDto[]>();
+  const historySource = new Loaded<HistoryItemDto[]>();
+  const liked = $derived(likedSource.data ?? []);
+  const history = $derived(historySource.data ?? []);
 
   // Detail lists reload whenever the library changes (likes, plays, undo, ...).
   $effect(() => {
     void library.revision;
     const b = library.backend;
     if (!b) return;
-    if (nav.libraryTab === 'liked') b.likedGet().then((l) => ((liked = l), (loadError = ''))).catch((e) => (loadError = messageOf(e)));
-    if (nav.libraryTab === 'history') b.historyGet(300).then((h) => ((history = h), (loadError = ''))).catch((e) => (loadError = messageOf(e)));
+    if (nav.libraryTab === 'liked') void likedSource.load(() => b.likedGet());
+    if (nav.libraryTab === 'history') void historySource.load(() => b.historyGet(300));
   });
 
   const days = $derived(groupByDay(history, (h) => h.playedAt, Date.now()));
@@ -76,10 +82,11 @@
     </PageHeader>
   {/snippet}
 
-  {#if loadError}<p class="accent-text mb-3" role="alert">{loadError}</p>{/if}
-
   {#if nav.libraryTab === 'liked'}
-    {#if liked.length === 0}
+    {#if likedSource.error}<p class="accent-text mb-3" role="alert">{likedSource.error}</p>{/if}
+    {#if !likedSource.loaded && !likedSource.error}
+      <Skeleton rows={8} />
+    {:else if liked.length === 0}
       <EmptyState icon="heart" title="No liked songs yet" text="Tap the heart on a song and it will show up here." />
     {:else}
       <div class="toolbar">
@@ -109,7 +116,10 @@
       </ul>
     {/if}
   {:else if nav.libraryTab === 'history'}
-    {#if history.length === 0}
+    {#if historySource.error}<p class="accent-text mb-3" role="alert">{historySource.error}</p>{/if}
+    {#if !historySource.loaded && !historySource.error}
+      <Skeleton rows={8} />
+    {:else if history.length === 0}
       <EmptyState icon="music" title="No history yet" text="Songs you listen to for a while are listed here." />
     {:else}
       <div class="toolbar">
@@ -119,8 +129,8 @@
       {#each days as g, gi (g.label)}
         <SectionHead>{g.label}</SectionHead>
         <TrackList label="Played {g.label}" head={gi === 0}>
-          {#each g.items as h, i (`${h.playedAt}-${h.track.key}-${i}`)}
-            <TrackRow track={h.track} onplay={() => player.playTracks([h.track])} />
+          {#each withKeys(g.items, (h) => `${h.playedAt}-${h.track.key}`) as r (r.key)}
+            <TrackRow track={r.item.track} onplay={() => player.playTracks([r.item.track])} />
           {/each}
         </TrackList>
       {/each}

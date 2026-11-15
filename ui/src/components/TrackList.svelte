@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { Snippet } from 'svelte';
   import type { TrackDto } from '$lib/bindings/TrackDto';
+  import { withKeys } from '$lib/keys';
   import TrackRow from './TrackRow.svelte';
 
   /**
@@ -15,6 +16,8 @@
     head?: boolean;
     children?: Snippet;
   } = $props();
+  // Keyed by the song (and its occurrence), not by its place: a row keeps its cover when the rows before it change.
+  const rows = $derived(tracks ? withKeys(tracks, (t) => t.key) : []);
 </script>
 
 <div class="tracklist">
@@ -25,8 +28,8 @@
   {/if}
   <ul aria-label={label}>
     {#if tracks}
-      {#each tracks as t, i (i)}
-        <TrackRow track={t} index={numbered ? i : undefined} onplay={() => onplay?.(i)} />
+      {#each rows as r (r.key)}
+        <TrackRow track={r.item} index={numbered ? r.index : undefined} onplay={() => onplay?.(r.index)} />
       {/each}
     {/if}
     {@render children?.()}

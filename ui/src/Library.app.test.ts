@@ -177,10 +177,17 @@ describe('playlists', () => {
     await openPlaylist('Mix');
     await fireEvent.click(screen.getByRole('button', { name: 'Move Neon Harbor down' }));
     await waitFor(async () => expect(await titles(id)).toEqual(['Paper Planes', 'Neon Harbor', 'Slow Orbit']));
+    // Dragging is by pointer events on the handle (HTML5 drag and drop can be swallowed by the window on Windows).
     const items = within(await screen.findByRole('list', { name: 'Songs in Mix' })).getAllByRole('listitem');
-    await fireEvent.dragStart(items[0]!);
-    await fireEvent.dragOver(items[2]!);
-    await fireEvent.drop(items[2]!);
+    items.forEach((li, i) => (li.getBoundingClientRect = () => ({ top: i * 40, height: 40, bottom: i * 40 + 40 }) as DOMRect));
+    const handle = screen.getAllByTestId('drag-handle')[0]!;
+    handle.setPointerCapture = vi.fn();
+    handle.releasePointerCapture = vi.fn();
+    const pointer = (type: string, y: number) =>
+      handle.dispatchEvent(new PointerEvent(type, { pointerId: 1, clientY: y, button: 0, pointerType: 'mouse', bubbles: true, cancelable: true }));
+    pointer('pointerdown', 20);
+    pointer('pointermove', 130);
+    pointer('pointerup', 130);
     await waitFor(async () => expect(await titles(id)).toEqual(['Neon Harbor', 'Slow Orbit', 'Paper Planes']));
 
     await fireEvent.click(await screen.findByRole('button', { name: 'Remove Slow Orbit from playlist' }));
@@ -269,6 +276,26 @@ describe('history and Home', () => {
     expect(await screen.findByRole('list', { name: 'Liked songs' })).toBeTruthy();
   });
 
+  it('a right-click on a Home cover, a quick pick or the Pick up card opens the song menu', async () => {
+    await mock.setLiked(PAPER, true);
+    await openApp();
+    await player.playTracks([NEON]);
+    await listen(NEON, 31);
+    await go(/Home/);
+    const menuKey = () => nav.menuTrack?.key;
+    const tile = within(await screen.findByRole('list', { name: 'Recently played' })).getByRole('button', { name: 'Play Neon Harbor' });
+    await fireEvent.contextMenu(tile);
+    expect(menuKey()).toBe(NEON.key);
+    expect(nav.menuOpener).toBe(tile);
+    nav.menuTrack = null;
+    await fireEvent.contextMenu(screen.getByTestId('resume'));
+    expect(menuKey()).toBe(NEON.key);
+    nav.menuTrack = null;
+    const picks = await screen.findByRole('list', { name: 'Quick picks' });
+    await fireEvent.contextMenu(within(picks).getAllByRole('listitem')[0]!);
+    expect(menuKey()).toBeDefined();
+  });
+
   it('the Pick up card follows the song that is playing and only says Resume while it is paused', async () => {
     await mock.setLiked(PAPER, true);
     await openApp();
@@ -315,5 +342,33 @@ describe('library problems', () => {
     await fireEvent.click(await screen.findByRole('button', { name: 'Like Neon Harbor' }));
     await waitFor(() => expect(snackbar.items.at(-1)?.message).toBe('The library is unavailable.'));
     expect(library.isLiked(NEON.key)).toBe(false);
+  });
+});
+
+describe('opening a playlist', () => {
+  it('shows a skeleton while it loads, never "no longer exists"', async () => {
+    const id = await mock.playlistCreate('Mix', [NEON]);
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    const real = mock.playlistGet.bind(mock);
+    mock.playlistGet = async (i: number) => {
+      await gate;
+      return real(i);
+    };
+    await openApp();
+    nav.openPlaylist(id);
+    expect(await screen.findByLabelText('Loading')).toBeTruthy();
+    expect(screen.queryByText('This playlist no longer exists')).toBeNull();
+    release();
+    expect(await screen.findByRole('heading', { name: 'Mix' })).toBeTruthy();
+  });
+
+  it('a failed read is an error with Try again, not "no longer exists"', async () => {
+    const id = await mock.playlistCreate('Mix', [NEON]);
+    mock.playlistGet = async () => Promise.reject('The library is unavailable.');
+    await openApp();
+    nav.openPlaylist(id);
+    expect(await screen.findByText('The playlist could not be opened.')).toBeTruthy();
+    expect(screen.queryByText('This playlist no longer exists')).toBeNull();
   });
 });

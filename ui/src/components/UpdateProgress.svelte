@@ -41,7 +41,7 @@
     aria-valuemax="100"
     aria-valuenow={known ? pct : undefined}
     aria-valuetext={valuetext}
-    style="--pct:{pct}%"
+    style="--pct:{pct}%;--p:{pct / 100}"
   >
     <div class="uprog-fill"></div>
   </div>

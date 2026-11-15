@@ -13,3 +13,29 @@ export function focusables(root: HTMLElement): HTMLElement[] {
     return true;
   });
 }
+
+/** The main button of a list row (a track row, a queue row, a cover tile). */
+const ROW_MAIN = '.trow-main, .row-edit-main, .cover-tile';
+
+/**
+ * Called as a row is about to be removed: moves focus to the row after it (or before it, for the last one), or to the
+ * scrolling page when the list will be empty, so keyboard focus is not dropped onto the document when the row's own
+ * button disappears. Returns whether focus was moved.
+ */
+export function focusNeighbour(from: Element | null | undefined): boolean {
+  const row = from?.closest('li');
+  if (!row) return false;
+  for (const sib of [row.nextElementSibling, row.previousElementSibling]) {
+    const main = sib?.querySelector<HTMLElement>(ROW_MAIN);
+    if (main) {
+      main.focus({ preventScroll: true });
+      return true;
+    }
+  }
+  const page = row.closest<HTMLElement>('[data-scroll]');
+  if (page) {
+    page.focus({ preventScroll: true });
+    return true;
+  }
+  return false;
+}

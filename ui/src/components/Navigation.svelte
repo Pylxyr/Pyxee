@@ -40,7 +40,7 @@
           <button class="tab-item" aria-current={nav.route === it.route ? 'page' : undefined} onclick={() => nav.go(it.route)}>{it.label}</button>
         </li>
       {/each}
-      <li class="tab-indicator" aria-hidden="true" data-shown={bar.shown} data-armed={bar.armed} style="--ind-x:{bar.x}px;--ind-w:{bar.w}px"></li>
+      <li class="tab-indicator" aria-hidden="true" data-shown={bar.shown} data-armed={bar.armed} style="--ind-x:{bar.x}px;--ind-s:{bar.w / 100}"></li>
     </ul>
   </nav>
 {:else}

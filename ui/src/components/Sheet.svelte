@@ -8,7 +8,7 @@
 
 <script lang="ts">
   import { fly, fade } from 'svelte/transition';
-  import { cubicOut, expoOut } from 'svelte/easing';
+  import { cubicIn, cubicOut, expoOut } from 'svelte/easing';
   import type { Snippet } from 'svelte';
   import { MOTION, motionMs, motionPx } from '$lib/motion';
   import IconButton from './IconButton.svelte';
@@ -17,7 +17,7 @@
   // `bottom` (the default) is a card that rises from the bottom, centred on wide windows. `left` and `right` are tabs
   // that slide in from that edge and take half of the window (all of it when the window is narrow); Settings uses
   // them, on the side its button is on.
-  let { open, title, onclose, children, side = 'bottom' }: { open: boolean; title: string; onclose: () => void; children: Snippet; side?: 'bottom' | 'left' | 'right' } = $props();
+  let { open, title, onclose, children, side = 'bottom', returnFocus = null }: { open: boolean; title: string; onclose: () => void; children: Snippet; side?: 'bottom' | 'left' | 'right'; returnFocus?: HTMLElement | null } = $props();
   const right = $derived(side === 'right');
   const tab = $derived(side !== 'bottom');
   let panel = $state<HTMLElement>();
@@ -31,10 +31,13 @@
 
   $effect(() => {
     if (open) {
-      restore = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+      // Focus goes back to what opened the sheet: the button that had focus, or `returnFocus` when it was opened without
+      // one (a right-click on a row leaves focus on the page, not on the row).
+      const active = document.activeElement instanceof HTMLElement && document.activeElement !== document.body ? document.activeElement : null;
+      restore = returnFocus?.isConnected ? returnFocus : active;
       queueMicrotask(() => (panel ? focusables(panel)[0] : undefined)?.focus());
     } else {
-      restore?.focus();
+      if (restore?.isConnected) restore.focus({ preventScroll: true });
       restore = null;
     }
   });
@@ -57,14 +60,15 @@
 
 {#if open}
   <div class="fixed inset-0 flex {right ? 'justify-end' : tab ? 'justify-start' : 'items-end justify-center sm:items-center'}" style="top:var(--titlebar-h, 0px);z-index:{z}" role="presentation" data-sheet {onkeydown}>
-    <button class="absolute inset-0 bg-black/50" aria-label="Close" tabindex="-1" onclick={onclose} transition:fade={{ duration: motionMs(MOTION.fast) }}></button>
+    <button class="absolute inset-0 bg-black/50" aria-label="Close" tabindex="-1" onclick={onclose} in:fade={{ duration: motionMs(MOTION.fast) }} out:fade={{ duration: motionMs(MOTION.exit) }}></button>
     <div
       bind:this={panel}
       role="dialog"
       aria-modal="true"
       aria-label={title}
       data-side={side}
-      transition:fly={tab ? { x: motionPx(right ? 640 : -640), duration: motionMs(MOTION.base + 80), easing: expoOut } : { y: motionPx(40), duration: motionMs(MOTION.base), easing: cubicOut }}
+      in:fly={tab ? { x: motionPx(right ? 640 : -640), duration: motionMs(MOTION.base + 80), easing: expoOut } : { y: motionPx(40), duration: motionMs(MOTION.base), easing: cubicOut }}
+      out:fly={tab ? { x: motionPx(right ? 640 : -640), duration: motionMs(MOTION.exit + 30), easing: cubicIn } : { y: motionPx(40), duration: motionMs(MOTION.exit), easing: cubicIn }}
       class="sheet-panel bg-solid-2 {right
         ? 'h-full w-1/2 max-w-full min-w-[min(26rem,100vw)] rounded-l-xl border-r-0 px-4 pb-6'
         : tab

@@ -4,6 +4,10 @@
   import { player } from '$lib/player.svelte';
   import { snackbar } from '$lib/snackbar.svelte';
   import { messageOf } from '$lib/backend';
+  import { Loaded } from '$lib/loaded.svelte';
+  import { reorder } from '$lib/reorder';
+  import { focusNeighbour } from '$lib/focus';
+  import { markListChange } from '$lib/motion';
   import type { PlaylistDto } from '$lib/bindings/PlaylistDto';
   import Button from '../components/Button.svelte';
   import EditableRow from '../components/EditableRow.svelte';
@@ -12,19 +16,29 @@
   import IconButton from '../components/IconButton.svelte';
   import PageHeader from '../components/PageHeader.svelte';
   import ScrollPage from '../components/ScrollPage.svelte';
+  import Skeleton from '../components/Skeleton.svelte';
   import Thumb from '../components/Thumb.svelte';
 
-  let pl = $state<PlaylistDto | null>(null);
-  let missing = $state(false);
-  let dragId = $state<number | null>(null);
-  let overIndex = $state<number | null>(null);
+  // The playlist loads on its own (`Loaded`): "not there" is shown only when the backend says it is gone, a failed read
+  // keeps what is on screen, and opening another playlist starts from a clean slate.
+  const source = new Loaded<PlaylistDto>();
+  const pl = $derived(source.data);
+  /** The row being dragged and where it would land (null when nothing is being dragged). */
+  let drag = $state<{ id: number; from: number; to: number } | null>(null);
+  let listEl = $state<HTMLElement>();
+  const rows = () => [...(listEl?.querySelectorAll<HTMLElement>('[data-row]') ?? [])];
+  let shownId: number | null = null;
 
   $effect(() => {
     void library.revision;
     const id = nav.playlistId;
     const b = library.backend;
     if (id == null || !b) return;
-    b.playlistGet(id).then((p) => ((pl = p), (missing = false))).catch(() => ((pl = null), (missing = true)));
+    if (shownId !== id) {
+      shownId = id;
+      source.reset();
+    }
+    void source.load(() => b.playlistGet(id));
   });
 
   const tracks = $derived(pl?.entries.map((e) => e.track) ?? []);
@@ -59,7 +73,9 @@
     }
   }
 
-  async function removeEntry(entryId: number, title: string) {
+  async function removeEntry(entryId: number, title: string, from: Element | null) {
+    markListChange();
+    focusNeighbour(from);
     try {
       const removed = await library.backend!.playlistRemoveEntry(entryId);
       snackbar.push(`Removed "${title}"`, { action: { label: 'Undo', run: () => void library.backend!.playlistRestoreEntry(removed) } });
@@ -72,16 +88,13 @@
     if (!pl || to < 0 || to >= pl.entries.length) return;
     library.backend!.playlistMoveEntry(entryId, to).catch((e) => snackbar.push(messageOf(e)));
   }
-  function drop(e: DragEvent, to: number) {
-    e.preventDefault();
-    if (dragId != null) move(dragId, to);
-    dragId = overIndex = null;
-  }
+  const overOf = (id: number, i: number): 'above' | 'below' | null =>
+    drag && drag.to === i && drag.id !== id ? (drag.to < drag.from ? 'above' : 'below') : null;
 </script>
 
 <ScrollPage>
   {#snippet header()}
-    {#if pl && !missing}
+    {#if pl}
       <PageHeader title={pl.name} meta="{pl.entries.length} {pl.entries.length === 1 ? 'song' : 'songs'}">
         {#snippet lead()}
           <Thumb src={pl?.entries[0]?.track.thumbnail ?? null} seed={`pl:${pl?.id}`} size={160} rounded="r-sm" />
@@ -93,46 +106,58 @@
           <Button onclick={remove}>Delete</Button>
         {/snippet}
       </PageHeader>
+    {:else if !source.missing}
+      <PageHeader title="Playlist" />
     {/if}
   {/snippet}
 
-  {#if missing || !pl}
+  {#if source.missing}
     <EmptyState icon="library" title="This playlist no longer exists" text="It may have been deleted. Your other playlists are in the Library." />
-  {:else if pl.entries.length === 0}
-    <EmptyState icon="music" title="This playlist is empty" text="Choose Add to playlist on any song to put it here." />
+  {:else if !pl && source.error}
+    <div class="notice" role="alert">
+      <p class="t-strong">The playlist could not be opened.</p>
+      <p class="muted mt-1">{source.error}</p>
+      <Button class="mt-3" variant="primary" onclick={() => nav.playlistId != null && library.backend && void source.load(() => library.backend!.playlistGet(nav.playlistId!))}>Try again</Button>
+    </div>
+  {:else if !pl}
+    <Skeleton rows={8} />
   {:else}
-    {@const list = pl}
-    <ul aria-label="Songs in {list.name}">
-      {#each list.entries as e, i (e.entryId)}
-        <EditableRow
-          track={e.track}
-          index={i}
-          over={overIndex === i && dragId !== e.entryId ? 'above' : null}
-          dragging={dragId === e.entryId}
-          onplay={() => play(false, i)}
-          draggable={true}
-          ondragstart={(ev) => {
-            dragId = e.entryId;
-            ev.dataTransfer?.setData('text/plain', String(e.entryId));
-            if (ev.dataTransfer) ev.dataTransfer.effectAllowed = 'move';
-          }}
-          ondragover={(ev) => {
-            ev.preventDefault();
-            overIndex = i;
-          }}
-          ondrop={(ev) => drop(ev, i)}
-          ondragend={() => (dragId = overIndex = null)}
-        >
-          {#snippet handle()}
-            <span class="handle" aria-hidden="true"><Icon name="drag" size={18} /></span>
-          {/snippet}
-          {#snippet actions()}
-            <IconButton icon="up" iconSize={18} label="Move {e.track.title} up" disabled={i === 0} onclick={() => move(e.entryId, i - 1)} />
-            <IconButton icon="down" iconSize={18} label="Move {e.track.title} down" disabled={i === list.entries.length - 1} onclick={() => move(e.entryId, i + 1)} />
-            <IconButton icon="close" iconSize={18} label="Remove {e.track.title} from playlist" onclick={() => removeEntry(e.entryId, e.track.title)} />
-          {/snippet}
-        </EditableRow>
-      {/each}
-    </ul>
+    {#if source.error}<p class="accent-text mb-3" role="alert">Couldn't refresh this playlist: {source.error}</p>{/if}
+    {#if pl.entries.length === 0}
+      <EmptyState icon="music" title="This playlist is empty" text="Choose Add to playlist on any song to put it here." />
+    {:else}
+      {@const list = pl}
+      <ul aria-label="Songs in {list.name}" bind:this={listEl}>
+        {#each list.entries as e, i (e.entryId)}
+          <EditableRow
+            data-row
+            track={e.track}
+            index={i}
+            over={overOf(e.entryId, i)}
+            dragging={drag?.id === e.entryId}
+            onplay={() => play(false, i)}
+          >
+            {#snippet handle()}
+              <span
+                class="handle"
+                role="presentation"
+                title="Drag to reorder"
+                data-testid="drag-handle"
+                use:reorder={{
+                  index: i,
+                  rows,
+                  onover: (to) => (drag = to === null ? null : { id: e.entryId, from: i, to }),
+                  ondrop: (to) => move(e.entryId, to),
+                }}><Icon name="drag" size={18} /></span>
+            {/snippet}
+            {#snippet actions()}
+              <IconButton icon="up" iconSize={18} label="Move {e.track.title} up" disabled={i === 0} onclick={() => move(e.entryId, i - 1)} />
+              <IconButton icon="down" iconSize={18} label="Move {e.track.title} down" disabled={i === list.entries.length - 1} onclick={() => move(e.entryId, i + 1)} />
+              <IconButton icon="close" iconSize={18} label="Remove {e.track.title} from playlist" onclick={(ev) => removeEntry(e.entryId, e.track.title, ev.currentTarget)} />
+            {/snippet}
+          </EditableRow>
+        {/each}
+      </ul>
+    {/if}
   {/if}
 </ScrollPage>

@@ -24,7 +24,7 @@
   }
 </script>
 
-<Sheet open={nav.menuTrack !== null} title={nav.menuTrack?.title ?? ''} onclose={() => (nav.menuTrack = null)}>
+<Sheet open={nav.menuTrack !== null} title={nav.menuTrack?.title ?? ''} returnFocus={nav.menuOpener} onclose={() => (nav.menuTrack = null)}>
   {#if nav.menuTrack}
     {@const t = nav.menuTrack}
     <MenuItem onclick={() => done('Playing now', () => player.playTracks([t]))}>Play now</MenuItem>

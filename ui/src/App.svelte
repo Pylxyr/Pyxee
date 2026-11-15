@@ -117,14 +117,33 @@
   // "Color from album art": the palette follows the cover of the song that is playing.
   followArt(() => player.shown?.track.thumbnail ?? null, () => library.backend);
 
+  // Whether the focus is where it is because of a mouse click (a clicked song row keeps focus). Space then means
+  // play/pause instead of "press the row again"; Tab hands focus back to the keyboard.
+  let pointerFocus = false;
+  // The keyup of a Space we took: a focused button would otherwise be clicked by it (WebView2 clicks on key release).
+  let swallowSpaceUp = false;
+
   function onkeydown(e: KeyboardEvent) {
+    if (e.key === 'Tab') pointerFocus = false;
     const a = actionForKey(e, {
       positionMs: player.positionMs,
       durationMs: player.durationMs,
       nowPlayingOpen: nav.nowPlayingOpen,
       hasTrack: player.shown != null,
+      pointerFocus,
     });
     if (!a) return;
+    if (a.kind === 'search') {
+      // Not under a sheet or Now Playing: the box is behind them.
+      if (document.querySelector('[data-sheet]')) return;
+      const input = document.querySelector<HTMLInputElement>('input[data-search-input]');
+      if (!input) return;
+      e.preventDefault();
+      input.focus();
+      input.select();
+      return;
+    }
+    if (e.key === ' ' && e.target instanceof HTMLButtonElement) swallowSpaceUp = true;
     if (a.kind === 'fullscreen') {
       // In a browser F11 is the browser's own.
       if (!controls) return;
@@ -138,7 +157,16 @@
   }
 </script>
 
-<svelte:window {onkeydown} />
+<svelte:window
+  {onkeydown}
+  onpointerdowncapture={() => (pointerFocus = true)}
+  onkeyup={(e) => {
+    if (e.key === ' ' && swallowSpaceUp) {
+      swallowSpaceUp = false;
+      e.preventDefault();
+    }
+  }}
+/>
 
 <div class="frame">
 {#if controls && showTitleBar}<TitleBar {controls} showBrand={!wide.current} />{/if}

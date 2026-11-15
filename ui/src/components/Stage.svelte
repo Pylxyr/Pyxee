@@ -17,6 +17,8 @@
   // beside the page, so what comes next stays in sight while you browse.
   let { lane = false }: { lane?: boolean } = $props();
   const entry = $derived(player.shown);
+  // Where the seek bar's thumb is held (dragged, or released and waiting for the player): the time shows it too.
+  let scrub = $state<number | null>(null);
 
   // The bar's empty space opens the queue; the buttons and sliders in it keep their own jobs.
   function openQueue(e: MouseEvent) {
@@ -65,7 +67,7 @@
   <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_noninteractive_element_interactions -->
   <section class="deck" aria-label="Player" data-testid="player-bar" onclick={openQueue}>
     <div class="deck-seek">
-      <Seek positionMs={player.positionMs} durationMs={player.durationMs} onseek={player.seek} accent label="Seek" />
+      <Seek positionMs={player.positionMs} durationMs={player.durationMs} onseek={player.seek} accent label="Seek" bind:scrub />
     </div>
     {#key entry.track.key}
     <div class="deck-now track-in">
@@ -90,7 +92,7 @@
       <IconButton icon="prev" label="Previous" size="lg" strong iconSize={24} onclick={player.previous} />
       <PlayButton />
       <IconButton icon="next" label="Next" size="lg" strong iconSize={24} onclick={player.next} />
-      <span class="deck-time nums">{formatTime(player.positionMs)} / {player.durationMs ? formatTime(player.durationMs) : '--:--'}</span>
+      <span class="deck-time nums">{formatTime(scrub ?? player.positionMs)} / {player.durationMs ? formatTime(player.durationMs) : '--:--'}</span>
     </div>
     <div class="deck-extra">
       <div class="w-32"><VolumeSlider /></div>
