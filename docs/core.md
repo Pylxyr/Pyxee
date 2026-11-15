@@ -40,6 +40,6 @@ consumed counter, when the pipeline is flushed.
 
 ## Queue behaviour
 Display order vs play order (shuffle keeps the current track first and is seeded, so it is testable);
-repeat off/all/one (repeat-one replays only on natural end, user "Next" always moves on); consecutive
-"Play next" keep their order; removing the current track lets the next one slide in; remove and clear
+repeat off/all/one (repeat-one replays only on natural end, user "Next" always moves on); "Play next"
+puts a song right after the current one, ahead of earlier ones (the latest asked for plays first); removing the current track lets the next one slide in; remove and clear
 are undoable; the whole session serialises with serde and restores paused at the saved position.

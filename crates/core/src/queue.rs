@@ -67,7 +67,6 @@ pub struct Queue {
     history: Vec<EntryId>,
     next_id: u64,
     rng: u64,
-    play_next_tail: Option<EntryId>,
     #[serde(skip)]
     undo: Vec<Undo>,
 }
@@ -93,7 +92,6 @@ impl Queue {
             history: Vec::new(),
             next_id: 1,
             rng: seed,
-            play_next_tail: None,
             undo: Vec::new(),
         }
     }
@@ -181,20 +179,14 @@ impl Queue {
         id
     }
 
-    /// Inserts right after the current track; consecutive calls keep their order
-    /// (A, B, C added in turn play A, B, C).
+    /// Inserts right after the current track, ahead of anything queued before: the song asked for last plays first
+    /// (A, B, C asked for in turn play C, B, A).
     pub fn play_next(&mut self, track: Track) -> EntryId {
         self.forget_clear_undo();
-        let cur_pos = self.current_pos();
-        let tail = self
-            .play_next_tail
-            .and_then(|t| self.order.iter().position(|&i| i == t))
-            .filter(|&tp| cur_pos.is_none_or(|cp| tp >= cp));
-        let order_idx = match (tail, cur_pos, self.slot) {
-            (Some(tp), _, _) => tp + 1,
-            (None, Some(cp), _) => cp + 1,
-            (None, None, Some(s)) => s.min(self.order.len()),
-            (None, None, None) => 0,
+        let order_idx = match (self.current_pos(), self.slot) {
+            (Some(cp), _) => cp + 1,
+            (None, Some(s)) => s.min(self.order.len()),
+            (None, None) => 0,
         };
         let display_idx = if self.shuffle {
             let anchor = order_idx.checked_sub(1).map(|i| self.order[i]);
@@ -214,7 +206,6 @@ impl Queue {
             },
         );
         self.order.insert(order_idx.min(self.order.len()), id);
-        self.play_next_tail = Some(id);
         id
     }
 
@@ -235,9 +226,6 @@ impl Queue {
             }
         }
         self.history.retain(|&h| h != id);
-        if self.play_next_tail == Some(id) {
-            self.play_next_tail = None;
-        }
         self.push_undo(Undo::Remove {
             entry,
             display_idx,
@@ -256,7 +244,6 @@ impl Queue {
             current: self.current.take(),
         };
         self.slot = None;
-        self.play_next_tail = None;
         self.history.clear();
         self.push_undo(undo);
     }
@@ -454,7 +441,6 @@ impl Queue {
         self.undo.clear();
         self.current = None;
         self.slot = None;
-        self.play_next_tail = None;
         let ids: Vec<EntryId> = tracks
             .into_iter()
             .map(|t| self.add(t, Origin::User))
@@ -556,13 +542,13 @@ mod tests {
     }
 
     #[test]
-    fn play_next_inserts_after_current_and_keeps_call_order() {
+    fn play_next_inserts_right_after_current_and_the_latest_goes_first() {
         let (mut q, ids) = q(&["a", "b", "c"]);
         q.jump_to(ids[0]);
         q.play_next(t("x"));
         q.play_next(t("y"));
-        assert_eq!(names(&q), ["a", "x", "y", "b", "c"]);
-        assert_eq!(order_names(&q), ["a", "x", "y", "b", "c"]);
+        assert_eq!(names(&q), ["a", "y", "x", "b", "c"]);
+        assert_eq!(order_names(&q), ["a", "y", "x", "b", "c"]);
     }
 
     #[test]
