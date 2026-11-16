@@ -7,7 +7,7 @@ Rust (audio, queue, library) + Tauri 2 (WebView2) + Svelte/TypeScript/Tailwind U
 Status: milestones 1-5 done (gapless audio, core state machine, UI shell, real engine + search + queue, library with likes,
 playlists, history and Home). The audio, yt-dlp and library parts are covered by automated tests with local files, but have
 not yet been run against YouTube, a real sound card or a real Windows profile: see `engine.md` and `library.md` for
-what to verify on Windows. Set `PYXEE_SIM=1` to run the UI against the built-in simulator instead.
+what to verify on Windows. Set `PYXEE_SIM=1` to run the UI against the built-in simulator instead (developer builds only: a release build, and its UI bundle, have no simulator, mock backend, performance log or seek-fill modes; to build with them, use `cargo build --features dev-tools` and `VITE_PYXEE_DEV_TOOLS=1 npm run build --prefix ui`).
 
 ## Prerequisites (Windows)
 Rust 1.91 (MSVC; `rust-toolchain.toml` selects it and rustup installs it on first use), Visual Studio Build Tools (C++ workload), Node 22+ and the WebView2 runtime (preinstalled on Windows 11).

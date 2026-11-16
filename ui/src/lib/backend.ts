@@ -238,8 +238,13 @@ export async function tauriBackend(): Promise<Backend> {
 
 export async function createBackend(): Promise<Backend> {
   if (typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window) return tauriBackend();
-  const { MockBackend } = await import('./mock');
-  const mock = new MockBackend();
-  mock.start(1000); // like the app: the position is reported once per second of the song
-  return mock;
+  // Outside the app window (a browser) there is only the mock backend, which is a developer tool: a production build has
+  // no copy of it (the bundler drops this block), and says so.
+  if (__DEV_TOOLS__) {
+    const { MockBackend } = await import('./mock');
+    const mock = new MockBackend();
+    mock.start(1000); // like the app: the position is reported once per second of the song
+    return mock;
+  }
+  throw new Error('Pyxee has to run in its own window; it cannot start in a browser.');
 }

@@ -14,7 +14,7 @@ a second, and the page under Now Playing is not drawn while Now Playing covers i
 `--type=gpu-process` is drawing and compositing, the one without `--type` is the browser process. Watch a process for a
 minute while a song plays with the window visible. The *Processes* tab, under *Pyxee*, shows them grouped.
 
-**Pyxee's own count (`PYXEE_PERF=1`).** Turn on *Performance log* in Settings > Advanced (or put `PYXEE_PERF=1` in
+**Pyxee's own count (`PYXEE_PERF=1`, developer builds only: a release has no performance log).** Turn on *Performance log* in Settings > Advanced (or put `PYXEE_PERF=1` in
 `.env`) and restart. Every ten seconds the log (Settings > Advanced shows its folder) gets a line like
 
     perf: 10s state=0 position=10 other=0 dom-changes=30 animations=0 long-tasks=0 long-frames=0 hidden=false
@@ -39,7 +39,7 @@ seek bar should flash, once a second) and *Frame Rendering Stats*.
 
 ## The measurement harness (Linux, relative numbers)
 
-`scripts/perf/measure.py` drives the built UI (`npm run build` in `ui/`) in WebKitGTK under Xvfb and reports the CPU of
+`scripts/perf/measure.py` drives the built UI (`VITE_PYXEE_DEV_TOOLS=1 npm run build` in `ui/`; a plain production build has no mock backend to drive) in WebKitGTK under Xvfb and reports the CPU of
 the web process per view while a demo song plays. It is software-rendered, so use it to compare a change with the one
 before, not as what WebView2 will use on a GPU. See the script's header for what it needs.
 

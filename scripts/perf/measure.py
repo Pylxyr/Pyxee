@@ -3,7 +3,7 @@
 runs against its mock backend. Software-rendered on whatever cores the machine has, so the numbers are RELATIVE: use
 them to compare a change with the one before it, not as what WebView2 will use on a real GPU.
 
-Needs: xvfb, webkit2gtk-driver, `pip install selenium`, and `npm run build` in ui/ first.
+Needs: xvfb, webkit2gtk-driver, `pip install selenium`, and `VITE_PYXEE_DEV_TOOLS=1 npm run build` in ui/ first (a plain production build has no mock backend).
   python3 scripts/perf/measure.py [--window 12] [--views home,queue,now-playing,lyrics] [--shots DIR] [--label NAME]
 Prints one line per view and, with --json, a JSON object (for diffing runs)."""
 import argparse, json, os, signal, subprocess, sys, time

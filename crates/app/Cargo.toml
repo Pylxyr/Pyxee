@@ -43,6 +43,10 @@ windows = { version = "0.62.2", optional = true, features = [
 ] }
 
 [features]
+# Developer tools: the simulated engine with demo tracks (PYXEE_SIM), the performance log (PYXEE_PERF) and the seek-bar
+# fill modes (PYXEE_SEEK_MODE). On in every debug build (`tauri dev`, `cargo test`); a release build has none of them
+# unless it is built with this feature (e.g. for scripts/perf/measure.py, together with VITE_PYXEE_DEV_TOOLS=1 for the UI).
+dev-tools = []
 # Taskbar thumbnail buttons and the jump list: raw Windows COM calls that could only be written, not compiled,
 # where this was developed. Off by default so the normal build cannot break; try it with
 #   cargo check -p pyxee-app --features win-extras

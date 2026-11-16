@@ -222,7 +222,8 @@ pub fn init(dir: &Path) -> (LogInfo, Option<String>) {
         dir: dir.to_path_buf(),
         file: file.clone(),
     };
-    let perf = std::env::var("PYXEE_PERF").is_ok_and(|v| v.trim() == "1");
+    let perf =
+        crate::commands::DEV_TOOLS && std::env::var("PYXEE_PERF").is_ok_and(|v| v.trim() == "1");
     let level = effective_level(level_from(std::env::var("PYXEE_LOG").ok().as_deref()), perf);
     match FileLogger::open(&file, level, MAX_BYTES, true) {
         Ok(logger) => {
