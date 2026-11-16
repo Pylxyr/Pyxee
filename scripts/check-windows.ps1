@@ -394,13 +394,11 @@ function Test-ReviewFixes {
   $fullLimit = $http -match 'FULL_LIMIT: u64 = 64 \* 1024 \* 1024'
   & $expect 'fix-f10-http-hardening' ($fullLimit -and ($http -match 'server ignored the range request')) 'FULL_LIMIT is 64 MiB and a reply without 206 + a matching Content-Range is refused'
   & $expect 'fix-f10-ignore-config' ($ytdlp -match '--ignore-config') 'every yt-dlp run starts with --ignore-config'
-  $envvars = & $read 'ui\src\lib\envvars.ts'
   $readme = & $read 'README.md'
   $release = & $read '.github\workflows\release.yml'
   $discord = & $read 'crates\app\src\shell\discord.rs'
-  $envfile = & $read 'crates\shell\src\envfile.rs'
-  $f7 = ($envvars -notmatch 'DISCORD') -and ($envfile -notmatch 'DISCORD') -and ($readme -notmatch 'DISCORD_CLIENT_ID') -and ((& $read 'crates\app\src\advanced.rs') -notmatch 'DISCORD')
-  & $expect 'fix-f7-discord-id-not-user-settable' $f7 'the Discord application ID is not in Settings > Advanced, the .env loader or the README: users cannot change it'
+  $f7 = ($readme -notmatch 'DISCORD_CLIENT_ID')
+  & $expect 'fix-f7-discord-id-not-user-settable' $f7 'the Discord application ID is not in the README (Pyxee has no settings page or .env file that could hold it, so users cannot change it)'
   & $expect 'fix-f7-discord-id-is-a-secret-in-ci' (($release -match 'secrets\.PYXEE_DISCORD_CLIENT_ID') -and ($release -notmatch 'vars\.PYXEE_DISCORD_CLIENT_ID')) 'release.yml reads the ID from a repository secret, not a variable'
   & $expect 'fix-f7-discord-log-text' (($discord -match 'this build has no Discord application') -and ($discord -notmatch 'is not set\)')) 'the Discord log line no longer asks for a variable'
   try {
@@ -1126,7 +1124,7 @@ if ($Manual) {
     @('app-clear-then-add', 'Clear the queue, then add a song: Undo no longer offers to bring the cleared list back over the new song?'),
     @('app-autoplay-failure', 'Optional: with Autoplay on, let the last song play out while the network is off: a notice says Autoplay could not load similar songs, and the bar does not show Playing with nothing audible (skip if you cannot try it)?'),
     @('app-update-progress', 'Settings > Updates: Check yt-dlp, then Update yt-dlp if one is offered (otherwise skip): a progress bar and text like "Downloading yt-dlp: 12.3 of 18.4 MB (67%)" show while it installs, then "Updated to ..."?'),
-    @('app-no-discord-id-field', 'Settings > Advanced has no Discord application ID field, and (with the Discord desktop app running and the Discord option on) "Listening to Pyxee" still shows your song in Discord?'),
+    @('app-no-discord-id-field', 'Settings has no Discord application ID field, and (with the Discord desktop app running and the Discord option on) "Listening to Pyxee" still shows your song in Discord?'),
     @('ui-wide', 'UI: maximise the window (1280 px or wider). Is there a rail on the left with the icons AND their names, the search box on top of the page, the player (cover, controls, Up next) on the right, and nothing cut off or overlapping?'),
     @('ui-medium', 'UI: make the window about 1000 px wide. Does the rail show icons only (a tooltip on each), does the player stay on the right, and is the song list still easy to read?'),
     @('ui-narrow', 'UI: make the window about 400 px wide. Are the rail and the player column gone, a one-line player (dock) above the bottom bar, Settings at the top right, and does tapping the dock open Now Playing?'),

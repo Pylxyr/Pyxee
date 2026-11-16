@@ -2,7 +2,7 @@ import type { Backend } from './backend';
 import type { PerfReportDto } from './bindings/PerfReportDto';
 
 /**
- * Opt-in diagnostics (`PYXEE_PERF=1`, see Settings > Advanced): every `intervalMs` the window reports, to the log file,
+ * Opt-in diagnostics (`PYXEE_PERF=1`, developer builds only): every `intervalMs` the window reports, to the log file,
  * what it did in that time. Off by default, and then nothing here runs except the three integer additions below.
  *
  * It counts what makes a window busy, not frames: counting frames needs a `requestAnimationFrame` loop, which makes the

@@ -21,9 +21,6 @@ import type { SearchItemDto } from './bindings/SearchItemDto';
 import type { SearchResponseDto } from './bindings/SearchResponseDto';
 import type { AppUpdateDto } from './bindings/AppUpdateDto';
 import type { YtdlpUpdateDto } from './bindings/YtdlpUpdateDto';
-import type { EnvSettingsDto } from './bindings/EnvSettingsDto';
-import type { EnvVarDto } from './bindings/EnvVarDto';
-import { ENV_VARS } from './envvars';
 
 /** JSON round trip, like the real IPC boundary. (structuredClone rejects Svelte's reactive proxies.) */
 const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v)) as T;
@@ -128,15 +125,6 @@ export class MockBackend extends MockLibrary implements Backend {
   async openLogFolder() { this.logFolderOpens++; }
   releasePageOpens = 0;
   async openReleasePage() { this.releasePageOpens++; }
-  /** The `.env` values by variable name; set `envError` to make `envSet` reject. */
-  envValues: Record<string, string> = {};
-  envError: string | null = null;
-  #envState(): EnvSettingsDto {
-    return {
-      file: 'C:\\Users\\you\\AppData\\Local\\dev.pyxee.app\\.env',
-      vars: ENV_VARS.map((v) => ({ name: v.name, value: this.envValues[v.name] ?? '', fromWindows: false })),
-    };
-  }
   /** `?perf` on the page's address turns the diagnostics on in the standalone demo. */
   async perfEnabled() { return typeof location !== 'undefined' && /[?&]perf\b/.test(location.search); }
   /** `?seek=pixel|glide|steps` on the page's address picks a seek-bar mode in the standalone demo (default: step). */
@@ -144,12 +132,6 @@ export class MockBackend extends MockLibrary implements Backend {
   /** `?os=linux` on the page's address shows the demo as it looks on Linux (default: Windows). */
   async platform() { return typeof location !== 'undefined' ? (new URLSearchParams(location.search).get('os') ?? 'windows') : 'windows'; }
   async perfLog(report: PerfReportDto) { console.info('perf', JSON.stringify(report)); }
-  async envGet() { return this.#envState(); }
-  async envSet(vars: EnvVarDto[]) {
-    if (this.envError) throw this.envError;
-    this.envValues = Object.fromEntries(vars.map((v) => [v.name, v.value]));
-    return this.#envState();
-  }
   /** What the update checks answer; set `updateFailure` to make any update call reject. */
   appUpdate: AppUpdateDto = { current: '0.1.0', latest: '0.1.0', available: false, notesUrl: 'https://example.test/releases', notes: '', installable: true, portable: false };
   ytdlpUpdate: YtdlpUpdateDto = { available: false, currentVersion: '2026.01.01' };

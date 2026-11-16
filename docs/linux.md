@@ -282,8 +282,7 @@ but a slow build. For a quicker build, use `--release` instead of `--profile rel
 `target/ffmpeg/<host triple>` is used.
 
 **Develop and test.** Running the test suite, the development server and the code layout are in
-[development.md](development.md). Settings for yt-dlp, cookies, logging and more are in
-[advanced.md](advanced.md).
+[development.md](development.md).
 
 ## Updating
 
@@ -372,7 +371,6 @@ Everything is in `~/.local/share/dev.pyxee.app`:
 | Item | What it is |
 |---|---|
 | `session.json` | Your library and queue |
-| `.env` | Your settings from [Advanced settings](advanced.md) |
 | `tools/` | The updated yt-dlp |
 | `logs/pyxee.log` | The log |
 

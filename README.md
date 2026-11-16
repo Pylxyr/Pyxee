@@ -105,10 +105,7 @@ The full guide covers both, step by step for beginners and with options for adva
 
 First try **Settings** -> **Updates** and update.
 
-If it keeps happening, signing in helps a lot. Open **Settings** -> **Advanced**, fill in **Cookie file** (an exported `cookies.txt`) or **Cookies from a browser**, press **Save** and restart Pyxee. An exported file is more reliable than reading the browser's cookies. How to get the file is described in [Advanced settings](docs/advanced.md).
-
-> [!WARNING]
-> Signing in this way can get the Google account restricted or blocked by YouTube. Use a throwaway account, not your main one. With **Cookies from a browser**, use a separate browser profile that is signed in only to that account (for Firefox, `firefox:profile-name`), so nothing else in your normal profile is read.
+If it keeps happening, wait a while and try again: YouTube limits how fast one network address can ask for songs, and the limit lifts by itself. Pyxee never signs in to YouTube, and it slows its own requests down on purpose so that it stays under those limits. Changing network (for example, switching off a VPN) can help too.
 
 </details>
 
@@ -143,7 +140,7 @@ Still stuck? [Open an issue](https://github.com/Pylxyr/Pyxee/issues).
 **Using Pyxee**
 
 - [Pyxee on Linux](docs/linux.md): installing, updating and troubleshooting on Linux, and what is different from Windows.
-- [Advanced settings](docs/advanced.md): every setting in **Settings** -> **Advanced**, and where Pyxee keeps its files.
+- [Where Pyxee keeps its files](docs/data-folder.md): the data folder, the log and the updated yt-dlp.
 
 **Building and changing Pyxee**
 

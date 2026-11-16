@@ -1,6 +1,6 @@
 # Development
 
-Everything for building, running and testing Pyxee from source. Users: see the [README](../README.md) and [advanced.md](advanced.md) (the settings); Linux: [linux.md](linux.md).
+Everything for building, running and testing Pyxee from source. Users: see the [README](../README.md) and [data-folder.md](data-folder.md); Linux: [linux.md](linux.md).
 
 Rust (audio, queue, library) + Tauri 2 (WebView2) + Svelte/TypeScript/Tailwind UI.
 
@@ -24,7 +24,7 @@ installed if it does not match) and puts it in `crates/app/binaries`. Developmen
 your own copy instead, set `PYXEE_YTDLP` to its path, or put `yt-dlp.exe` next to the app.
 
 ### Optional settings (environment variables)
-The same variables can be set in **Settings** > **Advanced**, which saves them to `.env` in the data folder (see [advanced.md](advanced.md)); a variable set in the system wins over that file. `crates/shell/src/envfile.rs` reads it at start-up.
+**Developer builds only.** A release build has no Settings > Advanced, no `.env` file and ignores these variables (`vars_to_ignore` in `crates/app/src/main.rs` removes them at start), so the app always runs with its built-in defaults; `tauri dev` and other debug builds read them from the environment.
 
 | Variable | Effect |
 |---|---|

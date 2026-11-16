@@ -8,7 +8,6 @@
   import { shellSettings } from '$lib/shell.svelte';
   import { platform } from '$lib/platform.svelte';
   import { snackbar } from '$lib/snackbar.svelte';
-  import AdvancedSection from './AdvancedSection.svelte';
   import Button from './Button.svelte';
   import Sheet from './Sheet.svelte';
   import ThemePicker from './ThemePicker.svelte';
@@ -103,6 +102,4 @@
       </div>
     {/if}
   </section>
-
-  {#if backend}<AdvancedSection {backend} />{/if}
 </Sheet>
