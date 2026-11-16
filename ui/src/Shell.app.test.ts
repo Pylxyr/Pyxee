@@ -450,32 +450,3 @@ describe('Updates settings', () => {
     expect(screen.queryByRole('dialog', { name: "What's new" })).toBeNull();
   });
 });
-
-describe('Advanced settings', () => {
-  async function openSettings() {
-    render(App);
-    await waitFor(() => expect(player.ready && library.ready).toBe(true));
-    await fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
-    return screen.findByRole('region', { name: 'Advanced' });
-  }
-
-  it('is closed by default: no settings are shown and nothing is read', async () => {
-    const section = await openSettings();
-    const toggle = within(section).getByRole('button', { name: 'Advanced' });
-    expect(toggle.getAttribute('aria-expanded')).toBe('false');
-    expect(within(section).queryByTestId('env-path')).toBeNull();
-    expect(within(section).queryByRole('button', { name: 'Save' })).toBeNull();
-  });
-
-  it('opens and closes with its arrow button', async () => {
-    const section = await openSettings();
-    const toggle = within(section).getByRole('button', { name: 'Advanced' });
-    await fireEvent.click(toggle);
-    expect(toggle.getAttribute('aria-expanded')).toBe('true');
-    expect((await within(section).findByTestId('env-path')).textContent).toContain('.env');
-    expect(within(section).getByRole('button', { name: 'Save' })).toBeTruthy();
-    await fireEvent.click(toggle);
-    expect(toggle.getAttribute('aria-expanded')).toBe('false');
-    expect(within(section).queryByTestId('env-path')).toBeNull();
-  });
-});

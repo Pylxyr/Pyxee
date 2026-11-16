@@ -1,7 +1,6 @@
 // Hide the console window in release builds on Windows.
 #![cfg_attr(all(not(debug_assertions), windows), windows_subsystem = "windows")]
 
-mod advanced;
 mod commands;
 mod dto;
 mod engine;
@@ -88,7 +87,38 @@ fn with_music_search_setting(source: YtDlpSource, direct_allowed: bool) -> YtDlp
     }
 }
 
+/// Every `PYXEE_*` variable that changes how the app behaves. A release build runs with none of them: there is no
+/// Settings > Advanced and no `.env` file any more, and a variable that happens to be set in the system is not read
+/// either, so the app always runs with its built-in, safe defaults (no sign-in cookies, its own copy of yt-dlp, the
+/// default log level). Developer builds keep reading them from the environment.
+const BEHAVIOUR_VARS: [&str; 11] = [
+    "PYXEE_YTDLP",
+    "PYXEE_JS_RUNTIME",
+    "PYXEE_COOKIES",
+    "PYXEE_COOKIES_FROM_BROWSER",
+    "PYXEE_YTDLP_PLAYER_CLIENT",
+    "PYXEE_YTMUSIC_DIRECT",
+    "PYXEE_SUGGESTIONS",
+    "PYXEE_LOG",
+    "PYXEE_PERF",
+    "PYXEE_SEEK_MODE",
+    "PYXEE_SIM",
+];
+
+/// The variables to drop from the environment before anything reads it.
+fn vars_to_ignore(dev_tools: bool) -> &'static [&'static str] {
+    if dev_tools {
+        &[]
+    } else {
+        &BEHAVIOUR_VARS
+    }
+}
+
 fn main() {
+    // Before anything else (no other thread exists yet, and nothing has read the environment).
+    for name in vars_to_ignore(commands::DEV_TOOLS) {
+        std::env::remove_var(name);
+    }
     tauri::Builder::default()
         // First, so a second launch is caught before anything else starts: it hands its arguments to the
         // running player (jump-list tasks, `--next`) and brings it to the front.
@@ -111,13 +141,6 @@ fn main() {
                 )
             });
             let data_dir = moved.dir;
-            // The `.env` file in the data folder (Settings > Advanced) is applied before anything reads the
-            // environment, the log level included.
-            let env_file = data_dir.as_ref().map(|d| d.join(".env"));
-            let env_applied = match &env_file {
-                Some(file) => pyxee_shell::envfile::apply(file),
-                None => Default::default(),
-            };
             // Logging first, so everything that follows (and every panic) is recorded.
             let log_dir = data_dir
                 .as_ref()
@@ -133,12 +156,6 @@ fn main() {
                     log::info!("data folder: {}", note.text);
                 }
             }
-            if let Some(warning) = &env_applied.warning {
-                log::warn!("settings: {warning}");
-            }
-            for name in &env_applied.from_windows {
-                log::info!("settings: {name} is set in Windows, so .env is not used for it");
-            }
             // Leftovers of a save that a crash or a power cut cut short (nothing is saving yet, so none is in use).
             if let Some(dir) = &data_dir {
                 let swept = pyxee_shell::atomic::sweep_stale(dir);
@@ -146,10 +163,6 @@ fn main() {
                     log::info!("removed {swept} leftover temporary file(s) from the data folder");
                 }
             }
-            app.manage(advanced::EnvState {
-                file: env_file,
-                from_windows: env_applied.from_windows,
-            });
             let session_path = data_dir.as_ref().map(|d| d.join("session.json"));
             let player = session_path
                 .as_deref()
@@ -266,8 +279,6 @@ fn main() {
             commands::perf_log,
             commands::open_log_folder,
             commands::open_release_page,
-            advanced::env_get,
-            advanced::env_set,
             commands::set_window_theme,
             commands::set_window_tint,
             shell::commands::lyrics_get,
@@ -285,4 +296,29 @@ fn main() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running Pyxee");
+}
+
+#[cfg(test)]
+mod main_tests {
+    use super::*;
+
+    #[test]
+    fn a_release_ignores_every_behaviour_variable_and_a_developer_build_none() {
+        assert!(vars_to_ignore(true).is_empty());
+        let ignored = vars_to_ignore(false);
+        for name in [
+            "PYXEE_COOKIES",
+            "PYXEE_COOKIES_FROM_BROWSER",
+            "PYXEE_YTDLP",
+            "PYXEE_LOG",
+            "PYXEE_SIM",
+        ] {
+            assert!(ignored.contains(&name), "{name}");
+        }
+        assert!(ignored.iter().all(|n| n.starts_with("PYXEE_")));
+        // build-time values are baked in, not read at run time
+        assert!(!ignored
+            .iter()
+            .any(|n| n.contains("DISCORD") || n.contains("LASTFM") || n.contains("UPDATE")));
+    }
 }

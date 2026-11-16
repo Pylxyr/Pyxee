@@ -42,8 +42,6 @@ export const noDiagnostics = {
   seekMode: async () => 'step',
   platform: async () => 'windows',
   perfLog: async () => {},
-  envGet: async () => ({ file: null, vars: [] }),
-  envSet: async () => ({ file: null, vars: [] }),
 };
 
 /** Lyrics, sleep timer, tray and shell-settings methods for test backends that do not care about them. */

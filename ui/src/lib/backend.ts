@@ -6,9 +6,7 @@ import type { GenreDto } from './bindings/GenreDto';
 import type { FilterInfoDto } from './bindings/FilterInfoDto';
 import type { HistoryItemDto } from './bindings/HistoryItemDto';
 import type { LogInfoDto } from './bindings/LogInfoDto';
-import type { EnvSettingsDto } from './bindings/EnvSettingsDto';
 import type { PerfReportDto } from './bindings/PerfReportDto';
-import type { EnvVarDto } from './bindings/EnvVarDto';
 import type { AppUpdateDto } from './bindings/AppUpdateDto';
 import type { YtdlpUpdateDto } from './bindings/YtdlpUpdateDto';
 import type { UpdateProgressDto } from './bindings/UpdateProgressDto';
@@ -79,7 +77,6 @@ export interface Backend extends LibraryBackend {
   openLogFolder(): Promise<void>;
   /** Opens Pyxee's releases page in the default browser. */
   openReleasePage(): Promise<void>;
-  /** The variables kept in the `.env` file (Settings > Advanced). */
   /** Whether the app was started with `PYXEE_PERF=1` (the window then logs what it does; see `perf.ts`). */
   perfEnabled(): Promise<boolean>;
   /** `PYXEE_SEEK_MODE`: how the seek bar fills in (step, pixel, glide or steps; anything else is step). */
@@ -87,9 +84,6 @@ export interface Backend extends LibraryBackend {
   /** The system the app runs on: `windows`, `linux` or `macos`. */
   platform(): Promise<string>;
   perfLog(report: PerfReportDto): Promise<void>;
-  envGet(): Promise<EnvSettingsDto>;
-  /** Saves them to `.env`; they are used from the next start. Rejects with a readable message for a value that cannot be used. */
-  envSet(vars: EnvVarDto[]): Promise<EnvSettingsDto>;
   /** Looks for a newer Pyxee release on GitHub. */
   updateCheckApp(): Promise<AppUpdateDto>;
   /** Downloads the installer, checks its SHA-256, starts it and quits Pyxee. Rejects with a readable message. */
@@ -184,8 +178,6 @@ export async function tauriBackend(): Promise<Backend> {
     seekMode: () => invoke<string>('seek_mode'),
     platform: () => invoke<string>('platform'),
     perfLog: (report) => invoke<void>('perf_log', { report }),
-    envGet: () => invoke<EnvSettingsDto>('env_get'),
-    envSet: (vars) => invoke<EnvSettingsDto>('env_set', { vars }),
     updateCheckApp: () => invoke<AppUpdateDto>('update_check_app'),
     updateInstallApp: () => invoke<void>('update_install_app'),
     updateCheckYtdlp: () => invoke<YtdlpUpdateDto>('update_check_ytdlp'),

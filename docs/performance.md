@@ -14,8 +14,7 @@ a second, and the page under Now Playing is not drawn while Now Playing covers i
 `--type=gpu-process` is drawing and compositing, the one without `--type` is the browser process. Watch a process for a
 minute while a song plays with the window visible. The *Processes* tab, under *Pyxee*, shows them grouped.
 
-**Pyxee's own count (`PYXEE_PERF=1`, developer builds only: a release has no performance log).** Turn on *Performance log* in Settings > Advanced (or put `PYXEE_PERF=1` in
-`.env`) and restart. Every ten seconds the log (Settings > Advanced shows its folder) gets a line like
+**Pyxee's own count (`PYXEE_PERF=1`, developer builds only: a release has no performance log).** Start a developer build with `PYXEE_PERF=1` in the environment. Every ten seconds the log (Settings > Diagnostics shows its folder) gets a line like
 
     perf: 10s state=0 position=10 other=0 dom-changes=30 animations=0 long-tasks=0 long-frames=0 hidden=false
 
@@ -45,7 +44,7 @@ before, not as what WebView2 will use on a GPU. See the script's header for what
 
 ## Seek bar movement (`PYXEE_SEEK_MODE`)
 
-The filled part of the seek bar can move four ways; pick one in Settings > Advanced (used from the next start).
+The filled part of the seek bar can move four ways; pick one with `PYXEE_SEEK_MODE` (developer builds only; read at start).
 The time labels and the slider's value always change once a second.
 
 | Mode | What it does |
