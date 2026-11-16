@@ -28,11 +28,15 @@ pub fn window_info(state: State<AppState>) -> WindowInfoDto {
     }
 }
 
-/// Demo tracks, only when running against the simulated engine (`PYXEE_SIM=1`); empty otherwise,
+/// Developer tools (the simulated engine, the performance log, the seek-bar fill modes) exist in debug builds and in
+/// builds made with the `dev-tools` feature. A release build ignores their variables and settings.
+pub const DEV_TOOLS: bool = cfg!(any(debug_assertions, feature = "dev-tools"));
+
+/// Demo tracks, only when running against the simulated engine (`PYXEE_SIM=1`, developer builds only); empty otherwise,
 /// since demo keys cannot be resolved by the real sources.
 #[tauri::command]
 pub fn dev_catalog() -> Vec<TrackDto> {
-    if std::env::var_os("PYXEE_SIM").is_some() {
+    if DEV_TOOLS && std::env::var_os("PYXEE_SIM").is_some() {
         catalog().iter().map(TrackDto::from).collect()
     } else {
         Vec::new()
@@ -291,10 +295,12 @@ pub fn set_volume(state: State<AppState>, percent: u8) {
 }
 
 /// Whether the app was started with `PYXEE_PERF=1` (the window then reports what it does; see `perf_log`).
+/// Developer builds only: a release build never writes the performance log.
 pub(crate) fn perf_on() -> bool {
-    std::env::var("PYXEE_PERF")
-        .ok()
-        .is_some_and(|v| pyxee_sources::ytmusic::parse_switch(&v) == Ok(true))
+    DEV_TOOLS
+        && std::env::var("PYXEE_PERF")
+            .ok()
+            .is_some_and(|v| pyxee_sources::ytmusic::parse_switch(&v) == Ok(true))
 }
 
 /// One line for the performance log, only when `PYXEE_PERF=1`: what the app side did (a window put to sleep or woken,
@@ -320,6 +326,9 @@ pub fn platform() -> &'static str {
 /// Anything else is `step`; the window decides what each mode does.
 #[tauri::command]
 pub fn seek_mode() -> String {
+    if !DEV_TOOLS {
+        return "step".into(); // the other fills are for comparing costs while developing
+    }
     seek_mode_from(std::env::var("PYXEE_SEEK_MODE").ok().as_deref())
 }
 

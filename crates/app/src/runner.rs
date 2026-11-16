@@ -103,7 +103,7 @@ impl Host for AppHost {
 }
 
 pub fn spawn(app: AppHandle, rx: Receiver<Effect>) {
-    if std::env::var_os("PYXEE_SIM").is_some() {
+    if crate::commands::DEV_TOOLS && std::env::var_os("PYXEE_SIM").is_some() {
         spawn_sim(app, rx);
     } else {
         spawn_real(app, rx);

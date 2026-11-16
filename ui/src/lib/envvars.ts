@@ -14,7 +14,7 @@ export interface EnvVarInfo {
   choices?: string[];
 }
 
-export const ENV_VARS: EnvVarInfo[] = [
+const ENV_VARS_BEFORE_LOG: EnvVarInfo[] = [
   {
     name: 'PYXEE_COOKIES',
     title: 'Cookie file',
@@ -64,27 +64,38 @@ export const ENV_VARS: EnvVarInfo[] = [
     fill: 'Type 0 to turn it off. Leave it empty (or 1) to keep it on.',
     placeholder: '0',
   },
-  {
-    name: 'PYXEE_PERF',
-    title: 'Performance log',
-    about: 'Every ten seconds the window writes to the log file how many events it received, how many page changes and running animations it had, and how many slow tasks and frames. For finding what keeps the window busy; it adds a little work of its own, so leave it off otherwise. While it is on, the log runs at info or more, so the file grows.',
-    fill: 'Type 1 to turn it on. Leave it empty (or 0) to keep it off.',
-    placeholder: '1',
-  },
-  {
-    name: 'PYXEE_SEEK_MODE',
-    title: 'Seek bar movement',
-    about: 'How the filled part of the seek bar moves while a song plays. For comparing what each costs on your PC: see docs/performance.md. The time labels always change once a second.',
-    fill: 'Pick one. Step (the default) moves it once a second. Pixel moves it whenever it has gone one pixel further. Glide moves it continuously with one animation. Steps is the same animation in a few jumps a second. Used from the next start.',
-    placeholder: '',
-    choices: ['', 'step', 'pixel', 'glide', 'steps'],
-  },
-  {
-    name: 'PYXEE_LOG',
-    title: 'Log detail',
-    about: 'How much Pyxee writes to its log file.',
-    fill: 'Pick one. Warn is the default, so a quiet app writes next to nothing; choose info, debug or trace for more detail when you report a problem with a song. The performance log turns this up to info while it is on.',
-    placeholder: '',
-    choices: ['', 'error', 'warn', 'info', 'debug', 'trace'],
-  },
 ];
+
+/** Settings for developers (the performance log, the seek-bar fill): they exist in a developer build only, and a release
+ * does not even contain their text (`__DEV_TOOLS__` is a literal the bundler substitutes). */
+const DEV_ENV_VARS: EnvVarInfo[] = __DEV_TOOLS__
+  ? [
+    {
+      name: 'PYXEE_PERF',
+      title: 'Performance log',
+      about: 'Every ten seconds the window writes to the log file how many events it received, how many page changes and running animations it had, and how many slow tasks and frames. For finding what keeps the window busy; it adds a little work of its own, so leave it off otherwise. While it is on, the log runs at info or more, so the file grows.',
+      fill: 'Type 1 to turn it on. Leave it empty (or 0) to keep it off.',
+      placeholder: '1',
+    },
+    {
+      name: 'PYXEE_SEEK_MODE',
+      title: 'Seek bar movement',
+      about: 'How the filled part of the seek bar moves while a song plays. For comparing what each costs on your PC: see docs/performance.md. The time labels always change once a second.',
+      fill: 'Pick one. Step (the default) moves it once a second. Pixel moves it whenever it has gone one pixel further. Glide moves it continuously with one animation. Steps is the same animation in a few jumps a second. Used from the next start.',
+      placeholder: '',
+      choices: ['', 'step', 'pixel', 'glide', 'steps'],
+    },
+    ]
+  : [];
+
+const ENV_VAR_LOG: EnvVarInfo = {
+  name: 'PYXEE_LOG',
+  title: 'Log detail',
+  about: 'How much Pyxee writes to its log file.',
+  fill: 'Pick one. Warn is the default, so a quiet app writes next to nothing; choose info, debug or trace for more detail when you report a problem with a song.' + (__DEV_TOOLS__ ? ' The performance log turns this up to info while it is on.' : ''),
+  placeholder: '',
+  choices: ['', 'error', 'warn', 'info', 'debug', 'trace'],
+};
+
+/** The settings this build shows, in the order of `VARS` in `crates/shell/src/envfile.rs` (the developer ones only in a developer build). */
+export const ENV_VARS: EnvVarInfo[] = [...ENV_VARS_BEFORE_LOG, ...DEV_ENV_VARS, ENV_VAR_LOG];

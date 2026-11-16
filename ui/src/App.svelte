@@ -63,7 +63,7 @@
       lyricsStore.init(backend);
       relatedStore.init(backend);
       void sleep.init(backend);
-      void startPerfIfEnabled(backend);
+      if (__DEV_TOOLS__) void startPerfIfEnabled(backend);
       void initSeekMode(backend);
       void initPlatform(backend);
       void shellSettings.init(backend);

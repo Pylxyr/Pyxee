@@ -52,6 +52,14 @@ fn names_ytdlp(value: &str) -> bool {
 
 /// Why `value` cannot be saved for `name`, in words for the person who typed it. An empty value is always fine
 /// (it removes the variable).
+/// Settings that exist only in developer builds (see `commands::DEV_TOOLS`).
+const DEV_ONLY: [&str; 2] = ["PYXEE_PERF", "PYXEE_SEEK_MODE"];
+
+/// Whether this build lets `name` be saved: everything, except the developer settings in a release build.
+fn available(name: &str, dev_tools: bool) -> bool {
+    dev_tools || !DEV_ONLY.contains(&name)
+}
+
 fn check(name: &str, value: &str) -> Result<(), String> {
     if value.chars().any(|c| c == '"' || c.is_control()) {
         return Err(format!("{name} cannot contain quotes or line breaks."));
@@ -120,6 +128,12 @@ pub fn env_set(state: State<EnvState>, vars: Vec<EnvVarDto>) -> Result<EnvSettin
         if !VARS.contains(&var.name.as_str()) {
             return Err(format!("{} is not a setting Pyxee knows.", var.name));
         }
+        if !available(&var.name, crate::commands::DEV_TOOLS) {
+            return Err(format!(
+                "{} is only available in developer builds.",
+                var.name
+            ));
+        }
         let value = var.value.trim();
         check(&var.name, value)?;
         values.push((var.name.as_str(), value));
@@ -135,6 +149,18 @@ pub fn env_set(state: State<EnvState>, vars: Vec<EnvVarDto>) -> Result<EnvSettin
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn developer_settings_are_not_available_in_a_release_build() {
+        for name in DEV_ONLY {
+            assert!(available(name, true), "{name}");
+            assert!(!available(name, false), "{name}");
+            assert!(VARS.contains(&name), "{name} must be a known variable");
+        }
+        for name in ["PYXEE_COOKIES", "PYXEE_LOG", "PYXEE_YTDLP"] {
+            assert!(available(name, false), "{name}");
+        }
+    }
 
     #[test]
     fn the_js_runtime_setting_takes_a_runtime_a_path_that_exists_or_none() {
