@@ -66,12 +66,13 @@ fn with_updated_ytdlp(source: YtDlpSource, data_dir: Option<&std::path::Path>) -
     }
 }
 
-/// `PYXEE_SUGGESTIONS=0` keeps the search box from asking for completions of what is typed (on by default).
+/// Search-box suggestions ask Google for completions of what is being typed, so they are off by default; developer builds
+/// can turn them on with `PYXEE_SUGGESTIONS=1`.
 fn with_suggestions_setting(source: YtDlpSource, allowed: bool) -> YtDlpSource {
     if allowed {
         source
     } else {
-        log::info!("search suggestions are off (PYXEE_SUGGESTIONS)");
+        log::info!("search suggestions are off (the default; PYXEE_SUGGESTIONS=1 turns them on in a developer build)");
         source.without_suggestions()
     }
 }

@@ -2027,3 +2027,28 @@ input[type='range'].slider:disabled {
     gap: 2px;
   }
 }
+
+/* Windows High Contrast and other forced-colour modes replace colours with the system's. What is told apart by colour
+   alone then needs a shape: the focus on a text field (an accent border, which becomes plain text colour), the song that
+   plays (a tinted row) and the accent bars and thumbs. */
+@media (forced-colors: active) {
+  .search-input:focus-visible,
+  .field:focus-visible {
+    outline: 2px solid Highlight;
+    outline-offset: 2px;
+  }
+  .trow[data-current='true'],
+  .row-edit[data-current='true'] {
+    outline: 2px solid Highlight;
+    outline-offset: -2px;
+  }
+  .tab-indicator,
+  .uprog-fill {
+    forced-color-adjust: none;
+    background: Highlight;
+  }
+  input[type='range'].slider::-webkit-slider-thumb {
+    forced-color-adjust: none;
+    background: Highlight;
+  }
+}

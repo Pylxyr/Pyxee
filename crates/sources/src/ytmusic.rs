@@ -51,17 +51,18 @@ pub fn direct_requests_allowed_from_env() -> bool {
     direct_requests_allowed(std::env::var(ENV_VAR).ok().as_deref())
 }
 
-/// The setting that turns the search-box suggestions off (they ask Google for completions of what is being typed).
+/// The setting that turns the search-box suggestions on (they ask Google for completions of what is being typed, so they
+/// are off unless asked for: nothing the listener types leaves the app before a search is submitted).
 pub const SUGGESTIONS_ENV_VAR: &str = "PYXEE_SUGGESTIONS";
 
-/// Whether the search box may ask for suggestions: on unless the setting says off (an empty or unreadable value keeps
-/// the default, which is on).
+/// Whether the search box may ask for suggestions: off unless the setting says on (an empty or unreadable value keeps
+/// the default, which is off).
 pub fn suggestions_allowed(setting: Option<&str>) -> bool {
     match setting.map(str::trim).filter(|v| !v.is_empty()) {
-        None => true,
+        None => false,
         Some(v) => parse_switch(v).unwrap_or_else(|e| {
-            log::warn!("{SUGGESTIONS_ENV_VAR}: {e}; leaving the suggestions on");
-            true
+            log::warn!("{SUGGESTIONS_ENV_VAR}: {e}; leaving the suggestions off");
+            false
         }),
     }
 }
@@ -1642,14 +1643,14 @@ mod tests {
     }
 
     #[test]
-    fn suggestions_are_on_unless_the_setting_says_off() {
-        assert!(suggestions_allowed(None));
-        assert!(suggestions_allowed(Some("")));
+    fn suggestions_are_off_unless_the_setting_says_on() {
+        assert!(!suggestions_allowed(None));
+        assert!(!suggestions_allowed(Some("")));
         assert!(suggestions_allowed(Some(" 1 ")));
+        assert!(suggestions_allowed(Some("On")));
         assert!(!suggestions_allowed(Some("0")));
-        assert!(!suggestions_allowed(Some("Off")));
         assert!(
-            suggestions_allowed(Some("maybe")),
+            !suggestions_allowed(Some("maybe")),
             "an unreadable value keeps the default"
         );
     }

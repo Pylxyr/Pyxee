@@ -7,7 +7,7 @@
 export type SeekMode = 'step' | 'pixel' | 'glide' | 'steps';
 export const SEEK_MODES: SeekMode[] = ['step', 'pixel', 'glide', 'steps'];
 
-/** What a person (or the `.env` file) typed for the setting; anything unknown means the plain 1 Hz step. */
+/** What a developer typed for the setting (`PYXEE_SEEK_MODE`, developer builds only); anything unknown means the plain 1 Hz step. */
 export function parseSeekMode(value: string | null | undefined): SeekMode {
   const v = (value ?? '').trim().toLowerCase();
   return (SEEK_MODES as string[]).includes(v) ? (v as SeekMode) : 'step';

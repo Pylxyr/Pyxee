@@ -41,7 +41,7 @@ only a person can judge. As written then, these shapes came from what was known 
 - `spike search "lowtide" --filter all|songs|videos|artists|playlists` and `spike related yt:<id>`: do the results parse?
   Does the Songs search URL (see `search_target`) work in your yt-dlp? Does the `list=RD<id>` mix return tracks?
   If yt-dlp needs a JavaScript runtime for YouTube it will say so on stderr.
-- The suggestions endpoint (`suggestqueries.google.com`).
+- The suggestions endpoint (`suggestqueries.google.com`): off by default, so nothing typed in the search box leaves the app before a search is submitted; a developer build can turn it on with `PYXEE_SUGGESTIONS=1`.
 - Real WASAPI output: gapless on a real device, device latency compensation, underruns.
 - Albums search is not supported yet (needs a dedicated albums API); the filter is shown disabled.
 - Instant skip to a prefetched track is not implemented in the real engine (the sim has it); a skip re-opens the track, using

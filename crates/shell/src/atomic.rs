@@ -1,5 +1,5 @@
 //! One way to save a small file so that a crash or a power cut never leaves half of it: the bytes go to a file next to
-//! the target, are flushed to the disk, and only then take the target's place. Settings, the session and `.env` all
+//! the target, are flushed to the disk, and only then take the target's place. Settings and the session both
 //! save through here.
 
 use std::fs;
