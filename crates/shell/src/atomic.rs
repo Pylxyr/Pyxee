@@ -36,6 +36,7 @@ fn create(path: &Path) -> std::io::Result<fs::File> {
 
 /// Removes the temporary files that a crash or a power cut left in `dir` (the ones `write` names, whatever process made
 /// them). Call it once at start-up, before anything saves: then none of them is in use. Returns how many were removed.
+#[must_use]
 pub fn sweep_stale(dir: &Path) -> usize {
     let Ok(entries) = fs::read_dir(dir) else {
         return 0;
@@ -187,7 +188,11 @@ mod tests {
         assert!(write(&blocked, b"nope").is_err());
         assert_eq!(fs::read(&file).unwrap(), b"keep");
         assert!(
-            names(&d).iter().all(|n| !n.ends_with(".tmp")),
+            names(&d).iter().all(|n| {
+                !std::path::Path::new(n)
+                    .extension()
+                    .is_some_and(|e| e.eq_ignore_ascii_case("tmp"))
+            }),
             "{:?}",
             names(&d)
         );

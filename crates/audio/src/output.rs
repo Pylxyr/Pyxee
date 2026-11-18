@@ -49,17 +49,20 @@ impl DeviceInfo {
         })
     }
 
+    #[must_use]
     pub fn rate(&self) -> u32 {
         self.config.sample_rate()
     }
 
     /// Which device this is (used to notice that the default output changed).
+    #[must_use]
     pub fn ident(&self) -> &DeviceIdent {
         &self.ident
     }
 
     /// The current default output device without opening it; `None` when there is none. Cheap enough to poll about
     /// twice a second.
+    #[must_use]
     pub fn default_ident() -> Option<DeviceIdent> {
         let device = cpal::default_host().default_output_device()?;
         Some(ident_of(&device))
@@ -90,7 +93,7 @@ impl DeviceInfo {
             Fault::Harmless => match e.kind() {
                 cpal::ErrorKind::RealtimeDenied => log::warn!("audio stream: {e}"),
                 cpal::ErrorKind::DeviceChanged => {
-                    log::info!("audio stream followed the system: {e}")
+                    log::info!("audio stream followed the system: {e}");
                 }
                 _ => log::debug!("audio stream glitch: {e}"),
             },
@@ -226,16 +229,19 @@ pub struct Output {
 
 impl Output {
     /// The device this stream plays on.
+    #[must_use]
     pub fn ident(&self) -> &DeviceIdent {
         &self.ident
     }
 
+    #[must_use]
     pub fn rate(&self) -> u32 {
         self.rate
     }
 
     /// How many times the device has asked for audio since this stream started (it stops growing when the device
     /// is gone without having said so).
+    #[must_use]
     pub fn callbacks(&self) -> u64 {
         self.callbacks.load(Ordering::Relaxed)
     }

@@ -1,4 +1,4 @@
-//! Sample sources. FFmpeg's libavformat/libavcodec (a minimal static LGPL build, linked in-process
+//! Sample sources. `FFmpeg`'s libavformat/libavcodec (a minimal static LGPL build, linked in-process
 //! through the C shim in `csrc/pxdec.c`) is the only decoder: no `ffmpeg` process is ever started.
 //! A format the build cannot open fails with `AudioError::Unsupported`.
 
@@ -87,7 +87,7 @@ fn guarded<T>(
     // SAFETY: `ctx` is the leaked `IoCtx` owned by the `LibavSource` that owns the decoder; libav only
     // calls back while that source is inside `px_open`/`px_read`/`px_seek_ms`, so it is live and
     // not aliased.
-    let ctx = unsafe { &mut *(ctx as *mut IoCtx) };
+    let ctx = unsafe { &mut *ctx.cast::<IoCtx>() };
     match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| f(ctx))) {
         Ok(Ok(v)) => v,
         Ok(Err(e)) => {
@@ -112,10 +112,8 @@ unsafe extern "C" fn read_cb(ctx: *mut c_void, buf: *mut u8, len: c_int) -> c_in
                     if e.kind() == std::io::ErrorKind::Interrupted
                         && !e
                             .get_ref()
-                            .is_some_and(|x| x.is::<crate::http::Cancelled>()) =>
-                {
-                    continue
-                }
+                            .is_some_and(<dyn std::error::Error + std::marker::Send + std::marker::Sync + 'static>::is::<crate::http::Cancelled>) =>
+                {}
                 Err(e) => return Err(e),
             }
         }
@@ -177,7 +175,7 @@ const EDGE_MAX_FRAMES: usize = 2112;
 /// Anything below this is treated as the encoder's silent priming/padding.
 const QUIET: f32 = 1e-3;
 
-/// Decoded audio from any container the minimal FFmpeg build opens, as stereo `f32` at the
+/// Decoded audio from any container the minimal `FFmpeg` build opens, as stereo `f32` at the
 /// stream's own rate. libavformat/libavcodec apply the container's encoder delay and padding
 /// (Opus pre-skip and end trim, MP3/AAC gapless data), so no edge heuristics are needed here.
 pub struct LibavSource {
@@ -215,8 +213,16 @@ impl LibavSource {
         let opaque = ctx.as_ptr().cast::<c_void>();
         // SAFETY: `opaque` points at the leaked `IoCtx`, which is freed only after the decoder is closed (see `Drop`
         // and the failure path below); the callbacks match the declared C signatures.
-        let dec =
-            unsafe { ffi::px_open(opaque, read_cb, seek_cb, size_cb, &mut err, &mut io_failed) };
+        let dec = unsafe {
+            ffi::px_open(
+                opaque,
+                read_cb,
+                seek_cb,
+                size_cb,
+                &raw mut err,
+                &raw mut io_failed,
+            )
+        };
         if dec.is_null() {
             // SAFETY: `px_open` failed and closed everything, so nothing else uses the context any more.
             let mut ctx = unsafe { Box::from_raw(ctx.as_ptr()) };
@@ -290,7 +296,14 @@ impl LibavSource {
             let (mut frames, mut io_failed) = (0 as c_int, 0 as c_int);
             // SAFETY: `dec` is live; on a result of 1 `samples` points at `frames` interleaved
             // stereo frames that stay valid until the next call, and are copied out right away.
-            let r = unsafe { ffi::px_read(self.dec, &mut samples, &mut frames, &mut io_failed) };
+            let r = unsafe {
+                ffi::px_read(
+                    self.dec,
+                    &raw mut samples,
+                    &raw mut frames,
+                    &raw mut io_failed,
+                )
+            };
             if r < 0 {
                 return Err(self.fail(r));
             }
@@ -350,10 +363,10 @@ impl SampleSource for LibavSource {
     }
 
     fn read(&mut self, out: &mut Vec<f32>) -> Result<bool, AudioError> {
+        const CH: usize = crate::CHANNELS;
         if self.finished {
             return Ok(false);
         }
-        const CH: usize = crate::CHANNELS;
         loop {
             let mut chunk = std::mem::take(&mut self.chunk);
             let more = self.read_raw(&mut chunk)?;

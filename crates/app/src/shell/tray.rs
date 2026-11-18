@@ -10,7 +10,7 @@ use tauri::{AppHandle, Manager};
 const TRAY_ID: &str = "main";
 
 /// The first line of the tray menu on Linux, which shows the song that is playing. The Linux tray (a
-/// StatusNotifierItem) has no tooltip, so this is the only place the tray can say what plays.
+/// `StatusNotifierItem`) has no tooltip, so this is the only place the tray can say what plays.
 static NOW_PLAYING: std::sync::OnceLock<MenuItem<tauri::Wry>> = std::sync::OnceLock::new();
 
 pub fn init(app: &AppHandle) -> tauri::Result<()> {

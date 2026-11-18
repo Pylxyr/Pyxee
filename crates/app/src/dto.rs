@@ -397,7 +397,7 @@ impl From<&AlbumInfo> for AlbumDto {
     }
 }
 
-/// A genre or mood of YouTube Music's "Moods & genres" page.
+/// A genre or mood of `YouTube` Music's "Moods & genres" page.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
@@ -415,7 +415,7 @@ impl From<&GenreInfo> for GenreDto {
     }
 }
 
-/// A YouTube Music playlist as a cover tile on a genre page.
+/// A `YouTube` Music playlist as a cover tile on a genre page.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
@@ -437,7 +437,7 @@ impl From<&PlaylistInfo> for PlaylistCoverDto {
     }
 }
 
-/// One row of YouTube Music's Explore page: songs to play, albums to look up, or playlists to play.
+/// One row of `YouTube` Music's Explore page: songs to play, albums to look up, or playlists to play.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 #[serde(tag = "kind", rename_all = "camelCase")]
 #[ts(export)]
@@ -934,7 +934,7 @@ pub struct PerfReportDto {
     pub long_tasks: u32,
     pub long_frames: u32,
     pub hidden: bool,
-    /// What the page holds (Chromium's own counters; 0 where the WebView has none). Heap sizes in KB, picture sizes in
+    /// What the page holds (Chromium's own counters; 0 where the `WebView` has none). Heap sizes in KB, picture sizes in
     /// kilopixels (decoded, a picture takes about 4 bytes a pixel).
     pub heap_used_kb: u32,
     pub heap_total_kb: u32,

@@ -4,6 +4,6 @@ import type { PlaylistCoverDto } from "./PlaylistCoverDto";
 import type { TrackDto } from "./TrackDto";
 
 /**
- * One row of YouTube Music's Explore page: songs to play, albums to look up, or playlists to play.
+ * One row of `YouTube` Music's Explore page: songs to play, albums to look up, or playlists to play.
  */
 export type ExploreShelfDto = { "kind": "playlists", id: string, title: string, playlists: Array<PlaylistCoverDto>, } | { "kind": "songs", id: string, title: string, tracks: Array<TrackDto>, } | { "kind": "albums", id: string, title: string, albums: Array<AlbumDto>, };

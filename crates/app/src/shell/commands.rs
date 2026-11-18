@@ -1,5 +1,8 @@
 //! Commands the UI calls for the shell features.
 
+// Tauri hands a command its arguments by value (`State`, `AppHandle`, the deserialised payload): the signature is not ours to change.
+#![allow(clippy::needless_pass_by_value)]
+
 use super::dto::{LyricsDto, ShellSettingsDto, SleepSettingDto, SleepStateDto, SleepStatusDto};
 use super::{flyout, mini, sleep, ShellState};
 use crate::state::now_ms;
@@ -11,7 +14,7 @@ const LYRICS_CACHE_MAX: usize = 64;
 /// The most a cover may weigh for the app to fetch it (a 64 px thumbnail is a few KB).
 const COVER_MAX_BYTES: u64 = 512 * 1024;
 
-/// True for an https address on YouTube's or Google's image hosts, the only places covers come from.
+/// True for an https address on `YouTube`'s or Google's image hosts, the only places covers come from.
 fn cover_host_ok(url: &str) -> bool {
     pyxee_sources::is_cover_host(url)
 }

@@ -1,8 +1,9 @@
-//! Live search suggestions from Google's public suggest endpoint (the one YouTube's search box uses).
+//! Live search suggestions from Google's public suggest endpoint (the one `YouTube`'s search box uses).
 
 use crate::gate::escalate;
 use crate::SourceError;
 use std::collections::HashMap;
+use std::fmt::Write as _;
 use std::sync::{Mutex, MutexGuard, PoisonError};
 use std::time::{Duration, Instant};
 
@@ -21,13 +22,14 @@ const MAX_ANSWER_BYTES: u64 = 256 << 10;
 pub const ENDPOINT: &str = "https://suggestqueries.google.com/complete/search";
 
 /// Percent-encodes everything except unreserved characters.
+#[must_use]
 pub fn encode(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     for b in s.bytes() {
         if b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b'.' | b'~') {
             out.push(b as char);
         } else {
-            out.push_str(&format!("%{b:02X}"));
+            let _ = write!(out, "%{b:02X}");
         }
     }
     out
@@ -177,6 +179,7 @@ impl Default for Suggester {
 }
 
 impl Suggester {
+    #[must_use]
     pub fn new() -> Self {
         Self::with_endpoint(ENDPOINT)
     }
@@ -353,7 +356,10 @@ mod tests {
         let mut st = State::default();
         st.store("a".into(), vec!["x".into()], t0);
         assert_eq!(
-            st.cached("a", t0 + CACHE_TTL - Duration::from_secs(1)),
+            st.cached(
+                "a",
+                t0 + CACHE_TTL.checked_sub(Duration::from_secs(1)).unwrap()
+            ),
             Some(vec!["x".to_string()])
         );
         assert_eq!(st.cached("a", t0 + CACHE_TTL), None);

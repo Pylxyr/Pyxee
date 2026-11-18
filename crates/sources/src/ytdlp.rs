@@ -22,13 +22,13 @@ use std::time::{Duration, Instant};
 
 /// What the built-in decoder (libav, a minimal in-process build: there is no ffmpeg process) plays.
 ///
-/// First choice is Opus in WebM, YouTube's best quality per bitrate (itag 251, ~130-160 kbps). The
+/// First choice is Opus in `WebM`, `YouTube`'s best quality per bitrate (itag 251, ~130-160 kbps). The
 /// fallback is AAC-LC in M4A (itag 140, ~128 kbps; 141, ~256 kbps, with Premium cookies), for videos
 /// that offer no Opus. The last alternative is anything else the build can decode, in a container it can read
-/// (Opus, Vorbis, FLAC, MP3 or ALAC in WebM, Ogg, Matroska, FLAC, MP3 or M4A), so a video whose only streams are
+/// (Opus, Vorbis, FLAC, MP3 or ALAC in `WebM`, Ogg, Matroska, FLAC, MP3 or M4A), so a video whose only streams are
 /// those is not skipped. Each filter excludes something that would fail to play or to seek:
 ///
-/// * `acodec=opus` + `ext=webm`: the Opus stream YouTube serves. `acodec^=mp4a.40.2` is AAC-LC only:
+/// * `acodec=opus` + `ext=webm`: the Opus stream `YouTube` serves. `acodec^=mp4a.40.2` is AAC-LC only:
 ///   HE-AAC (`mp4a.40.5`, itag 139) is not in the build's allowlist.
 /// * the last alternative's `~=` filters are regular expressions over yt-dlp's `acodec` and `ext`; they list only
 ///   what docs/engine.md says libav is built to decode. Nothing outside that list may be added.
@@ -54,7 +54,7 @@ const KNOWN_BROWSERS: [&str; 9] = [
     "brave", "chrome", "chromium", "edge", "firefox", "opera", "safari", "vivaldi", "whale",
 ];
 
-/// Optional login cookies for yt-dlp. YouTube is far less likely to answer "sign in to confirm
+/// Optional login cookies for yt-dlp. `YouTube` is far less likely to answer "sign in to confirm
 /// you're not a bot" / HTTP 429 to a logged-in session. Set one of (the file wins if both are set):
 ///
 /// * `PYXEE_COOKIES`: path to a Netscape-format `cookies.txt` (yt-dlp may rewrite it to refresh the session).
@@ -68,6 +68,7 @@ pub enum Cookies {
 }
 
 impl Cookies {
+    #[must_use]
     pub fn from_env() -> Self {
         Self::from_lookup(|k| std::env::var(k).ok())
     }
@@ -121,7 +122,7 @@ impl Cookies {
     }
 }
 
-/// The environment variable that chooses yt-dlp's YouTube player client(s).
+/// The environment variable that chooses yt-dlp's `YouTube` player client(s).
 pub const PLAYER_CLIENT_VAR: &str = "PYXEE_YTDLP_PLAYER_CLIENT";
 
 /// What is passed when `PYXEE_YTDLP_PLAYER_CLIENT` is not set: yt-dlp's own client list without `tv_samsung`. As of
@@ -183,9 +184,9 @@ pub struct YtDlpSource {
     search_cache: Mutex<HashMap<SearchCacheKey, SearchCacheEntry>>,
     /// Set while the dedicated songs page is known to answer with bare titles (see `search_fresh`).
     songs_page_bare_until: Mutex<Option<Instant>>,
-    /// Where songs searches ask YouTube Music for its Songs tab first (`None`: never, only yt-dlp).
+    /// Where songs searches ask `YouTube` Music for its Songs tab first (`None`: never, only yt-dlp).
     music_endpoint: Option<String>,
-    /// Where Explore asks YouTube Music for its Explore page (`None`: Explore is unsupported).
+    /// Where Explore asks `YouTube` Music for its Explore page (`None`: Explore is unsupported).
     browse_endpoint: Option<String>,
 }
 
@@ -213,20 +214,20 @@ impl YtDlpSource {
         self
     }
 
-    /// Songs searches go to yt-dlp only, never to YouTube Music directly, and there is no Explore page.
+    /// Songs searches go to yt-dlp only, never to `YouTube` Music directly, and there is no Explore page.
     pub fn without_music_search(mut self) -> Self {
         self.music_endpoint = None;
         self.browse_endpoint = None;
         self
     }
 
-    /// Asks `url` instead of YouTube Music for its Explore page (for tests).
+    /// Asks `url` instead of `YouTube` Music for its Explore page (for tests).
     pub fn with_browse_endpoint(mut self, url: impl Into<String>) -> Self {
         self.browse_endpoint = Some(url.into());
         self
     }
 
-    /// Asks `url` instead of YouTube Music for the Songs tab (for tests).
+    /// Asks `url` instead of `YouTube` Music for the Songs tab (for tests).
     pub fn with_music_endpoint(mut self, url: impl Into<String>) -> Self {
         self.music_endpoint = Some(url.into());
         self
@@ -318,7 +319,7 @@ impl YtDlpSource {
             .unwrap_or_else(PoisonError::into_inner) = Some(Instant::now() + SONGS_PAGE_SKIP);
     }
 
-    /// A search that is not in the cache. Songs are asked of YouTube Music itself first: its Songs tab lists real
+    /// A search that is not in the cache. Songs are asked of `YouTube` Music itself first: its Songs tab lists real
     /// songs with artist and length. Only when that fails (a rate limit excepted) or comes back empty does the
     /// yt-dlp flow below run: the dedicated songs page answers with bare titles (no artist, no length), and then
     /// the ordinary video search is run as well: two runs. Once that has happened, songs searches go straight to
@@ -386,7 +387,7 @@ impl YtDlpSource {
     }
 }
 
-/// Stops `child` and, on Windows, everything it started. The official `yt-dlp.exe` is a PyInstaller "onefile" program:
+/// Stops `child` and, on Windows, everything it started. The official `yt-dlp.exe` is a `PyInstaller` "onefile" program:
 /// the process we start only unpacks and launches the real one, and ending it leaves that one running (holding the
 /// pipes, so the reader threads would wait for it too). `taskkill /T` ends the whole tree.
 fn kill_tree(child: &mut std::process::Child) {
@@ -563,7 +564,7 @@ fn text(v: &Value, key: &str) -> Option<String> {
 }
 
 /// The largest thumbnail yt-dlp lists (by area, then by its own preference), else the top-level
-/// `thumbnail`, else YouTube's standard still for `id`. Plain `http` is upgraded to `https`.
+/// `thumbnail`, else `YouTube`'s standard still for `id`. Plain `http` is upgraded to `https`.
 fn thumbnail(v: &Value, id: Option<&str>) -> Option<String> {
     // Only covers the window can show are kept (see `cover`); a foreign one is passed over, not shown as nothing.
     let usable = |u: &str| {
@@ -589,7 +590,7 @@ fn thumbnail(v: &Value, id: Option<&str>) -> Option<String> {
 }
 
 /// The performer: music metadata when yt-dlp has it (`artists`, `artist`), else the uploader or
-/// channel, with YouTube's auto-generated " - Topic" suffix removed.
+/// channel, with `YouTube`'s auto-generated " - Topic" suffix removed.
 fn artist_of(v: &Value) -> Option<String> {
     let listed = v.get("artists").and_then(Value::as_array).map(|a| {
         a.iter()
@@ -609,7 +610,7 @@ fn artist_of(v: &Value) -> Option<String> {
     (!name.is_empty()).then(|| name.to_string())
 }
 
-/// Whether a flat-playlist entry is a song. YouTube Music's songs are the auto-generated uploads of a channel called
+/// Whether a flat-playlist entry is a song. `YouTube` Music's songs are the auto-generated uploads of a channel called
 /// "<Artist> - Topic" (the suffix `artist_of` removes); videos, animated shorts and the like come from ordinary
 /// channels.
 fn is_song_entry(v: &Value) -> bool {
@@ -683,6 +684,7 @@ fn too_bare(items: &[SearchItem]) -> bool {
     !tracks.is_empty() && bare * 2 > tracks.len()
 }
 
+#[must_use]
 pub fn item_from_entry(v: &Value) -> Option<SearchItem> {
     let url = text(v, "url")
         .or_else(|| text(v, "webpage_url"))
@@ -912,7 +914,7 @@ impl MusicSource for YtDlpSource {
         vec![All, Songs, Videos, Artists, Playlists]
     }
 
-    /// YouTube Music's Explore page, asked directly (no yt-dlp run). Gated like every other request, so a rate
+    /// `YouTube` Music's Explore page, asked directly (no yt-dlp run). Gated like every other request, so a rate
     /// limit here pauses searches too.
     fn explore(&self) -> Result<Vec<ExploreShelf>, SourceError> {
         let Some(endpoint) = &self.browse_endpoint else {
@@ -925,7 +927,7 @@ impl MusicSource for YtDlpSource {
         Ok(shelves)
     }
 
-    /// YouTube Music's genres and moods, asked directly like `explore`.
+    /// `YouTube` Music's genres and moods, asked directly like `explore`.
     fn genres(&self) -> Result<Vec<GenreInfo>, SourceError> {
         let Some(endpoint) = &self.browse_endpoint else {
             return Err(SourceError::Unsupported("Genres".into()));
@@ -1018,7 +1020,7 @@ mod tests {
         );
         assert_eq!(secs(r#"{"length":"1:00:01"}"#), Some(3_601.0));
         assert_eq!(secs(r#"{"duration":0,"duration_string":"abc"}"#), None);
-        assert_eq!(secs(r#"{}"#), None);
+        assert_eq!(secs(r"{}"), None);
     }
 
     #[test]
@@ -1389,7 +1391,7 @@ mod tests {
     fn env(pairs: &[(&str, &str)]) -> impl Fn(&str) -> Option<String> {
         let m: std::collections::HashMap<String, String> = pairs
             .iter()
-            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .map(|(k, v)| ((*k).to_string(), (*v).to_string()))
             .collect();
         move |k| m.get(k).cloned()
     }
@@ -1462,7 +1464,7 @@ mod tests {
         use crate::ytmusic::testserver;
         use serde_json::json;
 
-        /// An answer with one song row, in the shape YouTube Music sends.
+        /// An answer with one song row, in the shape `YouTube` Music sends.
         fn one_song() -> String {
             json!({ "contents": [ { "musicShelfRenderer": { "contents": [ { "musicResponsiveListItemRenderer": {
                 "playlistItemData": { "videoId": "song0000001" },

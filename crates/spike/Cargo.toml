@@ -3,6 +3,11 @@ name = "pyxee-spike"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+description = "Experiments and live checks for the Pyxee sources and engine"
+repository.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
 
 [[bin]]
 name = "spike"

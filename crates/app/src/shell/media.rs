@@ -40,7 +40,7 @@ pub fn init(app: &AppHandle) -> Option<Media> {
         }
     };
     let app = app.clone();
-    if let Err(e) = controls.attach(move |event| on_event(&app, event)) {
+    if let Err(e) = controls.attach(move |event| on_event(&app, &event)) {
         log::warn!("could not attach the media key handler: {e:?}");
         return None;
     }
@@ -59,7 +59,7 @@ fn seek_target(position_ms: u64, dir: SeekDirection, by_ms: u64) -> u64 {
     }
 }
 
-fn on_event(app: &AppHandle, event: MediaControlEvent) {
+fn on_event(app: &AppHandle, event: &MediaControlEvent) {
     let position =
         || crate::dto::state_dto(&app.state::<crate::state::AppState>().player()).position_ms;
     let cmd = match event {
@@ -68,9 +68,9 @@ fn on_event(app: &AppHandle, event: MediaControlEvent) {
         MediaControlEvent::Toggle => Command::Toggle,
         MediaControlEvent::Next => Command::Next,
         MediaControlEvent::Previous => Command::Previous,
-        MediaControlEvent::Seek(dir) => Command::Seek(seek_target(position(), dir, 10_000)),
+        MediaControlEvent::Seek(dir) => Command::Seek(seek_target(position(), *dir, 10_000)),
         MediaControlEvent::SeekBy(dir, by) => {
-            Command::Seek(seek_target(position(), dir, by.as_millis() as u64))
+            Command::Seek(seek_target(position(), *dir, by.as_millis() as u64))
         }
         MediaControlEvent::SetPosition(MediaPosition(to)) => Command::Seek(to.as_millis() as u64),
         // MPRIS `Raise` / `Quit`: what clicking the player in the KDE or GNOME media widget (or `playerctl`) asks for.

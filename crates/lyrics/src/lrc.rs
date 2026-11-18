@@ -3,6 +3,7 @@ use crate::Line;
 /// Parses LRC text. Understands `[mm:ss.xx]`, `[mm:ss.xxx]`, `[mm:ss]` and `[m:ss:xx]`, several timestamps in front
 /// of one line, the `[offset:±ms]` tag (positive = lyrics come earlier, per the LRC convention), and ignores other
 /// tags (`[ar:..]`, `[ti:..]`) and enhanced per-word `<mm:ss.xx>` marks. The result is sorted by time.
+#[must_use]
 pub fn parse_lrc(text: &str) -> Vec<Line> {
     let mut offset: i64 = 0;
     let mut out: Vec<Line> = Vec::new();
@@ -103,6 +104,7 @@ fn strip_word_marks(s: &str) -> String {
 }
 
 /// Index of the line being sung at `pos_ms`: the last line whose time has passed; `None` before the first line.
+#[must_use]
 pub fn current_index(lines: &[Line], pos_ms: u64) -> Option<usize> {
     lines
         .partition_point(|l| l.time_ms <= pos_ms)
@@ -110,9 +112,8 @@ pub fn current_index(lines: &[Line], pos_ms: u64) -> Option<usize> {
 }
 
 /// A title as lyric services want it: no "(Official Video)", "[Lyrics]", "(feat. X)" or trailing " - Topic".
+#[must_use]
 pub fn clean_title(title: &str) -> String {
-    let mut s = title.trim().to_string();
-    // Drop bracketed noise, but keep brackets that carry the name ("(Interlude)" stays).
     const NOISE: [&str; 12] = [
         "official",
         "lyric",
@@ -127,6 +128,8 @@ pub fn clean_title(title: &str) -> String {
         "ft.",
         "with ",
     ];
+    let mut s = title.trim().to_string();
+    // Drop bracketed noise, but keep brackets that carry the name ("(Interlude)" stays).
     while let Some(open) = s.rfind(['(', '[']) {
         let close = if s[open..].starts_with('(') { ')' } else { ']' };
         let Some(end_rel) = s[open..].find(close) else {

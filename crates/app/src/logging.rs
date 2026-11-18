@@ -196,7 +196,7 @@ impl Log for FileLogger {
 pub fn level_from(text: Option<&str>) -> LevelFilter {
     match text.map(|t| t.trim().to_ascii_lowercase()).as_deref() {
         Some("error") => LevelFilter::Error,
-        Some("warn") => LevelFilter::Warn,
+        // `warn`, and anything unreadable, is the default below
         Some("debug") => LevelFilter::Debug,
         Some("trace") => LevelFilter::Trace,
         Some("info") => LevelFilter::Info,

@@ -46,6 +46,7 @@ pub struct SleepTimer {
 }
 
 impl SleepTimer {
+    #[must_use]
     pub fn new() -> Self {
         Self::default()
     }
@@ -82,16 +83,19 @@ impl SleepTimer {
         }
     }
 
+    #[must_use]
     pub fn is_active(&self) -> bool {
         self.active.is_some()
     }
 
     /// A timer that counts down time is running: only then does the clock need to tick (see `tick`).
+    #[must_use]
     pub fn is_timed(&self) -> bool {
         matches!(self.active, Some(Active::At { .. }))
     }
 
     /// True while the player must not start another song after this one (the core's "stop after current").
+    #[must_use]
     pub fn stop_after_current(&self) -> bool {
         matches!(
             self.active,
@@ -99,6 +103,7 @@ impl SleepTimer {
         )
     }
 
+    #[must_use]
     pub fn status(&self, now_ms: u64) -> Option<SleepStatus> {
         self.active.map(|a| match a {
             Active::At { deadline_ms } => SleepStatus::Minutes {
@@ -136,7 +141,7 @@ impl SleepTimer {
     /// A song played to its end. Returns true when the timer is now done and playback must stay paused.
     pub fn on_track_finished(&mut self) -> bool {
         match self.active {
-            Some(Active::EndOfTrack) | Some(Active::Tracks { left: 1 }) => {
+            Some(Active::EndOfTrack | Active::Tracks { left: 1 }) => {
                 self.active = None;
                 true
             }

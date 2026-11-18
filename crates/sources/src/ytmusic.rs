@@ -1,8 +1,8 @@
-//! Songs search straight from YouTube Music: the same request its website makes for the "Songs" tab.
+//! Songs search straight from `YouTube` Music: the same request its website makes for the "Songs" tab.
 //!
-//! Why not yt-dlp for this: yt-dlp's YouTube Music search page lists only a bare title per row (no artist, no
-//! length), so Pyxee used to throw that list away and show the ordinary YouTube *video* search instead: lyric
-//! videos, live clips and covers under "Songs". This asks YouTube Music itself for its Songs section, whose rows
+//! Why not yt-dlp for this: yt-dlp's `YouTube` Music search page lists only a bare title per row (no artist, no
+//! length), so Pyxee used to throw that list away and show the ordinary `YouTube` *video* search instead: lyric
+//! videos, live clips and covers under "Songs". This asks `YouTube` Music itself for its Songs section, whose rows
 //! carry the artist, album and length.
 //!
 //! Nothing here is required: any failure but a rate limit makes the caller fall back to the yt-dlp flow.
@@ -47,6 +47,7 @@ pub fn direct_requests_allowed(setting: Option<&str>) -> bool {
 }
 
 /// [`direct_requests_allowed`] for the environment.
+#[must_use]
 pub fn direct_requests_allowed_from_env() -> bool {
     direct_requests_allowed(std::env::var(ENV_VAR).ok().as_deref())
 }
@@ -68,6 +69,7 @@ pub fn suggestions_allowed(setting: Option<&str>) -> bool {
 }
 
 /// [`suggestions_allowed`] for the environment.
+#[must_use]
 pub fn suggestions_allowed_from_env() -> bool {
     suggestions_allowed(std::env::var(SUGGESTIONS_ENV_VAR).ok().as_deref())
 }
@@ -91,7 +93,7 @@ const USER_AGENT: &str =
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:128.0) Gecko/20100101 Firefox/128.0";
 const TIMEOUT: Duration = Duration::from_secs(10);
 
-/// What the YouTube Music web client reports as its version: `1.<yesterday as YYYYMMDD>.01.00`. A recent date is
+/// What the `YouTube` Music web client reports as its version: `1.<yesterday as YYYYMMDD>.01.00`. A recent date is
 /// what it accepts; a stale one is what gets a client turned away.
 fn client_version(now: SystemTime) -> String {
     let days = now
@@ -124,6 +126,7 @@ fn context(now: SystemTime) -> Value {
     })
 }
 
+#[must_use]
 pub fn request_body(query: &str, now: SystemTime) -> String {
     json!({
         "context": context(now),
@@ -133,6 +136,7 @@ pub fn request_body(query: &str, now: SystemTime) -> String {
     .to_string()
 }
 
+#[must_use]
 pub fn explore_body(now: SystemTime) -> String {
     json!({
         "context": context(now),
@@ -141,6 +145,7 @@ pub fn explore_body(now: SystemTime) -> String {
     .to_string()
 }
 
+#[must_use]
 pub fn genres_body(now: SystemTime) -> String {
     json!({
         "context": context(now),
@@ -149,6 +154,7 @@ pub fn genres_body(now: SystemTime) -> String {
     .to_string()
 }
 
+#[must_use]
 pub fn genre_body(params: &str, now: SystemTime) -> String {
     json!({
         "context": context(now),
@@ -158,6 +164,7 @@ pub fn genre_body(params: &str, now: SystemTime) -> String {
     .to_string()
 }
 
+#[must_use]
 pub fn playlist_body(id: &str, now: SystemTime) -> String {
     json!({
         "context": context(now),
@@ -201,7 +208,7 @@ fn post(endpoint: &str, body: &str, what: &str) -> Result<String, SourceError> {
     }
 }
 
-/// Asks YouTube Music for the songs matching `query`: at most `limit`, best match first.
+/// Asks `YouTube` Music for the songs matching `query`: at most `limit`, best match first.
 pub fn fetch_songs(
     endpoint: &str,
     query: &str,
@@ -213,19 +220,19 @@ pub fn fetch_songs(
     Ok(items)
 }
 
-/// Asks YouTube Music for its Explore page.
+/// Asks `YouTube` Music for its Explore page.
 pub fn fetch_explore(endpoint: &str) -> Result<Vec<ExploreShelf>, SourceError> {
     let body = post(endpoint, &explore_body(SystemTime::now()), "explore")?;
     parse_explore(&body)
 }
 
-/// Asks YouTube Music for its list of genres and moods.
+/// Asks `YouTube` Music for its list of genres and moods.
 pub fn fetch_genres(endpoint: &str) -> Result<Vec<GenreInfo>, SourceError> {
     let body = post(endpoint, &genres_body(SystemTime::now()), "genres")?;
     parse_genres(&body)
 }
 
-/// Asks YouTube Music for the page of one genre (`params` as `parse_genres` found it).
+/// Asks `YouTube` Music for the page of one genre (`params` as `parse_genres` found it).
 pub fn fetch_genre(endpoint: &str, params: &str) -> Result<Vec<ExploreShelf>, SourceError> {
     if !is_token(params) {
         return Err(SourceError::Failed("that is not a genre token".into()));
@@ -234,7 +241,7 @@ pub fn fetch_genre(endpoint: &str, params: &str) -> Result<Vec<ExploreShelf>, So
     parse_genre(&body)
 }
 
-/// Asks YouTube Music for the songs of a playlist.
+/// Asks `YouTube` Music for the songs of a playlist.
 pub fn fetch_playlist(endpoint: &str, id: &str) -> Result<Vec<TrackInfo>, SourceError> {
     let id = plain_video_id(id)
         .ok_or_else(|| SourceError::Failed("that is not a playlist id".into()))?;
@@ -242,7 +249,7 @@ pub fn fetch_playlist(endpoint: &str, id: &str) -> Result<Vec<TrackInfo>, Source
     parse_playlist(&body)
 }
 
-/// The song rows of a YouTube Music search answer, in the order it lists them.
+/// The song rows of a `YouTube` Music search answer, in the order it lists them.
 pub fn parse_songs(body: &str) -> Result<Vec<SearchItem>, SourceError> {
     let v: Value = serde_json::from_str(body).map_err(|e| SourceError::Parse(e.to_string()))?;
     let mut shelves = Vec::new();
@@ -455,7 +462,7 @@ fn is_token(text: &str) -> bool {
             .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'-' | b'=' | b'%'))
 }
 
-/// The shelves of one genre's page, top to bottom: shelves of playlists (YouTube Music's own picks) and of songs.
+/// The shelves of one genre's page, top to bottom: shelves of playlists (`YouTube` Music's own picks) and of songs.
 ///
 /// Album shelves ("New albums", "New releases") are left out on purpose: they are a feed of whatever distributors
 /// uploaded this week, which is where bulk-made releases pile up.
@@ -666,7 +673,7 @@ pub fn check_genre_token(params: &str) -> Result<(), SourceError> {
         .ok_or_else(|| SourceError::Failed("that is not a genre token".into()))
 }
 
-/// A playlist id in the shape YouTube uses; anything else is refused.
+/// A playlist id in the shape `YouTube` uses; anything else is refused.
 pub fn check_playlist_id(id: &str) -> Result<(), SourceError> {
     plain_video_id(id)
         .map(drop)
@@ -853,6 +860,8 @@ pub(crate) mod testserver {
 }
 
 #[cfg(test)]
+// The JSON fixtures take their rows by value so that the call sites read like the literals they build.
+#[allow(clippy::needless_pass_by_value)]
 mod tests {
     use super::*;
 

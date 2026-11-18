@@ -1,6 +1,26 @@
 //! Music sources. Everything the app needs from "where music comes from" goes through
 //! `MusicSource`, so yt-dlp can be swapped or supplemented without touching the player.
 
+// Pedantic lints this project does not follow, allowed once per crate root. (A workspace-level allow loses to the
+// `-D clippy::pedantic` that is passed on the command line, so it has to be an attribute.) Each is a trade-off for
+// application code: `# Errors` / `# Panics` sections and `#[must_use]` on internal items, long match-heavy functions,
+// flag structs, short names in numeric code, and the casts between sample counts, milliseconds and pixels (their
+// ranges are bounded by what the device and the files can hold) are not worth the noise.
+#![allow(
+    clippy::missing_errors_doc,
+    clippy::missing_panics_doc,
+    clippy::must_use_candidate,
+    clippy::return_self_not_must_use,
+    clippy::too_many_lines,
+    clippy::struct_excessive_bools,
+    clippy::similar_names,
+    clippy::many_single_char_names,
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    clippy::cast_possible_wrap,
+    clippy::cast_precision_loss
+)]
+
 mod cover;
 pub mod gate;
 pub mod jsruntime;
@@ -24,7 +44,7 @@ pub enum SourceError {
     Offline,
     #[error("The music service is limiting requests right now. Try again in a moment.")]
     RateLimited,
-    /// YouTube answered HTTP 403: it refused this request (this song, this player client, or this network). Unlike a
+    /// `YouTube` answered HTTP 403: it refused this request (this song, this player client, or this network). Unlike a
     /// rate limit it says nothing about the requests that follow, so the gate waits for several in a row.
     #[error("YouTube refused the request (HTTP 403). Try again; if it keeps happening, update yt-dlp in Settings > Updates.")]
     Forbidden,
@@ -36,7 +56,7 @@ pub enum SourceError {
     Unsupported(String),
     #[error("Unexpected response from the music service: {0}")]
     Parse(String),
-    /// yt-dlp ran but cannot read YouTube's pages (usually: out of date). Not about one song, so the
+    /// yt-dlp ran but cannot read `YouTube`'s pages (usually: out of date). Not about one song, so the
     /// text is fixed and the detail (yt-dlp's last line) is kept only for the log.
     #[error("yt-dlp could not read YouTube's page, so it is probably out of date: update it")]
     ToolBroken(String),
@@ -84,14 +104,14 @@ pub enum SearchItem {
 /// An album or single on an Explore shelf. There is no album page in Pyxee yet, so this is only what a cover tile needs.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AlbumInfo {
-    /// YouTube Music's id for the release (`MPREb_...`).
+    /// `YouTube` Music's id for the release (`MPREb_...`).
     pub id: String,
     pub title: String,
     pub artist: String,
     pub thumbnail: Option<String>,
 }
 
-/// A genre or mood of YouTube Music's "Moods & genres" page (K-Pop, Anime, Chill...). `params` is the opaque token its
+/// A genre or mood of `YouTube` Music's "Moods & genres" page (K-Pop, Anime, Chill...). `params` is the opaque token its
 /// page is asked for with.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct GenreInfo {
@@ -102,7 +122,7 @@ pub struct GenreInfo {
 /// A playlist as a cover tile (a genre page's playlists): what it is called, who makes it, and its cover.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PlaylistInfo {
-    /// YouTube's playlist id (no `VL` prefix).
+    /// `YouTube`'s playlist id (no `VL` prefix).
     pub id: String,
     pub title: String,
     /// Who it is by or how long it is, as the website words it; empty when it says nothing useful.
@@ -110,7 +130,7 @@ pub struct PlaylistInfo {
     pub thumbnail: Option<String>,
 }
 
-/// One row of YouTube Music's Explore page, as a shelf of songs, albums or playlists.
+/// One row of `YouTube` Music's Explore page, as a shelf of songs, albums or playlists.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum ExploreShelf {
     Playlists {
@@ -160,19 +180,19 @@ pub struct StreamMeta {
 pub trait MusicSource: Send + Sync {
     fn search(&self, query: &str, filter: SearchFilter) -> Result<Vec<SearchItem>, SourceError>;
     fn resolve_stream(&self, key: &str) -> Result<StreamInfo, SourceError>;
-    /// Similar songs (a YouTube "mix"), used by autoplay radio. Excludes the seed itself. Songs only: no videos or
+    /// Similar songs (a `YouTube` "mix"), used by autoplay radio. Excludes the seed itself. Songs only: no videos or
     /// other media, whatever the seed is (a music video seed gets songs too), unless the mix holds hardly any songs.
     fn related(&self, key: &str, count: usize) -> Result<Vec<TrackInfo>, SourceError>;
     /// Live search suggestions for a partial query.
     fn suggest(&self, prefix: &str) -> Result<Vec<String>, SourceError>;
     /// Filters this source can really serve (the UI disables the rest).
     fn supported_filters(&self) -> Vec<SearchFilter>;
-    /// The shelves of YouTube Music's Explore page (trending songs, new releases...). Sources without such a page
+    /// The shelves of `YouTube` Music's Explore page (trending songs, new releases...). Sources without such a page
     /// say so with `Unsupported`.
     fn explore(&self) -> Result<Vec<ExploreShelf>, SourceError> {
         Err(SourceError::Unsupported("Explore".into()))
     }
-    /// The genres and moods YouTube Music lists on its "Moods & genres" page.
+    /// The genres and moods `YouTube` Music lists on its "Moods & genres" page.
     fn genres(&self) -> Result<Vec<GenreInfo>, SourceError> {
         Err(SourceError::Unsupported("Genres".into()))
     }
@@ -180,7 +200,7 @@ pub trait MusicSource: Send + Sync {
     fn genre(&self, _params: &str) -> Result<Vec<ExploreShelf>, SourceError> {
         Err(SourceError::Unsupported("Genres".into()))
     }
-    /// The songs of a YouTube Music playlist (the first page of it), in order.
+    /// The songs of a `YouTube` Music playlist (the first page of it), in order.
     fn playlist_tracks(&self, _id: &str) -> Result<Vec<TrackInfo>, SourceError> {
         Err(SourceError::Unsupported("Playlists".into()))
     }
@@ -231,6 +251,7 @@ impl MusicSource for CompositeSource {
 }
 
 /// Turns yt-dlp's stderr into an error the UI can explain.
+#[must_use]
 pub fn classify_stderr(tool: &str, stderr: &str) -> SourceError {
     let tool = program_name(std::path::Path::new(tool));
     let low = stderr.to_ascii_lowercase();

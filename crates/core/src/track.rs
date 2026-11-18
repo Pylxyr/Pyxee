@@ -23,6 +23,7 @@ pub struct TrackDetails {
 }
 
 impl Track {
+    #[must_use]
     pub fn artist_known(&self) -> bool {
         let a = self.artist.trim();
         !a.is_empty() && !a.eq_ignore_ascii_case(UNKNOWN_ARTIST)
@@ -49,6 +50,7 @@ impl Track {
         *self != before
     }
 
+    #[must_use]
     pub fn new(key: &str, title: &str, artist: &str) -> Self {
         Self {
             key: key.into(),

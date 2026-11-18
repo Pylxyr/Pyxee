@@ -11,6 +11,7 @@ pub struct ResumeDetector {
 impl ResumeDetector {
     /// `gap_ms`: how much longer than the monotonic clock the wall clock must have advanced (a few seconds
     /// absorbs timer jitter and small clock corrections).
+    #[must_use]
     pub fn new(gap_ms: u64) -> Self {
         Self { last: None, gap_ms }
     }
@@ -49,6 +50,7 @@ pub struct NetworkWatcher {
 }
 
 impl NetworkWatcher {
+    #[must_use]
     pub fn new() -> Self {
         Self::default()
     }
@@ -95,6 +97,7 @@ pub enum Action {
 }
 
 /// What to do when the PC wakes or the network changes.
+#[must_use]
 pub fn decide(trigger: Trigger, now: Situation) -> Vec<Action> {
     match (trigger, now) {
         (Trigger::Net(NetEvent::WentOffline), Situation::Playing) => vec![Action::Notice(
@@ -103,8 +106,7 @@ pub fn decide(trigger: Trigger, now: Situation) -> Vec<Action> {
         (Trigger::Net(NetEvent::CameOnline), Situation::FailedRetryable) => {
             vec![Action::Notice("Back online. Trying again."), Action::Retry]
         }
-        (Trigger::Resumed, Situation::FailedRetryable)
-        | (Trigger::Net(NetEvent::Switched), Situation::FailedRetryable) => {
+        (Trigger::Resumed | Trigger::Net(NetEvent::Switched), Situation::FailedRetryable) => {
             vec![Action::Retry]
         }
         _ => Vec::new(),

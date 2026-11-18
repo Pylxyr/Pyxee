@@ -11,6 +11,7 @@ pub struct Monitor {
 
 /// The monitor the point is on; when it is on none (a tray icon can sit in the taskbar strip of `area` but outside
 /// `work`, so `area` is what counts), the closest one by centre distance.
+#[must_use]
 pub fn monitor_at(monitors: &[Monitor], p: (i32, i32)) -> Option<&Monitor> {
     monitors.iter().find(|m| m.area.contains(p)).or_else(|| {
         monitors.iter().min_by_key(|m| {
@@ -24,6 +25,7 @@ pub fn monitor_at(monitors: &[Monitor], p: (i32, i32)) -> Option<&Monitor> {
 /// Top-left corner for a flyout of `size` opened from the tray icon `icon`. The flyout sits against the work area
 /// edge nearest the icon (above a bottom taskbar, below a top one, beside a side one), centred on the icon along the
 /// taskbar, then clamped so it never leaves the work area. `margin` is the gap to the edge and the icon.
+#[must_use]
 pub fn flyout_position(
     icon: Rect,
     monitors: &[Monitor],
@@ -54,11 +56,13 @@ pub fn flyout_position(
 
 /// Clicking the tray icon while the flyout is open first takes focus away from it (so it hides) and then delivers the
 /// click. Without this the click would open it again straight away.
+#[must_use]
 pub fn reopen_after_blur(ms_since_hidden: u64) -> bool {
     ms_since_hidden > 250
 }
 
 /// Moves `pos` so a window of `size` lies inside `area` with `margin` to spare (as far as it fits).
+#[must_use]
 pub fn clamp_into(area: Rect, pos: (i32, i32), size: (i32, i32), margin: i32) -> (i32, i32) {
     let max_x = (area.right() - size.0 - margin).max(area.x);
     let max_y = (area.bottom() - size.1 - margin).max(area.y);

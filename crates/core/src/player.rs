@@ -38,6 +38,7 @@ pub enum Failure {
 
 impl Failure {
     /// Retrying later may work, so skipping through the queue would only burn tracks.
+    #[must_use]
     pub fn is_transient(&self) -> bool {
         matches!(
             self,
@@ -235,6 +236,7 @@ pub struct Player {
 }
 
 impl Player {
+    #[must_use]
     pub fn new(seed: u64) -> Self {
         Self::with_queue(Queue::new(seed), 0, true)
     }
@@ -269,10 +271,12 @@ impl Player {
 
     /// Restores a saved session: the track is selected and paused at its position, nothing plays
     /// until the user presses play.
+    #[must_use]
     pub fn restore(p: Persisted) -> Self {
         Self::with_queue(p.queue, p.position_ms, p.autoplay)
     }
 
+    #[must_use]
     pub fn persisted(&self) -> Persisted {
         Persisted {
             queue: self.queue.clone(),
@@ -281,14 +285,17 @@ impl Player {
         }
     }
 
+    #[must_use]
     pub fn queue(&self) -> &Queue {
         &self.queue
     }
 
+    #[must_use]
     pub fn snapshot(&self) -> Snapshot {
         let (audible, loading) = match &self.transport {
-            Transport::Playing { id } | Transport::Stalled { id } => (Some(*id), None),
-            Transport::Paused { id, loaded: true } => (Some(*id), None),
+            Transport::Playing { id }
+            | Transport::Stalled { id }
+            | Transport::Paused { id, loaded: true } => (Some(*id), None),
             Transport::Loading { id } => (None, Some(*id)),
             _ => (None, None),
         };
@@ -519,7 +526,7 @@ impl Player {
                     self.transport = Transport::Playing { id };
                 }
                 Transport::Paused { id, loaded: false } => {
-                    self.begin_load_fresh(id, self.position_ms)
+                    self.begin_load_fresh(id, self.position_ms);
                 }
                 Transport::Idle => self.play_from_idle(),
                 Transport::Failed { .. } => self.on_command(Command::Retry),
@@ -845,8 +852,8 @@ impl Player {
             }
             return;
         }
-        match self.queue.next_candidate(true, &|i| self.skip.contains(&i)) {
-            Some(next) => match self.prefetch {
+        if let Some(next) = self.queue.next_candidate(true, &|i| self.skip.contains(&i)) {
+            match self.prefetch {
                 // Gapless: the engine continues into `next`; stay put until it is audible.
                 Some((p, true)) if p == next => {}
                 // Still preparing: nothing audible now; the engine starts it as soon as it is ready.
@@ -859,14 +866,13 @@ impl Player {
                     self.queue.jump_to(next);
                     self.begin_load(next, 0);
                 }
-            },
-            None => {
-                self.end_of_queue();
-                // Waiting for radio after the last song ended: nothing is audible, so do not show Playing.
-                if self.pending_advance {
-                    if let Some(id) = self.queue.current_id() {
-                        self.transport = Transport::Loading { id };
-                    }
+            }
+        } else {
+            self.end_of_queue();
+            // Waiting for radio after the last song ended: nothing is audible, so do not show Playing.
+            if self.pending_advance {
+                if let Some(id) = self.queue.current_id() {
+                    self.transport = Transport::Loading { id };
                 }
             }
         }

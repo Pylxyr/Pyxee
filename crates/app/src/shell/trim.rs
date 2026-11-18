@@ -1,9 +1,9 @@
 //! Hands memory back to Windows the moment the page has gone to sleep.
 //!
-//! `webview_power` tells WebView2 the window is hidden and suspends the page. WebView2 then gives its memory back on
+//! `webview_power` tells `WebView2` the window is hidden and suspends the page. `WebView2` then gives its memory back on
 //! its own schedule: measured on one PC, the page's renderer fell within a second, but the GPU process (about 60 MB)
 //! and the manager (about 24 MB) held theirs for about 30 s. This empties the *working set* of Pyxee's own process
-//! and of its WebView2 processes (`msedgewebview2.exe` children of this process) as soon as the suspend is done,
+//! and of its `WebView2` processes (`msedgewebview2.exe` children of this process) as soon as the suspend is done,
 //! and once more a moment later for what was allocated while it settled.
 //!
 //! What it does and does not do: emptying a working set moves the pages out of the process's resident set into

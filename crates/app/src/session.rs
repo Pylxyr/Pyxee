@@ -22,19 +22,25 @@ pub struct SaveSignal {
 
 impl SaveSignal {
     pub fn request(&self) {
-        *self.wanted.lock().unwrap_or_else(|e| e.into_inner()) = true;
+        *self
+            .wanted
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = true;
         self.wake.notify_one();
     }
 
     /// Blocks until a save was asked for, and takes the request (a request made while the writer is busy saving
     /// makes it save once more). `timeout` bounds the wait so the thread can notice that the app is ending.
     pub fn wait(&self, timeout: std::time::Duration) -> bool {
-        let mut wanted = self.wanted.lock().unwrap_or_else(|e| e.into_inner());
+        let mut wanted = self
+            .wanted
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         if !*wanted {
             wanted = self
                 .wake
                 .wait_timeout(wanted, timeout)
-                .unwrap_or_else(|e| e.into_inner())
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
                 .0;
         }
         std::mem::take(&mut *wanted)

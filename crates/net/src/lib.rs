@@ -11,6 +11,26 @@
 //!   exactly one more try, on a new connection. Anything else (a status, a timeout, a refused connection) is the
 //!   caller's to judge.
 
+// Pedantic lints this project does not follow, allowed once per crate root. (A workspace-level allow loses to the
+// `-D clippy::pedantic` that is passed on the command line, so it has to be an attribute.) Each is a trade-off for
+// application code: `# Errors` / `# Panics` sections and `#[must_use]` on internal items, long match-heavy functions,
+// flag structs, short names in numeric code, and the casts between sample counts, milliseconds and pixels (their
+// ranges are bounded by what the device and the files can hold) are not worth the noise.
+#![allow(
+    clippy::missing_errors_doc,
+    clippy::missing_panics_doc,
+    clippy::must_use_candidate,
+    clippy::return_self_not_must_use,
+    clippy::too_many_lines,
+    clippy::struct_excessive_bools,
+    clippy::similar_names,
+    clippy::many_single_char_names,
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    clippy::cast_possible_wrap,
+    clippy::cast_precision_loss
+)]
+
 use std::io::ErrorKind;
 use ureq::config::ConfigBuilder;
 use ureq::tls::{RootCerts, TlsConfig};
@@ -18,6 +38,7 @@ use ureq::typestate::AgentScope;
 
 /// A configuration to start an agent from: `pyxee_net::agent_config().timeout_connect(..)....build().into()`.
 /// Callers add their own timeouts, user agent and redirect rules.
+#[must_use]
 pub fn agent_config() -> ConfigBuilder<AgentScope> {
     ureq::Agent::config_builder().tls_config(
         TlsConfig::builder()
@@ -29,6 +50,7 @@ pub fn agent_config() -> ConfigBuilder<AgentScope> {
 /// Whether `e` looks like a reused connection that the server had already closed: the connection was reset, aborted
 /// or broken, or the answer ended before it began. A new connection is likely to work; a status answer, a timeout
 /// or a refused connection says something else, so those are not this.
+#[must_use]
 pub fn is_stale_connection(e: &ureq::Error) -> bool {
     matches!(
         e,

@@ -69,33 +69,30 @@ fn place(app: &AppHandle, w: &WebviewWindow) {
             .find(|(m, _)| m.area.contains((x, y)))
             .map_or(monitors[0].1, |(_, s)| *s)
     };
-    let (rect, scale) = match saved {
-        Some(b) => {
-            let scale = scale_at(b.x, b.y);
-            let size = (
-                (SIZE.0 * scale).round() as i32,
-                (SIZE.1 * scale).round() as i32,
-            );
-            (
-                fit_on_screen(Rect::new(b.x, b.y, size.0, size.1), &work),
-                scale,
-            )
-        }
-        None => {
-            let scale = monitors[0].1;
-            let size = (
-                (SIZE.0 * scale).round() as i32,
-                (SIZE.1 * scale).round() as i32,
-            );
-            let margin = (24.0 * scale).round() as i32;
-            let (x, y) = clamp_into(
-                first.work,
-                (first.work.right(), first.work.bottom()),
-                size,
-                margin,
-            );
-            (Rect::new(x, y, size.0, size.1), scale)
-        }
+    let (rect, scale) = if let Some(b) = saved {
+        let scale = scale_at(b.x, b.y);
+        let size = (
+            (SIZE.0 * scale).round() as i32,
+            (SIZE.1 * scale).round() as i32,
+        );
+        (
+            fit_on_screen(Rect::new(b.x, b.y, size.0, size.1), &work),
+            scale,
+        )
+    } else {
+        let scale = monitors[0].1;
+        let size = (
+            (SIZE.0 * scale).round() as i32,
+            (SIZE.1 * scale).round() as i32,
+        );
+        let margin = (24.0 * scale).round() as i32;
+        let (x, y) = clamp_into(
+            first.work,
+            (first.work.right(), first.work.bottom()),
+            size,
+            margin,
+        );
+        (Rect::new(x, y, size.0, size.1), scale)
     };
     let _ = scale;
     let _ = w.set_size(PhysicalSize::new(rect.w as u32, rect.h as u32));

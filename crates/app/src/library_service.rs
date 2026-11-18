@@ -19,6 +19,8 @@ pub struct LibraryService {
 
 type Res<T> = Result<T, String>;
 
+// Used as `.map_err(err)`, which hands the error over by value.
+#[allow(clippy::needless_pass_by_value)]
 fn err(e: pyxee_library::LibraryError) -> String {
     e.to_string()
 }

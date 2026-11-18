@@ -92,7 +92,9 @@ npm run check --prefix ui
 npm test --prefix ui
 npm run build --prefix ui          # Tauri embeds ui/dist
 cargo fmt --all -- --check
-cargo clippy --workspace --all-targets -- -D warnings
+CARGO_BUILD_WARNINGS=deny cargo clippy --workspace --all-targets --all-features -- \
+  -D clippy::correctness -D clippy::suspicious -D clippy::complexity -D clippy::perf \
+  -D clippy::style -D clippy::pedantic -D clippy::cargo
 cargo test --workspace
 ```
 `cargo test -p pyxee-app` regenerates the TypeScript types in `ui/src/lib/bindings` from the Rust types.

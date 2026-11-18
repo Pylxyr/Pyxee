@@ -75,7 +75,7 @@ pub struct Spec {
     pub mode: Mode,
 }
 
-/// Discord loads the large image itself, so it must be a short `https` URL on YouTube's or Google's image hosts (the
+/// Discord loads the large image itself, so it must be a short `https` URL on `YouTube`'s or Google's image hosts (the
 /// only places covers come from; any other host would be asked for the picture by Discord's servers). Local files,
 /// `data:` URIs and anything else are left out (Discord then shows the application's own icon).
 fn cover_url(thumbnail: Option<&str>) -> Option<String> {
@@ -321,7 +321,7 @@ impl Worker {
     }
 
     /// Tries to make Discord show `want` (`None` = nothing). `true` means done; `false` means try again later.
-    fn apply(&mut self, want: &Option<Spec>) -> bool {
+    fn apply(&mut self, want: Option<&Spec>) -> bool {
         let now = Instant::now();
         if self.client.is_none() {
             if want.is_none() {
@@ -396,7 +396,7 @@ fn run(client_id: String, rx: &Receiver<Msg>) {
             None => {}
         }
         if let Some(w) = want.take() {
-            if !worker.apply(&w) {
+            if !worker.apply(w.as_ref()) {
                 want = Some(w);
             }
         }

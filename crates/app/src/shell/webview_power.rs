@@ -1,9 +1,9 @@
 //! Puts the page of a hidden window to sleep.
 //!
-//! Hiding a window (close to tray, the tray flyout, the mini player) hides only the window. WebView2 is told nothing:
+//! Hiding a window (close to tray, the tray flyout, the mini player) hides only the window. `WebView2` is told nothing:
 //! the hide and minimize messages go to the window, not to the browser inside it. So it keeps painting frames, running
 //! animation callbacks and holding everything an open page holds, for a page nobody can see. That is the steady CPU and
-//! GPU use, and the memory, that Task Manager shows under "WebView2 Manager" while Pyxee sits in the tray.
+//! GPU use, and the memory, that Task Manager shows under "`WebView2` Manager" while Pyxee sits in the tray.
 //!
 //! [`set_active`]`(window, false)` tells it, in three steps:
 //!
@@ -25,7 +25,7 @@
 //!
 //! Once the suspend is done, `trim` also hands the memory of the hidden window back to Windows at once.
 //!
-//! Only WebView2 (Windows) needs this; elsewhere `set_active` only keeps its bookkeeping and `emit_awake` sends to all.
+//! Only `WebView2` (Windows) needs this; elsewhere `set_active` only keeps its bookkeeping and `emit_awake` sends to all.
 
 use serde::Serialize;
 use std::collections::VecDeque;

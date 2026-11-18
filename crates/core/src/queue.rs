@@ -81,6 +81,7 @@ fn splitmix(state: &mut u64) -> u64 {
 
 impl Queue {
     /// `seed` makes shuffle deterministic (tests) or random (the app passes the clock).
+    #[must_use]
     pub fn new(seed: u64) -> Self {
         Self {
             entries: Vec::new(),
@@ -97,15 +98,19 @@ impl Queue {
     }
 
     // ---- reading ----
+    #[must_use]
     pub fn entries(&self) -> &[Entry] {
         &self.entries
     }
+    #[must_use]
     pub fn len(&self) -> usize {
         self.entries.len()
     }
+    #[must_use]
     pub fn is_empty(&self) -> bool {
         self.entries.is_empty()
     }
+    #[must_use]
     pub fn get(&self, id: EntryId) -> Option<&Entry> {
         self.entries.iter().find(|e| e.id == id)
     }
@@ -119,24 +124,31 @@ impl Queue {
             None => false,
         }
     }
+    #[must_use]
     pub fn contains(&self, id: EntryId) -> bool {
         self.get(id).is_some()
     }
+    #[must_use]
     pub fn current_id(&self) -> Option<EntryId> {
         self.current
     }
+    #[must_use]
     pub fn current(&self) -> Option<&Entry> {
         self.current.and_then(|id| self.get(id))
     }
+    #[must_use]
     pub fn repeat(&self) -> Repeat {
         self.repeat
     }
+    #[must_use]
     pub fn shuffle(&self) -> bool {
         self.shuffle
     }
+    #[must_use]
     pub fn play_order(&self) -> &[EntryId] {
         &self.order
     }
+    #[must_use]
     pub fn can_undo(&self) -> bool {
         !self.undo.is_empty()
     }
@@ -147,6 +159,7 @@ impl Queue {
     }
 
     /// Entries after the current one in play order (not counting wrap-around).
+    #[must_use]
     pub fn upcoming(&self) -> Vec<EntryId> {
         let start = match (self.current_pos(), self.slot) {
             (Some(p), _) => p + 1,

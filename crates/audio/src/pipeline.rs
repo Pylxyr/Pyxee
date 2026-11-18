@@ -27,12 +27,14 @@ pub struct Volume {
     fade_permille: Arc<AtomicU32>,
 }
 
+#[must_use]
 pub fn gain_for_percent(percent: u8) -> f32 {
     let x = f32::from(percent.min(100)) / 100.0;
     x * x
 }
 
 impl Volume {
+    #[must_use]
     pub fn new(percent: u8) -> Self {
         Self {
             percent: Arc::new(AtomicU32::new(u32::from(percent.min(100)))),
@@ -43,6 +45,7 @@ impl Volume {
         self.percent
             .store(u32::from(percent.min(100)), Ordering::Relaxed);
     }
+    #[must_use]
     pub fn percent(&self) -> u8 {
         self.percent.load(Ordering::Relaxed) as u8
     }
@@ -56,9 +59,11 @@ impl Volume {
         self.fade_permille
             .store((f * 1000.0).round() as u32, Ordering::Relaxed);
     }
+    #[must_use]
     pub fn fade(&self) -> f32 {
         self.fade_permille.load(Ordering::Relaxed) as f32 / 1000.0
     }
+    #[must_use]
     pub fn gain(&self) -> f32 {
         gain_for_percent(self.percent()) * self.fade()
     }
@@ -197,7 +202,7 @@ struct Shared {
 }
 
 fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
-    m.lock().unwrap_or_else(|e| e.into_inner())
+    m.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
 }
 
 pub struct Pipeline {
@@ -212,6 +217,7 @@ pub struct Consumer {
 }
 
 impl Pipeline {
+    #[must_use]
     pub fn new(rate: u32, tx: Sender<PipeEvent>, volume: Volume) -> Self {
         let shared = Arc::new(Shared {
             wake: Wake::new(),
@@ -252,18 +258,21 @@ impl Pipeline {
         }
     }
 
+    #[must_use]
     pub fn consumer(&self) -> Consumer {
         Consumer {
             shared: Arc::clone(&self.shared),
         }
     }
 
+    #[must_use]
     pub fn rate(&self) -> u32 {
         self.shared.rate
     }
 
     /// Hand this to `HttpRangeSource::open_with_cancel`: while a flush is under way, a read of that source that is
     /// still waiting for data stops (it would otherwise hold the source lock for as long as the stream stalls).
+    #[must_use]
     pub fn cancel_token(&self) -> Arc<AtomicBool> {
         Arc::clone(&self.shared.cancel)
     }
@@ -303,6 +312,7 @@ impl Pipeline {
 
     /// How many times the producer thread's loop has run since the pipeline was made (a test hook: an idle pipeline
     /// must keep this nearly still).
+    #[must_use]
     pub fn producer_runs(&self) -> u64 {
         self.shared.wake.runs.load(Ordering::Relaxed)
     }
@@ -311,6 +321,7 @@ impl Pipeline {
     /// dropped, tracks queued behind it stay queued, and the track is announced as started again at the new position.
     /// `false` (nothing was changed that a flush does not repair): the track is not the one playing, its source cannot
     /// seek in place, or the producer is busy (a stalled stream), and the caller flushes and re-opens it instead.
+    #[must_use]
     pub fn seek_in_place(&self, id: EntryId, ms: u64) -> bool {
         // Not `cancel`: unlike a flush this must not break the read that is under way. A producer that is waiting for
         // the network holds the lock for as long as that takes, so give up after a moment.
@@ -346,6 +357,7 @@ impl Pipeline {
     }
 
     /// The audible track and how many ms of it have actually been heard.
+    #[must_use]
     pub fn heard_position(&self) -> Option<(EntryId, u64)> {
         let inner = lock(&self.shared.inner);
         inner
@@ -354,6 +366,7 @@ impl Pipeline {
             .map(|(id, frames)| (id, frames * 1000 / u64::from(self.shared.rate)))
     }
 
+    #[must_use]
     pub fn underruns(&self) -> u64 {
         self.shared.underruns.load(Ordering::Relaxed)
     }
@@ -431,10 +444,10 @@ fn produce(s: &Shared) {
         for e in events {
             match e {
                 Event::Started { id, at_frame } => {
-                    inner.tracker.track_started(EntryId(id), at_frame)
+                    inner.tracker.track_started(EntryId(id), at_frame);
                 }
                 Event::Finished { id, at_frame, .. } => {
-                    inner.tracker.track_ended(EntryId(id), at_frame)
+                    inner.tracker.track_ended(EntryId(id), at_frame);
                 }
                 Event::Failed {
                     id,
@@ -478,7 +491,10 @@ impl Consumer {
         // Volume: ramp across this buffer so a change never clicks.
         let target = s.volume.gain();
         let from = inner.gain;
-        if n > 0 && (from != target || target != 1.0) {
+        // The gain is set to exact values (a target, or 1.0 for "untouched"): equal means the ramp can be skipped.
+        #[allow(clippy::float_cmp)]
+        let ramp_needed = n > 0 && (from != target || target != 1.0);
+        if ramp_needed {
             let frames = (n / CHANNELS) as f32;
             for (i, frame) in out[..n]
                 .as_chunks_mut::<CHANNELS>()

@@ -1,6 +1,26 @@
 //! Integration test: two tracks go through the real decode -> resample -> gapless path and
 //! the rendered output is scanned for silence at (and away from) the boundary.
 
+// Pedantic lints this project does not follow, allowed once per crate root. (A workspace-level allow loses to the
+// `-D clippy::pedantic` that is passed on the command line, so it has to be an attribute.) Each is a trade-off for
+// application code: `# Errors` / `# Panics` sections and `#[must_use]` on internal items, long match-heavy functions,
+// flag structs, short names in numeric code, and the casts between sample counts, milliseconds and pixels (their
+// ranges are bounded by what the device and the files can hold) are not worth the noise.
+#![allow(
+    clippy::missing_errors_doc,
+    clippy::missing_panics_doc,
+    clippy::must_use_candidate,
+    clippy::return_self_not_must_use,
+    clippy::too_many_lines,
+    clippy::struct_excessive_bools,
+    clippy::similar_names,
+    clippy::many_single_char_names,
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    clippy::cast_possible_wrap,
+    clippy::cast_precision_loss
+)]
+
 use pyxee_audio::decode::{LibavSource, SampleSource};
 use pyxee_audio::gap::find_gaps;
 use pyxee_audio::gapless::{Event, GaplessSource, PreparedTrack};
@@ -80,14 +100,14 @@ fn gapless_vorbis() {
     check("ogg", open("a_44k.ogg"), open("b_48k.ogg"));
 }
 
-/// YouTube's AAC layout: `moov` first, then a `sidx`, then one `moof`+`mdat` per fragment (the
+/// `YouTube`'s AAC layout: `moov` first, then a `sidx`, then one `moof`+`mdat` per fragment (the
 /// fixtures are the plain m4a files stream-copied into that layout).
 #[test]
 fn gapless_aac_m4a_fragmented_like_youtube() {
     check("m4a-frag", open("a_44k_frag.m4a"), open("b_48k_frag.m4a"));
 }
 
-/// Opus is YouTube's best audio and ships in WebM; Ogg Opus is what local `.opus` files use. Both must
+/// Opus is `YouTube`'s best audio and ships in `WebM`; Ogg Opus is what local `.opus` files use. Both must
 /// decode with the encoder's pre-skip and end padding removed (no silence, true length).
 #[test]
 fn gapless_opus_ogg() {

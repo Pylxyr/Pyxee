@@ -1,3 +1,6 @@
+// Tauri hands a command its arguments by value (`State`, `AppHandle`, the deserialised payload): the signature is not ours to change.
+#![allow(clippy::needless_pass_by_value)]
+
 use crate::dto::{
     state_dto, AddResultDto, CommandDto, ExploreShelfDto, FilterInfoDto, GenreDto, HistoryItemDto,
     HomeDto, LibrarySnapshotDto, LogInfoDto, PerfReportDto, PlayerStateDto, PlaylistDto,
@@ -14,11 +17,11 @@ pub fn dispatch(app: AppHandle, command: CommandDto) {
 }
 
 #[tauri::command]
-pub fn get_state(state: State<AppState>) -> Result<PlayerStateDto, String> {
+pub fn get_state(state: State<AppState>) -> PlayerStateDto {
     let p = state.player();
     let mut dto = state_dto(&p);
     dto.seq = state.seq.load(std::sync::atomic::Ordering::SeqCst);
-    Ok(dto)
+    dto
 }
 
 #[tauri::command]
@@ -74,7 +77,7 @@ pub async fn suggest(state: State<'_, AppState>, prefix: String) -> Result<Vec<S
     )
 }
 
-/// Songs similar to `key` (a YouTube mix), for Explore and the Related tab. At most `count`, never the seed itself.
+/// Songs similar to `key` (a `YouTube` mix), for Explore and the Related tab. At most `count`, never the seed itself.
 /// Like `search` it runs on a worker thread and rejects with a typed error the UI can branch on.
 #[tauri::command]
 pub async fn related_get(
@@ -96,7 +99,7 @@ pub async fn related_get(
     .map_err(|e| SearchErrorDto::from(&e))
 }
 
-/// The shelves of YouTube Music's Explore page (trending songs, new releases...). Like `related_get` it runs on a worker
+/// The shelves of `YouTube` Music's Explore page (trending songs, new releases...). Like `related_get` it runs on a worker
 /// thread at background priority and rejects with a typed error the UI can branch on.
 #[tauri::command]
 pub async fn explore_get(
@@ -115,7 +118,7 @@ pub async fn explore_get(
     .map_err(|e| SearchErrorDto::from(&e))
 }
 
-/// YouTube Music's genres and moods (K-Pop, Anime, Chill...), for the chips on Explore. Same worker-thread shape as
+/// `YouTube` Music's genres and moods (K-Pop, Anime, Chill...), for the chips on Explore. Same worker-thread shape as
 /// `explore_get`.
 #[tauri::command]
 pub async fn genres_get(state: State<'_, AppState>) -> Result<Vec<GenreDto>, SearchErrorDto> {
@@ -132,7 +135,7 @@ pub async fn genres_get(state: State<'_, AppState>) -> Result<Vec<GenreDto>, Sea
     .map_err(|e| SearchErrorDto::from(&e))
 }
 
-/// The shelves of one genre (`params` from `genres_get`): YouTube Music's playlists and songs for it. The listener
+/// The shelves of one genre (`params` from `genres_get`): `YouTube` Music's playlists and songs for it. The listener
 /// clicked a genre, so unlike the automatic loads it is not run at background priority.
 #[tauri::command]
 pub async fn genre_get(
@@ -150,7 +153,7 @@ pub async fn genre_get(
         .map_err(|e| SearchErrorDto::from(&e))
 }
 
-/// The songs of a YouTube Music playlist, to play. The listener asked for it, so it is not run at background priority.
+/// The songs of a `YouTube` Music playlist, to play. The listener asked for it, so it is not run at background priority.
 #[tauri::command]
 pub async fn playlist_tracks_get(
     state: State<'_, AppState>,
@@ -169,8 +172,8 @@ pub async fn playlist_tracks_get(
 
 #[tauri::command]
 pub fn search_filters(state: State<AppState>) -> Vec<FilterInfoDto> {
-    let supported = state.source.supported_filters();
     use pyxee_sources::SearchFilter as F;
+    let supported = state.source.supported_filters();
     [
         F::All,
         F::Songs,
@@ -206,7 +209,7 @@ fn read_library<T>(
 
 #[tauri::command(async)]
 pub fn get_library(state: State<AppState>) -> Result<LibrarySnapshotDto, String> {
-    read_library(&state, |l| l.snapshot())
+    read_library(&state, super::library_service::LibraryService::snapshot)
 }
 
 #[tauri::command(async)]
@@ -216,7 +219,7 @@ pub fn library_set_liked(app: AppHandle, track: TrackDto, liked: bool) -> Result
 
 #[tauri::command(async)]
 pub fn liked_get(state: State<AppState>) -> Result<Vec<TrackDto>, String> {
-    read_library(&state, |l| l.liked())
+    read_library(&state, super::library_service::LibraryService::liked)
 }
 
 #[tauri::command(async)]
@@ -275,7 +278,7 @@ pub fn history_get(state: State<AppState>, limit: usize) -> Result<Vec<HistoryIt
 
 #[tauri::command(async)]
 pub fn history_clear(app: AppHandle) -> Result<Vec<HistoryItemDto>, String> {
-    with_library(&app, |l| l.clear_history())
+    with_library(&app, super::library_service::LibraryService::clear_history)
 }
 
 #[tauri::command(async)]
