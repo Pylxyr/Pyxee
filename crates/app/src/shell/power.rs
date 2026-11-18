@@ -70,7 +70,7 @@ fn situation(app: &AppHandle) -> Situation {
     match crate::dto::state_dto(&p).transport {
         TransportDto::Playing { .. } => Situation::Playing,
         TransportDto::Failed { failure, .. } => {
-            use crate::dto::FailureDto::*;
+            use crate::dto::FailureDto::{Expired, Offline, RateLimited};
             if matches!(failure, Offline | RateLimited | Expired { .. }) {
                 Situation::FailedRetryable
             } else {

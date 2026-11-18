@@ -1,6 +1,6 @@
 //! Where the app keeps its files, and the one-time move from the Roaming to the Local application-data folder.
 //!
-//! Pyxee used to keep everything in `%APPDATA%\dev.pyxee.app` (Roaming). A live SQLite file with `-wal`/`-shm`
+//! Pyxee used to keep everything in `%APPDATA%\dev.pyxee.app` (Roaming). A live `SQLite` file with `-wal`/`-shm`
 //! side files does not belong in a folder that roaming profiles, folder redirection or backup tools sync: a
 //! half-synced database is a corrupt one. `%LOCALAPPDATA%\dev.pyxee.app` never leaves the machine.
 //!
@@ -42,6 +42,7 @@ pub const PORTABLE_DATA: &str = "data";
 /// Portable mode: if `portable.txt` sits next to the program (`exe_dir`), the data folder is `exe_dir\data`, so the
 /// whole app can be copied or deleted as one folder and nothing is left in the user's profile. `None`: installed mode.
 /// The Roaming-to-Local move does not apply to a portable folder.
+#[must_use]
 pub fn portable_dir(exe_dir: &Path) -> Option<PathBuf> {
     exe_dir
         .join(PORTABLE_MARKER)
@@ -252,7 +253,11 @@ mod tests {
         // Logs are not worth moving; no temporary file is left behind.
         assert!(!new.join("logs").exists());
         assert!(
-            names(&new).iter().all(|n| !n.ends_with(".tmp")),
+            names(&new).iter().all(|n| {
+                !std::path::Path::new(n)
+                    .extension()
+                    .is_some_and(|e| e.eq_ignore_ascii_case("tmp"))
+            }),
             "{:?}",
             names(&new)
         );

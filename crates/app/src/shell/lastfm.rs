@@ -20,6 +20,7 @@ use pyxee_core::UNKNOWN_ARTIST;
 use pyxee_shell::progress::Phase;
 use serde_json::Value;
 use std::collections::VecDeque;
+use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
 use std::sync::Mutex;
@@ -106,7 +107,10 @@ fn sign(params: &[(String, String)], secret: &str) -> String {
     }
     hash.update(secret.as_bytes());
     // md-5 0.11 digests no longer print as hex by themselves.
-    hash.finalize().iter().map(|b| format!("{b:02x}")).collect()
+    hash.finalize().iter().fold(String::new(), |mut hex, b| {
+        let _ = write!(hex, "{b:02x}");
+        hex
+    })
 }
 
 /// Where the session key is kept: the Windows Credential Manager (a generic credential of the current user, which
@@ -333,7 +337,7 @@ fn song_of(t: &TrackDto) -> Option<Song> {
     })
 }
 
-/// What YouTube adds after a channel's name that is not part of the artist's (compared without regard to case).
+/// What `YouTube` adds after a channel's name that is not part of the artist's (compared without regard to case).
 const CHANNEL_SUFFIXES: &[&str] = &[
     " - Topic",
     " Official YouTube Channel",
@@ -386,7 +390,7 @@ fn strip_prefix_ci<'a>(s: &'a str, prefix: &str) -> Option<&'a str> {
     head.eq_ignore_ascii_case(prefix).then_some(tail)
 }
 
-/// The name Last.fm knows an artist by: the first of `A / B`, without a channel's " - Topic" or "Official YouTube
+/// The name Last.fm knows an artist by: the first of `A / B`, without a channel's " - Topic" or "Official `YouTube`
 /// Channel". Falls back to what was given when nothing is left.
 fn clean_artist(raw: &str) -> String {
     let mut name = raw.split(" / ").next().unwrap_or(raw).trim();
@@ -460,7 +464,7 @@ fn names_overlap(a: &str, b: &str) -> bool {
     !a.is_empty() && !b.is_empty() && (a.contains(&b) || b.contains(&a))
 }
 
-/// The title and artist as Last.fm will know them. YouTube titles carry the uploader's decoration: the artist
+/// The title and artist as Last.fm will know them. `YouTube` titles carry the uploader's decoration: the artist
 /// again ("natori - Overdose"), a romanisation ("はいよろこんで - Hai Yorokonde"), a tag ("(Official Video)", "【MV】"),
 /// or the song inside brackets ("YOASOBI「アンコール」Official MV"). Last.fm matches a song by exact names, so all of
 /// that is taken off; a title that would be left empty is kept as it was.
@@ -680,9 +684,10 @@ enum Outcome {
 impl ApiError {
     fn outcome(&self) -> Outcome {
         match self {
-            Self::Network(_) | Self::Parse(_) => Outcome::Retry,
-            // 8 operation failed, 11 service offline, 16 temporarily unavailable, 29 rate limit exceeded.
-            Self::Api {
+            // Api codes 8 operation failed, 11 service offline, 16 temporarily unavailable, 29 rate limit exceeded.
+            Self::Network(_)
+            | Self::Parse(_)
+            | Self::Api {
                 code: 8 | 11 | 16 | 29,
                 ..
             } => Outcome::Retry,

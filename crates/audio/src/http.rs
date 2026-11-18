@@ -111,7 +111,7 @@ fn agent() -> ureq::Agent {
         .clone()
 }
 
-/// The player client YouTube recorded in a stream URL (`c=ANDROID_VR`, `c=WEB`, ...), for the log only.
+/// The player client `YouTube` recorded in a stream URL (`c=ANDROID_VR`, `c=WEB`, ...), for the log only.
 fn stream_client(url: &str) -> Option<&str> {
     let query = url.split_once('?')?.1;
     query
@@ -227,6 +227,8 @@ fn next_wanted(st: &mut State, total: u64, big: bool) -> Option<u64> {
         .find(|i| !st.chunks.contains_key(i))
 }
 
+// The download thread owns what it runs on.
+#[allow(clippy::needless_pass_by_value)]
 fn download_loop(shared: Arc<Shared>, f: Fetcher) {
     let total = f.len.div_ceil(CHUNK);
     let big = f.len > FULL_LIMIT;
@@ -347,6 +349,7 @@ impl HttpRangeSource {
     }
 
     /// Bytes downloaded and held in memory so far.
+    #[must_use]
     pub fn buffered_bytes(&self) -> u64 {
         self.shared
             .lock()

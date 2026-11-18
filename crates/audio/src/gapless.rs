@@ -101,6 +101,7 @@ impl PreparedTrack {
         Ok(t)
     }
 
+    #[must_use]
     pub fn id(&self) -> u64 {
         self.id
     }
@@ -164,6 +165,7 @@ pub struct GaplessSource {
 }
 
 impl GaplessSource {
+    #[must_use]
     pub fn new() -> Self {
         Self::default()
     }
@@ -193,6 +195,7 @@ impl GaplessSource {
         Ok(())
     }
 
+    #[must_use]
     pub fn queued(&self) -> usize {
         self.queue.len() + usize::from(self.current.is_some())
     }

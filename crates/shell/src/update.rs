@@ -9,6 +9,7 @@
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use std::cmp::Ordering;
+use std::fmt::Write as _;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -79,6 +80,7 @@ impl Version {
         })
     }
 
+    #[must_use]
     pub fn is_prerelease(&self) -> bool {
         !self.pre.is_empty()
     }
@@ -130,6 +132,7 @@ fn split_number(id: &str) -> (&str, u64) {
 }
 
 /// True only when both parse and `latest` is strictly newer: an unreadable version never offers an update.
+#[must_use]
 pub fn is_newer(current: &str, latest: &str) -> bool {
     matches!((Version::parse(current), Version::parse(latest)), (Some(c), Some(l)) if l > c)
 }
@@ -190,7 +193,13 @@ fn pick_installer(assets: &[RawAsset]) -> Option<Asset> {
                 url: a.browser_download_url.clone(),
             })
     };
-    find(&|n| n.ends_with("-setup.exe")).or_else(|| find(&|n| n.ends_with(".exe")))
+    find(&|n| n.ends_with("-setup.exe")).or_else(|| {
+        find(&|n| {
+            std::path::Path::new(n)
+                .extension()
+                .is_some_and(|e| e.eq_ignore_ascii_case("exe"))
+        })
+    })
 }
 
 /// Every usable release of GitHub's `/releases` list, in the order GitHub gave them. Drafts never count; pre-releases
@@ -225,7 +234,7 @@ fn usable_releases(json: &str, include_prereleases: bool) -> Result<Vec<Release>
             version,
             tag: r.tag_name,
             page_url: r.html_url,
-            notes: clip_notes(r.body.unwrap_or_default()),
+            notes: clip_notes(&r.body.unwrap_or_default()),
             sums_url,
             sums_signature_url,
         });
@@ -235,6 +244,7 @@ fn usable_releases(json: &str, include_prereleases: bool) -> Result<Vec<Release>
 
 /// Whether the update check looks at pre-releases: when the person asked for them, or when the running build is
 /// itself one (so a release candidate is not left behind by the next one).
+#[must_use]
 pub fn include_prereleases(current: &str, wanted: bool) -> bool {
     wanted || Version::parse(current).is_some_and(|v| v.is_prerelease())
 }
@@ -277,14 +287,15 @@ pub fn changelog_since(
                 let notes = if r.notes.is_empty() {
                     "No written notes for this release.".to_string()
                 } else {
-                    clip_chars(r.notes.clone(), MAX_SECTION_CHARS)
+                    clip_chars(&r.notes, MAX_SECTION_CHARS)
                 };
                 let section = format!("## {}\n\n{notes}", r.version_text());
                 if text.chars().count() + section.chars().count() > MAX_TOTAL_CHARS {
-                    text.push_str(&format!(
+                    let _ = write!(
+                        text,
                         "\n\n## Earlier releases\n\n{} more, on the releases page.",
                         many.len() - i
-                    ));
+                    );
                     break;
                 }
                 if !text.is_empty() {
@@ -301,11 +312,11 @@ pub fn changelog_since(
 /// full text is one click away on the release page.
 const MAX_NOTES_CHARS: usize = 20_000;
 
-fn clip_notes(body: String) -> String {
+fn clip_notes(body: &str) -> String {
     clip_chars(body, MAX_NOTES_CHARS)
 }
 
-fn clip_chars(body: String, max: usize) -> String {
+fn clip_chars(body: &str, max: usize) -> String {
     let body = body.replace("\r\n", "\n");
     let body = body.trim();
     match body.char_indices().nth(max) {
@@ -316,6 +327,7 @@ fn clip_chars(body: String, max: usize) -> String {
 
 impl Release {
     /// The version as people write it: `0.2.0` or `0.2.0-rc1`, without the tag's `v`.
+    #[must_use]
     pub fn version_text(&self) -> String {
         self.tag.trim_start_matches(['v', 'V']).to_string()
     }
@@ -364,6 +376,7 @@ pub enum SumsTrust {
     MustVerify,
 }
 
+#[must_use]
 pub fn sums_trust(public_key: Option<&str>) -> SumsTrust {
     match public_key {
         Some(k) if !k.trim().is_empty() => SumsTrust::MustVerify,
@@ -373,14 +386,18 @@ pub fn sums_trust(public_key: Option<&str>) -> SumsTrust {
 
 // ----------------------------------------------------------------- checksums
 
+#[must_use]
 pub fn sha256_hex(bytes: &[u8]) -> String {
     Sha256::digest(bytes)
         .iter()
-        .map(|b| format!("{b:02x}"))
-        .collect()
+        .fold(String::new(), |mut hex, b| {
+            let _ = write!(hex, "{b:02x}");
+            hex
+        })
 }
 
 /// `name`'s hash in a checksum file (`<hash>  <name>` or `<hash> *<name>`), lower-cased.
+#[must_use]
 pub fn parse_sums(text: &str, name: &str) -> Option<String> {
     text.lines().find_map(|l| {
         let mut parts = l.split_whitespace();
@@ -403,16 +420,19 @@ pub fn verify(bytes: &[u8], expected: &str) -> Result<(), UpdateError> {
 }
 
 /// Windows programs start with "MZ".
+#[must_use]
 pub fn is_windows_exe(bytes: &[u8]) -> bool {
     bytes.starts_with(b"MZ")
 }
 
 /// Linux programs start with the four bytes 0x7F "ELF".
+#[must_use]
 pub fn is_elf(bytes: &[u8]) -> bool {
     bytes.starts_with(b"\x7fELF")
 }
 
 /// A program for the system this is running on: a Windows program on Windows, an ELF program anywhere else.
+#[must_use]
 pub fn is_native_executable(bytes: &[u8]) -> bool {
     if cfg!(windows) {
         is_windows_exe(bytes)
@@ -619,6 +639,7 @@ pub fn gate_installer_file(
 /// The script that reports a file's signature. The path travels in the environment variable `path_var`, never inside
 /// the script text, so no file name can change what runs. Output: `STATUS=<status>` and, when there is a signer,
 /// `SUBJECT=<certificate subject>`.
+#[must_use]
 pub fn signature_script(path_var: &str) -> String {
     format!(
         "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; \
@@ -629,6 +650,7 @@ pub fn signature_script(path_var: &str) -> String {
 }
 
 /// Reads the output of [`signature_script`]. Only the status `Valid` with a subject counts as signed.
+#[must_use]
 pub fn parse_signature_output(out: &str) -> Signature {
     let field = |name: &str| {
         out.lines()
@@ -660,8 +682,10 @@ mod tests {
             .public_key()
             .as_ref()
             .iter()
-            .map(|b| format!("{b:02x}"))
-            .collect();
+            .fold(String::new(), |mut hex, b| {
+                let _ = write!(hex, "{b:02x}");
+                hex
+            });
         (kp, hex)
     }
 
@@ -669,8 +693,10 @@ mod tests {
         kp.sign(msg)
             .as_ref()
             .iter()
-            .map(|b| format!("{b:02x}"))
-            .collect()
+            .fold(String::new(), |mut hex, b| {
+                let _ = write!(hex, "{b:02x}");
+                hex
+            })
     }
 
     #[test]
@@ -882,7 +908,7 @@ mod tests {
     #[test]
     fn a_very_long_changelog_is_cut_on_a_character_boundary() {
         let long = "é".repeat(MAX_NOTES_CHARS + 50);
-        let clipped = clip_notes(long);
+        let clipped = clip_notes(&long);
         assert_eq!(clipped.chars().count(), MAX_NOTES_CHARS + 1);
         assert!(clipped.ends_with('…'));
     }
@@ -1140,6 +1166,8 @@ mod tests {
         }
     }
 
+    // Same shape as the checks that can fail, so they can be listed together.
+    #[allow(clippy::unnecessary_wraps)]
     fn valid(subject: &str) -> Result<Signature, String> {
         Ok(Signature::Valid {
             subject: subject.into(),

@@ -10,6 +10,7 @@ pub struct Gap {
 /// Finds runs of at least `min_run_frames` consecutive frames where every channel is
 /// below `threshold` in absolute value. A pure sine crosses zero for only a frame or two,
 /// so a run of several frames means real silence.
+#[must_use]
 pub fn find_gaps(
     samples: &[f32],
     channels: usize,

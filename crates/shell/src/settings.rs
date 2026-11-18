@@ -61,6 +61,7 @@ impl Default for ShellSettings {
 
 impl ShellSettings {
     /// Keeps stored values inside what the windows can use.
+    #[must_use]
     pub fn sanitized(mut self) -> Self {
         self.mini_bounds = self.mini_bounds.map(|r| {
             Rect::new(
@@ -80,6 +81,7 @@ pub struct Loaded {
     pub warning: Option<String>,
 }
 
+#[must_use]
 pub fn load(path: &Path) -> Loaded {
     let text = match std::fs::read_to_string(path) {
         Ok(t) => t,

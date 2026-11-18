@@ -1,5 +1,6 @@
 use crate::{clean_artist, clean_title, parse_lrc, Lyrics};
 use serde::Deserialize;
+use std::fmt::Write as _;
 use std::time::Duration;
 use ureq::http::header::{RETRY_AFTER, USER_AGENT as USER_AGENT_HEADER};
 use ureq::http::StatusCode;
@@ -41,6 +42,7 @@ const UNAVAILABLE_PAUSE_SECS: u64 = 30;
 
 /// Seconds to wait from a `Retry-After` header (the number form; the HTTP-date form is not worth
 /// parsing here and gets the default), kept between 1 s and 10 min.
+#[must_use]
 pub fn retry_after_secs(header: Option<&str>) -> u64 {
     header
         .and_then(|h| h.trim().parse::<u64>().ok())
@@ -51,6 +53,7 @@ pub fn retry_after_secs(header: Option<&str>) -> u64 {
 impl LyricsError {
     /// How long to stop asking the service after this error, so a blocked or failing service is not
     /// hit again on every song change. `None`: asking again right away is fine (offline, bad data).
+    #[must_use]
     pub fn pause_secs(&self) -> Option<u64> {
         match self {
             LyricsError::RateLimited { retry_after_secs } => Some(*retry_after_secs),
@@ -70,6 +73,7 @@ pub struct Cooldown {
 
 impl Cooldown {
     /// Whole seconds still to wait (at least 1), or `None` when the service may be asked.
+    #[must_use]
     pub fn remaining_secs(&self, now_ms: u64) -> Option<u64> {
         self.until_ms
             .filter(|&t| t > now_ms)
@@ -94,6 +98,7 @@ pub struct Query {
 
 impl Query {
     /// Cleans what the player knows (titles like "Song (Official Video)", artists like "A, B") for the service.
+    #[must_use]
     pub fn new(title: &str, artist: &str, duration_ms: Option<u64>) -> Self {
         Self {
             title: clean_title(title),
@@ -136,6 +141,7 @@ impl Candidate {
 }
 
 /// The candidate to show: close in length to the song, synced before plain, plain before nothing.
+#[must_use]
 pub fn pick_best(mut list: Vec<Candidate>, duration_secs: Option<f64>) -> Option<Candidate> {
     let close = |c: &Candidate| match (duration_secs, c.duration) {
         (Some(want), Some(have)) => (want - have).abs() <= DURATION_SLACK_SECS,
@@ -238,9 +244,11 @@ fn encode(s: &str) -> String {
     for b in s.bytes() {
         match b {
             b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
-                out.push(b as char)
+                out.push(b as char);
             }
-            _ => out.push_str(&format!("%{b:02X}")),
+            _ => {
+                let _ = write!(out, "%{b:02X}");
+            }
         }
     }
     out
@@ -257,7 +265,7 @@ pub fn fetch(base: &str, q: &Query) -> Result<Lyrics, LyricsError> {
     let (t, a) = (encode(&q.title), encode(&q.artist));
     let mut exact = format!("{base}/api/get?track_name={t}&artist_name={a}");
     if let Some(d) = q.duration_secs {
-        exact.push_str(&format!("&duration={}", d.round() as u64));
+        let _ = write!(exact, "&duration={}", d.round() as u64);
     }
     if let Some(body) = get(&agent, &exact)? {
         let found = from_lrclib(&body, q.duration_secs)?;

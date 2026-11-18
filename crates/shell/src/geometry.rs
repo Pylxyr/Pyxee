@@ -9,6 +9,7 @@ const MIN_VISIBLE: i32 = 80;
 /// Returns `saved` if it can still be grabbed, nudged inside the monitor it mostly sits on if it hangs off the edge,
 /// or centred on the first monitor (the primary) if it is on none (e.g. an unplugged second screen).
 /// `monitors` are work areas in physical pixels.
+#[must_use]
 pub fn fit_on_screen(saved: Rect, monitors: &[Rect]) -> Rect {
     let Some(first) = monitors.first() else {
         return saved;

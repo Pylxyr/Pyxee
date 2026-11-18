@@ -2,7 +2,7 @@
 //!
 //! Everything that decides something (names, what goes in the zip, what must not, the signtool command line, the
 //! Tauri signing config) is a plain function with a test and runs on any platform. The calls that need Windows
-//! (signtool, PowerShell) are thin and live in `main.rs`.
+//! (signtool, `PowerShell`) are thin and live in `main.rs`.
 //!
 //! Signing is driven by environment variables so that no secret is ever written to a file in the repository, to a
 //! Tauri config, or to a command line that is printed:
@@ -93,7 +93,7 @@ impl Signing {
             "sha256",
         ]
         .iter()
-        .map(|s| s.to_string())
+        .map(|s| (*s).to_string())
         .collect();
         match &self.cert {
             Cert::File { path, password } => {
@@ -346,7 +346,7 @@ mod tests {
     fn env(pairs: &[(&str, &str)]) -> impl Fn(&str) -> Option<String> {
         let m: HashMap<String, String> = pairs
             .iter()
-            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .map(|(k, v)| ((*k).to_string(), (*v).to_string()))
             .collect();
         move |k| m.get(k).cloned()
     }
@@ -442,7 +442,7 @@ mod tests {
             "x64",
         ]
         .iter()
-        .map(|s| s.to_string())
+        .map(|s| (*s).to_string())
         .collect();
         assert_eq!(newest_sdk(&names).map(String::as_str), Some("10.0.22621.0"));
         assert_eq!(newest_sdk(&[]), None);

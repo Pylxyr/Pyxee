@@ -70,6 +70,7 @@ pub fn parse_setting(value: &str) -> Result<Setting, String> {
 /// extension, starts with the runtime's name (`qjs` for quickjs), compared without regard to case. yt-dlp starts
 /// the file it is given, so a setting that came from the window must not name some other program. (A folder is
 /// fine: yt-dlp looks for the runtime by its own name inside it.)
+#[must_use]
 pub fn file_fits(name: &str, path: &str) -> bool {
     let file = path
         .rsplit(['/', '\\'])
@@ -92,6 +93,7 @@ fn on_path(name: &str, path_var: Option<&OsStr>, exists: &dyn Fn(&Path) -> bool)
 
 impl JsRuntime {
     /// From the environment (`PYXEE_JS_RUNTIME`, then `PATH`).
+    #[must_use]
     pub fn from_env() -> Self {
         Self::resolve(
             std::env::var(ENV_VAR).ok().as_deref(),
@@ -144,6 +146,7 @@ impl JsRuntime {
     }
 
     /// The command-line arguments (none for [`JsRuntime::Off`]).
+    #[must_use]
     pub fn args(&self) -> Vec<String> {
         match self {
             Self::Off => Vec::new(),

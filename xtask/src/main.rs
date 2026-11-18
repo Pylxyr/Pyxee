@@ -1,7 +1,27 @@
 //! Developer tasks. `cargo xtask tools` downloads yt-dlp (with checksum verification);
-//! `cargo xtask ffmpeg` builds the minimal static FFmpeg the audio crate links; `cargo xtask installer` builds the Windows installer with it bundled. Audio is decoded in-process
+//! `cargo xtask ffmpeg` builds the minimal static `FFmpeg` the audio crate links; `cargo xtask installer` builds the Windows installer with it bundled. Audio is decoded in-process
 //! (libav), so yt-dlp is the only helper program. `cargo xtask portable` makes the portable zip; both it and the
 //! installer are code-signed when a certificate is configured (see `release.rs`).
+
+// Pedantic lints this project does not follow, allowed once per crate root. (A workspace-level allow loses to the
+// `-D clippy::pedantic` that is passed on the command line, so it has to be an attribute.) Each is a trade-off for
+// application code: `# Errors` / `# Panics` sections and `#[must_use]` on internal items, long match-heavy functions,
+// flag structs, short names in numeric code, and the casts between sample counts, milliseconds and pixels (their
+// ranges are bounded by what the device and the files can hold) are not worth the noise.
+#![allow(
+    clippy::missing_errors_doc,
+    clippy::missing_panics_doc,
+    clippy::must_use_candidate,
+    clippy::return_self_not_must_use,
+    clippy::too_many_lines,
+    clippy::struct_excessive_bools,
+    clippy::similar_names,
+    clippy::many_single_char_names,
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    clippy::cast_possible_wrap,
+    clippy::cast_precision_loss
+)]
 
 mod release;
 
@@ -11,6 +31,7 @@ use release::{
     PORTABLE_MARKER, PORTABLE_README,
 };
 use sha2::{Digest, Sha256};
+use std::fmt::Write as _;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -22,7 +43,7 @@ const YTDLP_VERSION: &str = "2026.10.21";
 const YTDLP_SHA256: &str = "33121d192d706e62f684a06f80918e3f3a8ba52ac3a65213b6951c39c7d9f555";
 
 /// Where the pinned release's files are. The in-app updater (crates/app/src/updater.rs) is separate on purpose: it
-/// pulls the latest release at run time, which is how users get a yt-dlp that keeps up with YouTube.
+/// pulls the latest release at run time, which is how users get a yt-dlp that keeps up with `YouTube`.
 fn ytdlp_base() -> String {
     format!("https://github.com/yt-dlp/yt-dlp/releases/download/{YTDLP_VERSION}")
 }
@@ -53,7 +74,10 @@ fn main() {
 // ------------------------------------------------------------------ update signing
 
 fn to_hex(bytes: &[u8]) -> String {
-    bytes.iter().map(|b| format!("{b:02x}")).collect()
+    bytes.iter().fold(String::new(), |mut hex, b| {
+        let _ = write!(hex, "{b:02x}");
+        hex
+    })
 }
 
 fn from_hex(text: &str) -> Option<Vec<u8>> {
@@ -122,6 +146,7 @@ fn workspace_root() -> PathBuf {
 // ------------------------------------------------------------------ helpers (tested)
 
 /// Finds `name`'s hash in a checksum file (`<hash>  <name>` or `<hash> *<name>`).
+#[must_use]
 pub fn parse_sums(text: &str, name: &str) -> Option<String> {
     text.lines().find_map(|l| {
         let mut parts = l.split_whitespace();
@@ -130,11 +155,14 @@ pub fn parse_sums(text: &str, name: &str) -> Option<String> {
     })
 }
 
+#[must_use]
 pub fn sha256_hex(bytes: &[u8]) -> String {
     Sha256::digest(bytes)
         .iter()
-        .map(|b| format!("{b:02x}"))
-        .collect()
+        .fold(String::new(), |mut hex, b| {
+            let _ = write!(hex, "{b:02x}");
+            hex
+        })
 }
 
 pub fn verify(what: &str, bytes: &[u8], expected: &str) -> Res<()> {
@@ -147,6 +175,7 @@ pub fn verify(what: &str, bytes: &[u8], expected: &str) -> Res<()> {
 }
 
 /// Windows executables start with "MZ".
+#[must_use]
 pub fn is_windows_exe(bytes: &[u8]) -> bool {
     bytes.starts_with(b"MZ")
 }
@@ -165,6 +194,7 @@ fn write_atomic(path: &Path, bytes: &[u8]) -> Res<()> {
 // ------------------------------------------------------------------------- FFmpeg
 
 /// The `host:` line of `rustc -vV`, e.g. `x86_64-pc-windows-msvc`.
+#[must_use]
 pub fn parse_host(rustc_vv: &str) -> Option<String> {
     rustc_vv
         .lines()
@@ -191,6 +221,7 @@ fn ffmpeg_prefix(root: &Path) -> Res<PathBuf> {
 /// The arguments for bash to run the build script. On Windows bash must be a *login* shell (`-l`): that is
 /// what puts MSYS2's `/usr/bin` (mkdir, make, sha256sum...) on PATH; without it the script dies on its first
 /// command with "mkdir: command not found".
+#[must_use]
 pub fn bash_args(windows: bool, script: &Path, prefix: &Path) -> Vec<String> {
     let mut args = Vec::new();
     if windows {
@@ -206,9 +237,9 @@ fn bash_path(p: &Path) -> String {
     p.to_string_lossy().replace('\\', "/")
 }
 
-/// What to run once to get the Windows build tools for FFmpeg.
+/// What to run once to get the Windows build tools for `FFmpeg`.
 const MSYS2_SETUP: &str = r#"winget install --id MSYS2.MSYS2 -e   then   C:\msys64\usr\bin\bash.exe -lc "pacman -S --noconfirm --needed make nasm diffutils pkgconf""#;
-/// MSYS2 programs FFmpeg's `configure` and `make` need.
+/// MSYS2 programs `FFmpeg`'s `configure` and `make` need.
 const MSYS2_TOOLS: [&str; 3] = ["make", "nasm", "diff"];
 
 /// The MSYS2 bash to use: `PYXEE_BASH`, else the default install. `exists` is injected so this is testable.
@@ -255,6 +286,7 @@ pub fn parse_vswhere_install(stdout: &str) -> Option<PathBuf> {
 }
 
 /// The `NAME=value` lines printed by cmd's `set`. Lines without a name (cmd's own `=C:=...` entries) are skipped.
+#[must_use]
 pub fn parse_env_dump(text: &str) -> Vec<(String, String)> {
     text.lines()
         .filter_map(|l| {
@@ -265,6 +297,7 @@ pub fn parse_env_dump(text: &str) -> Vec<(String, String)> {
 }
 
 /// Where Visual Studio keeps the script that puts the x64 compiler on PATH.
+#[must_use]
 pub fn vcvars_path(vs: &Path) -> PathBuf {
     vs.join("VC")
         .join("Auxiliary")
@@ -274,6 +307,7 @@ pub fn vcvars_path(vs: &Path) -> PathBuf {
 
 /// A batch file that runs `vcvars64.bat` and prints the resulting environment. (A file, not `cmd /c "..."`: the
 /// path has spaces and often parentheses, which `cmd /c` mis-handles when Rust quotes the argument.)
+#[must_use]
 pub fn msvc_env_script(vcvars: &Path) -> String {
     [
         "@echo off".to_string(),
@@ -346,7 +380,7 @@ fn dump_msvc_env(vcvars: &Path) -> Res<String> {
     }
 }
 
-/// Builds the minimal static FFmpeg with `scripts/build-ffmpeg.sh` (skipped when it is current).
+/// Builds the minimal static `FFmpeg` with `scripts/build-ffmpeg.sh` (skipped when it is current).
 /// Windows: needs MSYS2 (`make`, `nasm`, `diffutils`) and the MSVC tools. When `cl` is not on PATH (a plain shell,
 /// a CI step) the Visual Studio environment is imported with vswhere + `vcvars64.bat` for the build only.
 fn ffmpeg() -> Res<()> {
@@ -360,7 +394,7 @@ fn ffmpeg() -> Res<()> {
             find_vs_install,
             dump_msvc_env,
         )?;
-        let bash = locate_bash(std::env::var("PYXEE_BASH").ok(), |p| p.is_file())?;
+        let bash = locate_bash(std::env::var("PYXEE_BASH").ok(), std::path::Path::is_file)?;
         // Keep the MSVC tools on PATH inside MSYS2 (and its `link.exe` must not shadow MSVC's).
         let probe = format!(
             "for t in {}; do command -v $t >/dev/null || echo $t; done",
@@ -485,6 +519,7 @@ fn npm() -> Command {
 }
 
 /// Where npm puts the Tauri CLI launcher for this repo.
+#[must_use]
 pub fn tauri_cli(root: &Path) -> PathBuf {
     root.join("ui/node_modules/.bin")
         .join(if cfg!(windows) { "tauri.cmd" } else { "tauri" })
@@ -553,7 +588,7 @@ fn sign_file(args: &[String]) -> Res<()> {
     ))
 }
 
-/// Single-quotes `s` for a PowerShell command line.
+/// Single-quotes `s` for a `PowerShell` command line.
 fn ps_quote(s: &str) -> String {
     format!("'{}'", s.replace('\'', "''"))
 }
@@ -587,7 +622,7 @@ fn verify_signed(files: &[PathBuf]) -> Res<()> {
 }
 
 /// The bundle config for `tauri build`: the plain one, or (when signing) one that also makes Tauri call `sign-file`.
-fn bundle_config(root: &Path, signing: &Option<Signing>) -> Res<PathBuf> {
+fn bundle_config(root: &Path, signing: Option<&Signing>) -> Res<PathBuf> {
     let base_path = root.join("crates/app/tauri.bundle.conf.json");
     if signing.is_none() {
         return Ok(base_path);
@@ -615,7 +650,10 @@ fn signing_config() -> Res<()> {
     if signing.is_none() {
         unsigned_notice(signing_required())?;
     }
-    println!("{}", bundle_config(&workspace_root(), &signing)?.display());
+    println!(
+        "{}",
+        bundle_config(&workspace_root(), signing.as_ref())?.display()
+    );
     Ok(())
 }
 
@@ -634,7 +672,7 @@ fn ui_ready(value: Option<std::ffi::OsString>) -> bool {
     value.is_some_and(|v| !v.is_empty() && v != "0")
 }
 
-/// What both packages need first: yt-dlp, FFmpeg libraries, the built UI, the Tauri CLI, the signing setup.
+/// What both packages need first: yt-dlp, `FFmpeg` libraries, the built UI, the Tauri CLI, the signing setup.
 fn prepare() -> Res<Prepared> {
     let root = workspace_root();
     let signing = signing_from_env()?;
@@ -678,7 +716,7 @@ fn installer() -> Res<()> {
         return Err("the installer can only be built on Windows".into());
     }
     let p = prepare()?;
-    let conf = bundle_config(&p.root, &p.signing)?;
+    let conf = bundle_config(&p.root, p.signing.as_ref())?;
     run(
         Command::new(&p.cli)
             .args(["build", "--bundles", BUNDLES, "--config"])
@@ -716,7 +754,7 @@ fn portable() -> Res<()> {
         return Err("the portable build can only be made on Windows".into());
     }
     let p = prepare()?;
-    let conf = bundle_config(&p.root, &p.signing)?;
+    let conf = bundle_config(&p.root, p.signing.as_ref())?;
     run(
         Command::new(&p.cli)
             .args(["build", "--no-bundle", "--config"])
@@ -733,25 +771,22 @@ fn portable() -> Res<()> {
         .map_err(|e| format!("cannot create {}: {e}", stage.display()))?;
     for e in portable_entries() {
         let dest = stage.join(e.name);
-        match e.from {
-            Some(rel) => {
-                let src = p.root.join(rel);
-                std::fs::copy(&src, &dest).map_err(|err| {
-                    format!(
-                        "cannot copy {} for the portable zip: {err} (did the build above produce it?)",
-                        src.display()
-                    )
-                })?;
-            }
-            None => {
-                let body = if e.name == PORTABLE_MARKER {
-                    "This file turns on Pyxee's portable mode: the library, settings and logs are kept in the data folder next to Pyxee.exe. Delete it to use the normal per-user folder.\r\n"
-                } else {
-                    PORTABLE_README
-                };
-                std::fs::write(&dest, body)
-                    .map_err(|err| format!("cannot write {}: {err}", dest.display()))?;
-            }
+        if let Some(rel) = e.from {
+            let src = p.root.join(rel);
+            std::fs::copy(&src, &dest).map_err(|err| {
+                format!(
+                    "cannot copy {} for the portable zip: {err} (did the build above produce it?)",
+                    src.display()
+                )
+            })?;
+        } else {
+            let body = if e.name == PORTABLE_MARKER {
+                "This file turns on Pyxee's portable mode: the library, settings and logs are kept in the data folder next to Pyxee.exe. Delete it to use the normal per-user folder.\r\n"
+            } else {
+                PORTABLE_README
+            };
+            std::fs::write(&dest, body)
+                .map_err(|err| format!("cannot write {}: {err}", dest.display()))?;
         }
     }
     // yt-dlp.exe is somebody else's program and is left as published. Only Pyxee.exe is signed.

@@ -410,7 +410,7 @@ fn fetch_installer(app: &AppHandle) -> Result<(PathBuf, String), String> {
 const SIGNATURE_PATH_VAR: &str = "PYXEE_SIGCHECK_PATH";
 
 /// Reads Authenticode signatures with Windows' own verification (`Get-AuthenticodeSignature`, which uses
-/// WinVerifyTrust). Windows PowerShell is started from the system folder, hidden, with the file name passed through
+/// `WinVerifyTrust`). Windows `PowerShell` is started from the system folder, hidden, with the file name passed through
 /// the environment.
 struct WindowsSignatures;
 

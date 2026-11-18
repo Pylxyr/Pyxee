@@ -6,11 +6,13 @@ use std::path::Path;
 #[derive(Default)]
 pub struct LocalSource;
 
+#[must_use]
 pub fn key_for(path: &Path) -> String {
     crate::key::file(path)
 }
 
 /// A track entry for a local file, titled from its file name until tag reading arrives.
+#[must_use]
 pub fn track_for(path: &Path) -> TrackInfo {
     TrackInfo {
         key: key_for(path),

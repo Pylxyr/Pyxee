@@ -31,6 +31,7 @@ pub struct HeardTracker {
 
 impl HeardTracker {
     /// `latency_frames`: how long after being handed to the device a frame becomes audible.
+    #[must_use]
     pub fn new(latency_frames: u64) -> Self {
         Self {
             latency_frames,
@@ -116,6 +117,7 @@ impl HeardTracker {
     }
 
     /// The audible track and how many frames of it have been heard.
+    #[must_use]
     pub fn position(&self) -> Option<(EntryId, u64)> {
         let f = self.spans.front()?;
         f.announced

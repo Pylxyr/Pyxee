@@ -246,7 +246,7 @@ pub fn sync_lastfm(app: &AppHandle, announce: bool) {
             (true, false) => {
                 let handle = app.clone();
                 match lastfm::init(session, lastfm_queue_file(app), move |e| {
-                    on_lastfm_event(&handle, e)
+                    on_lastfm_event(&handle, e);
                 }) {
                     Ok(l) => *slot = Some(l),
                     Err(why) => refused = announce.then_some(why),
@@ -317,15 +317,14 @@ fn set_lastfm_session(app: &AppHandle, key: Option<String>) {
         return;
     };
     // The key goes into the vault; only where that is not possible does it stay in the settings file.
-    let in_settings = match key {
-        Some(k) => match lastfm::vault::store(&k) {
+    let in_settings = if let Some(k) = key {
+        match lastfm::vault::store(&k) {
             Ok(()) => None,
             Err(_) => Some(k),
-        },
-        None => {
-            lastfm::vault::forget();
-            None
         }
+    } else {
+        lastfm::vault::forget();
+        None
     };
     if let Ok(mut s) = shell.settings.lock() {
         s.lastfm_session = in_settings;
@@ -450,7 +449,7 @@ pub fn on_window_event(window: &tauri::Window, event: &tauri::WindowEvent) {
         }
         (flyout::LABEL, tauri::WindowEvent::Focused(false)) => flyout::hide(app),
         (mini::LABEL, tauri::WindowEvent::Moved(_) | tauri::WindowEvent::Resized(_)) => {
-            mini::on_moved(app)
+            mini::on_moved(app);
         }
         (mini::LABEL, tauri::WindowEvent::CloseRequested { api, .. }) => {
             // Closing the mini player only hides it; it keeps its place.
@@ -546,7 +545,7 @@ pub fn on_state(app: &AppHandle, s: &PlayerStateDto) {
         if let Some(discord) = guard.as_ref() {
             discord.on_state(phase, entry.map(|e| &e.track), s.position_ms);
         }
-    };
+    }
     if let Ok(guard) = shell.lastfm.lock() {
         if let Some(lastfm) = guard.as_ref() {
             lastfm.on_state(phase, id, entry.map(|e| &e.track), s.position_ms);

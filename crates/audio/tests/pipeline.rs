@@ -1,6 +1,28 @@
 //! The pipeline end to end with real decoding: heard events follow consumption, flush is instant,
 //! pause freezes the clock, and failures are reported without stopping the queue.
 
+// Pedantic lints this project does not follow, allowed once per crate root. (A workspace-level allow loses to the
+// `-D clippy::pedantic` that is passed on the command line, so it has to be an attribute.) Each is a trade-off for
+// application code: `# Errors` / `# Panics` sections and `#[must_use]` on internal items, long match-heavy functions,
+// flag structs, short names in numeric code, and the casts between sample counts, milliseconds and pixels (their
+// ranges are bounded by what the device and the files can hold) are not worth the noise.
+#![allow(
+    clippy::missing_errors_doc,
+    clippy::missing_panics_doc,
+    clippy::must_use_candidate,
+    clippy::return_self_not_must_use,
+    clippy::too_many_lines,
+    clippy::struct_excessive_bools,
+    clippy::similar_names,
+    clippy::many_single_char_names,
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    clippy::cast_possible_wrap,
+    clippy::cast_precision_loss,
+    // Silence and unity gain are exact by construction in these tests.
+    clippy::float_cmp
+)]
+
 use pyxee_audio::decode::{LibavSource, SampleSource};
 use pyxee_audio::gap::find_gaps;
 use pyxee_audio::gapless::{FailKind, PreparedTrack};
@@ -198,8 +220,8 @@ fn heard_position_counts_what_was_consumed_not_what_was_decoded() {
 
 #[test]
 fn output_latency_delays_what_counts_as_heard() {
-    let (_p, c, rx) = setup();
-    _p.push(track(1, "a_44k.wav"));
+    let (p, c, rx) = setup();
+    p.push(track(1, "a_44k.wav"));
     sleep(Duration::from_millis(150));
     let mut buf = vec![0f32; CHUNK * 2];
     c.pull(&mut buf, 2_400); // 50 ms device latency: 10 ms handed over is not yet audible

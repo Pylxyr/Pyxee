@@ -19,6 +19,7 @@ impl ThumbButton {
     ];
 
     /// The id Windows reports back when the button is clicked.
+    #[must_use]
     pub const fn id(self) -> u32 {
         match self {
             ThumbButton::Previous => 100,
@@ -27,10 +28,12 @@ impl ThumbButton {
         }
     }
 
+    #[must_use]
     pub fn from_id(id: u32) -> Option<Self> {
         Self::ALL.into_iter().find(|b| b.id() == id)
     }
 
+    #[must_use]
     pub const fn action(self) -> CliAction {
         match self {
             ThumbButton::Previous => CliAction::Previous,
@@ -58,6 +61,7 @@ pub struct ThumbSpec {
 
 /// The three thumbnail buttons for the current state: play shows a pause glyph while playing, and with nothing
 /// loaded the buttons are greyed out.
+#[must_use]
 pub fn thumb_specs(phase: Phase, has_track: bool) -> [ThumbSpec; 3] {
     let playing = phase == Phase::Playing;
     [
@@ -90,6 +94,7 @@ pub struct JumpTask {
     pub description: &'static str,
 }
 
+#[must_use]
 pub fn jump_tasks() -> [JumpTask; 4] {
     [
         JumpTask {

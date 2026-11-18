@@ -153,6 +153,8 @@ fn spawn_real(app: AppHandle, rx: Receiver<Effect>) {
 }
 
 /// The engine thread's work: owns the engine and the output stream until the app's command channel closes.
+// The engine thread owns the handle, the host and the channel for its whole life, so they are passed by value.
+#[allow(clippy::needless_pass_by_value)]
 fn run_real(app: AppHandle, host: Arc<AppHost>, rx: Receiver<Effect>) {
     {
         let source = Arc::clone(&app.state::<AppState>().source);
@@ -205,7 +207,7 @@ fn run_real(app: AppHandle, host: Arc<AppHost>, rx: Receiver<Effect>) {
                                     "No audio output device. Connect one and press play again."
                                         .into(),
                                 ),
-                            })
+                            });
                         }
                         effect => engine.handle(effect),
                     }
@@ -288,7 +290,7 @@ fn spawn_sim(app: AppHandle, rx: Receiver<Effect>) {
                         match out {
                             SimOut::Engine(e) => publish(&app, |p| p.engine(e)),
                             SimOut::Radio(t) => {
-                                publish(&app, |p| p.command(Command::AppendRadio(t)))
+                                publish(&app, |p| p.command(Command::AppendRadio(t)));
                             }
                         }
                     }

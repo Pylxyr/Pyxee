@@ -10,13 +10,14 @@ const FILE: &str = "file:";
 /// What a key refers to.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TrackKey<'a> {
-    /// A YouTube video (a plain id: it goes into a URL later).
+    /// A `YouTube` video (a plain id: it goes into a URL later).
     Youtube(&'a str),
     /// A file on this computer.
     File(&'a str),
 }
 
 /// A plain video id: at most 64 of letters, digits, `_` and `-`. It goes into a URL, so nothing else is let through.
+#[must_use]
 pub fn is_video_id(id: &str) -> bool {
     !id.is_empty()
         && id.len() <= 64
@@ -42,16 +43,19 @@ pub fn parse(key: &str) -> Option<TrackKey<'_>> {
 }
 
 /// Whether the key names a local file (which source plays it), whatever follows the prefix.
+#[must_use]
 pub fn is_file(key: &str) -> bool {
     key.starts_with(FILE)
 }
 
-/// The key of a YouTube video.
+/// The key of a `YouTube` video.
+#[must_use]
 pub fn youtube(id: &str) -> String {
     format!("{YOUTUBE}{id}")
 }
 
 /// The key of a local file.
+#[must_use]
 pub fn file(path: &Path) -> String {
     format!("{FILE}{}", path.display())
 }

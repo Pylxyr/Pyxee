@@ -391,8 +391,7 @@ fn seeking_restarts_at_the_offset_and_the_position_follows() {
     let after_seek = (r.samples.len() - before) / 2;
     assert!(
         (0.45..0.6).contains(&(after_seek as f64 / 48_000.0)),
-        "about 0.5 s of audio should remain after seeking to 1.5 s, got {} frames",
-        after_seek
+        "about 0.5 s of audio should remain after seeking to 1.5 s, got {after_seek} frames"
     );
     assert_eq!(
         r.audible_log.iter().filter(|a| **a == Some(id)).count(),
@@ -929,6 +928,7 @@ fn seeking_never_lets_the_next_track_play_first() {
 }
 
 #[test]
+#[allow(clippy::float_cmp)] // a volume of 0 is exactly silent
 fn the_volume_setting_changes_how_loud_the_music_is() {
     let peak = |volume: u8| {
         let mut r = Rig::new(TestSource::local());

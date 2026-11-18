@@ -1,4 +1,4 @@
-//! Paces yt-dlp so normal use cannot trip YouTube's rate limit.
+//! Paces yt-dlp so normal use cannot trip `YouTube`'s rate limit.
 //!
 //! Search, resolve, prefetch and radio each run on their own thread, so without this they all
 //! start yt-dlp at once, and every yt-dlp run makes several requests of its own. The gate makes
@@ -8,7 +8,7 @@
 //! * **A quiet gap** (`min_gap`) after each run ends before the next may start.
 //! * **A shorter gap for what the listener waits for** (`interactive_gap`): a search or the song just picked starts
 //!   after a quarter of a second, not a second. Background work keeps the full gap.
-//! * **An hourly budget** (`hourly_budget`): YouTube's limit is a count per hour (yt-dlp's wiki puts it near 300
+//! * **An hourly budget** (`hourly_budget`): `YouTube`'s limit is a count per hour (yt-dlp's wiki puts it near 300
 //!   videos an hour for a guest), not a gap between two requests, so the gap alone cannot keep a long burst under it.
 //!   Runs are counted over a rolling hour. Once half the budget is used, background runs are spaced out to the hourly
 //!   rate (a run every 24 s for 150 an hour); once all of it is used, background runs are refused until the hour has
@@ -149,7 +149,7 @@ pub(crate) fn escalate(base: Duration, max: Duration, strikes: u32) -> Duration 
         .min(max.max(base))
 }
 
-/// How many refused requests (HTTP 403) in a row, with no success between them, count as YouTube refusing this
+/// How many refused requests (HTTP 403) in a row, with no success between them, count as `YouTube` refusing this
 /// client or network altogether: from then on the gate behaves as after a rate limit.
 const FORBIDDEN_LIMIT: u32 = 3;
 
@@ -158,9 +158,9 @@ const FORBIDDEN_LIMIT: u32 = 3;
 enum Outcome {
     /// It worked: a cooldown that was growing starts over.
     Succeeded,
-    /// YouTube said slow down: a cooldown starts (or grows).
+    /// `YouTube` said slow down: a cooldown starts (or grows).
     RateLimited,
-    /// YouTube refused one request (HTTP 403). One such answer can be about that song alone, so it starts no
+    /// `YouTube` refused one request (HTTP 403). One such answer can be about that song alone, so it starts no
     /// cooldown; `FORBIDDEN_LIMIT` in a row, with no success between, are treated like a rate limit.
     Forbidden,
     /// Any other error (offline, song unavailable, ...): says nothing about whether the limit has lifted.
@@ -286,16 +286,13 @@ impl State {
             .iter()
             .rposition(|(_, p)| *p == Priority::Interactive)
             .or_else(|| self.waiting.len().checked_sub(1));
-        match pick {
-            Some(i) => {
-                let (next, _) = self.waiting.remove(i);
-                self.granted = Some(next); // `busy` stays set: nobody can jump the line
-                true
-            }
-            None => {
-                self.busy = false;
-                false
-            }
+        if let Some(i) = pick {
+            let (next, _) = self.waiting.remove(i);
+            self.granted = Some(next); // `busy` stays set: nobody can jump the line
+            true
+        } else {
+            self.busy = false;
+            false
         }
     }
 }
@@ -327,6 +324,7 @@ impl Drop for Permit<'_> {
 }
 
 impl Gate {
+    #[must_use]
     pub fn new(cfg: GateConfig) -> Self {
         Self {
             cfg,

@@ -79,6 +79,7 @@ pub struct DeviceWatch {
 
 impl DeviceWatch {
     /// `device`: the device the stream was just opened on; `now_ms`: now.
+    #[must_use]
     pub fn new(device: Option<DeviceRef>, now_ms: u64) -> Self {
         Self {
             state: if device.is_some() {
@@ -94,6 +95,7 @@ impl DeviceWatch {
         }
     }
 
+    #[must_use]
     pub fn is_lost(&self) -> bool {
         matches!(self.state, State::Lost { .. })
     }

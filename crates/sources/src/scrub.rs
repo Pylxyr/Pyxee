@@ -30,6 +30,7 @@ pub(crate) fn register(secret: &str) {
 /// `text` without the active cookie file or browser spec, without the user's profile folders
 /// (`%USERPROFILE%`, `%APPDATA%`, `%LOCALAPPDATA%`, `%TEMP%`, `%HOME%`) and without the value of any
 /// `--cookies` or `--cookies-from-browser` argument.
+#[must_use]
 pub fn scrub(text: &str) -> String {
     let env: Vec<(&str, String)> = ENV_PATHS
         .iter()

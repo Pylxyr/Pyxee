@@ -3,6 +3,11 @@ name = "pyxee-sources"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+description = "YouTube and YouTube Music sources for Pyxee, with the yt-dlp pacing gate"
+repository.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
 
 [dependencies]
 log = "0.4.35"

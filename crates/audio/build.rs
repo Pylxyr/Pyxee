@@ -1,8 +1,28 @@
-//! Compiles the C decode shim against the minimal static FFmpeg build and links it.
+//! Compiles the C decode shim against the minimal static `FFmpeg` build and links it.
 //!
 //! The libav* static libraries come from `cargo xtask ffmpeg` (see docs/engine.md). Point
 //! `PYXEE_FFMPEG_DIR` at the install prefix (it holds `include/` and `lib/`); without it the
 //! default is `<workspace>/target/ffmpeg/<target triple>`.
+
+// Pedantic lints this project does not follow, allowed once per crate root. (A workspace-level allow loses to the
+// `-D clippy::pedantic` that is passed on the command line, so it has to be an attribute.) Each is a trade-off for
+// application code: `# Errors` / `# Panics` sections and `#[must_use]` on internal items, long match-heavy functions,
+// flag structs, short names in numeric code, and the casts between sample counts, milliseconds and pixels (their
+// ranges are bounded by what the device and the files can hold) are not worth the noise.
+#![allow(
+    clippy::missing_errors_doc,
+    clippy::missing_panics_doc,
+    clippy::must_use_candidate,
+    clippy::return_self_not_must_use,
+    clippy::too_many_lines,
+    clippy::struct_excessive_bools,
+    clippy::similar_names,
+    clippy::many_single_char_names,
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    clippy::cast_possible_wrap,
+    clippy::cast_precision_loss
+)]
 
 use std::path::PathBuf;
 
@@ -13,9 +33,10 @@ fn main() {
 
     let manifest = PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").expect("cargo sets this"));
     let target = std::env::var("TARGET").expect("cargo sets this");
-    let prefix = std::env::var_os("PYXEE_FFMPEG_DIR")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| manifest.join("../../target/ffmpeg").join(&target));
+    let prefix = std::env::var_os("PYXEE_FFMPEG_DIR").map_or_else(
+        || manifest.join("../../target/ffmpeg").join(&target),
+        PathBuf::from,
+    );
     let (include, lib) = (prefix.join("include"), prefix.join("lib"));
     assert!(
         include.join("libavformat/avformat.h").is_file(),

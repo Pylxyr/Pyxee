@@ -30,6 +30,7 @@ pub enum Glyph {
 
 impl Control {
     /// The tray icon id, stable across runs.
+    #[must_use]
     pub const fn id(self) -> &'static str {
         match self {
             Control::Previous => "ctl-previous",
@@ -38,12 +39,14 @@ impl Control {
         }
     }
 
+    #[must_use]
     pub fn from_id(id: &str) -> Option<Control> {
         CONTROLS.into_iter().find(|c| c.id() == id)
     }
 
     /// Which picture the button shows. Play/pause shows what pressing it will do: a song that is playing or still
     /// loading offers Pause, anything else offers Play.
+    #[must_use]
     pub const fn glyph(self, phase: Phase) -> Glyph {
         match self {
             Control::Previous => Glyph::Previous,
@@ -55,6 +58,7 @@ impl Control {
         }
     }
 
+    #[must_use]
     pub const fn tooltip(self, phase: Phase) -> &'static str {
         match self.glyph(phase) {
             Glyph::Previous => "Previous",
@@ -66,6 +70,7 @@ impl Control {
 }
 
 /// "Title – Artist" for the main icon's tooltip, cut to what Windows will show (never in the middle of a character).
+#[must_use]
 pub fn track_tooltip(title: &str, artist: &str) -> String {
     let text = if artist.trim().is_empty() {
         title.trim().to_string()
