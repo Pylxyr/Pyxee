@@ -4,8 +4,6 @@
 
 # Pyxee
 
-**Search it. Queue it. Let it play.**
-
 A gapless music player for Windows and Linux that plays music found online.
 
 [![Latest release](https://img.shields.io/github/v/release/Pylxyr/Pyxee?include_prereleases&color=e8061f&label=release)](https://github.com/Pylxyr/Pyxee/releases/latest)
