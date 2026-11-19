@@ -149,7 +149,7 @@ Still stuck? [Open an issue](https://github.com/Pylxyr/Pyxee/issues).
 
 [Rust](https://www.rust-lang.org/), [Tauri 2](https://tauri.app/), [Svelte](https://svelte.dev/), [TypeScript](https://www.typescriptlang.org/) and [Tailwind CSS](https://tailwindcss.com/).
 
-## Licence
+## License
 
 Pyxee is MIT licensed (see [`LICENSE`](LICENSE)). It uses FFmpeg libraries under the LGPLv2.1 and bundles yt-dlp as a separate program (its Windows build is GPLv3+). The full notices ship with the installer and every release.
 
