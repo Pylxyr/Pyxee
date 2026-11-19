@@ -80,7 +80,8 @@
       {:else if search.status === 'ready' && search.items.length === 0}
         <EmptyState icon="search" title="No results" text="Nothing matched “{search.query}”. Try different words or another filter." />
       {:else if showList}
-        <div class="results" data-dim={search.status === 'loading'}>
+        <!-- route-in: a new set of results (after the skeleton) arrives with the first rows one after another. A filter change keeps this element, so a replaced list stays still. -->
+        <div class="results route-in" data-dim={search.status === 'loading'}>
         <TrackList label="Results" head={false}>
           {#each rows as r (r.key)}
             {@const item = r.item}

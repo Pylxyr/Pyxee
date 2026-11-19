@@ -216,3 +216,97 @@ describe('components', () => {
     }
   });
 });
+
+describe('the seek-line wake (a new song lights the seek line)', () => {
+  const rule = all.find((b) => b.selector === '.seek-wake i')?.body ?? '';
+
+  it('moves only transform and opacity, once, and leaves nothing running or promoted afterwards', () => {
+    expect(rule).toMatch(/animation:\s*wake\b/);
+    expect(keyframeProps('wake').sort()).toEqual(['opacity', 'transform']);
+    expect(rule).not.toMatch(/infinite|forwards|both|will-change|filter/);
+    // at rest it is invisible, so after the animation nothing of it is drawn
+    expect(rule).toMatch(/opacity:\s*0\b/);
+  });
+
+  it('stands down under reduced motion and in forced colours', () => {
+    const reduced = /@media \(prefers-reduced-motion: reduce\) \{([\s\S]*?)animation: none !important;/.exec(css)?.[1] ?? '';
+    expect(reduced).toContain('.seek-wake i');
+    expect(css).toMatch(/@media \(forced-colors: active\) \{[\s\S]*?\.seek-wake \{\s*display: none;/);
+  });
+});
+
+describe('the deck cover\'s light follows the music with opacity only', () => {
+  const lit = all.find((b) => b.selector === '.deck-art::before')?.body ?? '';
+  const dim = all.find((b) => b.selector === ".deck-art[data-paused='true']::before")?.body ?? '';
+
+  it('dims by opacity on the pre-rendered glow layer: no animated shadow, no filter, no fill kept after the arrival', () => {
+    expect(dim).toMatch(/^\s*opacity:\s*0?\.\d+;\s*$/);
+    expect(transitionedProps(lit)).toEqual(['opacity']);
+    expect(lit).toMatch(/animation:\s*glow-in\b[^;]*\bbackwards\b/);
+    expect(lit).not.toMatch(/forwards|both|filter|will-change/);
+    // the shadow itself is drawn once and never transitioned
+    expect(transitionedProps(lit)).not.toContain('box-shadow');
+  });
+
+  it('its length comes from a token, so reduced motion (which zeroes the tokens) makes it instant', () => {
+    expect(lit).toMatch(/transition:\s*opacity var\(--dur-slow\)/);
+  });
+});
+
+describe('the snackbar time rail', () => {
+  const rail = all.filter((b) => b.selector === '.toast-rail').find((b) => b.body.includes('height'))?.body ?? '';
+  it('is one drawn bar that is moved by script (transform), with no CSS animation or promotion', () => {
+    expect(rail).toMatch(/transform-origin:\s*left/);
+    expect(rail).not.toMatch(/animation|transition|will-change|filter/);
+    expect(rail).toMatch(/height:\s*2px/);
+  });
+  it('is hidden under reduced motion and in forced colours', () => {
+    expect(css).toMatch(/@media \(prefers-reduced-motion: reduce\) \{[\s\S]*?\.toast-rail \{\s*display: none;/);
+    expect(css).toMatch(/@media \(forced-colors: active\) \{[\s\S]*?\.toast-rail \{\s*display: none;/);
+  });
+});
+
+describe('the thrown song (toss to queue)', () => {
+  const dot = all.find((b) => b.selector === '.toss-dot')?.body ?? '';
+  it('is one fixed dot that lives only inside a script animation: no CSS animation, no promotion', () => {
+    expect(dot).toMatch(/position:\s*fixed/);
+    expect(dot).toMatch(/opacity:\s*0/);
+    expect(dot).not.toMatch(/animation|transition|will-change|filter|box-shadow/);
+  });
+  it('is not drawn in forced colours, where the notice says it all', () => {
+    expect(css).toMatch(/@media \(forced-colors: active\) \{[\s\S]*?\.toss-dot,\s*\.toast-rail \{\s*display: none;/);
+  });
+});
+
+describe('the theme crossfade', () => {
+  it('holds the accent glide off while the whole-window crossfade runs, and adds no animation of its own', () => {
+    expect(css).toMatch(/:root\[data-theme-fade\] \{\s*transition: none;\s*\}/);
+    // the crossfade is the root view transition's: its group length is set, and nothing else is styled for it
+    expect(css).toMatch(/::view-transition-group\(root\) \{\s*animation-duration: 300ms;/);
+  });
+});
+
+describe('the scroll edge under a pinned page header', () => {
+  const edge = all.filter((b) => b.selector === '.page-edge::after').find((b) => b.body.includes('gradient'))?.body ?? '';
+  it('is one gradient layer that only fades (opacity), with no animation timeline, filter or promotion', () => {
+    expect(edge).toMatch(/linear-gradient/);
+    expect(edge).toMatch(/transition:\s*opacity var\(--dur-base\)/);
+    expect(edge).not.toMatch(/animation|will-change|filter|box-shadow/);
+    // a scroll-linked animation would count as a running animation while a song plays: not used anywhere
+    expect(css).not.toMatch(/animation-timeline|scroll-timeline|timeline-scope/);
+  });
+  it('is not drawn in forced colours (the header keeps its hairline)', () => {
+    expect(css).toMatch(/@media \(forced-colors: active\) \{[\s\S]*?\.page-edge::after \{\s*display: none;/);
+  });
+});
+
+describe('the failure nudge', () => {
+  const rule = all.find((b) => b.selector === '.fail-in')?.body ?? '';
+  it('is a one-off transform and opacity shake with no fill kept, and stands down under reduced motion', () => {
+    expect(rule).toMatch(/animation:\s*nudge\b/);
+    expect(keyframeProps('nudge').sort()).toEqual(['opacity', 'transform']);
+    expect(rule).not.toMatch(/infinite|forwards|both|will-change/);
+    const reduced = /@media \(prefers-reduced-motion: reduce\) \{([\s\S]*?)animation: none !important;/.exec(css)?.[1] ?? '';
+    expect(reduced).toContain('.fail-in');
+  });
+});

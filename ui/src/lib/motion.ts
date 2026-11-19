@@ -62,6 +62,22 @@ export function withViewTransition(
 }
 
 /**
+ * A theme the person has just chosen takes over by a crossfade of the whole window (the root view transition: two
+ * snapshots faded into each other on the compositor), not by a cut. While it runs the accent's own 600 ms glide is held
+ * off (`data-theme-fade` on <html>, see app.css) so the two do not blur into each other. Only for a choice the person
+ * makes: the palette that follows the cover each song, and the live preview in the theme editor, never come through here
+ * (a new view transition cancels the one running, so they must not queue behind a song's cover dissolve). Without view
+ * transitions, or under reduced motion, the update just runs.
+ */
+export function crossfadeTheme(update: () => void): boolean {
+  const root = document.documentElement;
+  return withViewTransition(update, {
+    before: () => root.setAttribute('data-theme-fade', ''),
+    after: () => root.removeAttribute('data-theme-fade'),
+  });
+}
+
+/**
  * A short pop on an element (transform only, a Web Animations animation that ends by itself, so nothing is promoted
  * before or after it). Nothing under reduced motion or where there is no `animate`.
  */
@@ -129,3 +145,62 @@ export function crossfadeCover(update: () => void): boolean {
   };
   return withViewTransition(update, { before: name, during: name, after: () => named?.style.removeProperty('view-transition-name') });
 }
+
+/** A CSS easing token (`--spring`, `--ease-out`...) for script; `fallback` where the page cannot give it (a test, an old webview). */
+export function tokenEase(name: string, fallback: string): string {
+  if (typeof getComputedStyle !== 'function') return fallback;
+  return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback;
+}
+
+/**
+ * One-shot transform animation on an element (Web Animations: it ends by itself, so nothing is promoted before or after).
+ * Nothing under reduced motion, in a hidden window, or where there is no `animate`. A webview that cannot read the
+ * token's easing gets the fallback instead of an error.
+ */
+function oneShot(el: Element, keyframes: Keyframe[], duration: number, token: string, fallback: string): void {
+  if (prefersReducedMotion() || typeof el.animate !== 'function' || (typeof document !== 'undefined' && document.hidden)) return;
+  try {
+    el.animate(keyframes, { duration, easing: tokenEase(token, fallback) });
+  } catch {
+    el.animate(keyframes, { duration, easing: fallback });
+  }
+}
+
+/** Repeat: the icon turns once (backwards when repeat goes off), on the spring. */
+export function turn(el: Element, dir: 1 | -1 = 1): void {
+  oneShot(el, [{ transform: 'rotate(0deg)' }, { transform: `rotate(${dir * 360}deg)` }], 520, '--spring', 'cubic-bezier(0.2, 0.8, 0.2, 1)');
+}
+
+/** Shuffle: the two arrows swap places, a short sideways shuffle and back. */
+export function shuffleSwap(el: Element): void {
+  oneShot(
+    el,
+    [{ transform: 'translateX(0)' }, { transform: 'translateX(-4px) scale(0.92)', offset: 0.3 }, { transform: 'translateX(3px)', offset: 0.65 }, { transform: 'translateX(0)' }],
+    380,
+    '--ease',
+    'cubic-bezier(0.2, 0.8, 0.2, 1)',
+  );
+}
+
+/** The part of a button that moves: its icon, or the element itself when there is none. */
+const iconOf = (node: HTMLElement): Element => node.querySelector('svg') ?? node;
+
+function onChange<T>(run: (node: HTMLElement, next: T, prev: T) => void) {
+  return (node: HTMLElement, value: T) => {
+    let last = value;
+    return {
+      update(next: T) {
+        if (next !== last) {
+          const prev = last;
+          last = next;
+          run(node, next, prev);
+        }
+      },
+    };
+  };
+}
+
+/** Svelte action: the icon inside answers when `value` changes (not when it first appears). Shuffle uses this. */
+export const swapOnChange = onChange<boolean>((node) => shuffleSwap(iconOf(node)));
+/** Svelte action for the repeat button: its icon turns when the mode changes (`off` turns it back). */
+export const turnOnChange = onChange<string>((node, next) => turn(iconOf(node), next === 'off' ? -1 : 1));

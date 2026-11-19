@@ -8,6 +8,7 @@
   import { reorder } from '$lib/reorder';
   import { focusNeighbour } from '$lib/focus';
   import { markListChange } from '$lib/motion';
+  import { flipList } from '$lib/flip';
   import type { PlaylistDto } from '$lib/bindings/PlaylistDto';
   import Button from '../components/Button.svelte';
   import EditableRow from '../components/EditableRow.svelte';
@@ -127,7 +128,7 @@
       <EmptyState icon="music" title="This playlist is empty" text="Choose Add to playlist on any song to put it here." />
     {:else}
       {@const list = pl}
-      <ul aria-label="Songs in {list.name}" bind:this={listEl}>
+      <ul aria-label="Songs in {list.name}" bind:this={listEl} use:flipList>
         {#each list.entries as e, i (e.entryId)}
           <EditableRow
             data-row

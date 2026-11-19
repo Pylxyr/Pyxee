@@ -5,13 +5,16 @@
   import { library } from '$lib/library.svelte';
   import { search } from '$lib/search.svelte';
   import { snackbar } from '$lib/snackbar.svelte';
+  import { tossToQueue } from '$lib/toss';
   import MenuItem from './MenuItem.svelte';
   import Sheet from './Sheet.svelte';
 
   // The menu a row's "More options" button opens: an in-page sheet, never a native menu.
   // The notices name the song ("Saturn will play next"); a very long title is cut short.
   const short = (t: TrackDto) => (t.title.length > 48 ? `${t.title.slice(0, 47).trimEnd()}…` : t.title);
-  function done(label: string, run: () => void) {
+  function done(label: string, run: () => void, toss = false) {
+    // The song is thrown at the queue before the menu closes, from the row the menu was opened on.
+    if (toss) tossToQueue(nav.menuOpener);
     run();
     nav.menuTrack = null;
     snackbar.push(label);
@@ -30,8 +33,8 @@
   {#if nav.menuTrack}
     {@const t = nav.menuTrack}
     <MenuItem onclick={() => done(`${short(t)} is playing now`, () => player.playTracks([t]))}>Play now</MenuItem>
-    <MenuItem onclick={() => done(`${short(t)} will play next`, () => player.playNext(t))}>Play next</MenuItem>
-    <MenuItem onclick={() => done(`${short(t)} is added to queue`, () => player.addToQueue(t))}>Add to queue</MenuItem>
+    <MenuItem onclick={() => done(`${short(t)} will play next`, () => player.playNext(t), true)}>Play next</MenuItem>
+    <MenuItem onclick={() => done(`${short(t)} is added to queue`, () => player.addToQueue(t), true)}>Add to queue</MenuItem>
     <MenuItem onclick={() => leave((track) => library.toggleLike(track))}>{library.isLiked(t.key) ? 'Unlike' : 'Like'}</MenuItem>
     <MenuItem onclick={() => leave((track) => (nav.pickTrack = track))}>Add to playlist</MenuItem>
     <MenuItem onclick={() => leave((track) => { nav.go('search'); search.run(track.artist, 'songs'); })}>Go to artist</MenuItem>

@@ -5,6 +5,7 @@
   import IconButton from './IconButton.svelte';
   import PlayButton from './PlayButton.svelte';
   import Seek from './Seek.svelte';
+  import SeekWake from './SeekWake.svelte';
   import Thumb from './Thumb.svelte';
 
   // The player of a narrow window: one strip above the bottom bar, with the seek line along its top edge.
@@ -22,13 +23,14 @@
   <div class="dock" data-testid="player-bar" onclick={openQueue}>
     <div class="dock-seek">
       <Seek positionMs={player.positionMs} durationMs={player.durationMs} onseek={player.seek} accent label="Seek" />
+      <SeekWake songKey={entry.track.key} />
     </div>
     <button class="flex min-w-0 flex-1 items-center gap-3 text-left" aria-label="Open Now Playing" onclick={() => nav.openNowPlaying()}>
       <span class="flex shrink-0" data-np-source><Thumb src={entry.track.thumbnail} seed={entry.track.key} size={44} rounded="r-sm" /></span>
       <span class="min-w-0">
         <span class="t-strong block truncate">{entry.track.title}</span>
         {#if player.failure}
-          <span class="t-caption block truncate accent-text" role="alert">{describeFailure(player.failure)}</span>
+          <span class="t-caption fail-in block truncate accent-text" role="alert">{describeFailure(player.failure)}</span>
         {:else}
           <span class="t-caption muted block truncate">{entry.track.artist}</span>
         {/if}

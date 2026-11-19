@@ -65,4 +65,32 @@ describe('SnackbarStore', () => {
     vi.advanceTimersByTime(200);
     expect(s.items).toHaveLength(0);
   });
+
+  describe('the time rail', () => {
+    it('follows the timer: full and fresh for a new snack, the same length as its timeout', () => {
+      const s = new SnackbarStore();
+      const id = s.push('Removed', { action: { label: 'Undo', run: () => {} } });
+      expect(s.rails[id]).toEqual({ ms: 7000, seq: 1, fresh: true, held: false });
+      s.dismiss(id);
+      expect(s.rails[id]).toBeUndefined();
+    });
+    it('is held with the snack and carries on (not fresh) over the time left, at least a second', () => {
+      const s = new SnackbarStore();
+      const id = s.push('Hello');
+      vi.advanceTimersByTime(1000);
+      s.pause(id);
+      expect(s.rails[id]).toMatchObject({ held: true, seq: 1 });
+      s.resume(id);
+      expect(s.rails[id]).toEqual({ ms: 3000, seq: 2, fresh: false, held: false });
+      vi.advanceTimersByTime(3001);
+      expect(s.items).toHaveLength(0);
+      expect(s.rails[id]).toBeUndefined();
+    });
+    it('starts full again when the same message is shown again', () => {
+      const s = new SnackbarStore();
+      const id = s.push('Could not load');
+      s.push('Could not load');
+      expect(s.rails[id]).toMatchObject({ seq: 2, fresh: true });
+    });
+  });
 });

@@ -10,11 +10,25 @@ export interface Snack {
   action?: SnackAction;
 }
 
+/**
+ * What the time rail of a snack shows. `ms` is how long the snack still has to live from now; `seq` changes each time
+ * the timer is armed again; `fresh` says the rail starts full (a new snack, or the same message again) and not from
+ * where it was (a snack that runs on after being held); `held` is a snack whose timer is paused.
+ */
+export interface Rail {
+  ms: number;
+  seq: number;
+  fresh: boolean;
+  held: boolean;
+}
+
 const MAX_VISIBLE = 3;
 
 /** In-page notifications with optional Undo. Replaces native alert/confirm dialogs. */
 export class SnackbarStore {
   items = $state<Snack[]>([]);
+  /** The timer of each snack, as the rail along its foot shows it. */
+  rails = $state<Record<number, Rail>>({});
   #next = 1;
   #timers = new Map<number, ReturnType<typeof setTimeout>>();
   /** For a snack whose timer is paused (pointer over it, focus inside it): how long it still has to show. */
@@ -39,7 +53,8 @@ export class SnackbarStore {
     return id;
   }
 
-  #arm(id: number, ms: number) {
+  #arm(id: number, ms: number, fresh = true) {
+    this.rails = { ...this.rails, [id]: { ms, seq: (this.rails[id]?.seq ?? 0) + 1, fresh, held: false } };
     clearTimeout(this.#timers.get(id));
     this.#left.delete(id);
     this.#due.set(id, { at: Date.now(), ms });
@@ -56,13 +71,15 @@ export class SnackbarStore {
     clearTimeout(this.#timers.get(id));
     this.#timers.delete(id);
     this.#left.set(id, Math.max(1000, due.ms - (Date.now() - due.at)));
+    const rail = this.rails[id];
+    if (rail) this.rails = { ...this.rails, [id]: { ...rail, held: true } };
   }
 
   /** Lets a paused snack run out the time it had left (at least a second). */
   resume(id: number) {
     const ms = this.#left.get(id);
     if (ms === undefined || !this.items.some((s) => s.id === id)) return;
-    this.#arm(id, ms);
+    this.#arm(id, ms, false);
   }
 
   dismiss(id: number) {
@@ -70,6 +87,11 @@ export class SnackbarStore {
     this.#timers.delete(id);
     this.#left.delete(id);
     this.#due.delete(id);
+    if (id in this.rails) {
+      const rails = { ...this.rails };
+      delete rails[id];
+      this.rails = rails;
+    }
     this.items = this.items.filter((s) => s.id !== id);
   }
 

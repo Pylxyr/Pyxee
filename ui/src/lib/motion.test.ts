@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { nav } from './nav.svelte';
-import { MOTION, crossfadeCover, motionMs, motionPx, prefersReducedMotion, springOut, springPop, withViewTransition } from './motion';
+import { MOTION, crossfadeCover, motionMs, motionPx, prefersReducedMotion, springOut, springPop, swapOnChange, tokenEase, turn, turnOnChange, withViewTransition } from './motion';
 
 const original = window.matchMedia;
 function system(reduce: boolean) {
@@ -135,5 +135,69 @@ describe('motion', () => {
       nav.search('lowtide');
       expect(start).toHaveBeenCalledTimes(1);
     });
+  });
+});
+
+describe('toggle answers (shuffle swap, repeat turn)', () => {
+  const setup = () => {
+    const wrap = document.createElement('span');
+    wrap.innerHTML = '<button><svg></svg></button>';
+    document.body.append(wrap);
+    return { wrap, svg: wrap.querySelector('svg')! };
+  };
+  afterEach(() => {
+    vi.restoreAllMocks();
+    document.body.innerHTML = '';
+  });
+
+  it('animate the icon, with transform only, when the value changes and not when it first appears or stays', async () => {
+    system(false);
+    const { wrap, svg } = setup();
+    const spy = vi.spyOn(svg, 'animate');
+    const action = swapOnChange(wrap, false);
+    action.update(false);
+    expect(spy).not.toHaveBeenCalled();
+    action.update(true);
+    expect(spy).toHaveBeenCalledTimes(1);
+    const keys = (spy.mock.calls[0]![0] as Keyframe[]).flatMap((k) => Object.keys(k).filter((p) => p !== 'offset'));
+    expect([...new Set(keys)]).toEqual(['transform']);
+  });
+
+  it('turns the repeat icon forwards, and backwards when repeat goes off', () => {
+    system(false);
+    const { wrap, svg } = setup();
+    const spy = vi.spyOn(svg, 'animate');
+    const action = turnOnChange(wrap, 'off');
+    action.update('all');
+    action.update('one');
+    action.update('off');
+    expect(spy.mock.calls.map((c) => (c[0] as Keyframe[])[1]!.transform)).toEqual(['rotate(360deg)', 'rotate(360deg)', 'rotate(-360deg)']);
+  });
+
+  it('do nothing under reduced motion, in a hidden window, or where there is no animate', () => {
+    const { wrap, svg } = setup();
+    const spy = vi.spyOn(svg, 'animate');
+    const action = turnOnChange(wrap, 'off');
+    system(true);
+    action.update('all');
+    system(false);
+    vi.spyOn(document, 'hidden', 'get').mockReturnValue(true);
+    action.update('one');
+    expect(spy).not.toHaveBeenCalled();
+    const bare = document.createElement('span');
+    (bare as unknown as { animate?: unknown }).animate = undefined;
+    expect(() => turn(bare)).not.toThrow();
+  });
+
+  it('fall back to a plain easing when the page cannot read the token, and when the webview rejects it', () => {
+    system(false);
+    const { svg } = setup();
+    expect(tokenEase('--nope', 'ease-out')).toBe('ease-out');
+    const spy = vi.spyOn(svg, 'animate').mockImplementationOnce(() => {
+      throw new TypeError('bad easing');
+    });
+    turn(svg);
+    expect(spy).toHaveBeenCalledTimes(2);
+    expect((spy.mock.calls[1]![1] as KeyframeAnimationOptions).easing).toBe('cubic-bezier(0.2, 0.8, 0.2, 1)');
   });
 });

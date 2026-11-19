@@ -2,6 +2,7 @@
   import { player, describeFailure } from '$lib/player.svelte';
   import { nav } from '$lib/nav.svelte';
   import { formatTime } from '$lib/format';
+  import { flipList } from '$lib/flip';
   import Button from './Button.svelte';
   import IconButton from './IconButton.svelte';
   import LikeButton from './LikeButton.svelte';
@@ -9,6 +10,7 @@
   import MenuItem from './MenuItem.svelte';
   import PlayButton from './PlayButton.svelte';
   import Seek from './Seek.svelte';
+  import SeekWake from './SeekWake.svelte';
   import Thumb from './Thumb.svelte';
   import VolumeSlider from './VolumeSlider.svelte';
 
@@ -34,7 +36,7 @@
       <Button variant="quiet" size="sm" onclick={() => nav.go('queue')}>Open queue</Button>
     </div>
     <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
-    <ul class="lane-list" data-scroll tabindex="0">
+    <ul class="lane-list" data-scroll tabindex="0" use:flipList>
       {#key entry.track.key}
       <li class="lane-now track-in">
         <Thumb src={entry.track.thumbnail} seed={entry.track.key} size={40} rounded="r-sm" />
@@ -68,16 +70,17 @@
   <section class="deck" aria-label="Player" data-testid="player-bar" onclick={openQueue}>
     <div class="deck-seek">
       <Seek positionMs={player.positionMs} durationMs={player.durationMs} onseek={player.seek} accent label="Seek" bind:scrub />
+      <SeekWake songKey={entry.track.key} />
     </div>
     {#key entry.track.key}
     <div class="deck-now track-in">
-      <button class="deck-art" data-np-source aria-label="Open Now Playing" onclick={() => nav.openNowPlaying()}>
+      <button class="deck-art" data-np-source data-paused={!player.isPlaying} aria-label="Open Now Playing" onclick={() => nav.openNowPlaying()}>
         <Thumb src={entry.track.thumbnail} seed={entry.track.key} size={72} fill rounded="r-sm" />
       </button>
       <div class="min-w-0 flex-1">
         <p class="t-strong truncate" title={entry.track.title}>{entry.track.title}</p>
         {#if player.failure}
-          <p class="t-caption accent-text flex items-center gap-2" role="alert">
+          <p class="t-caption accent-text fail-in flex items-center gap-2" role="alert">
             <span class="min-w-0 flex-1 truncate">{describeFailure(player.failure)}</span>
             <Button variant="primary" size="sm" onclick={player.retry}>Retry</Button>
           </p>

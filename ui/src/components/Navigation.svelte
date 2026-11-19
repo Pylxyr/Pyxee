@@ -37,7 +37,7 @@
     <ul class="tabs-list" bind:this={list}>
       {#each DESTINATIONS as it (it.route)}
         <li>
-          <button class="tab-item" aria-current={nav.route === it.route ? 'page' : undefined} onclick={() => nav.go(it.route)}>{it.label}</button>
+          <button class="tab-item" data-toss-dest={it.route === 'queue' ? '' : undefined} aria-current={nav.route === it.route ? 'page' : undefined} onclick={() => nav.go(it.route)}>{it.label}</button>
         </li>
       {/each}
       <li class="tab-indicator" aria-hidden="true" data-shown={bar.shown} data-armed={bar.armed} style="--ind-x:{bar.x}px;--ind-s:{bar.w / 100}"></li>
@@ -46,7 +46,7 @@
 {:else}
   <nav class="bar-nav" aria-label="Main" data-layout="bar">
     {#each DESTINATIONS as it (it.route)}
-      <button class="bar-item" aria-current={nav.route === it.route ? 'page' : undefined} onclick={() => nav.go(it.route)}>
+      <button class="bar-item" data-toss-dest={it.route === 'queue' ? '' : undefined} aria-current={nav.route === it.route ? 'page' : undefined} onclick={() => nav.go(it.route)}>
         <span class="bar-pill"><Icon name={it.icon} size={22} /></span>{it.label}
       </button>
     {/each}

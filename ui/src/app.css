@@ -316,6 +316,10 @@ input[type='range'].slider:disabled {
 :root {
   transition: --accent 600ms var(--ease-out);
 }
+/* A chosen theme crossfades as a whole (see crossfadeTheme): the new colours are live under the fade, so the accent must not glide too. */
+:root[data-theme-fade] {
+  transition: none;
+}
 
 /* Loading placeholders: a soft sheen crosses them (transform only, and only while something is loading). */
 @keyframes sheen {
@@ -363,6 +367,17 @@ input[type='range'].slider:disabled {
 @keyframes glow-in {
   from {
     opacity: 0;
+  }
+}
+/* A new song lights the seek line: a streak of the accent runs along it once (see SeekWake.svelte). Opacity and transform only. */
+@keyframes wake {
+  from {
+    opacity: 1;
+    transform: translateX(-100%);
+  }
+  to {
+    opacity: 0;
+    transform: translateX(340%);
   }
 }
 @keyframes pop {
@@ -426,6 +441,33 @@ input[type='range'].slider:disabled {
   .route-in {
     animation: none;
   }
+}
+/* A song that fails: its message arrives with a short "no" (a shake that settles), not just a swap of the text. Transform and
+   opacity; it runs once, when the message appears. */
+@keyframes nudge {
+  0% {
+    opacity: 0;
+    transform: translateX(-6px);
+  }
+  20% {
+    opacity: 1;
+    transform: translateX(5px);
+  }
+  40% {
+    transform: translateX(-4px);
+  }
+  60% {
+    transform: translateX(3px);
+  }
+  80% {
+    transform: translateX(-1px);
+  }
+  100% {
+    transform: translateX(0);
+  }
+}
+.fail-in {
+  animation: nudge 360ms var(--ease-out);
 }
 @keyframes arrive {
   from {
@@ -545,6 +587,8 @@ input[type='range'].slider:disabled {
   .spinner,
   .route-in,
   .track-in,
+  .fail-in,
+  .seek-wake i,
   .hero-art,
   .hero-bg,
   .pp-icon,
@@ -576,6 +620,10 @@ input[type='range'].slider:disabled {
   }
   .tab-indicator {
     transition: none !important;
+  }
+  /* A rail that cannot run down would only say "full": with no motion the toast shows its text and Undo alone. */
+  .toast-rail {
+    display: none;
   }
 }
 
@@ -1281,6 +1329,25 @@ input[type='range'].slider:disabled {
     top: -10px;
     z-index: 10;
   }
+  /* The streak of light: a clipped 4 px channel over the seek track, and in it one pre-rendered gradient that is moved by
+     transform. At rest it is invisible (opacity 0, no fill after the animation), so nothing stays promoted. */
+  .seek-wake {
+    position: absolute;
+    inset: 8px 0 auto 0;
+    height: 4px;
+    overflow: hidden;
+    border-radius: 2px;
+    pointer-events: none;
+  }
+  .seek-wake i {
+    position: absolute;
+    inset: 0 auto 0 0;
+    width: 30%;
+    background: linear-gradient(90deg, transparent, var(--accent));
+    opacity: 0;
+    transform: translateX(-100%);
+    animation: wake 700ms var(--ease-out) backwards;
+  }
   .deck-now {
     display: flex;
     align-items: center;
@@ -1296,7 +1363,9 @@ input[type='range'].slider:disabled {
     box-shadow: var(--shadow-art);
     isolation: isolate;
   }
-  /* The accent glow: drawn once on its own layer behind the cover; a new song fades it in. */
+  /* The accent glow: drawn once on its own layer behind the cover. A new song fades it in (up to what the state asks for,
+     so no fill is kept after the arrival) and it is only OPACITY that follows the music: lit while the song plays, dimmed
+     while it is paused, loading or stalled, so the cover "ignites" when the sound starts. */
   .deck-art::before {
     content: '';
     position: absolute;
@@ -1305,7 +1374,12 @@ input[type='range'].slider:disabled {
     border-radius: inherit;
     box-shadow: 0 0 28px -8px var(--glow);
     pointer-events: none;
-    animation: glow-in 800ms var(--ease-out) both;
+    opacity: 1;
+    transition: opacity var(--dur-slow) var(--ease);
+    animation: glow-in 800ms var(--ease-out) backwards;
+  }
+  .deck-art[data-paused='true']::before {
+    opacity: 0.28;
   }
   .deck-art > * {
     animation: cover-in 460ms var(--ease-out) both;
@@ -1389,6 +1463,25 @@ input[type='range'].slider:disabled {
   }
 
   /* Pages */
+  /* The edge under a pinned page header: drawn once as a gradient on its own layer and only faded in (opacity) once the body
+     has scrolled, so the header reads as lying over the content. Under the hairline, so state is never colour alone. */
+  .page-edge {
+    position: relative;
+  }
+  .page-edge::after {
+    content: '';
+    position: absolute;
+    inset: 100% 0 auto 0;
+    height: 14px;
+    z-index: 1;
+    pointer-events: none;
+    background: linear-gradient(to bottom, color-mix(in srgb, var(--fg) 10%, transparent), transparent);
+    opacity: 0;
+    transition: opacity var(--dur-base) var(--ease);
+  }
+  [data-scrolled='true'] > .page-edge::after {
+    opacity: 1;
+  }
   .page-head {
     display: flex;
     flex-wrap: wrap;
@@ -1780,9 +1873,34 @@ input[type='range'].slider:disabled {
     box-shadow: var(--shadow-pop);
   }
   .toast {
+    position: relative;
+    overflow: hidden;
     border-left: 3px solid var(--accent);
     border-radius: var(--r-md);
     box-shadow: var(--shadow-pop);
+  }
+  /* The time left to Undo: a 2 px rail along the foot that runs down by transform (see lib/rail.ts). Drawn once. */
+  /* The thrown song: one dot, created for the flight and removed after it (see lib/toss.ts). It lives only in the animation. */
+  .toss-dot {
+    position: fixed;
+    left: 0;
+    top: 0;
+    z-index: 1100;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--accent);
+    opacity: 0;
+    pointer-events: none;
+  }
+  .toast-rail {
+    position: absolute;
+    inset: auto 0 0 0;
+    height: 2px;
+    background: var(--accent);
+    opacity: 0.8;
+    transform-origin: left center;
+    pointer-events: none;
   }
   .theme-picker[inert] {
     opacity: 0.4;
@@ -2032,6 +2150,19 @@ input[type='range'].slider:disabled {
    alone then needs a shape: the focus on a text field (an accent border, which becomes plain text colour), the song that
    plays (a tinted row) and the accent bars and thumbs. */
 @media (forced-colors: active) {
+  /* The scroll edge is a hint on top of the header's hairline, which stays. */
+  .page-edge::after {
+    display: none;
+  }
+  /* The thrown dot and the time rail are hints on top of the notice's own text and Undo button. */
+  .toss-dot,
+  .toast-rail {
+    display: none;
+  }
+  /* Decorative light: it tells nothing that is not already told, so it is not drawn in forced colours. */
+  .seek-wake {
+    display: none;
+  }
   .search-input:focus-visible,
   .field:focus-visible {
     outline: 2px solid Highlight;

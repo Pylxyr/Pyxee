@@ -7,7 +7,8 @@
   import { formatTime } from '$lib/format';
   import { reorder } from '$lib/reorder';
   import { focusNeighbour } from '$lib/focus';
-  import { MOTION, markListChange, motionMs, motionPx } from '$lib/motion';
+  import { flipList } from '$lib/flip';
+  import { MOTION, markListChange, motionMs, motionPx, swapOnChange, turnOnChange } from '$lib/motion';
   import { sleep } from '$lib/sleep.svelte';
   import { sleepLabel } from '$lib/lyrics';
   import Button from './Button.svelte';
@@ -83,19 +84,23 @@
           </div>
         </div>
         {#if player.failure}
-          <p class="accent-text" role="alert">
+          <p class="accent-text fail-in" role="alert">
             {describeFailure(player.failure)}
             <button class="btn-link ml-2" onclick={player.retry}>Retry</button>
           </p>
         {/if}
         <div class="flex items-center gap-4">
-          <IconButton icon="shuffle" label="Shuffle" size="lg" pressed={player.state.shuffle} onclick={player.toggleShuffle} />
+          <span class="inline-flex" use:swapOnChange={player.state.shuffle}>
+            <IconButton icon="shuffle" label="Shuffle" size="lg" pressed={player.state.shuffle} onclick={player.toggleShuffle} />
+          </span>
           <IconButton icon="prev" label="Previous" size="lg" strong iconSize={26} onclick={player.previous} />
           <PlayButton size="lg" announceLoading={false} />
           <IconButton icon="next" label="Next" size="lg" strong iconSize={26} onclick={player.next} />
-          <IconButton icon="repeat" label="Repeat: {player.state.repeat}" size="lg" class={player.state.repeat !== 'off' ? 'text-accent' : ''} onclick={player.cycleRepeat}>
-            {#if player.state.repeat === 'one'}<span class="absolute right-1 top-1 text-[10px] font-semibold">1</span>{/if}
-          </IconButton>
+          <span class="inline-flex" use:turnOnChange={player.state.repeat}>
+            <IconButton icon="repeat" label="Repeat: {player.state.repeat}" size="lg" class={player.state.repeat !== 'off' ? 'text-accent' : ''} onclick={player.cycleRepeat}>
+              {#if player.state.repeat === 'one'}<span class="absolute right-1 top-1 text-[10px] font-semibold">1</span>{/if}
+            </IconButton>
+          </span>
         </div>
       </section>
 
@@ -107,7 +112,7 @@
         <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
         <div class="mt-3 min-h-0 flex-1 overflow-y-auto" role="tabpanel" data-testid="np-scroll" data-scroll tabindex="0">
           {#if nav.tab === 'upnext'}
-            <ul class="space-y-0.5" bind:this={upNextEl}>
+            <ul class="space-y-0.5" bind:this={upNextEl} use:flipList>
               <li class="row-edit px-2 py-1.5" data-current="true">
                 <Thumb src={entry.track.thumbnail} seed={entry.track.key} size={44} rounded="r-sm" />
                 <div class="ml-3 min-w-0 flex-1">

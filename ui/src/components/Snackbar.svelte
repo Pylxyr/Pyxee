@@ -3,6 +3,7 @@
   import { backOut } from 'svelte/easing';
   import { snackbar } from '$lib/snackbar.svelte';
   import { MOTION, motionMs, motionPx } from '$lib/motion';
+  import { toastRail } from '$lib/rail';
 </script>
 
 <!-- Above the dock and the bottom bar in a narrow window; at the foot of the page in a wide one. -->
@@ -23,6 +24,7 @@
           {s.action.label}
         </button>
       {/if}
+      {#if snackbar.rails[s.id]}<span class="toast-rail" aria-hidden="true" use:toastRail={snackbar.rails[s.id]!}></span>{/if}
     </div>
   {/each}
 </div>

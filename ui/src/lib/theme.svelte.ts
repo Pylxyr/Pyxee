@@ -1,5 +1,6 @@
 import type { Backend } from './backend';
 import { accentFromImage, paletteFromArt, windowTint, type WindowTint } from './color';
+import { crossfadeTheme } from './motion';
 import {
   BUILTIN_THEMES, DEFAULT_DARK_ID, DEFAULT_LIGHT_ID, MAX_CUSTOM_THEMES, sanitizeTheme, themeVars,
   type ThemeColors, type ThemeDef,
@@ -115,9 +116,18 @@ export class ThemeStore {
     }
   }
 
+  /**
+   * Changes settings. A change the person can SEE as another palette (a theme, following the system, the cover's colour)
+   * crossfades; with view transitions the new settings are then applied inside the transition, a moment after this returns.
+   */
   update(patch: Partial<Omit<ThemeSettings, 'custom'>>) {
-    this.settings = { ...this.settings, ...patch };
-    this.#save();
+    const apply = () => {
+      this.settings = { ...this.settings, ...patch };
+      this.#save();
+    };
+    const looks = (['followSystem', 'themeId', 'lightId', 'darkId', 'dynamicColor'] as const).some((k) => k in patch && patch[k] !== this.settings[k]);
+    if (looks) crossfadeTheme(apply);
+    else apply();
   }
 
   /** Picks one theme for good (and stops following the system). */

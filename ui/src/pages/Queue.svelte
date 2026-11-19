@@ -7,6 +7,7 @@
   import { snackbar } from '$lib/snackbar.svelte';
   import { reorder } from '$lib/reorder';
   import { focusNeighbour } from '$lib/focus';
+  import { flipList } from '$lib/flip';
   import { markListChange } from '$lib/motion';
   import Button from '../components/Button.svelte';
   import EditableRow from '../components/EditableRow.svelte';
@@ -62,7 +63,7 @@
   {#if queue.length === 0}
     <EmptyState icon="queue" title="Your queue is empty" text="Search for a song and choose Play next or Add to queue." />
   {:else}
-    <ul aria-label="Queue" bind:this={listEl}>
+    <ul aria-label="Queue" bind:this={listEl} use:flipList>
       {#each queue as e, i (e.id)}
         {#if e.id === firstRadio}
           <li class="t-caption muted px-3 pb-1 pt-5" aria-hidden="true">Autoplay · similar songs</li>

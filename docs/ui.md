@@ -163,3 +163,62 @@ real window, Mica and DPI behaviour need a first run on your PC.
 - **Unknown length**: the seek bar becomes a non-interactive "length unknown" bar and only the elapsed time is shown.
 - **Reordering** uses pointer events on the drag handle (`lib/reorder.ts`), not HTML5 drag and drop, which a Tauri
   window on Windows can swallow. Arrow buttons stay. Up next (Now Playing) can also be dragged and has Play next.
+
+## Motion: signature additions
+The new motions share one idea: the queue is something with weight, and the accent colour is light. Each is a one-shot that
+ends by itself, moves only `transform` or `opacity`, does nothing while a song plays, and stands down under
+`prefers-reduced-motion`. Each has its own commit, so it can be reverted alone.
+
+- **Queue conveyor** (`lib/flip.ts`, `use:flipList` on the queue, Up next, the lane and a playlist). When rows are reordered
+  (drag, the arrows, *Play next*), or the rows below a removed one close the gap, or the next song starts and Up next moves up
+  by one, the rows that stayed glide from where they were to where they are (FLIP: one Web Animations `translateY`, `--ease-out`,
+  `--dur-slow`, no stagger). A MutationObserver on the list is the only trigger, so an idle list costs nothing. Rows that arrive
+  or leave keep their own enter and exit, and a list replaced as a whole has no row in common, so nothing glides. At most 40
+  rows animate (the ones on screen). A second move within the glide restarts it from the new layout (a small jump). Reduced
+  motion, a hidden window or a webview without `animate`: the rows just move.
+- **Seek-line wake** (`SeekWake.svelte`, `.seek-wake` in `app.css`, on the deck and the dock). When another song starts, a streak
+  of the accent colour runs once along the seek line (700 ms, `--ease-out`) while the new cover dissolves in: the accent as
+  light. It is a 4 px clipped channel with one pre-rendered gradient moved by `transform` and faded by `opacity`; it has no fill
+  after it ends, so nothing is left promoted or running (`animations=0` while a song plays). It is keyed by the song, so it also
+  plays for the first song after the window opens. Reduced motion and forced colours: not drawn (it is decoration only).
+- **Cover light follows the music** (`.deck-art[data-paused]`, set by the deck from `player.isPlaying`). The accent glow behind the
+  deck's cover is the pre-rendered layer that already existed; now its **opacity** (the only thing that changes) is lit while a
+  song plays and dimmed (0.28) while paused, loading or stalled, over `--dur-slow`. A new song's cover arrives with a dim glow
+  that ignites when the sound starts. The glow's `glow-in` arrival no longer keeps a fill after it ends. One transition per
+  state change, nothing while a song plays. Reduced motion: the tokens are 0 ms, so it switches instantly.
+- **Shuffle swap and repeat turn** (`swapOnChange`, `turnOnChange` in `lib/motion.ts`, on the two buttons in Now Playing). The icon,
+  not the button, answers a change: the shuffle arrows swap places (a 380 ms sideways shuffle) and the repeat icon turns once on
+  `--spring` (backwards when repeat goes off). One Web Animations `transform` animation each, ended by itself; nothing when the
+  control first appears, under reduced motion, in a hidden window or without `animate`. The easing is read from the CSS token with a
+  plain fallback, so a webview that rejects `linear()` still moves.
+- **Snackbar time rail** (`lib/rail.ts`, `.toast-rail`). A 2 px accent rail along the foot of a toast runs down in step with the
+  toast's own timer, so the Undo window can be seen. The store (`snackbar.rails`) tells it how long the snack has left; the rail
+  is one `scaleX` Web Animations animation (linear, compositor only), held while the pointer is over the toast or focus is in
+  it, and carried on from where it stood over the time the timer has left. The same message shown again starts it full. It
+  exists only while a toast is on screen, so the idle player has none. Reduced motion and forced colours: hidden (the toast's
+  text and Undo button say everything).
+- **Toss to queue** (`lib/toss.ts`, `.toss-dot`, `data-toss-dest` on the Queue tab and bar item). *Play next* and *Add to queue* in
+  a song's menu throw the song at the queue: a 10 px accent dot leaves the row, arcs (a sampled quadratic curve) to the Queue tab
+  and the tab bumps once when it lands (460 ms flight, 300 ms bump, `transform` and `opacity` only). The dot is created for the
+  flight and removed after it; nothing is left running. Not thrown under reduced motion, in a hidden window, without `animate`,
+  when the queue's door is off screen or behind an overlay (`inert`); the notice still says what happened. Not drawn in forced colours.
+- **Theme crossfade** (`crossfadeTheme` in `lib/motion.ts`, used by `ThemeStore.update`). Choosing a theme, following the system or
+  switching "Color from album art" crossfades the whole window through the root view transition (two snapshots faded on the
+  compositor, `::view-transition-group(root)`, 300 ms) instead of cutting. While it runs `data-theme-fade` on `<html>` holds the
+  accent's own 600 ms glide off, so the two do not blur. The new settings are applied inside the transition, so they land a
+  moment after `update()` returns. The palette that follows the cover each song and the live preview in the theme editor never
+  use it: only a person's own choice does, so it cannot cancel a song's cover dissolve (one view transition at a time). Without
+  view transitions (WebKitGTK) or under reduced motion the theme simply changes.
+- **Scroll edge under a pinned header** (`ScrollPage.svelte`, `.page-edge`). Once a page's body has scrolled past 8 px, a soft
+  14 px edge fades in under the pinned header (opacity of a pre-rendered gradient layer, `--dur-base`), so the header reads as
+  lying over the content; at the top it fades out again. It is driven by one state flip when the scroll crosses the threshold,
+  **not** by a CSS scroll-driven animation (`animation-timeline`): such an animation is reported as running by
+  `document.getAnimations()` for as long as the page exists, which would break `animations=0` while a song plays. It works on
+  WebKitGTK too. Forced colours: not drawn (the header keeps its hairline).
+- **Failure nudge** (`.fail-in`, on the failure line of the deck, the dock and Now Playing). When a song fails, its message arrives with a
+  short shake that settles (360 ms, `transform` and `opacity`, no fill) instead of just swapping the text, so a failure is felt
+  as well as read. It runs when the message appears, once. Reduced motion: the message simply appears.
+- **Search results arrive** (`route-in` on `.results` in `Search.svelte`). A new set of results (after the skeleton) brings in its first
+  eight rows one after another, with the same stagger as a page (20 ms steps, done by 300 ms). A filter change keeps the same
+  container (results stay up, dimmed, while the next load), so a replaced list stays still, as with the other lists. Nothing new
+  in CSS; reduced motion already stills `.route-in`.
