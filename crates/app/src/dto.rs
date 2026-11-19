@@ -602,6 +602,8 @@ pub struct HomeDto {
 pub struct LogInfoDto {
     pub dir: String,
     pub file: String,
+    /// False when logging is off (the default): there is no log file, and the UI hides the Diagnostics section.
+    pub enabled: bool,
     /// Set if the log file could not be created (logging then goes to the console only).
     pub error: Option<String>,
 }

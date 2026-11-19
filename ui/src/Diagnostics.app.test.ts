@@ -38,7 +38,8 @@ describe('sheets are above everything, and stack in the order they were opened',
     await fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
     expect(await screen.findByRole('dialog', { name: 'Settings' })).toBeTruthy();
     expect(screen.getByRole('region', { name: 'Appearance' })).toBeTruthy();
-    expect(screen.getByRole('region', { name: 'Diagnostics' })).toBeTruthy();
+    // The section appears once the app has said that logging is on (it looks that up when the sheet opens).
+    expect(await screen.findByRole('region', { name: 'Diagnostics' })).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Appearance' })).toBeNull();
   });
 
@@ -95,6 +96,19 @@ describe('Diagnostics (where the log is)', () => {
     await openAppearance();
     await fireEvent.click(await screen.findByRole('button', { name: 'Open log folder' }));
     await waitFor(() => expect(mock.logFolderOpens).toBe(1));
+  });
+
+  it('is not in Settings at all while logging is off (the default in the app)', async () => {
+    mock.logEnabled = false;
+    await openApp();
+    await fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
+    await screen.findByRole('dialog', { name: 'Settings' });
+    // Give the lookup of the log state time to answer before saying the section is not there.
+    await waitFor(() => expect(screen.getByRole('region', { name: 'Appearance' })).toBeTruthy());
+    await new Promise((r) => setTimeout(r, 20));
+    expect(screen.queryByRole('region', { name: 'Diagnostics' })).toBeNull();
+    expect(screen.queryByTestId('log-path')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Open log folder' })).toBeNull();
   });
 
   it('a problem creating the log file is shown, not hidden', async () => {

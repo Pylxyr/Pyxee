@@ -112,7 +112,7 @@ If it keeps happening, wait a while and try again: YouTube limits how fast one n
 
 <br />
 
-Pyxee keeps a log. Open **Settings** -> **Diagnostics** -> **Open log folder** and search `pyxee.log` for the song's name. When you [open an issue](https://github.com/Pylxyr/Pyxee/issues), include the lines around it. For more detail, set **Log detail** to `debug` in **Settings** -> **Advanced**.
+Pyxee does not write a log unless it is asked to (so a quiet player leaves the disk alone). A build that has logging turned on (see [`docs/development.md`](docs/development.md), `PYXEE_LOG`) writes `pyxee.log`, and **Settings** -> **Diagnostics** -> **Open log folder** opens it; that section is only there while logging is on. When you [open an issue](https://github.com/Pylxyr/Pyxee/issues), include the lines around the song's name.
 
 </details>
 

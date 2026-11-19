@@ -314,8 +314,15 @@ fn main() {
             shell::commands::mini_toggle,
             shell::commands::main_show
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running Pyxee");
+        .build(tauri::generate_context!())
+        .expect("error while building Pyxee")
+        .run(|app, event| {
+            // The playing position is no longer saved every few seconds, so make sure the session is on the disk
+            // however the app ends. Writes nothing if `quit` or a close already saved exactly this.
+            if let tauri::RunEvent::Exit = event {
+                app.state::<AppState>().save_session();
+            }
+        });
 }
 
 #[cfg(test)]

@@ -1,8 +1,9 @@
 //! Logging to a file the user can find: `<app data>\logs\pyxee.log` (one older copy, `pyxee.log.1`, is kept
 //! when it passes 2 MB, so the logs never exceed about 4 MB; identical records in a row are cut to two lines and a count). Everything is also copied to the console, which is what `tauri dev` shows.
 //!
-//! Set `PYXEE_LOG` to `error`, `warn` (default), `info`, `debug` or `trace` for more or less detail. The default is `warn`
-//! so a quiet app writes next to nothing to the disk; `PYXEE_PERF=1` raises it to `info`, which its lines need.
+//! Logging is **off by default**: no log file or folder is created and nothing is written to the disk for it. Set
+//! `PYXEE_LOG` to `error`, `warn`, `info`, `debug` or `trace` to turn it on at that detail (developer builds only; see
+//! `main.rs`). `PYXEE_PERF=1` raises the level to `info`, which its lines need.
 
 use log::{Level, LevelFilter, Log, Metadata, Record};
 use std::fs::{self, File, OpenOptions};
@@ -16,6 +17,8 @@ pub const MAX_BYTES: u64 = 2 * 1024 * 1024;
 pub struct LogInfo {
     pub dir: PathBuf,
     pub file: PathBuf,
+    /// False when logging is off: there is then no log file, and the Settings sheet has no Diagnostics section.
+    pub enabled: bool,
 }
 
 /// Identical records in a row (a failing device retried in a loop, a stream erroring on every buffer) are written
@@ -196,16 +199,18 @@ impl Log for FileLogger {
 pub fn level_from(text: Option<&str>) -> LevelFilter {
     match text.map(|t| t.trim().to_ascii_lowercase()).as_deref() {
         Some("error") => LevelFilter::Error,
-        // `warn`, and anything unreadable, is the default below
+        Some("warn") => LevelFilter::Warn,
+        Some("info") => LevelFilter::Info,
         Some("debug") => LevelFilter::Debug,
         Some("trace") => LevelFilter::Trace,
-        Some("info") => LevelFilter::Info,
-        _ => LevelFilter::Warn,
+        // `off`, nothing set, and anything unreadable: no logging
+        _ => LevelFilter::Off,
     }
 }
 
-/// The level the log really runs at: what `PYXEE_LOG` asks for, but at least `info` while the performance log
-/// (`PYXEE_PERF=1`) is on, because its lines are written at that level and would otherwise never reach the file.
+/// The level the log really runs at: what `PYXEE_LOG` asks for (off when it asks for nothing), but at least `info` while
+/// the performance log (`PYXEE_PERF=1`) is on, because its lines are written at that level and would otherwise never
+/// reach the file.
 pub fn effective_level(asked: LevelFilter, perf: bool) -> LevelFilter {
     if perf && asked < LevelFilter::Info {
         LevelFilter::Info
@@ -214,17 +219,22 @@ pub fn effective_level(asked: LevelFilter, perf: bool) -> LevelFilter {
     }
 }
 
-/// Starts logging for the whole process. If the log folder cannot be used the app still runs (console only)
+/// Starts logging for the whole process, unless it is off (the default): then nothing is opened, created or written,
+/// and the panic hook stays the default one. If the log folder cannot be used the app still runs (console only)
 /// and the reason is returned.
 pub fn init(dir: &Path) -> (LogInfo, Option<String>) {
     let file = dir.join("pyxee.log");
-    let info = LogInfo {
-        dir: dir.to_path_buf(),
-        file: file.clone(),
-    };
     let perf =
         crate::commands::DEV_TOOLS && std::env::var("PYXEE_PERF").is_ok_and(|v| v.trim() == "1");
     let level = effective_level(level_from(std::env::var("PYXEE_LOG").ok().as_deref()), perf);
+    let info = LogInfo {
+        dir: dir.to_path_buf(),
+        file: file.clone(),
+        enabled: level != LevelFilter::Off,
+    };
+    if !info.enabled {
+        return (info, None);
+    }
     match FileLogger::open(&file, level, MAX_BYTES, true) {
         Ok(logger) => {
             if log::set_boxed_logger(Box::new(logger)).is_ok() {
@@ -407,11 +417,12 @@ mod tests {
 
     #[test]
     fn the_level_comes_from_the_environment_value() {
-        assert_eq!(level_from(None), LevelFilter::Warn);
+        assert_eq!(level_from(None), LevelFilter::Off, "off unless asked for");
+        assert_eq!(level_from(Some("off")), LevelFilter::Off);
         assert_eq!(level_from(Some(" DEBUG ")), LevelFilter::Debug);
         assert_eq!(level_from(Some("warn")), LevelFilter::Warn);
         assert_eq!(level_from(Some("info")), LevelFilter::Info);
-        assert_eq!(level_from(Some("nonsense")), LevelFilter::Warn);
+        assert_eq!(level_from(Some("nonsense")), LevelFilter::Off);
     }
 
     #[test]
@@ -422,7 +433,9 @@ mod tests {
             effective_level(LevelFilter::Debug, true),
             LevelFilter::Debug
         );
+        assert_eq!(effective_level(LevelFilter::Off, true), LevelFilter::Info);
         assert_eq!(effective_level(LevelFilter::Warn, false), LevelFilter::Warn);
+        assert_eq!(effective_level(LevelFilter::Off, false), LevelFilter::Off);
     }
 
     #[test]

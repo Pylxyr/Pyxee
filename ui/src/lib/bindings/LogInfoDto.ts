@@ -5,6 +5,10 @@
  */
 export type LogInfoDto = { dir: string, file: string, 
 /**
+ * False when logging is off (the default): there is no log file, and the UI hides the Diagnostics section.
+ */
+enabled: boolean, 
+/**
  * Set if the log file could not be created (logging then goes to the console only).
  */
 error: string | null, };

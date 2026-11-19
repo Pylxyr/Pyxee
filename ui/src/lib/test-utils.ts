@@ -29,7 +29,7 @@ export const noLibrary: LibraryBackend = {
 export const noDiagnostics = {
   setWindowTheme: async () => {},
   setWindowTint: async () => {},
-  logInfo: async () => ({ dir: '', file: '', error: null }),
+  logInfo: async () => ({ dir: '', file: '', enabled: false, error: null }),
   openLogFolder: async () => {},
   openReleasePage: async () => {},
   onNotice: async () => () => {},

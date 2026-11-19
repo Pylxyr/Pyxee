@@ -155,7 +155,7 @@ real window, Mica and DPI behaviour need a first run on your PC.
 
 ## WP1 notes
 
-- **Settings** (gear: the top right) holds Appearance and Diagnostics. Sheets stack in the order they were opened
+- **Settings** (gear: the top right) holds Appearance, and Diagnostics while logging is on (it is off by default; `LogInfoDto.enabled`). Sheets stack in the order they were opened
   (z-index 100 and up, above Now Playing at 40); the snackbar sits above them (1000).
 - **Covers** go through `lib/thumb.ts`: YouTube's 4:3 stills have black bars baked in, so small covers use `mqdefault`
   (16:9, no bars), big ones `maxresdefault` then `hq720` then `mqdefault`; Google cover URLs are resized to the displayed

@@ -18,8 +18,6 @@ use std::thread;
 use std::time::{Duration, Instant};
 use tauri::{AppHandle, Manager};
 
-const SAVE_EVERY: Duration = Duration::from_secs(5);
-
 struct AppHost {
     app: AppHandle,
     recorder: Mutex<HistoryRecorder>,
@@ -184,7 +182,6 @@ fn run_real(app: AppHandle, host: Arc<AppHost>, rx: Receiver<Effect>) {
             }
             Err(e) => log::warn!("audio output unavailable at start: {e}"),
         }
-        let mut last_save = Instant::now();
         let mut last_check = Instant::now();
         loop {
             match rx.recv_timeout(engine.poll_interval()) {
@@ -262,14 +259,9 @@ fn run_real(app: AppHandle, host: Arc<AppHost>, rx: Receiver<Effect>) {
                     DeviceAction::Log { warn: false, text } => log::info!("{text}"),
                 }
             }
-            // The periodic save is for the playing position; paused or idle, a pause, skip or queue change saves by
-            // itself, and asking would only have the writer serialise the whole queue to find it unchanged.
-            if last_save.elapsed() >= SAVE_EVERY {
-                last_save = Instant::now();
-                if engine.is_playing() {
-                    app.state::<AppState>().request_save();
-                }
-            }
+            // No periodic save of the playing position: that rewrote and flushed `session.json` every few seconds for as
+            // long as a song played. A pause, skip, queue change, closing the window and quitting save by themselves
+            // (see `AppState::request_save`), and the position is part of what they write.
         }
     }
 }
@@ -279,7 +271,6 @@ fn spawn_sim(app: AppHandle, rx: Receiver<Effect>) {
         let mut sim = Sim::new(catalog());
         let tick = Duration::from_millis(TICK_MS);
         let mut next_tick = Instant::now() + tick;
-        let mut last_save = Instant::now();
         loop {
             match rx.recv_timeout(next_tick.saturating_duration_since(Instant::now())) {
                 Ok(effect) => sim.apply(&effect),
@@ -293,10 +284,6 @@ fn spawn_sim(app: AppHandle, rx: Receiver<Effect>) {
                                 publish(&app, |p| p.command(Command::AppendRadio(t)));
                             }
                         }
-                    }
-                    if last_save.elapsed() >= SAVE_EVERY {
-                        last_save = Instant::now();
-                        app.state::<AppState>().request_save();
                     }
                 }
             }

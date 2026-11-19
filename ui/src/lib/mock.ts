@@ -115,8 +115,11 @@ export class MockBackend extends MockLibrary implements Backend {
   /** Demo log location, and a count of how many times the folder was opened. */
   logFolderOpens = 0;
   logError: string | null = null;
+  /** The demo has logging on, so the Diagnostics section can be seen; a test sets this to false to see it hidden. */
+  logEnabled = true;
   async logInfo() {
     return {
+      enabled: this.logEnabled,
       dir: 'C:\\Users\\you\\AppData\\Local\\dev.pyxee.app\\logs',
       file: 'C:\\Users\\you\\AppData\\Local\\dev.pyxee.app\\logs\\pyxee.log',
       error: this.logError,

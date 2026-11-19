@@ -18,7 +18,7 @@
   // The Settings button is in the top right corner at every window size, so its tab opens from the right.
   let logInfo = $state<LogInfoDto | null>(null);
 
-  // The log location is looked up when the sheet (which has the Diagnostics section) opens.
+  // The log location is looked up when the sheet opens. Logging is off by default: the Diagnostics section is only there when it is on.
   $effect(() => {
     if (nav.themeSheetOpen && backend) void backend.logInfo().then((i) => (logInfo = i));
   });
@@ -90,16 +90,16 @@
 
   {#if backend}<UpdatesSection {backend} />{/if}
 
+  {#if logInfo?.enabled}
   <section class="settings-section px-3" aria-label="Diagnostics">
     <h3 class="group-title !px-0">Diagnostics</h3>
     <p class="muted">Pyxee keeps a log of what it does. If a song won't play or keeps skipping, the log says why.</p>
-    {#if logInfo}
-      <p class="well t-caption mt-2 select-all break-all" data-testid="log-path">{logInfo.file}</p>
-      {#if logInfo.error}<p class="accent-text mt-1" role="alert">{logInfo.error}</p>{/if}
-      <div class="mt-2 flex gap-2">
-        <Button variant="primary" size="sm" onclick={() => backend?.openLogFolder().catch((e) => snackbar.push(messageOf(e)))}>Open log folder</Button>
-        <Button size="sm" onclick={copyLogPath}>Copy path</Button>
-      </div>
-    {/if}
+    <p class="well t-caption mt-2 select-all break-all" data-testid="log-path">{logInfo.file}</p>
+    {#if logInfo.error}<p class="accent-text mt-1" role="alert">{logInfo.error}</p>{/if}
+    <div class="mt-2 flex gap-2">
+      <Button variant="primary" size="sm" onclick={() => backend?.openLogFolder().catch((e) => snackbar.push(messageOf(e)))}>Open log folder</Button>
+      <Button size="sm" onclick={copyLogPath}>Copy path</Button>
+    </div>
   </section>
+  {/if}
 </Sheet>

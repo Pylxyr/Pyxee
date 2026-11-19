@@ -382,12 +382,16 @@ pub fn get_log_info(state: State<AppState>) -> LogInfoDto {
     LogInfoDto {
         dir: state.log.dir.display().to_string(),
         file: state.log.file.display().to_string(),
+        enabled: state.log.enabled,
         error: state.log_error.clone(),
     }
 }
 
 #[tauri::command]
 pub fn open_log_folder(state: State<AppState>) -> Result<(), String> {
+    if !state.log.enabled {
+        return Err("Logging is off, so there is no log folder.".into());
+    }
     crate::logging::open_folder(&state.log.dir)
 }
 

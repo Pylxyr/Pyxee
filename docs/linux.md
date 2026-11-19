@@ -372,9 +372,9 @@ Everything is in `~/.local/share/dev.pyxee.app`:
 |---|---|
 | `session.json` | Your library and queue |
 | `tools/` | The updated yt-dlp |
-| `logs/pyxee.log` | The log |
+| `logs/pyxee.log` | The log (only when logging is on; it is off by default) |
 
-**Settings** -> **Diagnostics** -> **Open log folder** opens the log folder for you.
+While logging is on, **Settings** -> **Diagnostics** -> **Open log folder** opens the log folder for you.
 
 ## Troubleshooting
 
