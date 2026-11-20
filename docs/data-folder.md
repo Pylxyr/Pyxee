@@ -6,7 +6,7 @@
 | Linux | `~/.local/share/dev.pyxee.app` |
 
 It holds `session.json` (your library and queue), `tools\` (the updated yt-dlp) and, only when logging has been turned on,
-`logs\pyxee.log` (the log; **Settings** -> **Diagnostics** -> **Open log folder** opens it, and that section is hidden
+`logs\last-panic.txt` (written only if the app panics, even with logging off; attach it to an issue) and `logs\pyxee.log` (the log; **Settings** -> **Diagnostics** -> **Open log folder** opens it, and that section is hidden
 while logging is off, which is the default). `session.json` is rewritten when something changes (a pause, a skip, a queue
 change, closing or quitting), not on a timer while a song plays.
 

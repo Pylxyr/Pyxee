@@ -100,9 +100,37 @@ export function popOnChange(node: HTMLElement, value: unknown) {
       if (next !== last) {
         last = next;
         pulse(node);
+        if (next === true) burst(node);
       }
     },
   };
+}
+
+/**
+ * A ring in the accent colour that grows out of the element and fades, once (a "like" answering with a small burst).
+ * One short Web Animation on its own layer, gone when it ends; nothing stays running, and nothing at all with reduced motion.
+ */
+export function burst(node: HTMLElement): void {
+  if (prefersReducedMotion() || typeof node.animate !== 'function' || typeof document === 'undefined') return;
+  const ring = document.createElement('span');
+  ring.setAttribute('aria-hidden', 'true');
+  ring.style.cssText =
+    'position:absolute;inset:0;border-radius:9999px;pointer-events:none;border:2px solid var(--accent);opacity:0;';
+  const restore = getComputedStyle(node).position === 'static' ? node.style.position : null;
+  if (restore !== null) node.style.position = 'relative';
+  node.appendChild(ring);
+  const done = () => {
+    ring.remove();
+    if (restore !== null) node.style.position = restore;
+  };
+  ring
+    .animate([{ transform: 'scale(0.6)', opacity: 0.9 }, { transform: 'scale(1.9)', opacity: 0 }], {
+      duration: 520,
+      easing: 'cubic-bezier(0.2, 0.8, 0.2, 1)',
+    })
+    .addEventListener('finish', done, { once: true });
+  // If the animation is cancelled (the row is removed), the ring goes with its parent; this only covers a kept element.
+  setTimeout(done, 700);
 }
 
 // A row that leaves or comes back animates only when the person just did that (removed it, pressed Undo). A list that is

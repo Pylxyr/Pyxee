@@ -1,6 +1,7 @@
 <script lang="ts">
   import { player, describeFailure } from '$lib/player.svelte';
   import { nav } from '$lib/nav.svelte';
+  import { artistOf, titleOf } from '$lib/format';
   import Button from './Button.svelte';
   import IconButton from './IconButton.svelte';
   import PlayButton from './PlayButton.svelte';
@@ -28,11 +29,11 @@
     <button class="flex min-w-0 flex-1 items-center gap-3 text-left" aria-label="Open Now Playing" onclick={() => nav.openNowPlaying()}>
       <span class="flex shrink-0" data-np-source><Thumb src={entry.track.thumbnail} seed={entry.track.key} size={44} rounded="r-sm" /></span>
       <span class="min-w-0">
-        <span class="t-strong block truncate">{entry.track.title}</span>
+        <span class="t-strong block truncate" dir="auto">{titleOf(entry.track)}</span>
         {#if player.failure}
           <span class="t-caption fail-in block truncate accent-text" role="alert">{describeFailure(player.failure)}</span>
         {:else}
-          <span class="t-caption muted block truncate">{entry.track.artist}</span>
+          <span class="t-caption muted block truncate" dir="auto">{artistOf(entry.track)}</span>
         {/if}
       </span>
     </button>

@@ -47,6 +47,9 @@
   --stage-wash: color-mix(in srgb, var(--accent) 22%, transparent);
   --rule: color-mix(in srgb, var(--fg) 10%, transparent);
   --glow: color-mix(in srgb, var(--accent) 38%, transparent);
+  /* The accent as TEXT: pulled toward the text colour so it keeps 4.5:1 on the selected row's tint (the plain accent is for
+     fills, bars and icons). */
+  --accent-ink: color-mix(in srgb, var(--accent) 75%, var(--fg));
   --focus: var(--accent);
   --shadow-pop: 0 10px 30px rgb(0 0 0 / 0.3), 0 0 0 1px var(--line);
   --shadow-art: 0 14px 34px rgb(0 0 0 / 0.34);
@@ -1597,7 +1600,7 @@ input[type='range'].slider:disabled {
     line-height: 20px;
   }
   .trow[data-current='true'] .trow-title {
-    color: var(--accent);
+    color: var(--accent-ink);
     font-weight: 600;
   }
   .trow-artist {
@@ -1610,6 +1613,15 @@ input[type='range'].slider:disabled {
     font-size: 12px;
     text-align: right;
     font-variant-numeric: tabular-nums;
+  }
+  /* On the selected row's tint the quiet text is pulled toward the text colour, so it stays readable (4.5:1). */
+  .trow[data-current='true'] .trow-artist,
+  .trow[data-current='true'] .trow-time,
+  .row-edit[data-current='true'] .trow-artist,
+  .row-edit[data-current='true'] .trow-time,
+  .lane-now .trow-artist,
+  .lane-now .trow-time {
+    color: color-mix(in srgb, var(--muted) 70%, var(--fg));
   }
   .trow-idx {
     display: flex;
@@ -1946,7 +1958,7 @@ input[type='range'].slider:disabled {
 
 @layer components {
   .accent-text {
-    color: var(--accent);
+    color: var(--accent-ink);
     font-weight: 600;
   }
 }
@@ -2182,4 +2194,83 @@ input[type='range'].slider:disabled {
     forced-color-adjust: none;
     background: Highlight;
   }
+}
+
+/* Polish for 1.0 (unlayered, so it wins over the layered rules above). */
+
+/* The seek line: 6 px instead of 4, so it can be seen and hit. The thumb is 16 px tall: (6 - 16) / 2 = -5 px. */
+.deck-seek .seek-clip,
+.deck-seek .seek-wake,
+.dock-seek .seek-clip,
+.dock-seek .seek-wake {
+  inset: 7px 0 auto 0;
+  height: 6px;
+  border-radius: 3px;
+}
+.deck-seek input[type='range'].slider::-webkit-slider-runnable-track,
+.dock-seek input[type='range'].slider::-webkit-slider-runnable-track {
+  height: 6px;
+  border-radius: 3px;
+}
+.deck-seek input[type='range'].slider::-webkit-slider-thumb,
+.dock-seek input[type='range'].slider::-webkit-slider-thumb {
+  margin-top: -5px;
+}
+
+/* Narrow rows (a phone-sized window, the queue in Now Playing): the length and "play next" make room for the title. */
+@media (max-width: 480px) {
+  .row-edit .trow-time,
+  .row-edit .row-top {
+    display: none;
+  }
+}
+
+/* Short windows (720p laptops with a taskbar): a slimmer top bar and deck, and a smaller page title, so about one more
+   row fits on the page. */
+@media (min-width: 900px) and (max-height: 760px) {
+  :root {
+    --deck-h: 72px;
+  }
+  .tab-item {
+    height: 48px;
+  }
+  .page-head {
+    padding-top: 8px;
+    padding-bottom: 12px;
+  }
+  .page-head .t-title {
+    font-size: clamp(28px, 3vw, 40px);
+  }
+}
+
+/* The queue lane while nothing is playing: the column keeps its place (the page does not jump when a song starts). */
+.lane-idle {
+  display: flex;
+  flex: 1 1 0;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 24px;
+  color: var(--muted);
+  text-align: center;
+}
+.lane-idle-disc {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 88px;
+  height: 88px;
+  margin-bottom: 8px;
+  border-radius: 9999px;
+  background: var(--selected);
+  box-shadow: 0 0 48px -12px var(--glow);
+}
+
+/* Long lists (thousands of liked songs or history): rows far off screen are not laid out or painted until they come near.
+   The intrinsic height keeps the scroll bar steady. */
+.trow,
+.row-edit {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 57px;
 }

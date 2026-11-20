@@ -3,6 +3,7 @@
   import { nav } from '$lib/nav.svelte';
   import { player } from '$lib/player.svelte';
   import { Loaded } from '$lib/loaded.svelte';
+  import { artistOf, titleOf } from '$lib/format';
   import type { HomeDto } from '$lib/bindings/HomeDto';
   import type { TrackDto } from '$lib/bindings/TrackDto';
   import Backdrop from '../components/Backdrop.svelte';
@@ -83,8 +84,8 @@
         <div class="hero-art"><Thumb src={hero.track.thumbnail} seed={hero.track.key} size={240} fill rounded="r-sm" /></div>
         <div class="min-w-0 flex-1">
           <p class="hero-label">{hero.label}</p>
-          <p class="t-title truncate">{hero.track.title}</p>
-          <p class="muted truncate">{hero.track.artist}</p>
+          <p class="t-title truncate" dir="auto">{titleOf(hero.track)}</p>
+          <p class="muted truncate" dir="auto">{artistOf(hero.track)}</p>
           <div class="mt-4 flex flex-wrap items-center gap-2">
             <Button variant="primary" aria-label="{button.text} {hero.track.title}" onclick={() => heroClick(hero)}>
               {#if button.icon}<Icon name={button.icon} size={16} fill={button.icon === 'play'} />{/if}{button.text}

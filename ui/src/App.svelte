@@ -16,6 +16,7 @@
   import { shellSettings } from '$lib/shell.svelte';
   import { updates } from '$lib/updates.svelte';
   import { hasOwnWindow, tauriWindowControls, type WindowControls } from '$lib/windowControls';
+  import { watchUiScale } from '$lib/uiscale';
   import TitleBar from './components/TitleBar.svelte';
   import Navigation from './components/Navigation.svelte';
   import TopBar from './components/TopBar.svelte';
@@ -51,6 +52,12 @@
   let fullscreen = $state(false);
   // Pyxee's own title bar shows unless the user chose the Windows frame, or the window is full screen (no bar at all then).
   const showTitleBar = $derived(controls != null && shellSettings.settings.borderless && !fullscreen);
+
+  // The interface size follows Settings (and, on automatic, the window's width). Does nothing in a browser.
+  $effect(() => {
+    const choice = prefs.uiScale;
+    return watchUiScale(() => choice);
+  });
 
   onMount(() => {
     if (hasOwnWindow()) void tauriWindowControls().then((c) => (controls = c)).catch(() => {});

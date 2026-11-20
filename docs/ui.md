@@ -149,6 +149,17 @@ and a coloured one tints the backdrop (`--t-mica-tint`); panels are a veil of th
 Custom themes (up to 30) live in `localStorage` with the other theme settings; every built-in is tested for contrast.
 The `set_window_theme` command makes the native frame follow a fixed theme (`null` follows Windows again).
 
+## 1.0 polish
+
+- **Interface size** (Settings -> Appearance, real window only): Automatic, 100%, 125%, 150% or 200%, applied as the webview's
+  page zoom (`lib/uiscale.ts`, capability `core:webview:allow-set-webview-zoom`). Automatic only enlarges a window that is
+  at least 2400 px wide at a 100% Windows display scale (a 4K monitor left unscaled), in quarter steps up to 200%.
+- **Short windows** (900 px wide or more, 760 px high or less) get a slimmer top bar and deck and a smaller page title.
+- **Queue lane** (1440 px and up) stays in place with a friendly empty state while nothing plays, so the page does not shift.
+- `--accent-ink` is the accent used as text (pulled toward the text colour, 4.5:1 on the selected row); `--accent` stays for fills.
+- A song without a title or artist shows "Untitled" / "Unknown artist" (`titleOf`, `artistOf`); titles use `dir="auto"` for right-to-left text.
+- The seek line is 6 px; liking a song also sends a one-off ring out of the heart (`burst` in `lib/motion.ts`).
+
 ## Not verified here
 Everything runs in tests (jsdom) and compiles against Tauri on Linux, but the sandbox has no Windows WebView2, so the
 real window, Mica and DPI behaviour need a first run on your PC.

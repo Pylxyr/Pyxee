@@ -2,7 +2,7 @@
   import { library } from '$lib/library.svelte';
   import { nav } from '$lib/nav.svelte';
   import { player } from '$lib/player.svelte';
-  import { formatTime } from '$lib/format';
+  import { artistOf, formatTime, titleOf } from '$lib/format';
   import { popOnChange } from '$lib/motion';
   import type { TrackDto } from '$lib/bindings/TrackDto';
   import Icon from './Icon.svelte';
@@ -39,15 +39,15 @@
     </span>
     <Thumb src={track.thumbnail} seed={track.key} size={40} rounded="r-sm" />
     <span class="trow-text">
-      <span class="trow-title">{track.title}</span>
-      <span class="trow-artist">{track.artist}</span>
+      <span class="trow-title" dir="auto">{titleOf(track)}</span>
+      <span class="trow-artist" dir="auto">{artistOf(track)}</span>
     </span>
     <span class="trow-time">{formatTime(track.durationMs)}</span>
   </button>
   <span class="trow-actions" data-liked={liked} use:popOnChange={liked}>
-    <IconButton icon="heart" iconSize={18} fill={liked} pressed={liked} label={liked ? `Unlike ${track.title}` : `Like ${track.title}`} onclick={() => library.toggleLike(track)} />
+    <IconButton icon="heart" iconSize={18} fill={liked} pressed={liked} label={liked ? `Unlike ${titleOf(track)}` : `Like ${titleOf(track)}`} onclick={() => library.toggleLike(track)} />
   </span>
   <span class="trow-actions">
-    <IconButton icon="more" iconSize={18} label="More options for {track.title}" onclick={() => { nav.menuOpener = null; nav.menuTrack = track; }} />
+    <IconButton icon="more" iconSize={18} label="More options for {titleOf(track)}" onclick={() => { nav.menuOpener = null; nav.menuTrack = track; }} />
   </span>
 </li>

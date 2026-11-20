@@ -6,6 +6,9 @@
   import { sleep } from '$lib/sleep.svelte';
   import { sleepLabel } from '$lib/lyrics';
   import { shellSettings } from '$lib/shell.svelte';
+  import { prefs } from '$lib/prefs.svelte';
+  import { UI_SCALES, type UiScale } from '$lib/uiscale';
+  import { hasOwnWindow } from '$lib/windowControls';
   import { platform } from '$lib/platform.svelte';
   import { snackbar } from '$lib/snackbar.svelte';
   import Button from './Button.svelte';
@@ -43,6 +46,15 @@
       checked={theme.settings.dynamicColor}
       onchange={(on) => theme.update({ dynamicColor: on })}
     />
+    {#if hasOwnWindow()}
+      <label class="setting-hint mt-3 block">
+        Interface size
+        <select class="field mt-1" aria-label="Interface size" value={prefs.uiScale} onchange={(e) => prefs.setUiScale(e.currentTarget.value as UiScale)}>
+          {#each UI_SCALES as s (s.id)}<option value={s.id}>{s.label}</option>{/each}
+        </select>
+        <span class="mt-1 block">Automatic enlarges a very large, unscaled screen (such as a 4K monitor at 100%) and leaves the rest alone.</span>
+      </label>
+    {/if}
   </section>
 
   <section class="settings-section" aria-label={platform.os === 'windows' ? 'Windows' : 'System'}>

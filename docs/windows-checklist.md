@@ -14,6 +14,15 @@ Run each command on its own line in PowerShell 5. Tick an item when it works; pa
 - [ ] Gear icon (top right) opens "Settings"; Customize theme opens ON TOP of it; Now Playing open + Settings: sheet is above.
 - [ ] Queue page: drag a row by its handle (mouse), arrows work, Esc cancels a drag. Now Playing > Up next: drag, "Play next", arrows. Try with shuffle on.
 
+## 1.0 polish
+
+- [ ] Settings -> Appearance -> Interface size: pick 125%, 150%, 200% and Automatic; the whole window scales at once and keeps the choice after a restart. On a 4K monitor at 100% Windows scale, Automatic enlarges it; at 150% Windows scale it changes nothing.
+- [ ] A 720p-high window (about 1280x680): slimmer top bar, deck and page title; no clipped controls.
+- [ ] 1440 px wide with nothing playing: the right column shows "Nothing queued yet"; starting a song fills it without the page moving.
+- [ ] Like a song: the heart pops and a ring bursts out once. With Windows' animation effects off, only the state changes.
+- [ ] Force a panic in a dev build (or kill a worker) with logging off: `%LOCALAPPDATA%\dev.pyxee.app\logs\last-panic.txt` appears; a normal session creates no `logs` folder.
+- [ ] Pause, skip, close the window, quit from the tray, and sign out while a song plays: the next start resumes the queue (and the position after a pause or quit).
+
 ## WP2 (search filter)
 
 - [ ] Fresh start: Search opens on Songs. Pick Videos, close and reopen the app: still Videos.

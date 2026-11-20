@@ -4,7 +4,7 @@
   import { player, describeFailure } from '$lib/player.svelte';
   import { nav, type NowPlayingTab } from '$lib/nav.svelte';
   import { removeFromQueue } from '$lib/actions';
-  import { formatTime } from '$lib/format';
+  import { artistOf, formatTime, titleOf } from '$lib/format';
   import { reorder } from '$lib/reorder';
   import { focusNeighbour } from '$lib/focus';
   import { flipList } from '$lib/flip';
@@ -67,8 +67,8 @@
         </div>
         <div class="flex w-[min(80vw,22rem)] items-center justify-between gap-3 xl:w-[min(80vw,30rem)] 2xl:w-[min(80vw,40rem)]">
           <div class="min-w-0">
-            <h1 class="t-title truncate">{entry.track.title}</h1>
-            <p class="muted truncate">{entry.track.artist}</p>
+            <h1 class="t-title truncate" dir="auto">{titleOf(entry.track)}</h1>
+            <p class="muted truncate" dir="auto">{artistOf(entry.track)}</p>
           </div>
           <div class="flex items-center">
             <IconButton icon="moon" label="Sleep timer" class="w-auto gap-1 px-2 {sleep.status ? 'text-accent' : ''}" onclick={() => (nav.sleepSheetOpen = true)}>
@@ -116,7 +116,7 @@
               <li class="row-edit px-2 py-1.5" data-current="true">
                 <Thumb src={entry.track.thumbnail} seed={entry.track.key} size={44} rounded="r-sm" />
                 <div class="ml-3 min-w-0 flex-1">
-                  <div class="trow-title accent-text">{entry.track.title}</div>
+                  <div class="trow-title accent-text" dir="auto">{titleOf(entry.track)}</div>
                   <div class="trow-artist">Now playing</div>
                 </div>
                 <span class="trow-time">{formatTime(entry.track.durationMs)}</span>
@@ -147,7 +147,7 @@
                       }}><Icon name="drag" size={18} /></span>
                   {/snippet}
                   {#snippet actions()}
-                    <IconButton icon="top" iconSize={18} label="Play {e.track.title} next" title="Play next" disabled={i === 0} onclick={() => player.moveUpcoming(e.id, 0)} />
+                    <IconButton icon="top" class="row-top" iconSize={18} label="Play {e.track.title} next" title="Play next" disabled={i === 0} onclick={() => player.moveUpcoming(e.id, 0)} />
                     <IconButton icon="up" iconSize={18} label="Move {e.track.title} up" disabled={i === 0} onclick={() => player.moveUpcoming(e.id, i - 1)} />
                     <IconButton icon="down" iconSize={18} label="Move {e.track.title} down" disabled={i === player.upNext.length - 1} onclick={() => player.moveUpcoming(e.id, i + 1)} />
                     <IconButton icon="close" iconSize={18} label="Remove {e.track.title} from queue" onclick={(ev) => { markListChange(); focusNeighbour(ev.currentTarget); removeFromQueue(e); }} />

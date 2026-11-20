@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatProgress, formatTime, hueFor } from './format';
+import { artistOf, formatProgress, formatTime, hueFor, titleOf } from './format';
 
 describe('formatTime', () => {
   it('formats minutes and seconds', () => {
@@ -37,5 +37,18 @@ describe('formatProgress', () => {
     expect(formatProgress(42_000, null)).toBe('0:42');
     expect(formatProgress(42_000, undefined)).toBe('0:42');
     expect(formatProgress(42_000, 0)).toBe('0:42');
+  });
+});
+
+describe('titleOf and artistOf', () => {
+  it('show what the song has', () => {
+    expect(titleOf({ title: 'Neon Harbor' })).toBe('Neon Harbor');
+    expect(artistOf({ artist: 'Lowtide' })).toBe('Lowtide');
+  });
+
+  it('give a song without a title or artist a readable stand-in', () => {
+    expect(titleOf({ title: '' })).toBe('Untitled');
+    expect(titleOf({ title: '   ' })).toBe('Untitled');
+    expect(artistOf({ artist: '' })).toBe('Unknown artist');
   });
 });

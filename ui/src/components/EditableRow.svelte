@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { Snippet } from 'svelte';
   import type { HTMLLiAttributes } from 'svelte/elements';
-  import { formatTime } from '$lib/format';
+  import { artistOf, formatTime, titleOf } from '$lib/format';
   import { nav } from '$lib/nav.svelte';
   import { MOTION, listChangeMs, motionPx } from '$lib/motion';
   import { fly } from 'svelte/transition';
@@ -46,8 +46,8 @@
     {#if index !== undefined}<span class="t-caption muted nums w-6 shrink-0 text-center" aria-hidden="true">{index + 1}</span>{/if}
     <Thumb src={track.thumbnail} seed={track.key} size={coverSize} rounded="r-sm" />
     <span class="min-w-0 flex-1">
-      <span class="trow-title block" class:accent-text={current}>{track.title}</span>
-      <span class="trow-artist block" style={status ? 'color:var(--accent)' : undefined}>{status || track.artist}</span>
+      <span class="trow-title block" dir="auto" class:accent-text={current}>{titleOf(track)}</span>
+      <span class="trow-artist block" dir="auto" style={status ? 'color:var(--accent-ink)' : undefined}>{status || artistOf(track)}</span>
     </span>
     <span class="trow-time">{formatTime(track.durationMs)}</span>
   </button>

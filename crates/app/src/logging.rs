@@ -1,7 +1,8 @@
 //! Logging to a file the user can find: `<app data>\logs\pyxee.log` (one older copy, `pyxee.log.1`, is kept
 //! when it passes 2 MB, so the logs never exceed about 4 MB; identical records in a row are cut to two lines and a count). Everything is also copied to the console, which is what `tauri dev` shows.
 //!
-//! Logging is **off by default**: no log file or folder is created and nothing is written to the disk for it. Set
+//! Logging is **off by default**: no log file or folder is created and nothing is written to the disk for it while the
+//! app runs (only a panic leaves `last-panic.txt`, see `install_panic_report`). Set
 //! `PYXEE_LOG` to `error`, `warn`, `info`, `debug` or `trace` to turn it on at that detail (developer builds only; see
 //! `main.rs`). `PYXEE_PERF=1` raises the level to `info`, which its lines need.
 
@@ -219,9 +220,33 @@ pub fn effective_level(asked: LevelFilter, perf: bool) -> LevelFilter {
     }
 }
 
-/// Starts logging for the whole process, unless it is off (the default): then nothing is opened, created or written,
-/// and the panic hook stays the default one. If the log folder cannot be used the app still runs (console only)
-/// and the reason is returned.
+/// Name of the one-file report a panic leaves behind while logging is off: `<log folder>\last-panic.txt`.
+pub const PANIC_REPORT: &str = "last-panic.txt";
+
+/// With logging off the app writes nothing while it runs, but a crash would then leave no trace at all. This hook costs
+/// nothing until a panic happens: then it writes the panic and its backtrace (with the user's paths removed) to
+/// `last-panic.txt` next to where the log would be, replacing the one before, and lets the default hook carry on.
+fn install_panic_report(dir: &Path) {
+    let report = dir.join(PANIC_REPORT);
+    let default_hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |p| {
+        let text = pyxee_sources::scrub(&format!(
+            "Pyxee {} on {}\n{p}\n{}\n",
+            env!("CARGO_PKG_VERSION"),
+            std::env::consts::OS,
+            std::backtrace::Backtrace::force_capture()
+        ));
+        if let Some(parent) = report.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        let _ = std::fs::write(&report, text);
+        default_hook(p);
+    }));
+}
+
+/// Starts logging for the whole process, unless it is off (the default): then nothing is opened, created or written
+/// while the app runs, and only a panic leaves a report (see `install_panic_report`). If the log folder cannot be used
+/// the app still runs (console only) and the reason is returned.
 pub fn init(dir: &Path) -> (LogInfo, Option<String>) {
     let file = dir.join("pyxee.log");
     let perf =
@@ -233,6 +258,7 @@ pub fn init(dir: &Path) -> (LogInfo, Option<String>) {
         enabled: level != LevelFilter::Off,
     };
     if !info.enabled {
+        install_panic_report(dir);
         return (info, None);
     }
     match FileLogger::open(&file, level, MAX_BYTES, true) {

@@ -1,7 +1,7 @@
 <script lang="ts">
   import { player, describeFailure } from '$lib/player.svelte';
   import { nav } from '$lib/nav.svelte';
-  import { formatTime } from '$lib/format';
+  import { artistOf, formatTime, titleOf } from '$lib/format';
   import { flipList } from '$lib/flip';
   import Button from './Button.svelte';
   import IconButton from './IconButton.svelte';
@@ -41,7 +41,7 @@
       <li class="lane-now track-in">
         <Thumb src={entry.track.thumbnail} seed={entry.track.key} size={40} rounded="r-sm" />
         <span class="min-w-0 flex-1">
-          <span class="trow-title accent-text block">{entry.track.title}</span>
+          <span class="trow-title accent-text block" dir="auto">{titleOf(entry.track)}</span>
           <span class="trow-artist block">Now playing</span>
         </span>
         <span class="trow-time">{formatTime(entry.track.durationMs)}</span>
@@ -52,8 +52,8 @@
           <MenuItem onclick={() => player.playEntry(e.id)}>
             <Thumb src={e.track.thumbnail} seed={e.track.key} size={40} rounded="r-sm" />
             <span class="min-w-0 flex-1">
-              <span class="trow-title block">{e.track.title}</span>
-              <span class="trow-artist block">{e.track.artist}</span>
+              <span class="trow-title block" dir="auto">{titleOf(e.track)}</span>
+              <span class="trow-artist block" dir="auto">{artistOf(e.track)}</span>
             </span>
             <span class="trow-time">{formatTime(e.track.durationMs)}</span>
           </MenuItem>
@@ -62,6 +62,18 @@
         <li class="t-caption muted px-2 py-3">Nothing queued after this song.</li>
       {/each}
     </ul>
+  </aside>
+{:else if lane}
+  <!-- Nothing is playing: the column stays, so the page does not jump sideways when the first song starts. -->
+  <aside class="lane" aria-label="Queue" data-testid="queue-lane-idle">
+    <div class="lane-head">
+      <h2 class="t-lead">Up next</h2>
+    </div>
+    <div class="lane-idle">
+      <div class="lane-idle-disc"><Logo size={44} /></div>
+      <p class="t-strong">Nothing queued yet</p>
+      <p class="t-caption">Pick a song and what plays next shows up here. Press <kbd>/</kbd> to search.</p>
+    </div>
   </aside>
 {/if}
 
@@ -78,14 +90,14 @@
         <Thumb src={entry.track.thumbnail} seed={entry.track.key} size={72} fill rounded="r-sm" />
       </button>
       <div class="min-w-0 flex-1">
-        <p class="t-strong truncate" title={entry.track.title}>{entry.track.title}</p>
+        <p class="t-strong truncate" dir="auto" title={titleOf(entry.track)}>{titleOf(entry.track)}</p>
         {#if player.failure}
           <p class="t-caption accent-text fail-in flex items-center gap-2" role="alert">
             <span class="min-w-0 flex-1 truncate">{describeFailure(player.failure)}</span>
             <Button variant="primary" size="sm" onclick={player.retry}>Retry</Button>
           </p>
         {:else}
-          <p class="muted truncate">{entry.track.artist}</p>
+          <p class="muted truncate" dir="auto">{artistOf(entry.track)}</p>
         {/if}
       </div>
       <LikeButton track={entry.track} />

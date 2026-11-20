@@ -112,7 +112,7 @@ If it keeps happening, wait a while and try again: YouTube limits how fast one n
 
 <br />
 
-Pyxee does not write a log unless it is asked to (so a quiet player leaves the disk alone). A build that has logging turned on (see [`docs/development.md`](docs/development.md), `PYXEE_LOG`) writes `pyxee.log`, and **Settings** -> **Diagnostics** -> **Open log folder** opens it; that section is only there while logging is on. When you [open an issue](https://github.com/Pylxyr/Pyxee/issues), include the lines around the song's name.
+Pyxee does not write a log unless it is asked to (so a quiet player leaves the disk alone). A build that has logging turned on (see [`docs/development.md`](docs/development.md), `PYXEE_LOG`) writes `pyxee.log`, and **Settings** -> **Diagnostics** -> **Open log folder** opens it; that section is only there while logging is on. If Pyxee ever crashes, it leaves one small file, `last-panic.txt`, in the `logs` folder of its data folder (see [`docs/data-folder.md`](docs/data-folder.md)); attach it to your [issue](https://github.com/Pylxyr/Pyxee/issues). Otherwise, when you open an issue, include what you were playing and what happened.
 
 </details>
 

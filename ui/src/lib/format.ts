@@ -45,3 +45,8 @@ export function groupByDay<T>(items: T[], at: (item: T) => number, now: number):
   }
   return groups;
 }
+
+/** A song's title as shown: one with none (a file without tags, a lookup that failed) is still a row you can read and press. */
+export const titleOf = (t: { title: string }): string => t.title.trim() || 'Untitled';
+/** Its artist as shown, for the same reason. */
+export const artistOf = (t: { artist: string }): string => t.artist.trim() || 'Unknown artist';
