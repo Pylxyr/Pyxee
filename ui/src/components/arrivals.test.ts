@@ -18,9 +18,12 @@ describe('search results arrive with the staggered rows only when a new set come
     // the container is kept while another filter loads: it shows whenever results are ready or reloading
     expect(src).toMatch(/showList = \$derived\(search\.status === 'ready' \|\| \(search\.status === 'loading' && search\.reloading\)\)/);
   });
-  it('the stagger it reuses is capped at eight rows, ending by 300 ms', () => {
+  it('the stagger it reuses covers the first 40 rows and ends by 350 ms, so no visible row is already there while the others arrive', () => {
     const css = read('app.css');
-    expect(css).toMatch(/\.route-in \.trow:nth-child\(-n \+ 8\)/);
-    expect(css).not.toMatch(/\.route-in \.trow:nth-child\(9\)/);
+    expect(css).toMatch(/\.route-in \.trow:nth-child\(-n \+ 40\)/);
+    expect(css).toMatch(/\.route-in \.trow:nth-child\(19\)[^{]*\{ animation-delay: 180ms; \}/);
+    // the rows from the 20th on share the last delay, and a long list never starts hundreds of animations
+    expect(css).not.toMatch(/\.route-in \.trow:nth-child\(20\)/);
+    expect(css).not.toMatch(/\.route-in \.trow:nth-child\(41\)/);
   });
 });
