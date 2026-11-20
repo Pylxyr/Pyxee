@@ -8,6 +8,19 @@ afterEach(() => {
   window.dispatchEvent(new Event('online')); // leave the shared network state as it was found
 });
 
+describe('Thumb marks its cover for the reveal on scroll', () => {
+  it('on the picture box', () => {
+    const { container } = render(Thumb, { src: 'https://i.ytimg.com/vi/abc/hqdefault.jpg', seed: 'k', size: 40 });
+    expect(container.querySelector('[data-cover]')?.classList.contains('thumb')).toBe(true);
+  });
+
+  it('and on the placeholder of a song with no picture', () => {
+    const { container } = render(Thumb, { src: null, seed: 'k', size: 40 });
+    expect(container.querySelectorAll('[data-cover]')).toHaveLength(1);
+    expect(container.querySelector('img')).toBeNull();
+  });
+});
+
 describe('Thumb after the window changes', () => {
   it('a cover that never loaded is requested again (a fresh <img>) after a fullscreen switch', async () => {
     const { container } = render(Thumb, { src: 'https://i.ytimg.com/vi/abc/hqdefault.jpg', seed: 'k', size: 352, fill: true });

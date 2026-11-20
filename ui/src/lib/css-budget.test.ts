@@ -300,6 +300,25 @@ describe('the scroll edge under a pinned page header', () => {
   });
 });
 
+describe('rows and covers that reveal themselves on scroll', () => {
+  const [waiting, reduced] = all.filter((b) => b.selector === '[data-reveal]');
+
+  it('wait as one invisible state with nothing running: opacity only, no animation, transition, promotion or filter', () => {
+    expect(waiting?.body).toMatch(/^\s*opacity:\s*0;\s*$/);
+    expect(reduced?.body).toMatch(/^\s*opacity:\s*1;\s*$/);
+    // the animation itself is a one-shot from script (lib/motion.ts), so nothing in the CSS may animate, or keep a layer
+    for (const b of [waiting, reduced]) expect(b?.body).not.toMatch(/animation|transition|will-change|filter/);
+  });
+
+  it('are drawn as they are under reduced motion, in case the setting changed after they were marked', () => {
+    expect(css).toMatch(/@media \(prefers-reduced-motion: reduce\) \{[\s\S]*?\[data-reveal\] \{\s*opacity: 1;/);
+  });
+
+  it('use no scroll-linked animation: the reveal is an observer that lets go of a row once it has played', () => {
+    expect(css).not.toMatch(/animation-timeline|view-timeline/);
+  });
+});
+
 describe('the failure nudge', () => {
   const rule = all.find((b) => b.selector === '.fail-in')?.body ?? '';
   it('is a one-off transform and opacity shake with no fill kept, and stands down under reduced motion', () => {

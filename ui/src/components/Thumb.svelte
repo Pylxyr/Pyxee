@@ -127,6 +127,7 @@
 {#if current}
   <!-- The box shows the colour of the song until the picture has loaded, then the picture fades in over it (opacity only). -->
   <span
+    data-cover
     class="thumb {rounded} {fill ? 'h-full w-full' : ''}"
     style="{fill ? '' : `width:${size}px;height:${size}px;`}background:hsl({hueFor(seed)} 38% 32%)"
   >
@@ -146,6 +147,7 @@
   </span>
 {:else}
   <div
+    data-cover
     class="flex shrink-0 items-center justify-center text-white/80 {rounded} {fill ? 'h-full w-full' : ''}"
     style="{fill ? '' : `width:${size}px;height:${size}px;`}background:hsl({hueFor(seed)} 38% 32%)"
     aria-hidden="true"

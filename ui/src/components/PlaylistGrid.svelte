@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { PlaylistCoverDto } from '$lib/bindings/PlaylistCoverDto';
+  import { reveal } from '$lib/motion';
   import Icon from './Icon.svelte';
   import Thumb from './Thumb.svelte';
 
@@ -9,7 +10,7 @@
 
 <ul class="cover-grid" aria-label={label}>
   {#each playlists as p (p.id)}
-    <li>
+    <li use:reveal>
       <button class="cover-tile" aria-label="Play {p.title}" aria-busy={busy === p.id} disabled={busy !== null} onclick={() => onplay(p)}>
         <span class="cover-art block">
           <Thumb src={p.thumbnail} seed={p.id} size={160} fill rounded="r-md" />

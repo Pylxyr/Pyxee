@@ -14,6 +14,12 @@ if (!Element.prototype.animate) {
       finish() {},
       finished: Promise.resolve(),
       _cb: null,
+      // A real Animation is an EventTarget: `burst()` listens for `finish` this way instead of through `onfinish`.
+      // Same rule as above: it reports at once (next tick), and never after a cancel.
+      addEventListener(type: string, cb: () => void) {
+        if (type === 'finish') timer = setTimeout(() => cb(), 0);
+      },
+      removeEventListener() {},
     };
     Object.defineProperty(a, 'onfinish', {
       set(cb: (() => void) | null) {

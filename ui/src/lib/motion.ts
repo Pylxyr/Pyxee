@@ -232,3 +232,114 @@ function onChange<T>(run: (node: HTMLElement, next: T, prev: T) => void) {
 export const swapOnChange = onChange<boolean>((node) => shuffleSwap(iconOf(node)));
 /** Svelte action for the repeat button: its icon turns when the mode changes (`off` turns it back). */
 export const turnOnChange = onChange<string>((node, next) => turn(iconOf(node), next === 'off' ? -1 : 1));
+
+// ---- Reveal on scroll -----------------------------------------------------------------------------------------------
+// A row or a cover tile waits invisible (`data-reveal`, `opacity: 0` in app.css) until it scrolls into view, then plays
+// once: the row rises on a spring and its cover pops in just after it, spinning a little. However long the list is, only
+// what a person scrolls to is animated, and nothing is kept afterwards: the mark is removed as the animation starts, the
+// animation has no fill after its end, and the row is dropped from the one shared observer (which disconnects when no
+// row is left waiting).
+
+/** A row counts as arrived once its edge is this far inside the window's bottom, so the person sees it play. */
+const REVEAL_BOTTOM_PX = 16;
+/** Rows that arrive together (a page opening, a quick scroll) start one after another, this far apart at most... */
+const REVEAL_STEP_MS = 34;
+/** ...and the last of them starts within this, however many arrive at once. */
+const REVEAL_WAVE_MS = 280;
+const REVEAL_ROW_MS = 460;
+const REVEAL_COVER_MS = 520;
+/** The cover pops this long after its row starts, so the row is there to catch it. */
+const REVEAL_COVER_LAG_MS = 70;
+const REVEAL_RISE_PX = 16;
+/** Where the page cannot give the springs: a plain curve that also overshoots a little. */
+const REVEAL_FALLBACK_EASE = 'cubic-bezier(0.34, 1.56, 0.64, 1)';
+
+let watcher: IntersectionObserver | null = null;
+const waiting = new Set<Element>();
+
+function stopWatching(node: Element): void {
+  if (!waiting.delete(node)) return;
+  watcher?.unobserve(node);
+  if (waiting.size === 0) {
+    watcher?.disconnect();
+    watcher = null;
+  }
+}
+
+/** One Web Animations animation that ends by itself. `backwards` holds the first frame during `delay` and nothing after the end. */
+function playOnce(el: Element, keyframes: Keyframe[], duration: number, delay: number, easing: string): void {
+  const options: KeyframeAnimationOptions = { duration, delay, fill: 'backwards' };
+  try {
+    el.animate(keyframes, { ...options, easing });
+  } catch {
+    el.animate(keyframes, { ...options, easing: REVEAL_FALLBACK_EASE });
+  }
+}
+
+/** `from` is the side the row came in from: 1 from below (the usual way), -1 from above (scrolling back up). */
+function playReveal(node: HTMLElement, delay: number, from: 1 | -1, spring: string, pop: string): void {
+  playOnce(
+    node,
+    [
+      { opacity: 0, transform: `translateY(${from * REVEAL_RISE_PX}px) scale(0.96)` },
+      { opacity: 1, transform: 'translateY(0) scale(1)' },
+    ],
+    REVEAL_ROW_MS,
+    delay,
+    spring,
+  );
+  for (const cover of node.querySelectorAll('[data-cover]')) {
+    playOnce(
+      cover,
+      [
+        { opacity: 0, transform: `scale(0.4) rotate(${from * -12}deg)` },
+        { opacity: 1, transform: 'scale(1) rotate(0deg)' },
+      ],
+      REVEAL_COVER_MS,
+      delay + REVEAL_COVER_LAG_MS,
+      pop,
+    );
+  }
+}
+
+function arrive(entries: IntersectionObserverEntry[]): void {
+  // Top to bottom, then left to right, so a wave runs through a list (or a row of tiles) in reading order.
+  const here = entries
+    .filter((e) => e.isIntersecting && waiting.has(e.target))
+    .sort((a, b) => Math.round(a.boundingClientRect.top) - Math.round(b.boundingClientRect.top) || a.boundingClientRect.left - b.boundingClientRect.left);
+  if (here.length === 0) return;
+  // Under reduced motion (switched on after the row was drawn) or in a hidden window the rows just appear.
+  const animate = !prefersReducedMotion() && !(typeof document !== 'undefined' && document.hidden);
+  const step = Math.min(REVEAL_STEP_MS, REVEAL_WAVE_MS / here.length);
+  const spring = animate ? tokenEase('--spring', REVEAL_FALLBACK_EASE) : '';
+  const pop = animate ? tokenEase('--spring-pop', REVEAL_FALLBACK_EASE) : '';
+  here.forEach((entry, i) => {
+    const node = entry.target as HTMLElement;
+    stopWatching(node);
+    try {
+      // A row whose top edge is cut off by the window came in from above; one that is whole (a page opening) or cut at the bottom, from below.
+      if (animate) playReveal(node, i * step, entry.intersectionRect.top > entry.boundingClientRect.top + 1 ? -1 : 1, spring, pop);
+    } catch {
+      // The webview refused the animation: the row just appears (and the rows after it in this batch still get theirs).
+    }
+    // Whatever happened above, a row is never left invisible.
+    delete node.dataset.reveal;
+  });
+}
+
+/**
+ * Svelte action for a list row or a cover tile: it stays invisible until it scrolls into view, then rises in on a spring
+ * while its cover (the `[data-cover]` inside, see Thumb) pops in after it. Rows that come into view together start one
+ * after another, in reading order. Plays once per row; nothing is left on the row afterwards, and nothing is observed for a
+ * row that has played. Where there is nothing to wait for or animate with (reduced motion, no IntersectionObserver or
+ * `animate`), the row is simply there. A row that comes back after the person just removed one (Undo) has its own enter,
+ * so it is left to that.
+ */
+export function reveal(node: HTMLElement): { destroy(): void } | undefined {
+  if (prefersReducedMotion() || typeof IntersectionObserver !== 'function' || typeof node.animate !== 'function' || listChangeMs(1) > 0) return undefined;
+  node.dataset.reveal = '';
+  waiting.add(node);
+  watcher ??= new IntersectionObserver(arrive, { rootMargin: `0px 0px -${REVEAL_BOTTOM_PX}px 0px` });
+  watcher.observe(node);
+  return { destroy: () => stopWatching(node) };
+}

@@ -2,6 +2,7 @@
   import { player } from '$lib/player.svelte';
   import { search } from '$lib/search.svelte';
   import { snackbar } from '$lib/snackbar.svelte';
+  import { reveal } from '$lib/motion';
   import type { SearchFilterDto } from '$lib/bindings/SearchFilterDto';
   import Button from '../components/Button.svelte';
   import EmptyState from '../components/EmptyState.svelte';
@@ -80,7 +81,7 @@
       {:else if search.status === 'ready' && search.items.length === 0}
         <EmptyState icon="search" title="No results" text="Nothing matched “{search.query}”. Try different words or another filter." />
       {:else if showList}
-        <!-- route-in: a new set of results (after the skeleton) arrives with the first rows one after another. A filter change keeps this element, so a replaced list stays still. -->
+        <!-- route-in: a new set of results (after the skeleton) arrives with the container. Each row (and its cover) reveals itself as it scrolls into view. A filter change keeps this element, so its dimming stays smooth. -->
         <div class="results route-in" data-dim={search.status === 'loading'}>
         <TrackList label="Results" head={false}>
           {#each rows as r (r.key)}
@@ -90,7 +91,7 @@
               {@const t = item.track}
               <TrackRow track={t} index={i} onplay={() => player.playTracks([t])} />
             {:else if item.type === 'artist'}
-              <li class="trow">
+              <li class="trow" use:reveal>
                 <button class="trow-main" onclick={() => search.run(item.name, 'songs')}>
                   <span class="trow-idx" aria-hidden="true"></span>
                   <Thumb src={item.thumbnail} seed={item.key} size={40} rounded="r-full" />
@@ -102,7 +103,7 @@
                 </button>
               </li>
             {:else}
-              <li class="trow">
+              <li class="trow" use:reveal>
                 <button class="trow-main" onclick={() => snackbar.push('Opening playlists from search is not available yet.')}>
                   <span class="trow-idx" aria-hidden="true"></span>
                   <Thumb src={item.thumbnail} seed={item.key} size={40} rounded="r-sm" />

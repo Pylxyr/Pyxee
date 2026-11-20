@@ -422,39 +422,12 @@ input[type='range'].slider:disabled {
 ::view-transition-group(root) {
   animation-duration: 300ms;
 }
-@keyframes row-in {
-  from {
-    opacity: 0;
-    transform: translateY(8px);
-  }
+/* A row or a cover tile that has not scrolled into view yet waits here, invisible. `reveal` (lib/motion.ts) takes the mark off
+   as it starts the row's one-shot animation (Web Animations, no fill after the end), so nothing stays on a row once it has
+   played. Under reduced motion nothing is marked, and a mark left from before the setting changed is not drawn. */
+[data-reveal] {
+  opacity: 0;
 }
-/* The rows of a list arrive one after another, 10 ms apart and 160 ms each, so the 20th is done by 350 ms, about when the page
-   itself (axis-in, 380 ms) has settled. Rows 21 to 40 (the rest of a tall window) arrive together with the 20th. Below that
-   nothing animates, so a long list never starts hundreds of animations. Before this, only the first eight animated and the
-   rows under them were already on screen while the page faded in around them. */
-.route-in .trow:nth-child(-n + 40),
-.route-in .row-edit:nth-child(-n + 40) {
-  animation: row-in 160ms var(--ease-out) 190ms both;
-}
-.route-in .trow:nth-child(1), .route-in .row-edit:nth-child(1) { animation-delay: 0ms; }
-.route-in .trow:nth-child(2), .route-in .row-edit:nth-child(2) { animation-delay: 10ms; }
-.route-in .trow:nth-child(3), .route-in .row-edit:nth-child(3) { animation-delay: 20ms; }
-.route-in .trow:nth-child(4), .route-in .row-edit:nth-child(4) { animation-delay: 30ms; }
-.route-in .trow:nth-child(5), .route-in .row-edit:nth-child(5) { animation-delay: 40ms; }
-.route-in .trow:nth-child(6), .route-in .row-edit:nth-child(6) { animation-delay: 50ms; }
-.route-in .trow:nth-child(7), .route-in .row-edit:nth-child(7) { animation-delay: 60ms; }
-.route-in .trow:nth-child(8), .route-in .row-edit:nth-child(8) { animation-delay: 70ms; }
-.route-in .trow:nth-child(9), .route-in .row-edit:nth-child(9) { animation-delay: 80ms; }
-.route-in .trow:nth-child(10), .route-in .row-edit:nth-child(10) { animation-delay: 90ms; }
-.route-in .trow:nth-child(11), .route-in .row-edit:nth-child(11) { animation-delay: 100ms; }
-.route-in .trow:nth-child(12), .route-in .row-edit:nth-child(12) { animation-delay: 110ms; }
-.route-in .trow:nth-child(13), .route-in .row-edit:nth-child(13) { animation-delay: 120ms; }
-.route-in .trow:nth-child(14), .route-in .row-edit:nth-child(14) { animation-delay: 130ms; }
-.route-in .trow:nth-child(15), .route-in .row-edit:nth-child(15) { animation-delay: 140ms; }
-.route-in .trow:nth-child(16), .route-in .row-edit:nth-child(16) { animation-delay: 150ms; }
-.route-in .trow:nth-child(17), .route-in .row-edit:nth-child(17) { animation-delay: 160ms; }
-.route-in .trow:nth-child(18), .route-in .row-edit:nth-child(18) { animation-delay: 170ms; }
-.route-in .trow:nth-child(19), .route-in .row-edit:nth-child(19) { animation-delay: 180ms; }
 @supports (view-transition-name: none) {
   .route-in {
     animation: none;
@@ -612,10 +585,11 @@ input[type='range'].slider:disabled {
   .pp-icon,
   .deck-art,
   .deck-art::before,
-  .deck-art > *,
-  .route-in .trow,
-  .route-in .row-edit {
+  .deck-art > * {
     animation: none !important;
+  }
+  [data-reveal] {
+    opacity: 1;
   }
   .lyric {
     transition: none !important;

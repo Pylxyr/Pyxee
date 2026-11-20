@@ -2,6 +2,7 @@
   import type { TrackDto } from '$lib/bindings/TrackDto';
   import { nav } from '$lib/nav.svelte';
   import { artistOf, titleOf } from '$lib/format';
+  import { reveal } from '$lib/motion';
   import Icon from './Icon.svelte';
   import Thumb from './Thumb.svelte';
 
@@ -18,7 +19,7 @@
 
 <ul class="cover-grid" aria-label={label}>
   {#each tracks as t, i (t.key)}
-    <li oncontextmenu={(e) => openMenu(e, t)}>
+    <li oncontextmenu={(e) => openMenu(e, t)} use:reveal>
       <button class="cover-tile" aria-label="Play {titleOf(t)}" onclick={() => onplay(i)}>
         <span class="cover-art block">
           <Thumb src={t.thumbnail} seed={t.key} size={160} fill rounded="r-md" />

@@ -6,6 +6,7 @@
   import { messageOf } from '$lib/backend';
   import { groupByDay } from '$lib/format';
   import { Loaded } from '$lib/loaded.svelte';
+  import { reveal } from '$lib/motion';
   import { withKeys } from '$lib/keys';
   import type { HistoryItemDto } from '$lib/bindings/HistoryItemDto';
   import type { TrackDto } from '$lib/bindings/TrackDto';
@@ -105,7 +106,7 @@
     {:else}
       <ul class="cover-grid mt-4" aria-label="Playlists">
         {#each library.playlists as p (p.id)}
-          <li>
+          <li use:reveal>
             <button class="cover-tile" onclick={() => nav.openPlaylist(p.id)}>
               <span class="cover-art block"><Thumb src={p.thumbnail} seed={`pl:${p.id}`} size={160} fill rounded="r-sm" /></span>
               <span class="trow-title mt-2 block">{p.name}</span>

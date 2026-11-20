@@ -3,7 +3,7 @@
   import type { HTMLLiAttributes } from 'svelte/elements';
   import { artistOf, formatTime, titleOf } from '$lib/format';
   import { nav } from '$lib/nav.svelte';
-  import { MOTION, listChangeMs, motionPx } from '$lib/motion';
+  import { MOTION, listChangeMs, motionPx, reveal } from '$lib/motion';
   import { fly } from 'svelte/transition';
   import { cubicIn, expoOut } from 'svelte/easing';
   import type { TrackDto } from '$lib/bindings/TrackDto';
@@ -38,6 +38,7 @@
 
 <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 <li class="row-edit" data-current={current} data-over={over} data-dragging={dragging} oncontextmenu={openMenu}
+  use:reveal
   in:fly={{ y: motionPx(8), duration: listChangeMs(MOTION.base), easing: expoOut }}
   out:fly={{ x: motionPx(-24), duration: listChangeMs(MOTION.exit), easing: cubicIn }}
   {...rest}>

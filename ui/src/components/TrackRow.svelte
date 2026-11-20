@@ -3,7 +3,7 @@
   import { nav } from '$lib/nav.svelte';
   import { player } from '$lib/player.svelte';
   import { artistOf, formatTime, titleOf } from '$lib/format';
-  import { popOnChange } from '$lib/motion';
+  import { popOnChange, reveal } from '$lib/motion';
   import type { TrackDto } from '$lib/bindings/TrackDto';
   import Icon from './Icon.svelte';
   import IconButton from './IconButton.svelte';
@@ -27,7 +27,7 @@
 
 <!-- A table row: place, small cover, title, artist (its own column when the list is wide), length. -->
 <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-<li class="trow" data-current={current} oncontextmenu={openMenu}>
+<li class="trow" data-current={current} oncontextmenu={openMenu} use:reveal>
   <button class="trow-main" onclick={onplay}>
     <span class="trow-idx" aria-hidden="true">
       {#if current}
