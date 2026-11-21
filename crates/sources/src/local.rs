@@ -339,7 +339,7 @@ mod tests {
         // Not audio at all, but named like it: still listed, titled from its name.
         std::fs::write(dir.join("broken.mp3"), b"not audio").unwrap();
 
-        let found = scan(&[dir.clone()], &[], &never).unwrap();
+        let found = scan(std::slice::from_ref(&dir), &[], &never).unwrap();
         let titles: Vec<&str> = found.iter().map(|t| t.title.as_str()).collect();
         assert_eq!(
             titles,
@@ -375,7 +375,7 @@ mod tests {
         // Pretend what the scan remembered: a title that no tag gives. An unchanged file keeps it.
         let mut remembered = first.clone();
         remembered[0].title = "Remembered".into();
-        let again = scan(&[dir.clone()], &remembered, &never).unwrap();
+        let again = scan(std::slice::from_ref(&dir), &remembered, &never).unwrap();
         assert_eq!(
             again[0].title, "Remembered",
             "an unchanged file is not read again"
@@ -383,7 +383,7 @@ mod tests {
 
         // A file of another size is read again.
         std::fs::write(&a, wav(2)).unwrap();
-        let changed = scan(&[dir.clone()], &remembered, &never).unwrap();
+        let changed = scan(std::slice::from_ref(&dir), &remembered, &never).unwrap();
         assert_eq!(changed[0].title, "a");
         // A file that is gone is gone from the result.
         std::fs::remove_file(&a).unwrap();
@@ -394,7 +394,7 @@ mod tests {
     fn a_scan_that_is_stopped_returns_nothing_and_unusable_folders_are_skipped() {
         let dir = scratch("stop");
         std::fs::write(dir.join("a.wav"), wav(1)).unwrap();
-        assert!(scan(&[dir.clone()], &[], &|| true).is_none());
+        assert!(scan(std::slice::from_ref(&dir), &[], &|| true).is_none());
         let missing = dir.join("nowhere");
         assert_eq!(
             scan(&[PathBuf::from("relative/folder"), missing], &[], &never).unwrap(),

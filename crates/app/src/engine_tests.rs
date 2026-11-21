@@ -39,6 +39,9 @@ struct Shared {
     queue: Mutex<VecDeque<Effect>>,
     /// Every position report the engine made, in ms.
     positions: Mutex<Vec<u64>>,
+    /// Prefetch outcomes the engine reported, in order ("ok" or the failure), for tests that must wait
+    /// for a prefetch to finish rather than guess how long it takes.
+    prefetches: Mutex<Vec<String>>,
 }
 
 struct TestHost(Arc<Shared>);
@@ -47,6 +50,16 @@ impl Host for TestHost {
     fn engine_event(&self, e: EngineEvent) {
         if let EngineEvent::Position { ms, .. } = &e {
             self.0.positions.lock().unwrap().push(*ms);
+        }
+        match &e {
+            EngineEvent::Prefetched { .. } => self.0.prefetches.lock().unwrap().push("ok".into()),
+            EngineEvent::PrefetchFailed { failure, .. } => self
+                .0
+                .prefetches
+                .lock()
+                .unwrap()
+                .push(format!("{failure:?}")),
+            _ => {}
         }
         let fx = self.0.player.lock().unwrap().engine(e);
         self.0.queue.lock().unwrap().extend(fx);
@@ -123,6 +136,7 @@ impl Rig {
             player: Mutex::new(Player::new(3)),
             queue: Mutex::new(VecDeque::new()),
             positions: Mutex::new(Vec::new()),
+            prefetches: Mutex::new(Vec::new()),
         });
         let engine = Engine::new(
             Arc::new(TestHost(shared.clone())),
@@ -324,14 +338,29 @@ fn skipping_to_the_prefetched_song_starts_it_at_once_without_opening_it_again() 
         start: 0,
     });
     assert!(r.run_until(10, |r| r.snapshot().audible.is_some()));
-    r.run_for(500); // the next song is prefetched by now
+    // Wait for the engine to report the next song as prefetched (how long that takes depends on the
+    // machine), so that skipping really is the "already open" case this test is about.
+    assert!(
+        r.run_until(10, |r| !r.shared.prefetches.lock().unwrap().is_empty()),
+        "no prefetch outcome: {:?}",
+        r.snapshot()
+    );
+    assert_eq!(
+        *r.shared.prefetches.lock().unwrap(),
+        vec!["ok".to_string()],
+        "the next song must prefetch cleanly"
+    );
     r.cmd(Command::Next);
     let ids = r.entry_ids();
     let second = Some(ids[1]);
     assert!(
         r.run_until(10, |r| r.snapshot().audible.map(|i| i.0) == second),
-        "{:?}",
-        r.snapshot()
+        "{:?}\naudible_log: {:?}\nprefetches: {:?}\nnotices: {:?}\neffects: {:?}",
+        r.snapshot(),
+        r.audible_log,
+        r.shared.prefetches.lock().unwrap(),
+        r.shared.notices.lock().unwrap(),
+        r.effects
     );
     assert_eq!(r.audible_log, vec![None, Some(ids[0]), None, Some(ids[1])]);
     // The song after it is prefetched in turn and follows, so nothing broke the queue.
