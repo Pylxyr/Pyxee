@@ -96,8 +96,8 @@ it was put until the player's position reaches it, and the time labels show wher
   sideways to the page's edges; Explore's shelves are the same). Page titles are poster-sized, with a time-of-day greeting above
   Home's. **Picking anything on Home starts a radio** (`lib/radio.ts`): the song plays at once and about 15 similar songs
   (`relatedGet`) are queued behind it; if another song is picked meanwhile, or the lookup fails, the queue is left alone (a note
-  says so on failure). "Tune in" is a grid of cards (`MixCard`), one per song you come back to (the quick picks, then the recent
-  songs), each coloured from its song, plus a "Surprise me" card that starts a radio from one of them at random.
+  says so on failure). "Tune in" is a row of cards (`MixCard`) that scrolls sideways like the covers, one per song you come back to (the quick picks, then
+  the recent songs), each coloured from its song's cover, plus a "Surprise me" card that starts a radio from one of them at random.
 - **The deck** is the memorable part: a seek line across the whole window, a cover lit by the accent (of the theme, or of the
   cover with "Color from album art"), and the same accent washing down the lane. The hero, the flyout and the mini player use the wash.
 - Ink (blue-black with a signal-lime accent) is the default theme, Frost (soft grey-white with olive-lime) the default light one. The logo keeps its own red; the UI accent does not.
@@ -186,11 +186,12 @@ are read only for the looks that use them. The colors blend from the stand-in (h
 over 700 ms; the registered `<color>` properties are the only custom-property transitions allowed (`css-budget.test.ts`), they end by
 themselves and repaint only the card while they last.
 
-## Home at every width
-The feature card stacks below 560 px, is lower in short windows (under 760 px high) and larger from 1800 px. "Tune in" is a
-grid that `fillRows` (`lib/fillrows.ts`) trims to whole rows (it looks again on a resize or a change of cards, never otherwise);
-under 520 px wide the section it is in turns it into a shelf that scrolls sideways, like Recently played. `?home` on the
-standalone demo's address gives it a listening history and a few likes so Home shows its full layout.
+## Home at every size
+The point of Home is that one glance shows the feature card, a row of Tune in and the top of Recently played, in a window that is not
+maximized too. So "Tune in" is one row that scrolls sideways (the buttons in its heading page it; `SectionHead` finds the shelf past
+the one-line hint), and the page gets compact when the window is under 960 px high: a lower feature card with a smaller cover and
+title, a smaller page title, shorter cards, and under 800 px the hint line is hidden. The card stacks below 560 px wide and is larger
+from 1800 px. `?home` on the standalone demo's address gives it a listening history and a few likes so Home shows its full layout.
 
 ## Not verified here
 Everything runs in tests (jsdom) and compiles against Tauri on Linux, but the sandbox has no Windows WebView2, so the

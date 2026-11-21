@@ -22,8 +22,10 @@
   }
 
   $effect(() => {
-    const next = head?.nextElementSibling;
-    shelf = next instanceof HTMLElement && next.classList.contains('cover-grid') && next.closest('.shelves') ? next : null;
+    // The shelf is the list under the heading (a one-line hint may sit between them).
+    let next = head?.nextElementSibling ?? null;
+    if (next instanceof HTMLParagraphElement) next = next.nextElementSibling;
+    shelf = next instanceof HTMLElement && (next.classList.contains('cover-grid') || next.classList.contains('mix-grid')) && next.closest('.shelves') ? next : null;
     if (!shelf) return;
     measure();
     const el = shelf;

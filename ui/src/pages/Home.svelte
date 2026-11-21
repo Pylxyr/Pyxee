@@ -5,7 +5,6 @@
   import { playWithRelated } from '$lib/radio';
   import { Loaded } from '$lib/loaded.svelte';
   import { heroTones } from '$lib/color';
-  import { fillRows } from '$lib/fillrows';
   import { coverColorsOf } from '$lib/covercolors.svelte';
   import { artistOf, titleOf } from '$lib/format';
   import { look } from '$lib/look.svelte';
@@ -73,7 +72,7 @@
   }
   // "Tune in": the songs you come back to as cards, each one the start of a radio (the song, then songs like it). The
   // first card picks one of them at random.
-  // Eleven songs and the surprise card; `fillRows` hides the few that would leave a short last row at the current width.
+  // Eleven songs and the surprise card, in one row that scrolls sideways.
   const MIX_CARDS = 11;
   const seeds = $derived.by((): TrackDto[] => {
     const seen = new Set<string>();
@@ -149,7 +148,7 @@
         <section class="min-w-0">
           <SectionHead>Tune in</SectionHead>
           <p class="muted mb-3">Pick one and Pyxee queues songs like it.</p>
-          <ul class="mix-grid" aria-label="Start a radio" use:fillRows>
+          <ul class="mix-grid" aria-label="Start a radio">
             <li><MixCard onpick={surprise} /></li>
             {#each seeds as t (t.key)}
               <li><MixCard track={t} onpick={() => void playWithRelated(t)} /></li>
