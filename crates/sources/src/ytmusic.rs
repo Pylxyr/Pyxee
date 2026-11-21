@@ -2049,8 +2049,9 @@ mod tests {
 
     #[test]
     fn a_wrapped_row_is_read_and_rows_without_an_id_or_title_are_left_out() {
+        // The real shape: the wrapper holds the row as `primaryRenderer.playlistPanelVideoRenderer`.
         let wrapped = json!({ "playlistPanelVideoWrapperRenderer": { "primaryRenderer":
-            radio_item("bbbbbbbbbbb", "Wrapped", "B", "2:00", SONG)["playlistPanelVideoRenderer"].clone()
+            radio_item("bbbbbbbbbbb", "Wrapped", "B", "2:00", SONG)
         } });
         let no_id =
             json!({ "playlistPanelVideoRenderer": { "title": { "runs": [{ "text": "x" }] } } });

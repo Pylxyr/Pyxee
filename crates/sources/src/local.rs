@@ -359,7 +359,7 @@ mod tests {
             .unwrap()
             .duration_ms
             .is_none());
-        assert_eq!(first.key(), key_for(&dir.join("Artist/01 First.wav")));
+        assert_eq!(first.key(), key_for(&dir.join("Artist").join("01 First.wav")));
         assert_eq!(first.to_info().key, first.key());
     }
 
