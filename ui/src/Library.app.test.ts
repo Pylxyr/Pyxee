@@ -84,12 +84,15 @@ describe('likes', () => {
     await waitFor(() => expect(within(np).getByRole('button', { name: 'Unlike' })).toBeTruthy());
   });
 
-  it('the row menu likes and unlikes', async () => {
+  it('the song menu likes and unlikes', async () => {
     await openApp();
-    await fireEvent.click(await screen.findByRole('button', { name: 'More options for Paper Planes' }));
+    await player.playTracks([NEON, PAPER]);
+    await go(/Queue/);
+    const paper = () => [...document.querySelectorAll('li.row-edit')].find((l) => l.textContent?.includes('Paper Planes'))!;
+    await fireEvent.contextMenu(await waitFor(() => paper()));
     await fireEvent.click(await screen.findByRole('button', { name: 'Like' }));
     await waitFor(() => expect(library.isLiked(PAPER.key)).toBe(true));
-    await fireEvent.click(await screen.findByRole('button', { name: 'More options for Paper Planes' }));
+    await fireEvent.contextMenu(paper());
     await fireEvent.click(await screen.findByRole('button', { name: 'Unlike' }));
     await waitFor(() => expect(library.isLiked(PAPER.key)).toBe(false));
   });
@@ -261,22 +264,23 @@ describe('history and Home', () => {
     expect(library.snapshot.historyCount).toBe(0);
   });
 
-  it('Home fills with quick picks, recently played and a likes shortcut as you listen', async () => {
+  it('Home fills with radio cards, recently played and a likes shortcut as you listen', async () => {
     await mock.setLiked(PAPER, true);
     await openApp();
     await player.playTracks([NEON]); // Home already shows library picks, not the demo list
     await listen(NEON, 31);
     await go(/Home/);
-    const picks = await screen.findByRole('list', { name: 'Quick picks' });
-    expect(within(picks).getByText('Neon Harbor')).toBeTruthy();
-    expect(within(picks).getByText('Paper Planes')).toBeTruthy();
+    const radios = await screen.findByRole('list', { name: 'Start a radio' });
+    expect(within(radios).getByRole('button', { name: 'Start a radio from Neon Harbor' })).toBeTruthy();
+    expect(within(radios).getByRole('button', { name: 'Start a radio from Paper Planes' })).toBeTruthy();
+    expect(within(radios).getByRole('button', { name: 'Surprise me' })).toBeTruthy();
     expect(screen.queryByText(/Demo tracks/)).toBeNull();
     expect(within(screen.getByRole('list', { name: 'Recently played' })).getByRole('button', { name: 'Play Neon Harbor' })).toBeTruthy();
     await fireEvent.click(screen.getByRole('button', { name: /Liked songs/ }));
     expect(await screen.findByRole('list', { name: 'Liked songs' })).toBeTruthy();
   });
 
-  it('a right-click on a Home cover, a quick pick or the Pick up card opens the song menu', async () => {
+  it('a right-click on a Home cover or the Pick up card opens the song menu', async () => {
     await mock.setLiked(PAPER, true);
     await openApp();
     await player.playTracks([NEON]);
@@ -290,10 +294,6 @@ describe('history and Home', () => {
     nav.menuTrack = null;
     await fireEvent.contextMenu(screen.getByTestId('resume'));
     expect(menuKey()).toBe(NEON.key);
-    nav.menuTrack = null;
-    const picks = await screen.findByRole('list', { name: 'Quick picks' });
-    await fireEvent.contextMenu(within(picks).getAllByRole('listitem')[0]!);
-    expect(menuKey()).toBeDefined();
   });
 
   it('the Pick up card follows the song that is playing and only says Resume while it is paused', async () => {

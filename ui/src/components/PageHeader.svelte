@@ -2,8 +2,10 @@
   import type { Snippet } from 'svelte';
 
   /** The top of a page: one title, a quiet line under it, the page's actions on the right, tabs or filters below. */
-  let { title, meta = null, lead, actions, children }: {
+  let { title, meta = null, kicker = null, lead, actions, children }: {
     title: string;
+    /** A small line above the title (Home's greeting). */
+    kicker?: string | null;
     meta?: string | null;
     /** Something before the title, such as a playlist's cover. */
     lead?: Snippet;
@@ -15,6 +17,7 @@
 <div class="page-head">
   {@render lead?.()}
   <div class="page-head-main">
+    {#if kicker}<p class="page-kicker">{kicker}</p>{/if}
     <h1 class="t-title truncate">{title}</h1>
     {#if meta}<p class="muted">{meta}</p>{/if}
   </div>

@@ -23,8 +23,7 @@ A **masthead** on top, the **page** under it, and the **deck** along the bottom;
   shows what plays and Up next as a scrolling list with **Open queue**. Before anything plays the deck says so and keeps its height.
 - **Narrow**: page, then the dock (a one-line player with the seek line along its top edge), then the bottom bar. The search
   box and Settings are at the top of the page.
-Page margins grow at 1600 and 1920 px; Home puts "On rotation" and "Recently played" side by side once its page is about 1000 px wide,
-and Now Playing has no width cap (a bigger cover and a wider queue column at 1280 and 1536 px).
+Page margins grow at 1600 and 1920 px, and Now Playing has no width cap (a bigger cover and a wider queue column at 1280 and 1536 px).
 Click the cover (deck or dock) to open Now Playing (Up next / Lyrics / Related). The same four destinations (`lib/destinations.ts`)
 feed the tabs and the bottom bar (`Navigation.svelte`, `layout="tabs" | "bar"`).
 
@@ -44,6 +43,20 @@ and no frame, and the page follows the window's state through its resize events.
 Mica and the borderless window: Windows draws the system backdrop in a window without a native title bar only where the DWM frame is
 extended into the page, so `apply_backdrop` (`window.rs`) calls `DwmExtendFrameIntoClientArea` with -1 margins after `apply_mica`
 when the window has no frame. `sync_window_frame` asks for the backdrop again after every frame change.
+
+## The 1.0 skin
+
+The look moved from restrained Windows 11 Fluent to something livelier (a block at the end of `app.css`; it overrides the layered rules
+above it and is the place to change the look):
+
+- Rounder (`--r-sm/md/lg` 9, 14, 22 px) and pill-shaped buttons, chips, tabs and search.
+- A second colour, `--accent-2`, a step around the colour wheel from the accent (so it follows every theme and the cover's colour), and
+  `--gradient-accent` from the two. The chosen tab, primary buttons, play buttons and the hero's label use it.
+- A soft wash of both colours behind the shell; in wide windows the top bar, page, queue lane and player are separate rounded cards
+  with room between them.
+- Rows have no hairlines; the playing one is washed with the accent. Cover tiles and Tune in cards lift and tip under the pointer.
+- Everything is drawn once (gradients, shadows) or reacts to the pointer and stops; nothing runs on its own. Transitions are
+  transform and opacity only.
 
 ## Theming and Mica
 CSS variables on `<html>`: `data-theme` (dark/light, follows the system unless overridden) and `data-backdrop`.
@@ -89,9 +102,12 @@ it was put until the player's position reaches it, and the time labels show wher
 - **Type**: Segoe UI Variable for text and Bahnschrift (installed with Windows 10 and 11; Segoe UI Variable Display is the fallback) for titles, in the
   Windows 11 ramp (12/16, 14/20, 18/24, 20/28, 30/36, 40/52), sentence case, regular and semibold. There are no tracked capitals. Times use tabular figures.
 - **Home** opens with the *hero* (what is playing, or the last song, as a large lit cover over a blurred wash of itself, with Resume and
-  Liked songs), then "On rotation" (the table's rows in as many columns as fit) and "Recently played" as a shelf of covers
-  (`CoverGrid` inside `.shelves`: one row that scrolls sideways to the page's edges; Explore's shelves are the same). Page titles are
-  poster-sized over a hairline.
+  Liked songs), then "Tune in" and "Recently played" as a shelf of covers (`CoverGrid` inside `.shelves`: one row that scrolls
+  sideways to the page's edges; Explore's shelves are the same). Page titles are poster-sized, with a time-of-day greeting above
+  Home's. **Picking anything on Home starts a radio** (`lib/radio.ts`): the song plays at once and about 15 similar songs
+  (`relatedGet`) are queued behind it; if another song is picked meanwhile, or the lookup fails, the queue is left alone (a note
+  says so on failure). "Tune in" is a grid of cards (`MixCard`), one per song you come back to (the quick picks, then the recent
+  songs), each coloured from its song, plus a "Surprise me" card that starts a radio from one of them at random.
 - **The deck** is the memorable part: a seek line across the whole window, a cover lit by the accent (of the theme, or of the
   cover with "Color from album art"), and the same accent washing down the lane. The hero, the flyout and the mini player use the wash.
 - Ink (blue-black with a signal-lime accent) is the default theme, Frost (soft grey-white with olive-lime) the default light one. The logo keeps its own red; the UI accent does not.

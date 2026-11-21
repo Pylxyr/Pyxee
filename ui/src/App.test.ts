@@ -131,7 +131,7 @@ describe('App shell', () => {
     await fireEvent.click(screen.getByRole('button', { name: /Explore/ }));
     expect(screen.getByRole('heading', { name: 'Explore' })).toBeTruthy();
     await fireEvent.click(screen.getByRole('button', { name: /Home/ }));
-    expect(screen.getByRole('heading', { name: 'On rotation' })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: /^(Tune in|Demo songs)$/ })).toBeTruthy();
   });
 
   it('Explore shows shelves built from what you like and play, and no moods', async () => {

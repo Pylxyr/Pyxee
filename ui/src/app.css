@@ -2264,3 +2264,394 @@ input[type='range'].slider:disabled {
   content-visibility: auto;
   contain-intrinsic-size: auto 57px;
 }
+
+/* =====================================================================================================================
+   The 1.0 skin: colourful, rounded and floating. Unlayered, so it wins over the layered rules above. Everything here is
+   drawn once (gradients, shadows) or reacts to the pointer and then stops; nothing runs on its own.
+   ===================================================================================================================== */
+
+:root {
+  --r-sm: 9px;
+  --r-md: 14px;
+  --r-lg: 22px;
+  /* A second colour a step around the colour wheel from the accent: it follows every theme (and the cover's colour). */
+  --accent-2: var(--accent);
+  --gradient-accent: linear-gradient(120deg, var(--accent), var(--accent-2));
+}
+@supports (color: oklch(from red l c h)) {
+  :root {
+    --accent-2: oklch(from var(--accent) l c calc(h + 58));
+  }
+}
+
+/* A soft wash of both colours behind everything. */
+.shell {
+  background:
+    radial-gradient(54rem 36rem at 4% -10%, color-mix(in srgb, var(--accent) 22%, transparent), transparent 70%),
+    radial-gradient(48rem 34rem at 104% 4%, color-mix(in srgb, var(--accent-2) 18%, transparent), transparent 70%),
+    var(--bg);
+}
+
+/* Wide windows: the top bar, the page, the queue lane and the player are separate rounded cards with room between them. */
+.shell[data-layout='wide'] {
+  gap: 12px;
+  padding: 2px 14px 14px;
+}
+.shell[data-layout='wide'] .masthead {
+  min-height: 64px;
+  padding: 0 12px 0 20px;
+  border: 1px solid var(--rule);
+  border-radius: 9999px;
+  background: color-mix(in srgb, var(--surface) 88%, transparent);
+  box-shadow: 0 16px 36px -28px color-mix(in srgb, var(--accent) 70%, #000);
+}
+.shell[data-layout='wide'] .page {
+  overflow: hidden;
+  border: 1px solid var(--rule);
+  border-radius: var(--r-lg);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 9%, var(--layer)), var(--layer) 380px);
+}
+.shell[data-layout='wide'] .lane {
+  overflow: hidden;
+  border: 1px solid var(--rule);
+  border-radius: var(--r-lg);
+}
+.shell[data-layout='wide'] .deck {
+  padding: 0 26px;
+  border: 1px solid var(--rule);
+  border-radius: 32px;
+  background: linear-gradient(
+    100deg,
+    color-mix(in srgb, var(--accent) 18%, var(--surface)),
+    var(--surface) 46%,
+    color-mix(in srgb, var(--accent-2) 12%, var(--surface))
+  );
+  box-shadow: 0 24px 48px -32px var(--glow);
+}
+.shell[data-layout='wide'] .deck-seek {
+  inset-inline: 32px;
+}
+.shell[data-layout='narrow'] .page {
+  background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 8%, var(--layer)), var(--layer) 320px);
+}
+
+/* The four places as pills; the chosen one is a gradient pill that slides from tab to tab. */
+.tabs-list {
+  gap: 4px;
+  isolation: isolate;
+}
+.tab-item {
+  height: 40px;
+  padding: 0 16px;
+  border-radius: 9999px;
+}
+.tab-item:hover {
+  background: var(--hover);
+}
+.tab-item[aria-current='page']:hover {
+  background: transparent;
+}
+.tab-indicator {
+  top: 0;
+  bottom: auto;
+  z-index: -1;
+  height: 40px;
+  border-radius: 20px;
+  background: var(--gradient-accent);
+  box-shadow: 0 10px 20px -10px var(--glow);
+}
+.tabs-list:has(.tab-indicator[data-shown='true']) .tab-item[aria-current='page'] {
+  color: var(--on-accent);
+}
+.wordmark {
+  background: linear-gradient(100deg, var(--fg) 30%, var(--accent-ink));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* Search: a pill that lights up. */
+.search-box {
+  height: 42px;
+  padding: 0 18px;
+  border-color: var(--rule);
+  border-radius: 9999px;
+}
+.search-box:focus-within {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 28%, transparent);
+}
+
+/* Buttons: pills; the main one is the two-colour gradient. */
+.btn {
+  min-height: 38px;
+  padding: 0 20px;
+  border-radius: 9999px;
+}
+.btn-primary,
+.btn-primary:hover,
+.btn-primary:active {
+  background: var(--gradient-accent);
+  box-shadow: 0 10px 22px -12px var(--glow);
+}
+.play-btn {
+  border-radius: 9999px;
+  background: var(--gradient-accent);
+  box-shadow: 0 12px 24px -10px var(--glow);
+}
+.chip {
+  border-radius: 9999px;
+}
+.chip[aria-pressed='true'] {
+  background: var(--gradient-accent);
+  border-color: transparent;
+  color: var(--on-accent);
+}
+
+/* Page titles: big, with the accent running through them. */
+.page-kicker {
+  margin-bottom: 2px;
+  color: var(--accent-ink);
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+.page-head {
+  border-bottom: 0;
+}
+.page-head .t-title {
+  background: linear-gradient(100deg, var(--fg) 25%, var(--accent-ink) 70%, color-mix(in srgb, var(--accent-2) 70%, var(--fg)));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  font-weight: 700;
+}
+.section-head > .flex-1 {
+  background: linear-gradient(90deg, var(--rule), transparent);
+}
+
+/* Rows: rounded and without hairlines; the playing one is washed with the accent. */
+.trow {
+  margin: 2px 0;
+  border-bottom: 0;
+  border-radius: var(--r-md);
+}
+.trow[data-current='true'] {
+  background: linear-gradient(90deg, color-mix(in srgb, var(--accent) 24%, transparent), color-mix(in srgb, var(--accent-2) 6%, transparent) 70%, transparent);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+.row-edit {
+  border-radius: var(--r-md);
+}
+.tracklist-head {
+  border-bottom: 0;
+}
+
+/* Cover tiles: they lift, tip and glow under the pointer. */
+.cover-tile .cover-art {
+  border-radius: var(--r-lg);
+  transition: transform 360ms var(--spring-pop);
+}
+@media (hover: hover) {
+  .cover-tile:hover .cover-art {
+    transform: translateY(-6px) rotate(-1.4deg) scale(1.03);
+  }
+}
+.cover-tile .cover-play {
+  border-radius: 9999px;
+  background: var(--gradient-accent);
+}
+
+/* The feature card at the top of Home. */
+.hero {
+  min-height: clamp(240px, 24vw, 340px);
+  padding: 32px;
+  border-color: color-mix(in srgb, var(--accent) 38%, var(--rule));
+  border-radius: 30px;
+  box-shadow: 0 34px 60px -40px var(--glow);
+}
+.hero-art {
+  border-radius: var(--r-lg);
+  transform: rotate(-3deg);
+}
+.hero-label {
+  align-self: flex-start;
+  display: inline-block;
+  margin-bottom: 6px;
+  padding: 4px 12px;
+  border-radius: 9999px;
+  background: var(--gradient-accent);
+  color: var(--on-accent);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+}
+
+/* Home: "Tune in", the cards that start a radio. Each takes its colours from its song. */
+.mix-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 240px), 1fr));
+  gap: 16px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.mix-card {
+  position: relative;
+  isolation: isolate;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  gap: 2px;
+  width: 100%;
+  min-height: 156px;
+  padding: 16px 18px;
+  overflow: hidden;
+  border-radius: var(--r-lg);
+  background: linear-gradient(135deg, hsl(var(--mix-h) 68% 34%), hsl(calc(var(--mix-h) + 48) 72% 24%));
+  box-shadow: 0 18px 30px -22px hsl(var(--mix-h) 80% 40%);
+  color: #fff;
+  text-align: left;
+  transition: transform 360ms var(--spring-pop);
+}
+/* The bottom of the card is darker, so the words stay readable on any colour. */
+.mix-card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: linear-gradient(to top, rgb(0 0 0 / 0.38), transparent 62%);
+}
+.mix-card:active {
+  transform: scale(0.97);
+  transition-duration: 70ms;
+}
+@media (hover: hover) {
+  .mix-card:hover {
+    transform: translateY(-5px) rotate(-0.8deg);
+  }
+  .mix-card:hover .mix-art {
+    transform: rotate(3deg) scale(1.07);
+  }
+}
+.mix-art {
+  position: absolute;
+  top: -12px;
+  right: -12px;
+  width: 112px;
+  aspect-ratio: 1;
+  overflow: hidden;
+  border-radius: 26px;
+  box-shadow: 0 12px 24px -8px rgb(0 0 0 / 0.55);
+  transform: rotate(9deg);
+  transition: transform 400ms var(--spring-pop);
+}
+.mix-kicker {
+  position: absolute;
+  top: 14px;
+  left: 16px;
+  padding: 3px 10px;
+  border-radius: 9999px;
+  background: rgb(255 255 255 / 0.2);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.mix-title {
+  display: -webkit-box;
+  max-width: calc(100% - 44px);
+  overflow: hidden;
+  font-family: var(--font-display);
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1.15;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+.mix-sub {
+  overflow: hidden;
+  max-width: calc(100% - 44px);
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  opacity: 0.88;
+}
+.mix-play {
+  position: absolute;
+  right: 14px;
+  bottom: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 9999px;
+  background: #fff;
+  color: hsl(var(--mix-h) 70% 30%);
+  opacity: 0;
+  transform: translateY(8px) scale(0.6);
+  transition: opacity var(--dur-fast) var(--ease), transform 380ms var(--spring-pop);
+}
+.mix-card:hover .mix-play,
+.mix-card:focus-visible .mix-play {
+  opacity: 1;
+  transform: none;
+}
+.mix-surprise {
+  background: var(--gradient-accent);
+  box-shadow: 0 18px 30px -22px var(--glow);
+  color: var(--on-accent);
+}
+.mix-surprise::before {
+  background: linear-gradient(to top, rgb(0 0 0 / 0.18), transparent 62%);
+}
+.mix-surprise .mix-play {
+  color: var(--accent-ink);
+}
+.mix-dice {
+  position: absolute;
+  top: 16px;
+  right: 18px;
+  opacity: 0.9;
+  transform: rotate(12deg);
+  transition: transform 460ms var(--spring-pop);
+}
+@media (hover: hover) {
+  .mix-surprise:hover .mix-dice {
+    transform: rotate(-14deg) scale(1.15);
+  }
+}
+
+/* Short windows: a lower feature card, so "Tune in" is in view. Small windows: the card stacks, the cover on top. */
+@media (min-width: 900px) and (max-height: 760px) {
+  .hero {
+    min-height: 196px;
+    padding: 22px 26px;
+  }
+  .hero-art {
+    width: 148px;
+  }
+}
+@media (max-width: 560px) {
+  .hero {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 16px;
+    padding: 20px;
+  }
+  .hero-art {
+    width: 132px;
+  }
+  .hero-label {
+    white-space: nowrap;
+  }
+}
+
+@media (min-width: 900px) and (max-height: 760px) {
+  .page-head {
+    padding-top: 14px;
+  }
+  .deck-art {
+    width: 52px;
+    height: 52px;
+  }
+}

@@ -2,6 +2,7 @@
   import { library } from '$lib/library.svelte';
   import { nav } from '$lib/nav.svelte';
   import { player } from '$lib/player.svelte';
+  import { playWithRelated } from '$lib/radio';
   import { Loaded } from '$lib/loaded.svelte';
   import { artistOf, titleOf } from '$lib/format';
   import type { HomeDto } from '$lib/bindings/HomeDto';
@@ -11,12 +12,17 @@
   import CoverGrid from '../components/CoverGrid.svelte';
   import EmptyState from '../components/EmptyState.svelte';
   import Icon from '../components/Icon.svelte';
+  import MixCard from '../components/MixCard.svelte';
   import PageHeader from '../components/PageHeader.svelte';
   import ScrollPage from '../components/ScrollPage.svelte';
   import SectionHead from '../components/SectionHead.svelte';
   import Skeleton from '../components/Skeleton.svelte';
   import Thumb from '../components/Thumb.svelte';
   import TrackList from '../components/TrackList.svelte';
+
+  // A greeting for the time of day (the hour is read once, when the page opens).
+  const hour = new Date().getHours();
+  const greeting = hour < 5 ? 'Still up?' : hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
 
   // Quick picks and recents come from what you play and like; they refresh as the library changes. A late answer
   // never replaces a newer one, and a failed read keeps what is shown (with nothing shown yet, the page is just empty).
@@ -55,16 +61,35 @@
     else if (h.action === 'retry') void player.retry();
     else void player.toggle();
   }
+  // "Tune in": the songs you come back to as cards, each one the start of a radio (the song, then songs like it). The
+  // first card picks one of them at random.
+  const MIX_CARDS = 7;
+  const seeds = $derived.by((): TrackDto[] => {
+    const seen = new Set<string>();
+    const out: TrackDto[] = [];
+    for (const t of [...(home?.quickPicks ?? []), ...(home?.recent ?? [])]) {
+      if (seen.has(t.key)) continue;
+      seen.add(t.key);
+      out.push(t);
+      if (out.length >= MIX_CARDS) break;
+    }
+    return out;
+  });
+  function surprise() {
+    const pool = [...(home?.quickPicks ?? []), ...(home?.recent ?? [])];
+    const pick = pool[Math.floor(Math.random() * pool.length)];
+    if (pick) void playWithRelated(pick);
+  }
   const demo = $derived(!hasLibrary && player.catalog && player.catalog.length > 0 ? player.catalog : null);
 </script>
 
 <ScrollPage>
   {#snippet header()}
-    <PageHeader title="Home" />
+    <PageHeader title="Home" kicker={greeting} />
   {/snippet}
 
   {#if home === null}
-    <SectionHead>On rotation</SectionHead>
+    <SectionHead>Tune in</SectionHead>
     <Skeleton rows={8} />
   {:else if hasLibrary}
     <div class="home-body shelves">
@@ -98,22 +123,28 @@
       </div>
     {/if}
     <div class="home-cols">
-      {#if home.quickPicks.length > 0}
+      {#if seeds.length > 0}
         <section class="min-w-0">
-          <SectionHead count={home.quickPicks.length}>On rotation</SectionHead>
-          <div class="picks"><TrackList label="Quick picks" tracks={home.quickPicks} onplay={(i) => player.playTracks(home!.quickPicks, i)} /></div>
+          <SectionHead>Tune in</SectionHead>
+          <p class="muted mb-3">Pick one and Pyxee queues songs like it.</p>
+          <ul class="mix-grid" aria-label="Start a radio">
+            <li><MixCard onpick={surprise} /></li>
+            {#each seeds as t (t.key)}
+              <li><MixCard track={t} onpick={() => void playWithRelated(t)} /></li>
+            {/each}
+          </ul>
         </section>
       {/if}
       {#if home.recent.length > 0}
         <section class="min-w-0">
           <SectionHead count={home.recent.length}>Recently played</SectionHead>
-          <CoverGrid label="Recently played" tracks={home.recent} onplay={(i) => player.playTracks(home!.recent, i)} />
+          <CoverGrid label="Recently played" tracks={home.recent} onplay={(i) => void playWithRelated(home!.recent[i]!)} />
         </section>
       {/if}
     </div>
     </div>
   {:else if demo}
-    <SectionHead count={demo.length}>On rotation</SectionHead>
+    <SectionHead count={demo.length}>Demo songs</SectionHead>
     <p class="muted mb-2">Demo tracks with simulated playback. Real picks appear here as you listen and like songs.</p>
     <TrackList label="Demo tracks" tracks={demo} onplay={(i) => player.playTracks(demo, i)} />
   {:else}

@@ -21,8 +21,9 @@
         bar.shown = false;
         return;
       }
-      bar.x = el.offsetLeft + 14;
-      bar.w = Math.max(0, el.offsetWidth - 28);
+      // The chosen tab's whole pill (it used to be an underline inset by the tab's padding).
+      bar.x = el.offsetLeft;
+      bar.w = Math.max(0, el.offsetWidth);
       bar.shown = true;
       if (!bar.armed) requestAnimationFrame(() => (bar.armed = true));
     });
