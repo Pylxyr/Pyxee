@@ -776,6 +776,12 @@ pub fn parse_dump(json: &str) -> Result<Resolved, SourceError> {
     let url = d
         .url
         .ok_or_else(|| SourceError::Parse("no stream url in output".into()))?;
+    // Like the player endpoint's answer, yt-dlp's is trusted, but not so far that a plain `http` address is played.
+    if !url.to_ascii_lowercase().starts_with("https://") {
+        return Err(SourceError::Failed(
+            "the stream address is not an https address".into(),
+        ));
+    }
     Ok(Resolved {
         id: d.id.clone(),
         title: d.title.unwrap_or_else(|| "Unknown title".into()),
@@ -1260,6 +1266,24 @@ mod tests {
             .to_string()
             .contains("no stream url"));
         assert!(matches!(parse_dump("not json"), Err(SourceError::Parse(_))));
+    }
+
+    #[test]
+    fn a_stream_address_that_is_not_https_is_refused() {
+        for bad in [
+            "http://rr1---sn-x.googlevideo.com/videoplayback",
+            "ftp://rr1---sn-x.googlevideo.com/videoplayback",
+            "file:///etc/passwd",
+            "//rr1---sn-x.googlevideo.com/videoplayback",
+            "rr1---sn-x.googlevideo.com/videoplayback",
+            "",
+        ] {
+            let json = serde_json::json!({ "id": "a", "url": bad }).to_string();
+            assert!(
+                matches!(parse_dump(&json), Err(SourceError::Failed(_))),
+                "{bad}"
+            );
+        }
     }
 
     #[test]

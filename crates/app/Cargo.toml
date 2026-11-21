@@ -57,6 +57,10 @@ dev-tools = []
 #   cargo check -p pyxee-app --features win-extras
 win-extras = ["dep:windows"]
 
+[dev-dependencies]
+# The engine tests serve audio from a local `http` server, which the stream agent otherwise refuses.
+pyxee-audio = { path = "../audio", features = ["allow-insecure-http"] }
+
 [build-dependencies]
 tauri-build = { version = "2.7.4", features = [] }
 

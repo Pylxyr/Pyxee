@@ -145,7 +145,7 @@ pub fn shell_get(app: AppHandle) -> ShellSettingsDto {
         toast_on_change: false,
         tray_controls: false,
         flyout_on_click: true,
-        discord_presence: true,
+        discord_presence: false,
         lastfm_scrobbling: false,
         check_prereleases: false,
     })

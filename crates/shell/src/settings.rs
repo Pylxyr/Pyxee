@@ -21,7 +21,8 @@ pub struct ShellSettings {
     /// the main window instead. The right-click menu is always there.
     pub flyout_on_click: bool,
     /// Discord Rich Presence ("Listening to Pyxee"). Only does anything when the build has a Discord application
-    /// ID baked in (`PYXEE_DISCORD_CLIENT_ID` at build time); on by default, so such a build behaves as before.
+    /// ID baked in (`PYXEE_DISCORD_CLIENT_ID` at build time). Off until turned on, because it shows what is played
+    /// to everyone who can see the Discord profile.
     pub discord_presence: bool,
     /// Last.fm scrobbling: "now playing" and a scrobble for the songs listened to. Off until turned on, because it
     /// tells a third party what is played. Only does anything when the build has a Last.fm application key and secret
@@ -46,7 +47,7 @@ impl Default for ShellSettings {
             toast_on_change: false,
             tray_controls: false,
             flyout_on_click: true,
-            discord_presence: true,
+            discord_presence: false,
             lastfm_scrobbling: false,
             lastfm_session: None,
             mini_bounds: None,
@@ -150,21 +151,21 @@ mod tests {
         assert!(l.settings.close_to_tray && l.settings.toast_on_change);
         assert!(l.settings.flyout_on_click && !l.settings.tray_controls);
         assert!(
-            l.settings.discord_presence,
-            "an older file keeps Discord presence on"
+            !l.settings.discord_presence,
+            "a file that never chose Discord presence gets it off"
         );
     }
 
     #[test]
-    fn discord_presence_is_on_by_default_and_can_be_saved_off() {
-        assert!(ShellSettings::default().discord_presence);
+    fn discord_presence_is_off_by_default_and_can_be_saved_on() {
+        assert!(!ShellSettings::default().discord_presence);
         let p = dir("discord").join("shell.json");
         let s = ShellSettings {
-            discord_presence: false,
+            discord_presence: true,
             ..Default::default()
         };
         save(&p, &s).unwrap();
-        assert!(!load(&p).settings.discord_presence);
+        assert!(load(&p).settings.discord_presence);
     }
 
     #[test]

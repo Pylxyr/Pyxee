@@ -22,5 +22,11 @@ cpal = "0.18.2"
 [build-dependencies]
 cc = "1.11.0"
 
+[features]
+# Lets the stream agent talk plain `http`, so the tests can serve audio from a local server. Never on in a normal
+# build: the app turns it on only for its tests (a dev-dependency), and `cargo test -p pyxee-audio` on its own needs
+# `--features allow-insecure-http`.
+allow-insecure-http = []
+
 [lints]
 workspace = true

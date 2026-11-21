@@ -44,7 +44,7 @@ Shows the current song as "Listening to Pyxee" in the Discord desktop client, th
 - **Behaviour:** like Spotify's: "Listening to Pyxee" with the title, "by" the artist, the cover art and a progress bar when the duration is known. Pausing takes the activity down; resuming puts it back with a fresh bar. Seeks correct the bar; ordinary position ticks send nothing. While a song loads it is shown without a bar. Cleared when idle or on quit.
 - **Cover art:** the song's thumbnail is used when it is a short `https` URL (YouTube thumbnails are). Local files and anything else are skipped, and Discord shows the application's icon instead, so upload an app icon in the Developer Portal.
 - **Failures:** if Discord is not running or the pipe drops, playback is unaffected. Reconnects back off from 2 to 30 seconds, and only while something is waiting to be shown.
-- **Switch:** Settings > Windows > "Show what I'm playing on Discord" (`discordPresence` in `shell.json`). On by default, so a build with an application ID shows presence as before. Turning it off clears the presence at once and stops the Discord thread; turning it on starts it again, and the next position tick publishes the current song. With no application ID configured the switch has no effect.
+- **Switch:** Settings > Windows > "Show what I'm playing on Discord" (`discordPresence` in `shell.json`). Off by default, so nothing is shown until the listener turns it on. Turning it off clears the presence at once and stops the Discord thread; turning it on starts it again, and the next position tick publishes the current song. With no application ID configured the switch has no effect.
 
 ## Window frame
 

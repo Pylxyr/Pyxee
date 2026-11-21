@@ -97,12 +97,14 @@ pub(crate) fn is_expired(code: u16) -> bool {
 }
 
 /// One agent for every stream: its connection pool keeps the TLS connection to the stream host alive across songs and
-/// seeks, instead of a new handshake each time a song is (re)opened.
+/// seeks, instead of a new handshake each time a song is (re)opened. It is `https` only: a plain `http` address (or a
+/// redirect to one) is refused. Only the `allow-insecure-http` feature, which is for tests, lifts that.
 fn agent() -> ureq::Agent {
     static AGENT: OnceLock<ureq::Agent> = OnceLock::new();
     AGENT
         .get_or_init(|| {
             pyxee_net::agent_config()
+                .https_only(!cfg!(feature = "allow-insecure-http"))
                 .timeout_connect(Some(Duration::from_secs(10)))
                 .timeout_per_read(Some(Duration::from_secs(20)))
                 .build()

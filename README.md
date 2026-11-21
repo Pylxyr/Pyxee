@@ -12,7 +12,7 @@ A gapless music player for Windows and Linux that plays music found online.
 [![CI](https://img.shields.io/github/actions/workflow/status/Pylxyr/Pyxee/ci.yml?branch=main&label=CI)](https://github.com/Pylxyr/Pyxee/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/github/license/Pylxyr/Pyxee?color=blue)](LICENSE)
 
-[Download](https://github.com/Pylxyr/Pyxee/releases/latest) &nbsp;|&nbsp; [Features](#features) &nbsp;|&nbsp; [Install](#install) &nbsp;|&nbsp; [Updates](#updates) &nbsp;|&nbsp; [Help](#if-something-goes-wrong) &nbsp;|&nbsp; [Documentation](#documentation)
+[Download](https://github.com/Pylxyr/Pyxee/releases/latest) &nbsp;|&nbsp; [Features](#features) &nbsp;|&nbsp; [Install](#install) &nbsp;|&nbsp; [Getting started](#getting-started) &nbsp;|&nbsp; [Privacy](#what-leaves-your-computer) &nbsp;|&nbsp; [Updates](#updates) &nbsp;|&nbsp; [Help](#if-something-goes-wrong) &nbsp;|&nbsp; [Documentation](#documentation)
 
 </div>
 
@@ -20,6 +20,12 @@ A gapless music player for Windows and Linux that plays music found online.
 
 > [!NOTE]
 > Pyxee is a hobby project and is not affiliated with YouTube or Google. It finds music on YouTube itself where it can, and uses the open-source tool [yt-dlp](https://github.com/yt-dlp/yt-dlp) for the rest and whenever YouTube does not answer.
+
+## What is Pyxee?
+
+Pyxee is a gapless music player for Windows and Linux. You search for a song, video, artist or playlist, add it to your queue, and it plays. It keeps your likes, playlists and listening history on your own computer.
+
+**New here?** [Install](#install) it, then follow [Getting started](#getting-started). If something does not work, see [If something goes wrong](#if-something-goes-wrong).
 
 ## Features
 
@@ -33,7 +39,7 @@ A gapless music player for Windows and Linux that plays music found online.
 | **Sleep timer** | Stops playback by itself when you fall asleep. |
 | **Tray controls** | Playback controls from the system tray. |
 | **Themes** | Ink (the default), Frost, OLED black and more. **Match system** follows your light or dark mode, **Customize...** edits a theme's colours, and **Export** and **Import a theme** let you share them. Find them under **Settings** (the gear icon, top right) -> **Appearance**. |
-| **Discord** | Shows what you are listening to. Turn it on or off in **Settings**. |
+| **Discord** | Shows what you are listening to. Off until you turn it on in **Settings**. |
 
 ## Install
 
@@ -88,9 +94,53 @@ makepkg -sic
 
 The full guide covers both, step by step for beginners and with options for advanced users: **[Pyxee on Linux](docs/linux.md)**.
 
+## Getting started
+
+1. Start Pyxee and use the search box to find a song, video, artist or playlist.
+2. Add what you find to your queue and let it play.
+3. Open **Settings** (the gear icon, top right) to change how Pyxee looks and behaves.
+
+| Where in Settings | What you find there |
+|---|---|
+| **Appearance** | Themes, colour taken from the album art, and the interface size. |
+| **Windows** (called **System** on Linux) | Keep playing in the tray, start with your computer, song-change notifications, tray controls, **Discord** and **Last.fm**. |
+| **Updates** | Check for a new version of Pyxee and update yt-dlp. |
+| **Diagnostics** | Open the log folder. Only shown while logging is turned on. |
+
+Discord and Last.fm are optional and **off until you switch them on**. Both only work in builds that include the matching application ID or key, which the official releases do. See [What leaves your computer](#what-leaves-your-computer).
+
+Your library, queue and the updated yt-dlp are kept in Pyxee's data folder: see [Where Pyxee keeps its files](docs/data-folder.md).
+
+## What leaves your computer
+
+Pyxee plays music from the internet, so it has to talk to a few services. This is what it sends and why. There is nothing to sign up for, and Pyxee never signs in to YouTube.
+
+### Always, so that music can be found and played
+
+| Service | Information transmitted | Purpose |
+|---|---|---|
+| **YouTube / Google** | What you search for, requests for the audio of the songs you play, and requests for thumbnails and cover art. | Finding music, playing it, and showing artwork. |
+| **lrclib.net** | The song title, artist and duration of the song whose lyrics you are viewing. | Looking up lyrics. This happens when the lyrics panel is open for the playing song. |
+| **GitHub** | A request for the list of Pyxee releases, which includes the Pyxee version you run. | Checking for a newer version of Pyxee. This happens when Pyxee starts and when you open **Settings** -> **Updates**. |
+
+Like any request on the internet, each of these also sees your IP address. yt-dlp is a separate program that Pyxee runs when it needs it, and it makes its own connections to YouTube. When you press **Check yt-dlp** or choose to install an update, Pyxee also contacts GitHub to get yt-dlp or a new Pyxee installer.
+
+### Only if you turn them on
+
+| Service | Information transmitted | Purpose |
+|---|---|---|
+| **Last.fm** | The artist, title and length of the song playing now, and of the songs you have listened to, with the time you listened. | Scrobbling to your Last.fm account. **Opt-in:** off until you switch it on, and nothing is sent while it is off. The first time, your browser opens so you can allow Pyxee on Last.fm. Pyxee never sees your Last.fm password. |
+| **Discord** | The title and artist of the song playing now. | Discord Rich Presence ("Listening to Pyxee"). **Off by default** (since version 0.6.0): nothing is shared with Discord unless you turn it on. When on, Pyxee hands the song to the Discord app running on your computer, which shows it on your profile. |
+
+### Good to know
+
+- Search suggestions while you type are **off** in normal builds, so what you type is only sent when you run a search.
+- This section covers what Pyxee itself does. What YouTube, Google, lrclib.net, GitHub, Last.fm and Discord do with the information they receive is up to them and their own policies.
+- On Windows, the installer may also download Microsoft's WebView2 runtime if your PC does not have it.
+
 ## Updates
 
-- **Windows:** open **Settings** -> **Updates**. Pyxee checks for a newer version and installs it for you (a portable copy downloads the new zip instead).
+- **Windows:** open **Settings** -> **Updates**. Pyxee checks for a newer version and installs it for you (a portable copy downloads the new zip instead). It also looks for a newer version by itself when it starts, and only tells you if there is one.
 - **Linux:** Pyxee does not replace itself. The two short update steps are in the [Linux install](#linux) above, with more in [Pyxee on Linux](docs/linux.md#updating). **Updates** still tells you when a newer version is out.
 - **Both:** **Updates** also keeps yt-dlp, the part that finds your music when Pyxee cannot get it from YouTube directly, up to date. This fixes most "it suddenly stopped finding songs" problems.
 
@@ -139,11 +189,23 @@ Still stuck? [Open an issue](https://github.com/Pylxyr/Pyxee/issues).
 
 - [Pyxee on Linux](docs/linux.md): installing, updating and troubleshooting on Linux, and what is different from Windows.
 - [Where Pyxee keeps its files](docs/data-folder.md): the data folder, the log and the updated yt-dlp.
+- [Security policy](SECURITY.md): how to report a security problem, and which versions get fixes.
 
 **Building and changing Pyxee**
 
-- [Building and developing Pyxee](docs/development.md): prerequisites, running, testing and the layout of the code.
+- [Building and developing Pyxee](docs/development.md): prerequisites, running, testing, the optional settings and the layout of the code.
 - [Releasing](docs/releasing.md): how a release is cut, built and signed.
+- [Windows checklist](docs/windows-checklist.md): things to check by hand on Windows.
+- [Icon and logo](docs/icon.md): the mark and its colours.
+
+**How Pyxee works inside**
+
+- [Core](docs/core.md): the queue, state machine and heard tracker.
+- [Engine, sources and search](docs/engine.md): the audio engine, music sources, search and queue.
+- [Library](docs/library.md): likes, playlists and listening history.
+- [User interface](docs/ui.md): the structure of the window.
+- [Windows shell integration](docs/shell.md): tray, notifications, Discord Rich Presence and Last.fm.
+- [Performance](docs/performance.md) and [measuring idle resource use](docs/measuring.md).
 
 ## Built with
 
