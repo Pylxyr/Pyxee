@@ -2,9 +2,9 @@ import type { ThemeColors } from './themes';
 import { isKnownMissing, isMissingStill, noteMissing, thumbCandidates } from './thumb';
 type Bucket = { w: number; r: number; g: number; b: number };
 
-/** The heaviest colour bucket of the pixels whose lightness is within [lo, hi]; null when none qualifies. */
-function heaviest(data: Uint8ClampedArray, lo: number, hi: number, greyWeight: number): string | null {
-  const buckets = new Map<number, Bucket>();
+/** The colour buckets of the pixels whose lightness is within [lo, hi], heaviest first. */
+function buckets(data: Uint8ClampedArray, lo: number, hi: number, greyWeight: number): string[] {
+  const found = new Map<number, Bucket>();
   for (let i = 0; i + 3 < data.length; i += 4) {
     const r = data[i]!, g = data[i + 1]!, b = data[i + 2]!, a = data[i + 3]!;
     if (a < 128) continue;
@@ -14,13 +14,16 @@ function heaviest(data: Uint8ClampedArray, lo: number, hi: number, greyWeight: n
     const sat = max === min ? 0 : (max - min) / (255 - Math.abs(max + min - 255));
     const key = ((r >> 5) << 6) | ((g >> 5) << 3) | (b >> 5);
     const weight = greyWeight + sat; // prefer colourful pixels over grey ones
-    const e = buckets.get(key) ?? { w: 0, r: 0, g: 0, b: 0 };
+    const e = found.get(key) ?? { w: 0, r: 0, g: 0, b: 0 };
     e.w += weight; e.r += r * weight; e.g += g * weight; e.b += b * weight;
-    buckets.set(key, e);
+    found.set(key, e);
   }
-  let best: Bucket | null = null;
-  for (const e of buckets.values()) if (!best || e.w > best.w) best = e;
-  return best ? toHex(best.r / best.w, best.g / best.w, best.b / best.w) : null;
+  return [...found.values()].sort((x, y) => y.w - x.w).map((e) => toHex(e.r / e.w, e.g / e.w, e.b / e.w));
+}
+
+/** The heaviest colour bucket of the pixels whose lightness is within [lo, hi]; null when none qualifies. */
+function heaviest(data: Uint8ClampedArray, lo: number, hi: number, greyWeight: number): string | null {
+  return buckets(data, lo, hi, greyWeight)[0] ?? null;
 }
 
 /**
@@ -30,6 +33,36 @@ function heaviest(data: Uint8ClampedArray, lo: number, hi: number, greyWeight: n
  */
 export function dominantColor(data: Uint8ClampedArray): string | null {
   return heaviest(data, 0.12, 0.9, 0.15) ?? heaviest(data, 0.03, 0.97, 0.05);
+}
+
+/** The two colours a cover is known by: its main one, and one that sets itself apart from it. */
+export interface CoverColors {
+  a: string;
+  b: string;
+}
+
+/** How far apart two hues are, in degrees (0-180). */
+const hueGap = (x: number, y: number) => {
+  const d = Math.abs(x - y) % 360;
+  return d > 180 ? 360 - d : d;
+};
+
+/**
+ * The cover's main colour and a second one for a gradient: the heaviest colour whose hue is clearly another one (or,
+ * when it is lighter or darker by a good margin), and when the cover is all one colour, that colour turned a little
+ * around the wheel and darker, so a card is never flat.
+ */
+export function dominantPair(data: Uint8ClampedArray): CoverColors | null {
+  const list = buckets(data, 0.12, 0.9, 0.15);
+  const all = list.length > 0 ? list : buckets(data, 0.03, 0.97, 0.05);
+  const a = all[0];
+  if (!a) return null;
+  const [ha, sa, la] = toHsl(a);
+  const other = all.slice(1).find((c) => {
+    const [h, sat, l] = toHsl(c);
+    return (sat > 0.12 && sa > 0.12 && hueGap(h, ha) >= 35) || Math.abs(l - la) >= 0.3;
+  });
+  return { a, b: other ?? fromHsl((ha + 38) % 360, clamp(sa, 0.25, 0.9), clamp(la * 0.75, 0.12, 0.5)) };
 }
 
 export function toHex(r: number, g: number, b: number): string {
@@ -85,14 +118,23 @@ export function normalizeHex(v: string): string | null {
   return /^[0-9a-f]{6}$/.test(h) ? `#${h}` : null;
 }
 
-function sampleColor(source: CanvasImageSource): string | null {
+function pixelsOf(source: CanvasImageSource): Uint8ClampedArray | null {
   const canvas = document.createElement('canvas');
   canvas.width = canvas.height = 32;
   const ctx = canvas.getContext('2d', { willReadFrequently: true });
   if (!ctx) return null;
   ctx.drawImage(source, 0, 0, 32, 32);
-  return dominantColor(ctx.getImageData(0, 0, 32, 32).data);
+  return ctx.getImageData(0, 0, 32, 32).data;
 }
+
+const sampleColor = (source: CanvasImageSource): string | null => {
+  const px = pixelsOf(source);
+  return px ? dominantColor(px) : null;
+};
+const samplePair = (source: CanvasImageSource): CoverColors | null => {
+  const px = pixelsOf(source);
+  return px ? dominantPair(px) : null;
+};
 
 const colorCache = new Map<string, string>();
 const COLOR_CACHE_MAX = 64;
@@ -106,7 +148,7 @@ const COLOR_CACHE_MAX = 64;
 export async function accentFromImage(url: string, fetchBytes?: (url: string) => Promise<ArrayBuffer>): Promise<string | null> {
   const known = colorCache.get(url);
   if (known) return known;
-  const found = await readAccent(url, fetchBytes);
+  const found = await readColors(url, fetchBytes, sampleColor);
   if (found) {
     if (colorCache.size >= COLOR_CACHE_MAX) colorCache.delete(colorCache.keys().next().value as string);
     colorCache.set(url, found);
@@ -114,7 +156,35 @@ export async function accentFromImage(url: string, fetchBytes?: (url: string) =>
   return found;
 }
 
-async function readAccent(url: string, fetchBytes?: (url: string) => Promise<ArrayBuffer>): Promise<string | null> {
+const pairCache = new Map<string, CoverColors>();
+const pending = new Map<string, Promise<CoverColors | null>>();
+
+/**
+ * A cover's two colours (for the "Tune in" cards and the feature card's looks), read the way `accentFromImage` reads
+ * one. Remembered per cover; several cards asking for the same cover at once share one read.
+ */
+export function coverColors(url: string, fetchBytes?: (url: string) => Promise<ArrayBuffer>): Promise<CoverColors | null> {
+  const known = pairCache.get(url);
+  if (known) return Promise.resolve(known);
+  const running = pending.get(url);
+  if (running) return running;
+  const job = readColors(url, fetchBytes, samplePair)
+    .then((found) => {
+      if (found) {
+        if (pairCache.size >= COLOR_CACHE_MAX * 2) pairCache.delete(pairCache.keys().next().value as string);
+        pairCache.set(url, found);
+      }
+      return found;
+    })
+    .finally(() => pending.delete(url));
+  pending.set(url, job);
+  return job;
+}
+
+/** The colours of a cover already read (no waiting), for something that is drawn again. */
+export const knownCoverColors = (url: string): CoverColors | undefined => pairCache.get(url);
+
+async function readColors<T>(url: string, fetchBytes: ((url: string) => Promise<ArrayBuffer>) | undefined, sample: (source: CanvasImageSource) => T | null): Promise<T | null> {
   for (const candidate of thumbCandidates(url, 64).filter((u) => !isKnownMissing(u))) {
     try {
       const img = new Image();
@@ -125,7 +195,7 @@ async function readAccent(url: string, fetchBytes?: (url: string) => Promise<Arr
         noteMissing(candidate);
         continue;
       }
-      const found = sampleColor(img);
+      const found = sample(img);
       if (found) return found;
       continue;
     } catch {
@@ -139,7 +209,7 @@ async function readAccent(url: string, fetchBytes?: (url: string) => Promise<Arr
           noteMissing(candidate);
           continue;
         }
-        const found = sampleColor(bitmap);
+        const found = sample(bitmap);
         if (found) return found;
         continue;
       } finally {
@@ -220,6 +290,28 @@ export function paletteFromArt(art: string, scheme: 'dark' | 'light'): ThemeColo
     muted: ensureContrastOn(fromHsl(h, n * 0.7, 0.34), surface2, 'light', 4.5),
     accent: ensureContrastOn(fromHsl(h, clamp(s, 0.6, 0.95), clamp(l, 0.28, 0.4)), surface2, 'light', 3),
   };
+}
+
+/** `hex` with its saturation and lightness held inside the given ranges (a grey one stays grey). */
+function tone(hex: string, sat: [number, number], light: [number, number]): string {
+  const [h, s, l] = toHsl(hex);
+  return fromHsl(h, s < 0.08 ? s : clamp(s, sat[0], sat[1]), clamp(l, light[0], light[1]));
+}
+
+/** The two colours of a "Tune in" card's gradient: the cover's, deepened until white words read on both (WCAG 4.5:1). */
+export function cardTones(c: CoverColors): CoverColors {
+  return {
+    a: ensureContrastOn(tone(c.a, [0.4, 0.85], [0.26, 0.42]), '#ffffff', 'light', 4.5),
+    b: ensureContrastOn(tone(c.b, [0.35, 0.8], [0.14, 0.3]), '#ffffff', 'light', 4.5),
+  };
+}
+
+/** The three colours a feature card's looks are painted with: lively, and a third one a step around the wheel from the first. */
+export function heroTones(c: CoverColors): { a: string; b: string; c: string } {
+  const a = tone(c.a, [0.45, 0.9], [0.4, 0.62]);
+  const b = tone(c.b, [0.4, 0.85], [0.35, 0.58]);
+  const [h, s, l] = toHsl(a);
+  return { a, b, c: fromHsl((h + 60) % 360, s < 0.08 ? s : clamp(s, 0.4, 0.85), clamp(l, 0.4, 0.58)) };
 }
 
 /** What the native window frame wears: its border, and (with the Windows title bar) the bar and its text. */

@@ -44,14 +44,16 @@ before, not as what WebView2 will use on a GPU. See the script's header for what
 
 ## Seek bar movement (`PYXEE_SEEK_MODE`)
 
-The filled part of the seek bar can move four ways; pick one with `PYXEE_SEEK_MODE` (developer builds only; read at start).
-The time labels and the slider's value always change once a second.
+The filled part of the seek bar can move four ways. In the app it is **Settings > Look > Progress bar** (smooth glide, steps or
+once a second; saved in the UI's storage as `pyxee.seek`, and `glide` unless chosen otherwise). `PYXEE_SEEK_MODE` (developer builds
+only; read at start) picks the mode until a choice has been saved, and is the only way to get `pixel`. The time labels and the
+slider's value always change once a second.
 
 | Mode | What it does |
 |---|---|
-| `step` (default) | The fill moves with the once-a-second position report. |
+| `step` | The fill moves with the once-a-second position report. |
 | `pixel` | One timer is set for the moment the fill has gone one more device pixel (from the last report plus the time since, like the lyric lines' timer). Nothing is armed while paused, hidden, or when reports have stopped. |
-| `glide` | One Web Animations `scaleX` animation for the rest of the song; restarted on a seek, a new song, a drift over 300 ms or after a pause. |
+| `glide` (default) | One Web Animations `scaleX` animation for the rest of the song; restarted on a seek, a new song, a drift over 300 ms or after a pause. |
 | `steps` | The same animation with `steps()`: 4 a second, never more than the pixels left to fill. |
 
 In the standalone demo use `?seek=pixel` (and `?len=210` for a 3.5 minute song; the built-in ones are 27-40 s, so their

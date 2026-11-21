@@ -117,7 +117,6 @@ pub struct ShellSettingsDto {
     pub flyout_on_click: bool,
     pub discord_presence: bool,
     pub lastfm_scrobbling: bool,
-    pub borderless: bool,
     pub check_prereleases: bool,
 }
 
@@ -131,7 +130,6 @@ impl From<&ShellSettings> for ShellSettingsDto {
             flyout_on_click: s.flyout_on_click,
             discord_presence: s.discord_presence,
             lastfm_scrobbling: s.lastfm_scrobbling,
-            borderless: s.borderless,
             check_prereleases: s.check_prereleases,
         }
     }

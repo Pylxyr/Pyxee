@@ -25,7 +25,8 @@
   import NowPlaying from './components/NowPlaying.svelte';
   import { startPerfIfEnabled } from '$lib/perf';
   import { initSeekMode } from '$lib/seekmode.svelte';
-  import { initPlatform } from '$lib/platform.svelte';
+  import { look } from '$lib/look.svelte';
+  import { initPlatform, platform } from '$lib/platform.svelte';
   import Snackbar from './components/Snackbar.svelte';
   import TrackMenu from './components/TrackMenu.svelte';
   import SettingsSheet from './components/SettingsSheet.svelte';
@@ -50,8 +51,9 @@
   // The main window has no native frame, so the page draws the title bar. Null in a browser, where there is no window to control.
   let controls = $state.raw<WindowControls | null>(null);
   let fullscreen = $state(false);
-  // Pyxee's own title bar shows unless the user chose the Windows frame, or the window is full screen (no bar at all then).
-  const showTitleBar = $derived(controls != null && shellSettings.settings.borderless && !fullscreen);
+  // Pyxee's own title bar shows wherever the window has no frame of its own (everywhere but Linux, whose window keeps the
+  // desktop's frame), except in full screen (no bar at all then).
+  const showTitleBar = $derived(controls != null && platform.os !== 'linux' && !fullscreen);
 
   // The interface size follows Settings (and, on automatic, the window's width). Does nothing in a browser.
   $effect(() => {
@@ -96,6 +98,12 @@
   $effect(() => {
     const tint = theme.nativeTint;
     if (player.ready) void backendRef?.setWindowTint(tint);
+  });
+
+  // The look chosen in Settings > Appearance is data attributes on the root element; the rules are in app.css.
+  $effect(() => {
+    void look.value;
+    look.apply();
   });
 
   // Overlays start below the title bar, not over it, so its buttons stay usable.

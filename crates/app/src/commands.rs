@@ -325,8 +325,8 @@ pub fn platform() -> &'static str {
     std::env::consts::OS
 }
 
-/// How the seek bar fills in (`PYXEE_SEEK_MODE`): `step` (once a second, the default), `pixel`, `glide` or `steps`.
-/// Anything else is `step`; the window decides what each mode does.
+/// How the seek bar fills in (`PYXEE_SEEK_MODE`): `step` (once a second), `pixel`, `glide` or `steps`. Anything else is
+/// `step`, which the window reads as "nothing asked for": a saved choice, or its own default, applies then.
 #[tauri::command]
 pub fn seek_mode() -> String {
     if !DEV_TOOLS {

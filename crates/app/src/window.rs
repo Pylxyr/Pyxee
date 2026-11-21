@@ -86,7 +86,7 @@ pub fn set_tint(
 }
 
 /// Lets the system backdrop show through the whole window. A window with a native title bar gets that from
-/// Windows; one without (the borderless main window) shows it only where the frame is extended into the page.
+/// Windows; one without (the main window, on Windows) shows it only where the frame is extended into the page.
 #[cfg(windows)]
 fn extend_frame(window: &tauri::WebviewWindow) {
     let Ok(hwnd) = window.hwnd() else {

@@ -12,6 +12,7 @@
   import { platform } from '$lib/platform.svelte';
   import { snackbar } from '$lib/snackbar.svelte';
   import Button from './Button.svelte';
+  import LookSection from './LookSection.svelte';
   import Sheet from './Sheet.svelte';
   import ThemePicker from './ThemePicker.svelte';
   import Toggle from './Toggle.svelte';
@@ -37,6 +38,8 @@
 </script>
 
 <Sheet open={nav.themeSheetOpen} title="Settings" side="right" onclose={() => (nav.themeSheetOpen = false)}>
+  <LookSection />
+
   <section class="settings-section" aria-label="Appearance">
     <h3 class="group-title">Appearance</h3>
     <ThemePicker />
@@ -87,12 +90,6 @@
       hint="Sends the songs you listen to, and the one playing now, to your Last.fm account. The first time, your browser opens so you can allow Pyxee."
       checked={shellSettings.settings.lastfmScrobbling}
       onchange={(on) => shellSettings.update({ lastfmScrobbling: on })}
-    />
-    <Toggle
-      label="Borderless window"
-      hint={platform.os === 'linux' ? "Pyxee draws its own slim title bar instead of the system one. Some desktops give a window without a frame no edges to resize by. Press F11 for full screen." : "Pyxee draws its own slim title bar instead of the system one. Press F11 for full screen."}
-      checked={shellSettings.settings.borderless}
-      onchange={(on) => shellSettings.update({ borderless: on })}
     />
     {#if shellSettings.error}<p class="accent-text px-3" role="alert">Could not save that setting ({shellSettings.error}).</p>{/if}
     <button class="menu-item justify-between" onclick={() => { nav.themeSheetOpen = false; nav.sleepSheetOpen = true; }}>

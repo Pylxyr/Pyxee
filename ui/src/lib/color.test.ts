@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { contrast, dominantColor, ensureContrast } from './color';
+import { cardTones, contrast, dominantColor, dominantPair, ensureContrast, heroTones } from './color';
 
 function pixels(...px: [number, number, number, number][]): Uint8ClampedArray {
   return new Uint8ClampedArray(px.flat());
@@ -51,5 +51,40 @@ describe('ensureContrast', () => {
   });
   it('leaves an already readable colour alone', () => {
     expect(ensureContrast('#ff3b4a', 'dark')).toBe('#ff3b4a');
+  });
+});
+
+describe('dominantPair', () => {
+  it('gives the main colour and a second one of another hue', () => {
+    const data = pixels(...repeat([200, 40, 60, 255], 60), ...repeat([40, 90, 200, 255], 30));
+    const pair = dominantPair(data)!;
+    expect(pair.a).toBe('#c8283c');
+    expect(parseInt(pair.b.slice(5, 7), 16)).toBeGreaterThan(parseInt(pair.b.slice(1, 3), 16)); // bluish
+  });
+  it('makes a second colour of its own when the cover is all one colour', () => {
+    const pair = dominantPair(pixels(...repeat([200, 40, 60, 255], 60)))!;
+    expect(pair.a).toBe('#c8283c');
+    expect(pair.b).not.toBe(pair.a);
+  });
+  it('has nothing for a transparent picture', () => {
+    expect(dominantPair(pixels(...repeat([200, 40, 60, 0], 20)))).toBeNull();
+  });
+});
+
+describe('cardTones and heroTones', () => {
+  it('keep white words readable on a "Tune in" card whatever the cover', () => {
+    for (const hex of ['#ffff00', '#ffffff', '#c8283c', '#14161e', '#40e0d0']) {
+      const t = cardTones({ a: hex, b: hex });
+      expect(contrast(t.a, '#ffffff'), hex).toBeGreaterThanOrEqual(4.5);
+      expect(contrast(t.b, '#ffffff'), hex).toBeGreaterThanOrEqual(4.5);
+    }
+  });
+  it('leave a grey cover grey', () => {
+    const t = cardTones({ a: '#808080', b: '#404040' });
+    expect(t.a.slice(1, 3)).toBe(t.a.slice(3, 5));
+  });
+  it('give the feature card three different colors', () => {
+    const t = heroTones({ a: '#c8283c', b: '#2850c8' });
+    expect(new Set([t.a, t.b, t.c]).size).toBe(3);
   });
 });

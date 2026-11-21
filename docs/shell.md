@@ -48,5 +48,5 @@ Shows the current song as "Listening to Pyxee" in the Discord desktop client, th
 
 ## Window frame
 
-The main window has no Windows title bar by default: Pyxee draws its own (see `docs/ui.md`). Settings > Windows > "Borderless window" (`borderless` in `shell.json`, on by default; an older file without it counts as on) switches back to the standard frame. `tauri.conf.json` creates the window without a frame, so `sync_window_frame` only has to change it when the saved choice is the Windows frame: it runs in `shell::init` (before the window is shown) and from `shell_set`, calls `set_decorations`, and asks for the Mica backdrop again after a change.
+The main window has no Windows title bar: Pyxee draws its own (see `docs/ui.md`), and `tauri.conf.json` creates the window without a frame. There is no setting for it; Linux overrides this in `tauri.linux.conf.json` and keeps the desktop's frame.
 - **Limits:** no album name (Pyxee has none to send) and no buttons. Only the Quit path clears the presence on exit.

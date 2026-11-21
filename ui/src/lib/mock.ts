@@ -87,6 +87,15 @@ export class MockBackend extends MockLibrary implements Backend {
   #listenedMs = 0;
   #counted = false;
 
+  constructor() {
+    super();
+    // `?home` on the page's address gives the standalone demo a listening history and a few likes, so Home shows its full layout.
+    if (typeof location !== 'undefined' && /[?&]home\b/.test(location.search)) {
+      for (const t of [...DEMO_TRACKS].reverse()) this.recordPlay(t);
+      for (const t of DEMO_TRACKS.slice(0, 3)) void this.setLiked(t, true);
+    }
+  }
+
   /** A new listen begins (also when a repeated song starts over). */
   #newListen() {
     this.#listenedMs = 0;
@@ -218,7 +227,7 @@ export class MockBackend extends MockLibrary implements Backend {
     }
     return false;
   }
-  shell: ShellSettingsDto = { closeToTray: false, startWithWindows: false, toastOnChange: false, trayControls: false, flyoutOnClick: true, discordPresence: true, lastfmScrobbling: false, borderless: true, checkPrereleases: false };
+  shell: ShellSettingsDto = { closeToTray: false, startWithWindows: false, toastOnChange: false, trayControls: false, flyoutOnClick: true, discordPresence: true, lastfmScrobbling: false, checkPrereleases: false };
   /** Set to make `shellSet` fail, to test how the UI reports it. */
   shellError: string | null = null;
   async shellGet() { return { ...this.shell }; }

@@ -27,7 +27,7 @@ Page margins grow at 1600 and 1920 px, and Now Playing has no width cap (a bigge
 Click the cover (deck or dock) to open Now Playing (Up next / Lyrics / Related). The same four destinations (`lib/destinations.ts`)
 feed the tabs and the bottom bar (`Navigation.svelte`, `layout="tabs" | "bar"`).
 
-**No native title bar (by default).** The main window is created without a frame (`decorations: false` in `tauri.conf.json`, with a shadow, so
+**No native title bar (on Windows).** The main window is created without a frame (`decorations: false` in `tauri.conf.json`, with a shadow, so
 Windows still draws the rounded corners and the resize edges). `TitleBar.svelte` is a 32 px strip above the shell: the empty part
 is a drag region (a double click maximizes), and the three buttons call the window through `lib/windowControls.ts`
 (`minimize`, `toggleMaximize`, `close`; the last goes through the normal close request, so close-to-tray still applies). The name
@@ -35,14 +35,12 @@ shows in the bar only in the narrow layout; the tabs show it otherwise. The bar 
 in a browser. Sheets and Now Playing start below it (`--titlebar-h`), so its buttons stay usable. The mini player and the flyout are
 frameless as before.
 
-Settings > Windows > **Borderless window** (`borderless` in `shell.json`, on by default) can give the window the standard Windows frame
-back; Rust applies it with `set_decorations` at start-up and whenever the setting is saved (`shell::sync_window_frame`), and the page
-then does not draw its bar. **F11** switches full screen (`setFullscreen` in `lib/windowControls.ts`); in full screen there is no bar
-and no frame, and the page follows the window's state through its resize events.
+**F11** switches full screen (`setFullscreen` in `lib/windowControls.ts`); in full screen there is no bar and no frame, and the page follows
+the window's state through its resize events. Pyxee's own bar is always used where the window has no frame (Windows); on Linux the window
+keeps the desktop's frame (`decorations: true` in `tauri.linux.conf.json`). There is no setting for it.
 
-Mica and the borderless window: Windows draws the system backdrop in a window without a native title bar only where the DWM frame is
-extended into the page, so `apply_backdrop` (`window.rs`) calls `DwmExtendFrameIntoClientArea` with -1 margins after `apply_mica`
-when the window has no frame. `sync_window_frame` asks for the backdrop again after every frame change.
+Mica without a native title bar: Windows draws the system backdrop in such a window only where the DWM frame is extended into the page, so
+`apply_backdrop` (`window.rs`) calls `DwmExtendFrameIntoClientArea` with -1 margins after `apply_mica` when the window has no frame.
 
 ## The 1.0 skin
 
@@ -175,6 +173,32 @@ The `set_window_theme` command makes the native frame follow a fixed theme (`nul
 - `--accent-ink` is the accent used as text (pulled toward the text colour, 4.5:1 on the selected row); `--accent` stays for fills.
 - A song without a title or artist shows "Untitled" / "Unknown artist" (`titleOf`, `artistOf`); titles use `dir="auto"` for right-to-left text.
 - The seek line is 6 px; liking a song also sends a one-off ring out of the heart (`burst` in `lib/motion.ts`).
+## Look options (Settings > Look)
+Every choice is a data attribute on `<html>` (`data-corners`, `data-surfaces`, `data-panels`, `data-covers`, `data-hero`, `data-tune`;
+`lib/look.ts` holds the choices, `lib/look.svelte.ts` saves them in `pyxee.look` and `App.svelte` applies them). The default of each
+has no attribute, so the base rules are the default look and each option is one block at the end of `app.css`.
+
+| Option | Choices | How |
+|---|---|---|
+| Corners | Round, Soft, Square | `--r-sm/md/lg/xl`, `--r-art` and `--r-pill` (buttons, tabs, the bars) are redefined; everything uses the variables |
+| Surfaces | Vivid, Flat | Flat sets `--gradient-accent`/`--accent-2` to the one accent and `--glow` to nothing, and drops the tilts and shadows |
+| Panels | Floating, Docked | Wide windows only: the cards become one surface cut by hairlines |
+| Cover shape | Rounded, Square, Circle | One rule on the cover classes (`.thumb`, `.cover-art`, `.hero-art`, `.mix-art`, ...) |
+| Home: top card | Blur, Aurora, Gradient, Vinyl, Plain | Blur is the canvas of before; the others are painted with CSS from the cover's colors (`--hero-a/b/c`). Vinyl slides a record out from behind the cover once per song (`disc-out`) |
+| Home: Tune in cards | Album colors, Theme color | The cards take the cover's two colors (`--mix-a/b`), deepened until white words read (4.5:1, `cardTones`) |
+| Progress bar | Smooth glide, Steps, Once a second | `seekMode` (`lib/seekmode.svelte.ts`), saved as `pyxee.seek`; see `docs/performance.md` |
+
+The cover's colors come from `coverColors` (`lib/color.ts`: a 32 x 32 sample, the heaviest colour and the heaviest one of another
+hue, kept per cover, several cards asking for one cover share one read) through `coverColorsOf` (`lib/covercolors.svelte.ts`). They
+are read only for the looks that use them. The colors blend from the stand-in (hash of the song) or the theme's to the cover's
+over 700 ms; the registered `<color>` properties are the only custom-property transitions allowed (`css-budget.test.ts`), they end by
+themselves and repaint only the card while they last.
+
+## Home at every width
+The feature card stacks below 560 px, is lower in short windows (under 760 px high) and larger from 1800 px. "Tune in" is a
+grid that `fillRows` (`lib/fillrows.ts`) trims to whole rows (it looks again on a resize or a change of cards, never otherwise);
+under 520 px wide the section it is in turns it into a shelf that scrolls sideways, like Recently played. `?home` on the
+standalone demo's address gives it a listening history and a few likes so Home shows its full layout.
 
 ## Not verified here
 Everything runs in tests (jsdom) and compiles against Tauri on Linux, but the sandbox has no Windows WebView2, so the

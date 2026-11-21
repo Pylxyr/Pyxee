@@ -582,6 +582,8 @@ input[type='range'].slider:disabled {
   .seek-wake i,
   .hero-art,
   .hero-bg,
+  .hero-disc,
+  .hero::before,
   .pp-icon,
   .deck-art,
   .deck-art::before,
@@ -1956,6 +1958,7 @@ input[type='range'].slider:disabled {
 @layer components {
   /* The feature at the top of Home: the cover, large and lit, over a blurred wash of itself. */
   .hero {
+    --stage: clamp(150px, 13vw, 240px);
     position: relative;
     isolation: isolate;
     display: flex;
@@ -1984,10 +1987,16 @@ input[type='range'].slider:disabled {
     z-index: -1;
     background: linear-gradient(to right, color-mix(in srgb, var(--layer) 78%, transparent), transparent 85%);
   }
-  .hero-art {
+  /* The cover and, behind it, whatever the chosen look puts there (the record of "Vinyl"). */
+  .hero-stage {
     position: relative;
     flex: none;
-    width: clamp(150px, 13vw, 240px);
+    width: var(--stage);
+    aspect-ratio: 1;
+  }
+  .hero-art {
+    position: relative;
+    width: 100%;
     aspect-ratio: 1;
     overflow: hidden;
     border-radius: var(--r-md);
@@ -2274,6 +2283,10 @@ input[type='range'].slider:disabled {
   --r-sm: 9px;
   --r-md: 14px;
   --r-lg: 22px;
+  --r-xl: 30px;
+  --r-art: 26px;
+  /* Pills (buttons, tabs, chips, the top bar): fully round, or as the Corners setting says. */
+  --r-pill: 9999px;
   /* A second colour a step around the colour wheel from the accent: it follows every theme (and the cover's colour). */
   --accent-2: var(--accent);
   --gradient-accent: linear-gradient(120deg, var(--accent), var(--accent-2));
@@ -2301,7 +2314,7 @@ input[type='range'].slider:disabled {
   min-height: 64px;
   padding: 0 12px 0 20px;
   border: 1px solid var(--rule);
-  border-radius: 9999px;
+  border-radius: var(--r-pill);
   background: color-mix(in srgb, var(--surface) 88%, transparent);
   box-shadow: 0 16px 36px -28px color-mix(in srgb, var(--accent) 70%, #000);
 }
@@ -2319,7 +2332,7 @@ input[type='range'].slider:disabled {
 .shell[data-layout='wide'] .deck {
   padding: 0 26px;
   border: 1px solid var(--rule);
-  border-radius: 32px;
+  border-radius: var(--r-xl);
   background: linear-gradient(
     100deg,
     color-mix(in srgb, var(--accent) 18%, var(--surface)),
@@ -2343,7 +2356,7 @@ input[type='range'].slider:disabled {
 .tab-item {
   height: 40px;
   padding: 0 16px;
-  border-radius: 9999px;
+  border-radius: var(--r-pill);
 }
 .tab-item:hover {
   background: var(--hover);
@@ -2356,7 +2369,7 @@ input[type='range'].slider:disabled {
   bottom: auto;
   z-index: -1;
   height: 40px;
-  border-radius: 20px;
+  border-radius: min(var(--r-pill), 20px);
   background: var(--gradient-accent);
   box-shadow: 0 10px 20px -10px var(--glow);
 }
@@ -2375,7 +2388,7 @@ input[type='range'].slider:disabled {
   height: 42px;
   padding: 0 18px;
   border-color: var(--rule);
-  border-radius: 9999px;
+  border-radius: var(--r-pill);
 }
 .search-box:focus-within {
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 28%, transparent);
@@ -2385,7 +2398,7 @@ input[type='range'].slider:disabled {
 .btn {
   min-height: 38px;
   padding: 0 20px;
-  border-radius: 9999px;
+  border-radius: var(--r-pill);
 }
 .btn-primary,
 .btn-primary:hover,
@@ -2394,12 +2407,12 @@ input[type='range'].slider:disabled {
   box-shadow: 0 10px 22px -12px var(--glow);
 }
 .play-btn {
-  border-radius: 9999px;
+  border-radius: var(--r-pill);
   background: var(--gradient-accent);
   box-shadow: 0 12px 24px -10px var(--glow);
 }
 .chip {
-  border-radius: 9999px;
+  border-radius: var(--r-pill);
 }
 .chip[aria-pressed='true'] {
   background: var(--gradient-accent);
@@ -2457,16 +2470,16 @@ input[type='range'].slider:disabled {
   }
 }
 .cover-tile .cover-play {
-  border-radius: 9999px;
+  border-radius: var(--r-pill);
   background: var(--gradient-accent);
 }
 
 /* The feature card at the top of Home. */
 .hero {
-  min-height: clamp(240px, 24vw, 340px);
+  min-height: clamp(220px, min(24vw, 36vh), 340px);
   padding: 32px;
   border-color: color-mix(in srgb, var(--accent) 38%, var(--rule));
-  border-radius: 30px;
+  border-radius: var(--r-xl);
   box-shadow: 0 34px 60px -40px var(--glow);
 }
 .hero-art {
@@ -2478,7 +2491,7 @@ input[type='range'].slider:disabled {
   display: inline-block;
   margin-bottom: 6px;
   padding: 4px 12px;
-  border-radius: 9999px;
+  border-radius: var(--r-pill);
   background: var(--gradient-accent);
   color: var(--on-accent);
   font-size: 12px;
@@ -2539,7 +2552,7 @@ input[type='range'].slider:disabled {
   width: 112px;
   aspect-ratio: 1;
   overflow: hidden;
-  border-radius: 26px;
+  border-radius: var(--r-art);
   box-shadow: 0 12px 24px -8px rgb(0 0 0 / 0.55);
   transform: rotate(9deg);
   transition: transform 400ms var(--spring-pop);
@@ -2549,7 +2562,7 @@ input[type='range'].slider:disabled {
   top: 14px;
   left: 16px;
   padding: 3px 10px;
-  border-radius: 9999px;
+  border-radius: var(--r-pill);
   background: rgb(255 255 255 / 0.2);
   font-size: 11px;
   font-weight: 700;
@@ -2584,7 +2597,7 @@ input[type='range'].slider:disabled {
   justify-content: center;
   width: 40px;
   height: 40px;
-  border-radius: 9999px;
+  border-radius: var(--r-pill);
   background: #fff;
   color: hsl(var(--mix-h) 70% 30%);
   opacity: 0;
@@ -2627,8 +2640,8 @@ input[type='range'].slider:disabled {
     min-height: 196px;
     padding: 22px 26px;
   }
-  .hero-art {
-    width: 148px;
+  .hero {
+    --stage: 148px;
   }
 }
 @media (max-width: 560px) {
@@ -2638,8 +2651,8 @@ input[type='range'].slider:disabled {
     gap: 16px;
     padding: 20px;
   }
-  .hero-art {
-    width: 132px;
+  .hero {
+    --stage: 132px;
   }
   .hero-label {
     white-space: nowrap;
@@ -2653,5 +2666,288 @@ input[type='range'].slider:disabled {
   .deck-art {
     width: 52px;
     height: 52px;
+  }
+}
+
+/* =====================================================================================================================
+   Look options (Settings > Appearance > Look). Each one is a data attribute on the root element (see lib/look.ts); the
+   default of every option is the rules above, so nothing here applies until something else is chosen. Everything is
+   drawn once or moves once.
+   ===================================================================================================================== */
+
+/* Colours that can blend from one value to the next when a card's cover is read or the song changes. */
+@property --hero-a {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: transparent;
+}
+@property --hero-b {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: transparent;
+}
+@property --hero-c {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: transparent;
+}
+@property --mix-a {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: transparent;
+}
+@property --mix-b {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: transparent;
+}
+
+.look-group {
+  padding: 8px 12px 4px;
+}
+.look-label {
+  margin-bottom: 4px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.bar-pill {
+  border-radius: min(var(--r-pill), 16px);
+}
+
+/* Corners */
+:root[data-corners='soft'] {
+  --r-sm: 6px;
+  --r-md: 10px;
+  --r-lg: 14px;
+  --r-xl: 18px;
+  --r-art: 14px;
+  --r-pill: 10px;
+}
+:root[data-corners='square'] {
+  --r-sm: 2px;
+  --r-md: 2px;
+  --r-lg: 3px;
+  --r-xl: 4px;
+  --r-art: 2px;
+  --r-pill: 3px;
+}
+
+/* Cover shape */
+:root[data-covers='square'] :is(.thumb, .hero-art, .mix-art, .cover-art, .deck-art, .stage-art) {
+  border-radius: 0;
+}
+:root[data-covers='circle'] :is(.thumb, .hero-art, .mix-art, .cover-art, .deck-art, .stage-art) {
+  border-radius: 50%;
+}
+
+/* Surfaces: flat. No gradients, glows, tilts or shadows; the accent is one plain colour. */
+:root[data-surfaces='flat'] {
+  --accent-2: var(--accent);
+  --gradient-accent: var(--accent);
+  --glow: transparent;
+  --shadow-art: none;
+}
+:root[data-surfaces='flat'] .shell {
+  background: var(--bg);
+}
+:root[data-surfaces='flat'] .shell[data-layout] .page {
+  background: var(--layer);
+}
+:root[data-surfaces='flat'] .shell[data-layout='wide'] .deck {
+  background: var(--surface);
+}
+:root[data-surfaces='flat'] :is(.masthead, .deck, .hero, .btn-primary, .play-btn, .tab-indicator) {
+  box-shadow: none !important;
+}
+:root[data-surfaces='flat'] :is(.page-head .t-title, .wordmark) {
+  background: none;
+  color: var(--fg);
+}
+:root[data-surfaces='flat'] .trow[data-current='true'] {
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+}
+:root[data-surfaces='flat'] :is(.hero-art, .mix-art) {
+  transform: none;
+}
+:root[data-surfaces='flat'] .mix-card {
+  background: var(--mix-a);
+  box-shadow: none;
+}
+:root[data-surfaces='flat'] .mix-card::before {
+  background: linear-gradient(to top, rgb(0 0 0 / 0.22), transparent 55%);
+}
+:root[data-surfaces='flat'] .mix-surprise {
+  background: var(--accent);
+}
+@media (hover: hover) {
+  :root[data-surfaces='flat'] .cover-tile:hover .cover-art,
+  :root[data-surfaces='flat'] .mix-card:hover .mix-art {
+    transform: none;
+  }
+  :root[data-surfaces='flat'] .mix-card:hover {
+    transform: none;
+  }
+}
+
+/* Panels: docked. One surface cut by hairlines (wide windows; the narrow layout is one surface already). */
+:root[data-panels='docked'] .shell[data-layout='wide'] {
+  gap: 0;
+  padding: 0;
+}
+:root[data-panels='docked'] .shell[data-layout='wide'] :is(.masthead, .page, .lane, .deck) {
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+:root[data-panels='docked'] .shell[data-layout='wide'] .masthead {
+  min-height: 60px;
+  border-bottom: 1px solid var(--rule);
+  background: var(--surface);
+}
+:root[data-panels='docked'] .shell[data-layout='wide'] .lane {
+  border-left: 1px solid var(--rule);
+}
+:root[data-panels='docked'] .shell[data-layout='wide'] .deck {
+  border-top: 1px solid var(--rule);
+  background: var(--surface);
+}
+
+/* Home: the feature card. Its colours are the cover's (set inline once read) and blend in over a moment. */
+.hero {
+  --hero-a: var(--accent);
+  --hero-b: var(--accent-2);
+  --hero-c: color-mix(in srgb, var(--accent) 50%, var(--accent-2));
+  transition: --hero-a 700ms var(--ease), --hero-b 700ms var(--ease), --hero-c 700ms var(--ease);
+}
+.hero[data-hero='aurora']::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background:
+    radial-gradient(60% 95% at 6% 110%, color-mix(in srgb, var(--hero-a) 78%, transparent), transparent 72%),
+    radial-gradient(52% 85% at 58% -14%, color-mix(in srgb, var(--hero-b) 68%, transparent), transparent 72%),
+    radial-gradient(46% 80% at 102% 92%, color-mix(in srgb, var(--hero-c) 62%, transparent), transparent 72%);
+  animation: fade-in 900ms ease-out both;
+}
+.hero[data-hero='gradient'] {
+  background: linear-gradient(115deg, color-mix(in srgb, var(--hero-a) 70%, var(--layer)), color-mix(in srgb, var(--hero-b) 54%, var(--layer)));
+}
+.hero[data-hero='plain']::after {
+  display: none;
+}
+.hero[data-hero='vinyl'] {
+  background:
+    radial-gradient(80% 140% at 96% 0%, color-mix(in srgb, var(--hero-a) 46%, transparent), transparent 70%),
+    radial-gradient(70% 120% at 0% 110%, color-mix(in srgb, var(--hero-b) 34%, transparent), transparent 70%),
+    var(--surface);
+}
+.hero[data-hero='vinyl']::after {
+  display: none;
+}
+.hero[data-hero='vinyl'] .hero-stage {
+  margin-right: calc(var(--stage) * 0.5);
+}
+/* The record: grooves, a sheen and the cover as its label. It slides out from behind the sleeve once, turning as it goes. */
+.hero-disc {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background:
+    conic-gradient(from 20deg, transparent 0 18%, rgb(255 255 255 / 0.26) 25%, transparent 32% 68%, rgb(255 255 255 / 0.2) 75%, transparent 82%),
+    repeating-radial-gradient(circle at 50% 50%, #0c0c0e 0 1.5px, #1a1a1e 1.5px 3px);
+  box-shadow: 0 0 0 1px rgb(255 255 255 / 0.14), 0 14px 30px -10px rgb(0 0 0 / 0.55);
+  transform: translateX(52%) rotate(300deg);
+  animation: disc-out 1200ms var(--spring) 120ms both;
+}
+.hero-disc-label {
+  position: absolute;
+  inset: 31%;
+  overflow: hidden;
+  border-radius: 50%;
+  box-shadow: 0 0 0 3px #0b0b0d;
+}
+.hero-disc::after {
+  content: '';
+  position: absolute;
+  inset: 47.5%;
+  border-radius: 50%;
+  background: var(--layer);
+}
+@keyframes disc-out {
+  from {
+    transform: translateX(0) rotate(0deg);
+  }
+}
+
+/* Home: "Tune in" cards. The colours are the song's cover's (set inline once read) and blend in over a moment. */
+.mix-card {
+  --mix-a: hsl(var(--mix-h) 68% 34%);
+  --mix-b: hsl(calc(var(--mix-h) + 48) 72% 24%);
+  background: linear-gradient(135deg, var(--mix-a), var(--mix-b));
+  box-shadow: 0 18px 30px -22px var(--mix-a);
+  transition: transform 360ms var(--spring-pop), --mix-a 700ms var(--ease), --mix-b 700ms var(--ease);
+}
+.mix-card:active {
+  transition-duration: 70ms, 700ms, 700ms;
+}
+.mix-play {
+  color: var(--mix-a);
+}
+:root[data-tune='theme'] .mix-card:not(.mix-surprise) {
+  --mix-a: color-mix(in srgb, var(--accent) 68%, #000);
+  --mix-b: color-mix(in srgb, var(--accent-2) 52%, #000);
+}
+.mix-surprise {
+  background: var(--gradient-accent);
+  box-shadow: 0 18px 30px -22px var(--glow);
+}
+.mix-surprise .mix-play {
+  color: var(--accent-ink);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hero,
+  .mix-card {
+    transition: none !important;
+  }
+}
+
+/* =====================================================================================================================
+   Home at every width. "Tune in" fills whole rows (the `fillRows` action hides the cards that would make a short last
+   row). When the section is narrow, the cards become a shelf.
+   ===================================================================================================================== */
+.home-cols > section {
+  container: tune / inline-size;
+}
+@container tune (max-width: 519px) {
+  .mix-grid {
+    grid-template-columns: none;
+    grid-auto-flow: column;
+    grid-auto-columns: min(78%, 280px);
+    margin-inline: calc(var(--page-pad) * -1);
+    padding: 4px var(--page-pad) 18px;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scroll-snap-type: x proximity;
+    scroll-padding-inline: var(--page-pad);
+    scrollbar-width: none;
+  }
+  .mix-grid::-webkit-scrollbar {
+    display: none;
+  }
+  .mix-grid > li {
+    scroll-snap-align: start;
+  }
+}
+@media (min-width: 1800px) {
+  .hero {
+    --stage: clamp(240px, 12vw, 300px);
+    padding: 40px 44px;
+    gap: 40px;
+  }
+  .hero .t-title {
+    font-size: clamp(40px, 3vw, 60px);
+    line-height: 1.05;
   }
 }

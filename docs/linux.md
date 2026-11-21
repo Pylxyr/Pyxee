@@ -352,8 +352,7 @@ those gone too; this cannot be undone.
 
 ## What is different from Windows
 
-- **Window frame.** The main window uses your desktop's own title bar. **Settings** -> **Borderless window** switches to
-  Pyxee's slim bar, but a window without a frame may have no edges to resize by.
+- **Window frame.** The main window uses your desktop's own title bar (Pyxee's slim bar is for Windows).
 - **Tray.** The icon's menu starts with the song that is playing (Linux trays have no tooltip), then has Open Pyxee, Play / Pause, Previous, Next, Mini player and Quit. On most Linux desktops a
   click on the icon opens the menu, so the Windows option "clicking the icon opens the mini controls" does not exist
   here, and neither do the previous/play/next buttons beside the icon. KDE Plasma shows the icon out of the box; GNOME

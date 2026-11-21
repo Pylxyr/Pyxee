@@ -147,7 +147,6 @@ pub fn shell_get(app: AppHandle) -> ShellSettingsDto {
         flyout_on_click: true,
         discord_presence: true,
         lastfm_scrobbling: false,
-        borderless: true,
         check_prereleases: false,
     })
 }
@@ -169,7 +168,6 @@ pub fn shell_set(app: AppHandle, settings: ShellSettingsDto) -> Result<ShellSett
         s.flyout_on_click = settings.flyout_on_click;
         s.discord_presence = settings.discord_presence;
         s.lastfm_scrobbling = settings.lastfm_scrobbling;
-        s.borderless = settings.borderless;
         s.check_prereleases = settings.check_prereleases;
     }
     shell.save_settings();
@@ -177,7 +175,6 @@ pub fn shell_set(app: AppHandle, settings: ShellSettingsDto) -> Result<ShellSett
     super::tray_buttons::sync(&app, settings.tray_controls);
     super::sync_discord(&app);
     super::sync_lastfm(&app, lastfm_turned_on);
-    super::sync_window_frame(&app);
     Ok(settings)
 }
 
