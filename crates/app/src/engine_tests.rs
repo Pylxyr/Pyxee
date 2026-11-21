@@ -314,27 +314,40 @@ fn skipping_to_the_prefetched_song_starts_it_at_once_without_opening_it_again() 
         Arc::new(AtomicBool::new(false)),
         Duration::ZERO,
     );
+    // The song that plays first must be long: the pipeline decodes only a couple of seconds ahead, and once a
+    // short song is fully decoded it moves on to the queued one, which is then no longer "waiting" to be skipped
+    // to. A long song keeps the prefetched one queued, as in real listening.
+    let first_url = serve(
+        make_wav(30),
+        0,
+        Arc::new(AtomicBool::new(true)),
+        Duration::ZERO,
+    );
     let mut r = Rig::new(TestSource {
         related: Vec::new(),
-        resolve: Box::new(move |k| {
-            if k == "yt:prefetchedskip" {
-                Ok(StreamInfo {
-                    url: url.clone(),
-                    ext: "wav".into(),
-                    ..Default::default()
-                })
-            } else {
-                LocalSource.resolve_stream(k)
-            }
+        resolve: Box::new(move |k| match k {
+            "yt:prefetchedskip" => Ok(StreamInfo {
+                url: url.clone(),
+                ext: "wav".into(),
+                ..Default::default()
+            }),
+            "yt:longfirst" => Ok(StreamInfo {
+                url: first_url.clone(),
+                ext: "wav".into(),
+                ..Default::default()
+            }),
+            _ => LocalSource.resolve_stream(k),
         }),
     });
     // Real time, so the first song is still playing when the skip comes.
     r.speed = 1.0;
     r.cmd(Command::SetAutoplay(false));
+    let mut first = Track::new("yt:longfirst", "Long first", "x");
+    first.duration_ms = Some(30_000);
     let mut streamed = Track::new("yt:prefetchedskip", "Streamed", "x");
     streamed.duration_ms = Some(2_000);
     r.cmd(Command::PlayTracks {
-        tracks: vec![file_track("a_44k.wav"), streamed, file_track("a_44k.flac")],
+        tracks: vec![first, streamed, file_track("a_44k.flac")],
         start: 0,
     });
     assert!(r.run_until(10, |r| r.snapshot().audible.is_some()));
