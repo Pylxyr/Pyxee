@@ -290,6 +290,55 @@ fn skipping_stops_the_old_audio_and_the_old_track_never_returns() {
 }
 
 #[test]
+fn skipping_to_the_prefetched_song_starts_it_at_once_without_opening_it_again() {
+    // Three requests are what opening and playing this song takes once (the probe and one chunk, with one to spare).
+    // After that the server refuses everything, as an expired address does: a skip that opened the song again would
+    // be refused at its chunk request and the song would fail instead of becoming audible.
+    let url = serve(
+        make_wav(2),
+        3,
+        Arc::new(AtomicBool::new(false)),
+        Duration::ZERO,
+    );
+    let mut r = Rig::new(TestSource {
+        related: Vec::new(),
+        resolve: Box::new(move |k| {
+            if k == "yt:prefetchedskip" {
+                Ok(StreamInfo {
+                    url: url.clone(),
+                    ext: "wav".into(),
+                    ..Default::default()
+                })
+            } else {
+                LocalSource.resolve_stream(k)
+            }
+        }),
+    });
+    // Real time, so the first song is still playing when the skip comes.
+    r.speed = 1.0;
+    r.cmd(Command::SetAutoplay(false));
+    let mut streamed = Track::new("yt:prefetchedskip", "Streamed", "x");
+    streamed.duration_ms = Some(2_000);
+    r.cmd(Command::PlayTracks {
+        tracks: vec![file_track("a_44k.wav"), streamed, file_track("a_44k.flac")],
+        start: 0,
+    });
+    assert!(r.run_until(10, |r| r.snapshot().audible.is_some()));
+    r.run_for(500); // the next song is prefetched by now
+    r.cmd(Command::Next);
+    let ids = r.entry_ids();
+    let second = Some(ids[1]);
+    assert!(
+        r.run_until(10, |r| r.snapshot().audible.map(|i| i.0) == second),
+        "{:?}",
+        r.snapshot()
+    );
+    assert_eq!(r.audible_log, vec![None, Some(ids[0]), None, Some(ids[1])]);
+    // The song after it is prefetched in turn and follows, so nothing broke the queue.
+    assert!(r.run_until(20, |r| r.snapshot().audible.map(|i| i.0) == Some(ids[2])));
+}
+
+#[test]
 fn pause_freezes_the_position_and_resume_continues() {
     let mut r = Rig::new(TestSource::local());
     // Real-time device: at DEVICE_SPEED the 2 s fixture would be over before the test is done with it.

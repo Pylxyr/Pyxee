@@ -34,7 +34,6 @@ pub mod sleep;
 pub mod toast;
 pub mod tray_controls;
 pub mod update;
-pub mod winui;
 
 /// A rectangle in physical (device) pixels.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

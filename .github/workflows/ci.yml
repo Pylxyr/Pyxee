@@ -86,11 +86,6 @@ jobs:
             echo "::error::ui/src/lib/bindings is out of date. Run 'cargo test -p pyxee-app' and commit the result."
             exit 1
           fi
-      # Code that could only be written, not compiled, where it was developed (see crates/app/Cargo.toml).
-      # Reported, never blocking: when it starts passing, move it into the required steps.
-      - name: win-extras compiles (informational)
-        continue-on-error: true
-        run: cargo check -p pyxee-app --features win-extras --locked
 
   # The Linux build (packaging/arch): the whole workspace compiles, passes clippy and its tests on Linux too. The minimal
   # static FFmpeg is built here (about 10 minutes) and cached on the build script.

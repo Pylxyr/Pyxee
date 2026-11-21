@@ -17,6 +17,7 @@ thiserror = "2.0.21"
 # native-certs: trust the OS certificate store (antivirus HTTPS scanning, corporate proxies)
 pyxee-net = { path = "../net" }
 ureq = "3.5.1"
+lofty = "0.25.5"
 
 [lints]
 workspace = true

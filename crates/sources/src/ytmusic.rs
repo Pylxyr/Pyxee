@@ -83,6 +83,17 @@ const EXPLORE_PAGE: &str = "FEmusic_explore";
 const GENRES_PAGE: &str = "FEmusic_moods_and_genres";
 const GENRE_PAGE: &str = "FEmusic_moods_and_genres_category";
 /// Shelves longer than this are cut: a row on a page, not a catalogue.
+/// The website's `next` endpoint, which answers with the songs that follow a song (its radio).
+pub const NEXT_ENDPOINT: &str = "https://music.youtube.com/youtubei/v1/next?prettyPrint=false";
+/// What the website asks for to get a radio rather than the plain queue of one song (what `ytmusicapi` calls radio).
+const RADIO_PARAMS: &str = "wAEB";
+/// A radio with fewer songs than this (an obscure upload) is used as it is, videos included, so autoplay does not dry up.
+const RADIO_MIN_SONGS: usize = 3;
+/// How the website marks a row that is an audio track (a song, as opposed to a music video or an upload).
+const SONG_VIDEO_TYPE: &str = "MUSIC_VIDEO_TYPE_ATV";
+/// The prefix of the id of the radio `YouTube` Music makes for a song (`RDAMVM<video id>`).
+const AUTOMIX: &str = "AMVM";
+
 const SHELF_MAX: usize = 20;
 /// A playlist's first page holds about this many songs; that is what is played.
 const PLAYLIST_MAX: usize = 100;
@@ -173,6 +184,20 @@ pub fn playlist_body(id: &str, now: SystemTime) -> String {
     .to_string()
 }
 
+#[must_use]
+pub fn radio_body(id: &str, now: SystemTime) -> String {
+    json!({
+        "context": context(now),
+        "videoId": id,
+        "playlistId": format!("RD{AUTOMIX}{id}"),
+        "params": RADIO_PARAMS,
+        "enablePersistentPlaylistPanel": true,
+        "isAudioOnly": true,
+        "tunerSettingValue": "AUTOMIX_SETTING_NORMAL",
+    })
+    .to_string()
+}
+
 /// One POST to the website's own API, answered with the body text. `what` names the request in an error.
 fn post(endpoint: &str, body: &str, what: &str) -> Result<String, SourceError> {
     // Every one of these is a question (search, browse, next): asking twice changes nothing, so a connection that
@@ -247,6 +272,101 @@ pub fn fetch_playlist(endpoint: &str, id: &str) -> Result<Vec<TrackInfo>, Source
         .ok_or_else(|| SourceError::Failed("that is not a playlist id".into()))?;
     let body = post(endpoint, &playlist_body(id, SystemTime::now()), "playlist")?;
     parse_playlist(&body)
+}
+
+/// Asks `YouTube` Music for the songs that follow the song `id`, up to `count` (the seed itself is left out). Songs
+/// only, unless the radio has hardly any: a music video that plays gets songs after it too, and a radio made of
+/// uploads is used as it is.
+pub fn fetch_radio(endpoint: &str, id: &str, count: usize) -> Result<Vec<TrackInfo>, SourceError> {
+    let id =
+        plain_video_id(id).ok_or_else(|| SourceError::Failed("that is not a video id".into()))?;
+    let body = post(endpoint, &radio_body(id, SystemTime::now()), "radio")?;
+    Ok(pick_radio(parse_radio(&body)?, id, count))
+}
+
+/// The rows of a radio answer in the order it lists them (it starts with the seed), each with whether it is a song.
+pub fn parse_radio(body: &str) -> Result<Vec<(TrackInfo, bool)>, SourceError> {
+    let v: Value = serde_json::from_str(body).map_err(|e| SourceError::Parse(e.to_string()))?;
+    let mut panels = Vec::new();
+    collect_keys(&v, &["playlistPanelRenderer"], &mut panels);
+    let mut rows = Vec::new();
+    for panel in panels {
+        let Some(items) = panel.get("contents").and_then(Value::as_array) else {
+            continue;
+        };
+        for item in items {
+            // Rows that offer both the song and its video are wrapped; the song is the primary one.
+            let renderer = item.get("playlistPanelVideoRenderer").or_else(|| {
+                item.pointer(
+                    "/playlistPanelVideoWrapperRenderer/primaryRenderer/playlistPanelVideoRenderer",
+                )
+            });
+            if let Some(row) = renderer.and_then(radio_row) {
+                rows.push(row);
+            }
+        }
+    }
+    if rows.is_empty() {
+        return Err(SourceError::Parse(
+            "the radio has an unexpected layout".into(),
+        ));
+    }
+    Ok(rows)
+}
+
+fn radio_row(row: &Value) -> Option<(TrackInfo, bool)> {
+    let id = row
+        .get("videoId")
+        .and_then(Value::as_str)
+        .and_then(plain_video_id)?;
+    let title = row
+        .pointer("/title/runs/0/text")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|t| !t.is_empty())?;
+    let details = segments(runs_in(row, "/longBylineText/runs"));
+    let artist = details
+        .first()
+        .map(|(t, _)| t.trim())
+        .filter(|t| !t.is_empty() && clock_ms(t).is_none())
+        .map_or_else(|| UNKNOWN_ARTIST.to_string(), str::to_string);
+    let duration_ms = row
+        .pointer("/lengthText/runs/0/text")
+        .and_then(Value::as_str)
+        .and_then(clock_ms);
+    let song = row
+        .pointer("/navigationEndpoint/watchEndpoint/watchEndpointMusicSupportedConfigs/watchEndpointMusicConfig/musicVideoType")
+        .and_then(Value::as_str)
+        == Some(SONG_VIDEO_TYPE);
+    Some((
+        TrackInfo {
+            key: crate::key::youtube(id),
+            title: title.to_string(),
+            artist,
+            duration_ms,
+            thumbnail: best_cover(row.pointer("/thumbnail/thumbnails")),
+        },
+        song,
+    ))
+}
+
+/// What a radio gives the queue: not the seed, each song once, songs only when the seed is one or the radio has
+/// enough of them, at most `count`.
+fn pick_radio(rows: Vec<(TrackInfo, bool)>, seed_id: &str, count: usize) -> Vec<TrackInfo> {
+    let seed = crate::key::youtube(seed_id);
+    let seed_is_song = rows.iter().any(|(t, song)| *song && t.key == seed);
+    let songs = rows
+        .iter()
+        .filter(|(t, song)| *song && t.key != seed)
+        .count();
+    let only_songs = seed_is_song || songs >= RADIO_MIN_SONGS.min(count);
+    let mut seen = HashSet::new();
+    rows.into_iter()
+        .filter(|(t, song)| t.key != seed && (!only_songs || *song))
+        .filter(|(t, _)| seen.insert(t.key.clone()))
+        .map(|(t, _)| t)
+        .take(count)
+        .collect()
 }
 
 /// The song rows of a `YouTube` Music search answer, in the order it lists them.
@@ -1827,5 +1947,156 @@ mod tests {
         let keys: Vec<&str> = kept.iter().map(|t| t.key.as_str()).collect();
         let want: Vec<String> = (0..100).map(|i| format!("yt:v{i:010}")).collect();
         assert_eq!(keys, want);
+    }
+    // ----------------------------------------------------------------- radio
+
+    fn radio_item(id: &str, title: &str, artist: &str, length: &str, video_type: &str) -> Value {
+        json!({ "playlistPanelVideoRenderer": {
+            "videoId": id,
+            "title": { "runs": [{ "text": title }] },
+            "longBylineText": { "runs": [
+                { "text": artist, "navigationEndpoint": { "browseEndpoint": { "browseId": "UCx" } } },
+                { "text": " \u{2022} " },
+                { "text": "Some Album", "navigationEndpoint": { "browseEndpoint": { "browseId": "MPREb_x" } } },
+                { "text": " \u{2022} " },
+                { "text": "2021" },
+            ] },
+            "lengthText": { "runs": [{ "text": length }] },
+            "thumbnail": { "thumbnails": [
+                { "url": "https://lh3.googleusercontent.com/small=w60-h60", "width": 60, "height": 60 },
+                { "url": "https://lh3.googleusercontent.com/big=w544-h544", "width": 544, "height": 544 },
+            ] },
+            "navigationEndpoint": { "watchEndpoint": { "watchEndpointMusicSupportedConfigs": {
+                "watchEndpointMusicConfig": { "musicVideoType": video_type }
+            } } },
+        } })
+    }
+
+    fn radio_answer(items: &[Value]) -> String {
+        json!({ "contents": { "singleColumnMusicWatchNextResultsRenderer": { "tabbedRenderer": {
+            "watchNextTabbedResultsRenderer": { "tabs": [{ "tabRenderer": { "content": {
+                "musicQueueRenderer": { "content": { "playlistPanelRenderer": { "contents": items } } }
+            } } }] }
+        } } } })
+        .to_string()
+    }
+
+    const SONG: &str = "MUSIC_VIDEO_TYPE_ATV";
+    const VIDEO: &str = "MUSIC_VIDEO_TYPE_OMV";
+
+    #[test]
+    fn a_radio_row_carries_the_artist_length_cover_and_whether_it_is_a_song() {
+        let body = radio_answer(&[radio_item(
+            "aaaaaaaaaaa",
+            "Neon Harbor",
+            "Lowtide",
+            "3:45",
+            SONG,
+        )]);
+        let rows = parse_radio(&body).unwrap();
+        assert_eq!(rows.len(), 1);
+        let (t, song) = &rows[0];
+        assert!(*song);
+        assert_eq!(
+            (t.key.as_str(), t.title.as_str(), t.artist.as_str()),
+            ("yt:aaaaaaaaaaa", "Neon Harbor", "Lowtide")
+        );
+        assert_eq!(t.duration_ms, Some(225_000));
+        assert_eq!(
+            t.thumbnail.as_deref(),
+            Some("https://lh3.googleusercontent.com/big=w544-h544")
+        );
+    }
+
+    #[test]
+    fn the_radio_skips_the_seed_and_duplicates_and_keeps_songs_only() {
+        let items = [
+            radio_item("seedseedsee", "Seed", "A", "3:00", SONG),
+            radio_item("bbbbbbbbbbb", "One", "B", "3:01", SONG),
+            radio_item("ccccccccccc", "A video", "C", "3:02", VIDEO),
+            radio_item("ddddddddddd", "Two", "D", "3:03", SONG),
+            radio_item("bbbbbbbbbbb", "One again", "B", "3:01", SONG),
+            radio_item("eeeeeeeeeee", "Three", "E", "3:04", SONG),
+            radio_item("fffffffffff", "Four", "F", "3:05", SONG),
+        ];
+        let picked = pick_radio(
+            parse_radio(&radio_answer(&items)).unwrap(),
+            "seedseedsee",
+            3,
+        );
+        let keys: Vec<&str> = picked.iter().map(|t| t.key.as_str()).collect();
+        assert_eq!(keys, ["yt:bbbbbbbbbbb", "yt:ddddddddddd", "yt:eeeeeeeeeee"]);
+    }
+
+    #[test]
+    fn a_radio_with_hardly_any_songs_is_used_as_it_is() {
+        let items = [
+            radio_item("seedseedsee", "Seed", "A", "3:00", VIDEO),
+            radio_item("bbbbbbbbbbb", "One", "B", "3:01", VIDEO),
+            radio_item("ccccccccccc", "Two", "C", "3:02", SONG),
+        ];
+        let picked = pick_radio(
+            parse_radio(&radio_answer(&items)).unwrap(),
+            "seedseedsee",
+            5,
+        );
+        assert_eq!(
+            picked.len(),
+            2,
+            "the video stays: there are fewer than three songs"
+        );
+    }
+
+    #[test]
+    fn a_wrapped_row_is_read_and_rows_without_an_id_or_title_are_left_out() {
+        let wrapped = json!({ "playlistPanelVideoWrapperRenderer": { "primaryRenderer":
+            radio_item("bbbbbbbbbbb", "Wrapped", "B", "2:00", SONG)["playlistPanelVideoRenderer"].clone()
+        } });
+        let no_id =
+            json!({ "playlistPanelVideoRenderer": { "title": { "runs": [{ "text": "x" }] } } });
+        let no_title = json!({ "playlistPanelVideoRenderer": { "videoId": "ccccccccccc" } });
+        let rows = parse_radio(&radio_answer(&[wrapped, no_id, no_title, json!("junk")])).unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].0.title, "Wrapped");
+    }
+
+    #[test]
+    fn a_radio_answer_in_an_unexpected_shape_is_an_error_and_never_a_panic() {
+        let empty = radio_answer(&[]);
+        for body in ["<html>", "{}", "[]", "null", empty.as_str()] {
+            assert!(parse_radio(body).is_err(), "{body}");
+        }
+    }
+
+    #[test]
+    fn asking_for_a_radio_sends_the_radio_request_and_tells_failures_apart() {
+        let (url, request) = testserver::once(
+            200,
+            &radio_answer(&[
+                radio_item("seedseedsee", "Seed", "A", "3:00", SONG),
+                radio_item("bbbbbbbbbbb", "One", "B", "3:01", SONG),
+            ]),
+        );
+        let found = fetch_radio(&url, "seedseedsee", 5).unwrap();
+        assert_eq!(found.len(), 1);
+        let sent = request.recv_timeout(Duration::from_secs(5)).unwrap();
+        assert!(sent.contains("RDAMVMseedseedsee"), "{sent}");
+        assert!(sent.contains("\"params\":\"wAEB\""), "{sent}");
+        assert!(sent.contains("WEB_REMIX"), "{sent}");
+
+        let (url, _) = testserver::once(429, "{}");
+        assert_eq!(
+            fetch_radio(&url, "seedseedsee", 5),
+            Err(SourceError::RateLimited)
+        );
+        let (url, _) = testserver::once(500, "{}");
+        assert!(matches!(
+            fetch_radio(&url, "seedseedsee", 5),
+            Err(SourceError::Failed(_))
+        ));
+        assert!(matches!(
+            fetch_radio("http://127.0.0.1:9/x", "not an id", 5),
+            Err(SourceError::Failed(_))
+        ));
     }
 }

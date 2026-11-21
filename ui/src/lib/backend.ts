@@ -5,6 +5,7 @@ import type { ExploreShelfDto } from './bindings/ExploreShelfDto';
 import type { GenreDto } from './bindings/GenreDto';
 import type { FilterInfoDto } from './bindings/FilterInfoDto';
 import type { HistoryItemDto } from './bindings/HistoryItemDto';
+import type { LocalLibraryDto } from './bindings/LocalLibraryDto';
 import type { LogInfoDto } from './bindings/LogInfoDto';
 import type { PerfReportDto } from './bindings/PerfReportDto';
 import type { AppUpdateDto } from './bindings/AppUpdateDto';
@@ -55,6 +56,16 @@ export interface LibraryBackend {
   genreGet(params: string): Promise<ExploreShelfDto[]>;
   /** The songs of a YouTube Music playlist (its first page), to play. Rejects with a `SearchErrorDto`. */
   playlistTracksGet(id: string): Promise<TrackDto[]>;
+  /** The songs on this PC: the chosen folders and where the scan of them stands. */
+  localGet(): Promise<LocalLibraryDto>;
+  onLocal(cb: (s: LocalLibraryDto) => void): Promise<() => void>;
+  /** The songs whose title, artist or album contain `query` (all of them for an empty one), in collection order. */
+  localTracks(query: string): Promise<TrackDto[]>;
+  /** Asks which folder to add in the system's own dialog, then scans it. Choosing nothing changes nothing. */
+  localAddFolder(): Promise<LocalLibraryDto>;
+  localRemoveFolder(folder: string): Promise<LocalLibraryDto>;
+  /** Reads the chosen folders again (only the files that changed). */
+  localRescan(): Promise<LocalLibraryDto>;
 }
 
 /** Everything the UI needs from Rust. Implemented by Tauri at runtime and by a mock in the browser and in tests. */
@@ -132,6 +143,7 @@ export function toSearchError(e: unknown): SearchErrorDto {
 export const STATE_EVENT = 'player-state';
 export const POSITION_EVENT = 'player-position';
 export const LIBRARY_EVENT = 'library-changed';
+export const LOCAL_EVENT = 'local-changed';
 export const NOTICE_EVENT = 'notice';
 export const UPDATE_PROGRESS_EVENT = 'update-progress';
 export const SLEEP_EVENT = 'sleep-state';
@@ -208,6 +220,12 @@ export async function tauriBackend(): Promise<Backend> {
     genresGet: () => invoke<GenreDto[]>('genres_get'),
     genreGet: (params) => invoke<ExploreShelfDto[]>('genre_get', { params }),
     playlistTracksGet: (id) => invoke<TrackDto[]>('playlist_tracks_get', { id }),
+    localGet: () => invoke<LocalLibraryDto>('local_get'),
+    onLocal: async (cb) => listen<LocalLibraryDto>(LOCAL_EVENT, (e) => cb(e.payload)),
+    localTracks: (query) => invoke<TrackDto[]>('local_tracks', { query }),
+    localAddFolder: () => invoke<LocalLibraryDto>('local_add_folder'),
+    localRemoveFolder: (folder) => invoke<LocalLibraryDto>('local_remove_folder', { folder }),
+    localRescan: () => invoke<LocalLibraryDto>('local_rescan'),
     devCatalog: () => invoke<TrackDto[]>('dev_catalog'),
     coverBytes: (url) => invoke<ArrayBuffer>('cover_bytes', { url }),
     lyricsGet: (t) =>

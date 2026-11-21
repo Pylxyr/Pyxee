@@ -16,8 +16,6 @@ mod tray_buttons;
 mod trim;
 mod webview_power;
 pub use webview_power::{emit_awake, emit_noted};
-#[cfg(all(windows, feature = "win-extras"))]
-mod winextras;
 
 use crate::dto::{PlayerStateDto, TransportDto};
 use crate::state::AppState;
@@ -46,8 +44,6 @@ struct Sent {
     playback: Option<(u8, u64)>,
     /// The transport phase the notification-area buttons last showed.
     controls: Option<Phase>,
-    #[cfg(all(windows, feature = "win-extras"))]
-    thumbs: Option<(Phase, bool)>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -148,8 +144,6 @@ pub fn init(app: &AppHandle, args: &[String]) {
     sync_discord(app);
     sync_lastfm(app, false);
     sync_autostart(app);
-    #[cfg(all(windows, feature = "win-extras"))]
-    winextras::init(app);
     if let Some(w) = app.get_webview_window(MAIN) {
         if hide_to_tray {
             log::info!("started by Windows at sign-in: staying in the tray");
@@ -459,15 +453,6 @@ pub fn on_state(app: &AppHandle, s: &PlayerStateDto) {
     if sent.progress != Some(TaskbarProgressKey(progress)) {
         sent.progress = Some(TaskbarProgressKey(progress));
         apply_taskbar_progress(app, progress);
-    }
-
-    #[cfg(all(windows, feature = "win-extras"))]
-    {
-        let key = (phase, entry.is_some());
-        if sent.thumbs != Some(key) {
-            sent.thumbs = Some(key);
-            winextras::update(app, phase, entry.is_some());
-        }
     }
 
     let track_key = entry.map(|e| (e.id, e.track.thumbnail.clone()));

@@ -5,6 +5,7 @@
   import { player } from '$lib/player.svelte';
   import { search } from '$lib/search.svelte';
   import { library } from '$lib/library.svelte';
+  import { local } from '$lib/local.svelte';
   import { prefs } from '$lib/prefs.svelte';
   import { nav } from '$lib/nav.svelte';
   import { followArt, theme } from '$lib/theme.svelte';
@@ -65,6 +66,7 @@
       await backend.onNotice((message) => snackbar.push(message, { timeoutMs: 10_000 }));
       search.init(backend);
       library.init(backend);
+      void local.init(backend).catch(() => {});
       lyricsStore.init(backend);
       relatedStore.init(backend);
       void sleep.init(backend);

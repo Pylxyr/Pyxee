@@ -21,11 +21,13 @@
   import Thumb from '../components/Thumb.svelte';
   import TrackRow from '../components/TrackRow.svelte';
   import TrackList from '../components/TrackList.svelte';
+  import LocalMusic from '../components/LocalMusic.svelte';
 
   const tabs: { id: LibraryTab; label: string }[] = [
     { id: 'liked', label: 'Liked songs' },
     { id: 'playlists', label: 'Playlists' },
     { id: 'history', label: 'History' },
+    { id: 'device', label: 'On this device' },
     { id: 'downloads', label: 'Downloads' },
   ];
 
@@ -136,6 +138,8 @@
         </TrackList>
       {/each}
     {/if}
+  {:else if nav.libraryTab === 'device'}
+    <LocalMusic />
   {:else}
     <EmptyState icon="library" title="Downloads" text="Songs saved for offline listening live here. Downloads arrive in milestone 7." />
   {/if}

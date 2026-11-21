@@ -4,7 +4,7 @@
 
 # Pyxee
 
-A gapless music player for Windows and Linux that plays music found online.
+A gapless music player for Windows and Linux that plays music found online and the music on your PC (Library > On this device: add your music folders; Pyxee reads the tags of MP3, FLAC, Ogg, Opus, M4A, AAC and WAV files).
 
 [![Latest release](https://img.shields.io/github/v/release/Pylxyr/Pyxee?include_prereleases&color=e8061f&label=release)](https://github.com/Pylxyr/Pyxee/releases/latest)
 [![Downloads](https://img.shields.io/github/downloads/Pylxyr/Pyxee/total?color=111111&label=downloads)](https://github.com/Pylxyr/Pyxee/releases)

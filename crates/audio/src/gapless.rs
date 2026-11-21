@@ -195,6 +195,20 @@ impl GaplessSource {
         Ok(())
     }
 
+    /// Makes the queued track `id` the one that plays now: the track that is playing and any track queued before `id`
+    /// are dropped, and `id` is announced as started at the start of a new timeline, as a track opened by itself would
+    /// be. This is a skip to a song that was prefetched: nothing is opened or decoded again. `false`, with nothing
+    /// changed, when `id` is not queued (it may be playing already, or never have been prepared).
+    pub fn skip_to_queued(&mut self, id: u64) -> bool {
+        let Some(at) = self.queue.iter().position(|t| t.id == id) else {
+            return false;
+        };
+        self.queue.drain(..at);
+        self.current = None;
+        self.total_frames = 0;
+        true
+    }
+
     #[must_use]
     pub fn queued(&self) -> usize {
         self.queue.len() + usize::from(self.current.is_some())

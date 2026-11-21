@@ -501,6 +501,19 @@ pub struct PlaylistSummaryDto {
     pub thumbnail: Option<String>,
 }
 
+/// The folders the listener chose for the songs on this PC, and where the scan of them stands.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct LocalLibraryDto {
+    /// Increases with every change, so the UI can tell an old push from a new one.
+    pub revision: u32,
+    pub folders: Vec<String>,
+    pub track_count: u32,
+    /// A scan is running: the song count may still grow.
+    pub scanning: bool,
+}
+
 /// What the UI keeps in sync with the library: which songs are liked and the playlist list.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]

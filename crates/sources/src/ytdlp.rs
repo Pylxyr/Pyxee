@@ -189,6 +189,8 @@ pub struct YtDlpSource {
     music_endpoint: Option<String>,
     /// Where Explore asks `YouTube` Music for its Explore page (`None`: Explore is unsupported).
     browse_endpoint: Option<String>,
+    /// Where the songs that follow a song are asked for first, with no yt-dlp run (`None`: yt-dlp alone).
+    next_endpoint: Option<String>,
     /// Where stream addresses are asked for first, with no yt-dlp run (`None`: yt-dlp alone resolves every song).
     player_endpoint: Option<String>,
 }
@@ -208,6 +210,7 @@ impl YtDlpSource {
             songs_page_bare_until: Mutex::new(None),
             music_endpoint: Some(ytmusic::ENDPOINT.to_string()),
             browse_endpoint: Some(ytmusic::BROWSE_ENDPOINT.to_string()),
+            next_endpoint: Some(ytmusic::NEXT_ENDPOINT.to_string()),
             player_endpoint: Some(innertube::ENDPOINT.to_string()),
         }
     }
@@ -218,10 +221,11 @@ impl YtDlpSource {
         self
     }
 
-    /// Songs searches go to yt-dlp only, never to `YouTube` Music directly, and there is no Explore page.
+    /// Songs searches and autoplay go to yt-dlp only, never to `YouTube` Music directly, and there is no Explore page.
     pub fn without_music_search(mut self) -> Self {
         self.music_endpoint = None;
         self.browse_endpoint = None;
+        self.next_endpoint = None;
         self
     }
 
@@ -240,6 +244,12 @@ impl YtDlpSource {
     /// Asks `url` instead of `YouTube` Music for its Explore page (for tests).
     pub fn with_browse_endpoint(mut self, url: impl Into<String>) -> Self {
         self.browse_endpoint = Some(url.into());
+        self
+    }
+
+    /// Asks `url` instead of `YouTube` Music for the songs that follow a song (for tests).
+    pub fn with_next_endpoint(mut self, url: impl Into<String>) -> Self {
+        self.next_endpoint = Some(url.into());
         self
     }
 
@@ -912,8 +922,27 @@ impl MusicSource for YtDlpSource {
         })
     }
 
+    /// `YouTube` Music's own radio for the song first (one request made here, no yt-dlp run); yt-dlp's mix when that
+    /// fails (a rate limit excepted) or lists nothing.
     fn related(&self, key: &str, count: usize) -> Result<Vec<TrackInfo>, SourceError> {
         let id = video_id(key)?;
+        if let Some(endpoint) = &self.next_endpoint {
+            match self
+                .gate
+                .run("related", || ytmusic::fetch_radio(endpoint, id, count))
+            {
+                Ok(songs) if !songs.is_empty() => {
+                    log::info!("related: {} songs from YouTube Music's radio", songs.len());
+                    return Ok(songs);
+                }
+                Ok(_) => log::info!("related: YouTube Music's radio listed nothing; using yt-dlp"),
+                Err(SourceError::RateLimited) => return Err(SourceError::RateLimited),
+                Err(e) => log::warn!(
+                    "related: YouTube Music's radio did not answer ({}); using yt-dlp",
+                    scrub(&e.to_string())
+                ),
+            }
+        }
         let target = format!("https://www.youtube.com/watch?v={id}&list=RD{id}");
         // Asks for more than is wanted: the mix also holds videos, animated shorts and other things that are not
         // songs, and they are dropped below.
@@ -1955,6 +1984,65 @@ esac"#,
             let stream = s.resolve_stream("yt:abc12345678").unwrap();
             assert_eq!(stream.url, "https://stream.example/a");
             assert_eq!(runs_logged(&log), 1);
+        }
+
+        const RADIO_ANSWER: &str = r#"{"contents":{"playlistPanelRenderer":{"contents":[
+            {"playlistPanelVideoRenderer":{"videoId":"abc12345678","title":{"runs":[{"text":"Seed"}]},
+             "navigationEndpoint":{"watchEndpoint":{"watchEndpointMusicSupportedConfigs":{"watchEndpointMusicConfig":{"musicVideoType":"MUSIC_VIDEO_TYPE_ATV"}}}}}},
+            {"playlistPanelVideoRenderer":{"videoId":"next0000001","title":{"runs":[{"text":"Next Song"}]},
+             "longBylineText":{"runs":[{"text":"Some Band"}]},"lengthText":{"runs":[{"text":"3:10"}]},
+             "navigationEndpoint":{"watchEndpoint":{"watchEndpointMusicSupportedConfigs":{"watchEndpointMusicConfig":{"musicVideoType":"MUSIC_VIDEO_TYPE_ATV"}}}}}}
+        ]}}}"#;
+
+        #[test]
+        fn the_songs_that_follow_a_song_come_from_youtube_music_without_a_yt_dlp_run() {
+            use crate::ytmusic::testserver;
+            let (script, log) = fake("radio-direct", &canned());
+            let (url, _) = testserver::once(200, RADIO_ANSWER);
+            let found = quick(&script)
+                .with_next_endpoint(url)
+                .related("yt:abc12345678", 5)
+                .unwrap();
+            assert_eq!(found.len(), 1, "the seed itself is excluded");
+            assert_eq!(
+                (
+                    found[0].key.as_str(),
+                    found[0].title.as_str(),
+                    found[0].artist.as_str()
+                ),
+                ("yt:next0000001", "Next Song", "Some Band")
+            );
+            assert_eq!(found[0].duration_ms, Some(190_000));
+            assert_eq!(runs_logged(&log), 0, "yt-dlp was started");
+        }
+
+        #[test]
+        fn a_radio_that_gives_nothing_usable_falls_back_to_yt_dlp_and_a_rate_limit_does_not() {
+            use crate::ytmusic::testserver;
+            for (name, status, body) in [
+                ("garbage", 200, "<html>"),
+                ("empty", 200, "{}"),
+                ("refused", 500, "{}"),
+            ] {
+                let (script, log) = fake(&format!("radio-{name}"), &canned());
+                let (url, _) = testserver::once(status, body);
+                let found = quick(&script)
+                    .with_next_endpoint(url)
+                    .related("yt:abc12345678", 5)
+                    .unwrap();
+                assert_eq!(found.len(), 1, "{name}");
+                assert_eq!(found[0].title, "Paper Planes", "{name}: yt-dlp's mix");
+                assert_eq!(runs_logged(&log), 1, "{name}");
+            }
+            let (script, log) = fake("radio-limited", &canned());
+            let (url, _) = testserver::once(429, "{}");
+            assert_eq!(
+                quick(&script)
+                    .with_next_endpoint(url)
+                    .related("yt:abc12345678", 5),
+                Err(SourceError::RateLimited)
+            );
+            assert_eq!(runs_logged(&log), 0, "yt-dlp was started");
         }
 
         #[test]

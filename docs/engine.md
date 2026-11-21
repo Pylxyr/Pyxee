@@ -22,7 +22,7 @@
    it is used) and from yt-dlp when that gives nothing (any failure except a rate limit or being offline).
    `PYXEE_DIRECT_STREAMS=0` (developer builds) leaves it to yt-dlp alone. Both ask for Opus in WebM first and AAC-LC in
    M4A second; a stream it cannot read fails with the format named in the log and the song is skipped (see "In-process
-   libav" below). The player request goes through the same gate as yt-dlp runs (below).
+   libav" below). The player request goes through the same gate as yt-dlp runs (below). Autoplay works the same way: the songs that follow a song are asked of YouTube Music's own `next` endpoint (its radio) first and of yt-dlp's mix when that fails or lists nothing (`PYXEE_YTMUSIC_DIRECT=0` leaves it to yt-dlp).
 2. While a track plays, the next one is resolved, opened and decoded ahead; the pipeline joins them with no gap.
 3. "Now playing" changes only when the device has consumed the audio (see docs/core.md).
 4. A stream URL that is rejected mid-song (403/410) makes the track stop producing audio; when the listener reaches that
@@ -48,8 +48,9 @@ only a person can judge. As written then, these shapes came from what was known 
 - The suggestions endpoint (`suggestqueries.google.com`): off by default, so nothing typed in the search box leaves the app before a search is submitted; a developer build can turn it on with `PYXEE_SUGGESTIONS=1`.
 - Real WASAPI output: gapless on a real device, device latency compensation, underruns.
 - Albums search is not supported yet (needs a dedicated albums API); the filter is shown disabled.
-- Instant skip to a prefetched track is not implemented in the real engine (the sim has it); a skip re-opens the track, using
-  the cached URL, so it is fast but not instant.
+- Instant skip: a skip to the song that was prefetched (`Engine::start_prefetched`, `Pipeline::skip_to_queued`) drops what
+  plays and what was decoded ahead and starts that song from its already open stream: nothing is resolved, opened or
+  downloaded again. A skip to any other song still opens it, using the cached URL.
 
 ## Volume
 The slider (0-100) is sent to the engine at start-up and on every change (`set_volume`). The audio callback applies it as a

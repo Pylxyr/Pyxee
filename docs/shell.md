@@ -8,7 +8,6 @@ Logic you can test anywhere lives in two crates; `crates/app/src/shell/` only co
 | Sleep timer | `pyxee_shell::sleep`: minutes (fade over the last 15 s), end of song, after N songs; core `Command::StopAfterCurrent` parks on the next song; `Volume::set_fade` is separate from the volume setting | `shell/sleep.rs`, `SleepSheet.svelte` |
 | Media keys, volume flyout, lock-screen tile | `souvlaki` (SMTC on Windows) | `shell/media.rs` |
 | Taskbar progress | `pyxee_shell::progress` | `shell::on_state` (Tauri `set_progress_bar`) |
-| Thumbnail buttons, jump list | `pyxee_shell::winui` | `shell/winextras.rs`, **opt-in** `--features win-extras` (raw COM, not compiled in the sandbox) |
 | Tray, close to tray, single instance, start with Windows, toast | `pyxee_shell::{settings,cli}` | `shell/tray.rs`, `shell/mod.rs`, Tauri plugins `single-instance`, `autostart`, `notification` |
 | Tray flyout | `pyxee_shell::anchor` (above a bottom taskbar, below a top one, beside a side one, clamped to the work area, multi-monitor, ignores the click that blurred it) | `shell/flyout.rs`, `views/Flyout.svelte` |
 | Mini player | `pyxee_shell::geometry` (position kept reachable when monitors change) | `shell/mini.rs`, `views/Mini.svelte` |

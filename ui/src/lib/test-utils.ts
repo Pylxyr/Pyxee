@@ -23,6 +23,12 @@ export const noLibrary: LibraryBackend = {
   genresGet: async () => [],
   genreGet: async () => [],
   playlistTracksGet: async () => [],
+  localGet: async () => ({ revision: 1, folders: [], trackCount: 0, scanning: false }),
+  onLocal: async () => () => {},
+  localTracks: async () => [],
+  localAddFolder: async () => ({ revision: 1, folders: [], trackCount: 0, scanning: false }),
+  localRemoveFolder: async () => ({ revision: 1, folders: [], trackCount: 0, scanning: false }),
+  localRescan: async () => ({ revision: 1, folders: [], trackCount: 0, scanning: false }),
 };
 
 /** Diagnostics methods for test backends that do not care about them. */

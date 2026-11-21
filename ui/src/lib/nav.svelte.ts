@@ -2,7 +2,7 @@ import type { TrackDto } from './bindings/TrackDto';
 import { withViewTransition } from './motion';
 
 export type Route = 'home' | 'explore' | 'library' | 'playlist' | 'queue' | 'search';
-export type LibraryTab = 'liked' | 'playlists' | 'history' | 'downloads';
+export type LibraryTab = 'liked' | 'playlists' | 'history' | 'device' | 'downloads';
 
 /** An in-page prompt for a name (new playlist, rename, save queue). Never a native dialog. */
 export interface NamePrompt {

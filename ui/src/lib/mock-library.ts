@@ -4,6 +4,7 @@ import type { AddResultDto } from './bindings/AddResultDto';
 import type { HistoryItemDto } from './bindings/HistoryItemDto';
 import type { HomeDto } from './bindings/HomeDto';
 import type { LibrarySnapshotDto } from './bindings/LibrarySnapshotDto';
+import type { LocalLibraryDto } from './bindings/LocalLibraryDto';
 import type { PlaylistDto } from './bindings/PlaylistDto';
 import type { PlaylistSnapshotDto } from './bindings/PlaylistSnapshotDto';
 import type { RemovedEntryDto } from './bindings/RemovedEntryDto';
@@ -12,6 +13,13 @@ import type { LibraryBackend } from './backend';
 
 const NAME_ERROR = 'Playlist names must be 1 to 100 characters.';
 const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v)) as T;
+
+/** What a chosen folder holds in the mock: the same few songs, so the page can be tried in a browser. */
+const MOCK_LOCAL: TrackDto[] = [
+  { key: 'file:C:\\Music\\Lowtide\\01 Neon Harbor.flac', title: 'Neon Harbor', artist: 'Lowtide', durationMs: 214_000, thumbnail: null },
+  { key: 'file:C:\\Music\\Lowtide\\02 Paper Planes.flac', title: 'Paper Planes', artist: 'Lowtide', durationMs: 187_000, thumbnail: null },
+  { key: 'file:C:\\Music\\Ember\\Slow Burn.mp3', title: 'Slow Burn', artist: 'Ember', durationMs: 242_000, thumbnail: null },
+];
 
 interface Pl { id: number; name: string; createdAt: number; updatedAt: number; entries: { entryId: number; track: TrackDto }[] }
 
@@ -29,6 +37,20 @@ export class MockLibrary implements LibraryBackend {
   #revision = 1;
   #listeners = new Set<(s: LibrarySnapshotDto) => void>();
   #now = () => Date.now();
+  #localFolders: string[] = [];
+  #localRevision = 1;
+  #localListeners = new Set<(s: LocalLibraryDto) => void>();
+
+  #local(): LocalLibraryDto {
+    return { revision: this.#localRevision, folders: [...this.#localFolders], trackCount: this.#localFolders.length > 0 ? MOCK_LOCAL.length : 0, scanning: false };
+  }
+
+  #localChanged(): LocalLibraryDto {
+    this.#localRevision++;
+    const s = this.#local();
+    for (const cb of this.#localListeners) cb(clone(s));
+    return s;
+  }
 
   #changed() {
     this.#revision++;
@@ -80,6 +102,26 @@ export class MockLibrary implements LibraryBackend {
     this.#changed();
   }
   async likedGet() { return clone(this.#liked); }
+
+  async localGet() { return this.#local(); }
+  async onLocal(cb: (s: LocalLibraryDto) => void) {
+    this.#localListeners.add(cb);
+    return () => { this.#localListeners.delete(cb); };
+  }
+  async localTracks(query: string) {
+    if (this.#localFolders.length === 0) return [];
+    const q = query.trim().toLowerCase();
+    return clone(MOCK_LOCAL.filter((t) => !q || t.title.toLowerCase().includes(q) || t.artist.toLowerCase().includes(q)));
+  }
+  async localAddFolder() {
+    this.#localFolders.push(this.#localFolders.length === 0 ? 'C:\\Music' : `C:\\Music ${this.#localFolders.length + 1}`);
+    return this.#localChanged();
+  }
+  async localRemoveFolder(folder: string) {
+    this.#localFolders = this.#localFolders.filter((f) => f !== folder);
+    return this.#localChanged();
+  }
+  async localRescan() { return this.#localChanged(); }
 
   async playlistCreate(name: string, tracks: TrackDto[]) {
     const n = MockLibrary.#name(name);

@@ -351,6 +351,45 @@ impl Pipeline {
         true
     }
 
+    /// Skips to the track `id` that was prepared and queued behind the one that is playing: what is playing and what
+    /// was decoded ahead are dropped, and `id` starts at once, already opened and partly decoded. Like
+    /// `seek_in_place`, `false` means nothing was changed that a flush does not repair: the track is not queued, or the
+    /// producer is busy (a stalled stream), and the caller flushes and opens it the slow way.
+    #[must_use]
+    pub fn skip_to_queued(&self, id: EntryId) -> bool {
+        let deadline = Instant::now() + Duration::from_millis(200);
+        let mut src = loop {
+            match self.shared.source.try_lock() {
+                Ok(guard) => break guard,
+                Err(TryLockError::Poisoned(e)) => break e.into_inner(),
+                Err(TryLockError::WouldBlock) => {
+                    if Instant::now() >= deadline {
+                        return false;
+                    }
+                    thread::sleep(Duration::from_millis(2));
+                }
+            }
+        };
+        // The track may have been pushed a moment ago and not yet reached the queue.
+        apply_pending(&self.shared, &mut src);
+        if !src.skip_to_queued(id.0) {
+            return false;
+        }
+        // The producer holds the source lock while it adds to the buffer and the tracker, so with it held here no
+        // sample of the old track can be added after this clear. Lock order: source, then inner (as everywhere).
+        let mut inner = lock(&self.shared.inner);
+        inner.buf.clear();
+        inner.consumed = 0;
+        inner.tracker.reset(0);
+        drop(inner);
+        self.shared
+            .queued_tracks
+            .store(src.queued(), Ordering::Relaxed);
+        drop(src);
+        self.shared.wake.notify();
+        true
+    }
+
     /// While paused the device gets silence and nothing is consumed, so nothing "plays".
     pub fn set_paused(&self, paused: bool) {
         self.shared.paused.store(paused, Ordering::Relaxed);

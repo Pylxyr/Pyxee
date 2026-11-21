@@ -26,6 +26,7 @@ mod engine;
 #[cfg(test)]
 mod engine_tests;
 mod library_service;
+mod local_library;
 mod logging;
 mod opener;
 mod recorder;
@@ -165,6 +166,7 @@ fn main() {
             Some(vec!["--autostart"]),
         ))
         .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             // Where the files live: the Local application-data folder. Files from the old Roaming folder are
             // copied over once, before anything opens them (see `pyxee_shell::datadir`).
@@ -247,10 +249,19 @@ fn main() {
                 backdrop,
                 session_path,
             });
+            let local = local_library::LocalLibrary::load(
+                data_dir.as_ref().map(|d| d.join("local-library.json")),
+            );
+            let scan_local = local.has_folders();
+            app.manage(local);
             app.manage(shell::ShellState::load(
                 data_dir.as_ref().map(|d| d.join("shell.json")),
             ));
             runner::spawn(app.handle().clone(), rx);
+            // What changed in the chosen music folders since the last run (only changed files are read again).
+            if scan_local {
+                local_library::rescan(app.handle());
+            }
             // The session is written here, off the thread that reports playback; a burst of requests (every pause,
             // skip and seek asks) becomes one write a moment later. Quitting saves on its own thread.
             {
@@ -309,6 +320,11 @@ fn main() {
             commands::history_clear,
             commands::history_restore,
             commands::home_get,
+            local_library::local_get,
+            local_library::local_tracks,
+            local_library::local_add_folder,
+            local_library::local_remove_folder,
+            local_library::local_rescan,
             commands::set_volume,
             commands::get_log_info,
             commands::perf_enabled,

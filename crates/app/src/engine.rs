@@ -167,6 +167,9 @@ pub struct Engine {
     start_queued: bool,
     /// A prefetched track that finished before the start track did; queued right after it.
     held_prefetch: Option<Box<PreparedTrack>>,
+    /// The song whose prefetch is done and still waiting, queued in the pipeline or in `held_prefetch`: a skip to it
+    /// starts it at once instead of opening it again.
+    prefetched: Option<EntryId>,
     /// The song the listener is (logically) on: updated when a track becomes audible, so a seek always
     /// re-opens *this* song, not the one the session originally started with.
     current: Option<(EntryId, Track)>,
@@ -216,6 +219,7 @@ impl Engine {
             start_failed: None,
             start_queued: false,
             held_prefetch: None,
+            prefetched: None,
             current: None,
             known: HashMap::new(),
             last_heard_ms: HashMap::new(),
@@ -315,6 +319,7 @@ impl Engine {
         self.pipeline = Pipeline::new(rate, pipe_tx, self.volume.clone());
         self.pipe_rx = pipe_rx;
         self.held_prefetch = None;
+        self.prefetched = None;
         self.stalled_since = None;
         if let (Some((id, track)), Some(ms)) = (self.current.clone(), at) {
             self.start(id, &track, ms, true);
@@ -351,7 +356,10 @@ impl Engine {
                 );
                 self.known.clear();
                 self.last_heard_ms.clear();
-                self.start(id, &track, start_ms, false);
+                // A song that was prefetched (the next one, reached by a skip) is already open and partly decoded.
+                if !(start_ms == 0 && self.start_prefetched(id, &track)) {
+                    self.start(id, &track, start_ms, false);
+                }
             }
             Effect::Prefetch { id, track } => {
                 log::info!("prefetch: \"{}\" ({})", track.title, track.key);
@@ -363,6 +371,7 @@ impl Engine {
                 self.prefetch_req = None;
                 self.prefetch_token += 1;
                 self.held_prefetch = None;
+                self.prefetched = None;
                 self.pipeline.clear_queued();
             }
             Effect::Pause => {
@@ -383,6 +392,7 @@ impl Engine {
                 self.prefetch_req = None;
                 self.start_id = None;
                 self.held_prefetch = None;
+                self.prefetched = None;
                 self.suppress_heard = false;
                 self.pipeline.flush();
                 self.pipeline.set_paused(false);
@@ -443,12 +453,53 @@ impl Engine {
         self.start_failed = None;
         self.start_queued = false;
         self.held_prefetch = None;
+        self.prefetched = None;
         self.known.insert(id, track.clone());
         self.current = Some((id, track.clone()));
         if !is_seek {
             self.prefetch_req = None;
         }
         self.spawn_prepare(id, track.key.clone(), start_ms, Purpose::Start);
+    }
+
+    /// Starts `id` from the prefetch that is waiting for it, if there is one: the song that is playing and everything
+    /// decoded ahead are dropped and `id` plays from its first sample, with nothing resolved, opened or downloaded
+    /// again. `false` (nothing changed that `start` does not repair) when `id` was not prefetched, its prefetch is not
+    /// done or was dropped, or the producer is busy: the caller then starts it the usual way.
+    fn start_prefetched(&mut self, id: EntryId, track: &Track) -> bool {
+        if self.prefetched != Some(id) {
+            return false;
+        }
+        if let Some(ready) = self.held_prefetch.take() {
+            // It was ready before the song that is playing was: nothing else is queued, so it goes in alone.
+            self.pipeline.flush();
+            self.pipeline.push(*ready);
+        } else if !self.pipeline.skip_to_queued(id) {
+            return false;
+        }
+        log::info!(
+            "start: {} was prefetched and starts at once",
+            self.describe(id)
+        );
+        self.bump_generation();
+        // What `start` sets up for a song, minus opening it.
+        self.paused = false;
+        self.pipeline.set_paused(false);
+        self.suppress_heard = false;
+        self.skip_audible_for = None;
+        self.offsets.clear();
+        self.offsets.insert(id, 0);
+        self.audible.clear();
+        self.failed_later.clear();
+        self.stalled_since = None;
+        self.start_id = Some(id);
+        self.start_failed = None;
+        self.start_queued = true;
+        self.prefetched = None;
+        self.prefetch_req = None;
+        self.known.insert(id, track.clone());
+        self.current = Some((id, track.clone()));
+        true
     }
 
     fn bump_generation(&mut self) {
@@ -459,6 +510,7 @@ impl Engine {
 
     fn spawn_prefetch(&mut self, id: EntryId, key: String) {
         self.prefetch_token += 1;
+        self.prefetched = None;
         self.offsets.insert(id, 0);
         self.spawn_prepare(id, key, 0, Purpose::Prefetch);
     }
@@ -571,12 +623,14 @@ impl Engine {
                         } else {
                             self.held_prefetch = Some(t);
                         }
+                        self.prefetched = Some(id);
                         self.host.engine_event(EngineEvent::Prefetched { id });
                     }
                     (Purpose::Start, Err(failure)) => {
                         log::warn!("could not start {}: {failure:?}", self.describe(id));
                         self.start_failed = Some(id);
                         self.held_prefetch = None;
+                        self.prefetched = None;
                         self.notify_skip(id, &failure, false);
                         self.host
                             .engine_event(EngineEvent::LoadFailed { id, failure });
@@ -658,6 +712,9 @@ impl Engine {
             PipeEvent::Heard(_) if self.suppress_heard => {}
             PipeEvent::Heard(Heard::Audible(id)) => {
                 self.audible.insert(id);
+                if self.prefetched == Some(id) {
+                    self.prefetched = None; // it is playing now, not waiting
+                }
                 self.stalled_since = None;
                 log::info!("audible: {}", self.describe(id));
                 if let Some(t) = self.known.get(&id) {

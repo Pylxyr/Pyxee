@@ -30,6 +30,7 @@ tauri-plugin-notification = "2.8.0"
 souvlaki = { version = "0.9.3", default-features = false, features = ["use_zbus"] }
 discord-rich-presence = "1.1.0"
 md-5 = "0.11.0"
+tauri-plugin-dialog = "2.8.4"
 
 [target.'cfg(windows)'.dependencies]
 window-vibrancy = "0.8.1"
@@ -37,25 +38,12 @@ window-vibrancy = "0.8.1"
 # types are the same ones `with_webview` hands out.
 webview2-com = "0.39.1"
 windows-core = "0.62.2"
-windows = { version = "0.62.2", optional = true, features = [
-  "Win32_Foundation",
-  "Win32_Storage_EnhancedStorage",
-  "Win32_System_Com",
-  "Win32_UI_Shell",
-  "Win32_UI_Shell_Common",
-  "Win32_UI_Shell_PropertiesSystem",
-  "Win32_UI_WindowsAndMessaging",
-] }
 
 [features]
 # Developer tools: the simulated engine with demo tracks (PYXEE_SIM), the performance log (PYXEE_PERF) and the seek-bar
 # fill modes (PYXEE_SEEK_MODE). On in every debug build (`tauri dev`, `cargo test`); a release build has none of them
 # unless it is built with this feature (e.g. for scripts/perf/measure.py, together with VITE_PYXEE_DEV_TOOLS=1 for the UI).
 dev-tools = []
-# Taskbar thumbnail buttons and the jump list: raw Windows COM calls that could only be written, not compiled,
-# where this was developed. Off by default so the normal build cannot break; try it with
-#   cargo check -p pyxee-app --features win-extras
-win-extras = ["dep:windows"]
 
 [dev-dependencies]
 # The engine tests serve audio from a local `http` server, which the stream agent otherwise refuses.
