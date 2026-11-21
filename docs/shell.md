@@ -48,5 +48,5 @@ Shows the current song as "Listening to Pyxee" in the Discord desktop client, th
 
 ## Window frame
 
-The main window has no Windows title bar: Pyxee draws its own (see `docs/ui.md`), and `tauri.conf.json` creates the window without a frame. There is no setting for it; Linux overrides this in `tauri.linux.conf.json` and keeps the desktop's frame.
+The main window has the system's title bar and frame (see `docs/ui.md`); there is no setting for it. The mini player and the flyout are frameless.
 - **Limits:** no album name (Pyxee has none to send) and no buttons. Only the Quit path clears the presence on exit.

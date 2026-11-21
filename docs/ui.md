@@ -27,20 +27,12 @@ Page margins grow at 1600 and 1920 px, and Now Playing has no width cap (a bigge
 Click the cover (deck or dock) to open Now Playing (Up next / Lyrics / Related). The same four destinations (`lib/destinations.ts`)
 feed the tabs and the bottom bar (`Navigation.svelte`, `layout="tabs" | "bar"`).
 
-**No native title bar (on Windows).** The main window is created without a frame (`decorations: false` in `tauri.conf.json`, with a shadow, so
-Windows still draws the rounded corners and the resize edges). `TitleBar.svelte` is a 32 px strip above the shell: the empty part
-is a drag region (a double click maximizes), and the three buttons call the window through `lib/windowControls.ts`
-(`minimize`, `toggleMaximize`, `close`; the last goes through the normal close request, so close-to-tray still applies). The name
-shows in the bar only in the narrow layout; the tabs show it otherwise. The bar exists only inside the app (`hasOwnWindow()`), not
-in a browser. Sheets and Now Playing start below it (`--titlebar-h`), so its buttons stay usable. The mini player and the flyout are
-frameless as before.
+**The window frame is the system's.** The main window has the normal title bar and borders of the desktop (and a shadow); the page draws
+nothing above its shell. Mica still shows through, because the window is created transparent. The mini player and the flyout are
+frameless (they have their own drag regions). There is no setting for the frame.
 
-**F11** switches full screen (`setFullscreen` in `lib/windowControls.ts`); in full screen there is no bar and no frame, and the page follows
-the window's state through its resize events. Pyxee's own bar is always used where the window has no frame (Windows); on Linux the window
-keeps the desktop's frame (`decorations: true` in `tauri.linux.conf.json`). There is no setting for it.
-
-Mica without a native title bar: Windows draws the system backdrop in such a window only where the DWM frame is extended into the page, so
-`apply_backdrop` (`window.rs`) calls `DwmExtendFrameIntoClientArea` with -1 margins after `apply_mica` when the window has no frame.
+**F11** switches full screen (`setFullscreen` in `lib/windowControls.ts`); in full screen the window has no frame, and the page follows
+the window's state through its resize events.
 
 ## The 1.0 skin
 

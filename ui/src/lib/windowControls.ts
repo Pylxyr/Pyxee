@@ -1,10 +1,5 @@
-/** The buttons of the window frame. The main window has no native title bar, so the page draws them and calls these. */
+/** What the page asks of its window: full screen (F11), and to hear when the window changed size. The frame itself is the system's. */
 export interface WindowControls {
-  minimize(): Promise<void>;
-  toggleMaximize(): Promise<void>;
-  /** Asks the window to close, like the native X did: with close-to-tray on, it only hides. */
-  close(): Promise<void>;
-  isMaximized(): Promise<boolean>;
   isFullscreen(): Promise<boolean>;
   setFullscreen(on: boolean): Promise<void>;
   /** Calls `cb` whenever the window changed size (which includes being maximized, restored or put in full screen); resolves to an unsubscribe function. */
@@ -20,10 +15,6 @@ export async function tauriWindowControls(): Promise<WindowControls> {
   const { getCurrentWebviewWindow } = await import('@tauri-apps/api/webviewWindow');
   const here = getCurrentWebviewWindow();
   return {
-    minimize: () => here.minimize(),
-    toggleMaximize: () => here.toggleMaximize(),
-    close: () => here.close(),
-    isMaximized: () => here.isMaximized(),
     isFullscreen: () => here.isFullscreen(),
     setFullscreen: (on) => here.setFullscreen(on),
     onResized: (cb) => here.onResized(() => cb()),

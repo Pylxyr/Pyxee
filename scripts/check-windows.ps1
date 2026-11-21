@@ -423,22 +423,16 @@ function Test-WebviewPower {
 
 # Static facts about the main window having no native frame: the config and permissions the custom title bar needs.
 # The behaviour itself (dragging, resizing, maximizing, close to tray) is in the manual items.
-function Test-FramelessWindow {
+function Test-MainWindowFrame {
   $read = { param([string]$rel) $p = Join-Path $Root $rel; if (Test-Path -LiteralPath $p) { Get-Content -LiteralPath $p -Raw } else { '' } }
   $expect = { param([string]$name, [bool]$ok, [string]$detail) if ($ok) { Add-Result 'PASS' $name $detail } else { Add-Result 'FAIL' $name $detail } }
   try {
     $main = @((Get-Content -LiteralPath (Join-Path $Root 'crates\app\tauri.conf.json') -Raw | ConvertFrom-Json).app.windows) | Where-Object { $_.label -eq 'main' } | Select-Object -First 1
-    & $expect 'frame-main-window-config' (($null -ne $main) -and ($main.decorations -eq $false) -and ($main.shadow -eq $true) -and ($main.transparent -eq $true)) 'the main window is created without a native frame, with a shadow, and transparent for Mica'
+    & $expect 'frame-main-window-config' (($null -ne $main) -and ($main.decorations -ne $false) -and ($main.shadow -eq $true) -and ($main.transparent -eq $true)) 'the main window keeps the system frame (decorations are not turned off), with a shadow, and is transparent for Mica'
   } catch { Add-Result 'FAIL' 'frame-main-window-config' "could not read crates\app\tauri.conf.json: $($_.Exception.Message)" }
-  $cap = & $read 'crates\app\capabilities\default.json'
-  & $expect 'frame-permissions' (($cap -match 'core:window:allow-minimize') -and ($cap -match 'core:window:allow-toggle-maximize') -and ($cap -match 'core:window:allow-close') -and ($cap -match 'core:window:allow-start-dragging')) 'the page may minimize, maximize, close and drag the main window'
-  $bar = & $read 'ui\src\components\TitleBar.svelte'
-  & $expect 'frame-title-bar-drag-region' (($bar -match 'data-tauri-drag-region') -and ($bar -match 'aria-label="Minimize"') -and ($bar -match 'Maximize') -and ($bar -match 'aria-label="Close"')) 'the title bar is a drag region with minimize, maximize/restore and close buttons'
+  $cap = & $read 'crates\app\capabilities\main-window.json'
   & $expect 'frame-fullscreen' (($cap -match 'core:window:allow-set-fullscreen') -and ((& $read 'ui\src\lib\shortcuts.ts') -match 'F11') -and ((& $read 'ui\src\App.svelte') -match 'setFullscreen')) 'F11 switches full screen, and the page may do that to the main window'
-  $win = & $read 'crates\app\src\window.rs'
-  & $expect 'frame-backdrop-extended' (($win -match 'DwmExtendFrameIntoClientArea') -and ($win -match '(?s)is_decorated\(\)\.is_ok_and\(\|decorated\| !decorated\)\s*\{\s*extend_frame\(window\);') -and ($win -match 'left: -1')) 'a window without a native frame extends the DWM frame over the whole page, so the Mica backdrop shows through it (framed windows are left as they were)'
-  $app = & $read 'ui\src\App.svelte'
-  & $expect 'frame-title-bar-in-app' (($app -match 'TitleBar') -and ($app -match 'data-titlebar')) 'the main page draws the title bar and tells the overlays to start below it'
+  & $expect 'frame-no-own-title-bar' (-not (Test-Path -LiteralPath (Join-Path $Root 'ui\src\components\TitleBar.svelte'))) 'the page draws no title bar of its own'
 }
 
 # Static facts about Explore's genres: the commands exist and are registered, genre pages leave albums out, and the
@@ -677,7 +671,7 @@ Add-Result 'INFO' 'ffmpeg-mentions-left' "$($any.Count) line(s) mention the word
 $any | Select-Object -First 25 | ForEach-Object { Write-Report ("    " + $_.Substring(0, [math]::Min($_.Length, 170))) }
 Test-ReviewFixes
 Test-WebviewPower
-Test-FramelessWindow
+Test-MainWindowFrame
 Test-ExploreGenres
 
 # ---------------------------------------------------------------- 1b. static: the UI rebuild
@@ -1140,12 +1134,10 @@ if ($Manual) {
     @('ui-reduced-motion', 'UI: turn off Windows Settings > Accessibility > Visual effects > Animation effects. Do sheets and Now Playing now appear without sliding, and do the playing bars stand still?'),
     @('power-log-hidden', 'Power: start the app with PYXEE_LOG=debug, play a song, close the window to the tray, wait 10 s, reopen it. Does the log have, for main, a line ending in asleep (or a warning that WebView2 declined), a line IsSuspended = ... after TrySuspend, and 5 s later still asleep (or a warning awake again with what was sent)? Is the music uninterrupted and the window correct on reopening?'),
     @('power-log-mini-flyout', 'Power: with the same logging, open and hide the mini player and the tray flyout. Do mini and flyout each log the same lines, and do they reopen showing the current song and state?'),
-    @('frame-drag-resize', 'Frame: is there no Windows title bar on the main window, only Pyxee''s slim bar with the three buttons at the top right? Can you drag the window by the empty part of the bar, double-click it to maximize and restore, and resize it from every edge and corner (the mouse pointer changes at the edges)?'),
-    @('frame-buttons-tray', 'Frame: do Minimize, Maximize/Restore and Close work, and does the middle icon switch between maximize and restore (also after Win+Up and Win+Down)? With "Keep playing in the tray" on, does Close hide the window and the music keep playing; does reopening from the tray show the bar again?'),
-    @('frame-maximized-fill', 'Frame: a maximized window fills the screen above the taskbar (nothing hidden under it, no gap, no controls cut off at the top or right). Does Mica show through as before and the corners look right when not maximized?'),
-    @('frame-overlays', 'Frame: with Settings, a sheet or Now Playing open, the title bar and its buttons stay visible and usable, and nothing in the sheet or Now Playing is hidden under the bar. Do the mini player and the tray flyout look and behave as before?'),
-    @('frame-fullscreen', 'Full screen: F11 fills the whole screen with no title bar (Pyxee''s or Windows'') and covers the taskbar; F11 again brings the window and its bar back as they were (maximized or not). Music keeps playing, and Now Playing and Settings still open.'),
-    @('frame-mica', 'Mica: does the Windows 11 backdrop show through the rail and the page as it did with the Windows title bar (also maximized, in light and dark)?'),
+    @('frame-native', 'Frame: does the main window have the normal Windows title bar (Pyxee''s name at the left, minimize / maximize / close at the right), with no extra strip of Pyxee''s own above the top bar? Can you drag it, double-click it to maximize and restore, and resize from every edge? Does Close hide the window with "Keep playing in the tray" on, and does the music keep playing?'),
+    @('frame-overlays', 'Frame: with Settings, a sheet or Now Playing open, is nothing hidden under the title bar, and does a maximized window fill the screen above the taskbar? Do the mini player and the tray flyout look and behave as before?'),
+    @('frame-fullscreen', 'Full screen: F11 fills the whole screen with no title bar and covers the taskbar; F11 again brings the window and its bar back as they were (maximized or not). Music keeps playing, and Now Playing and Settings still open.'),
+    @('frame-mica', 'Mica: does the Windows 11 backdrop show through the rail and the page (also maximized, in light and dark)?'),
     @('explore-genres', 'Explore: below the title are genre chips (For you first). With a region that lists them, are Anime, J-Pop and K-Pop the first ones after it? Pick one: does the page change to that genre''s playlists and songs (and no albums), and does a playlist cover start playing it? Pick For you again: is "New albums & singles" the last of YouTube Music''s shelves?'),
     @('explore-genres-failure', 'Explore: turn the network off, pick a genre that you have not opened yet. Does it say it could not load (with Try again) and keep the chips, and does Try again work after the network is back?'),
     @('ui-system-font', 'UI: does the text look like Windows 11 system text (Segoe UI Variable) everywhere, with no serif fallback and no empty boxes where an icon should be?')

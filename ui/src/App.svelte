@@ -17,7 +17,6 @@
   import { updates } from '$lib/updates.svelte';
   import { hasOwnWindow, tauriWindowControls, type WindowControls } from '$lib/windowControls';
   import { watchUiScale } from '$lib/uiscale';
-  import TitleBar from './components/TitleBar.svelte';
   import Navigation from './components/Navigation.svelte';
   import TopBar from './components/TopBar.svelte';
   import Dock from './components/Dock.svelte';
@@ -26,7 +25,7 @@
   import { startPerfIfEnabled } from '$lib/perf';
   import { initSeekMode } from '$lib/seekmode.svelte';
   import { look } from '$lib/look.svelte';
-  import { initPlatform, platform } from '$lib/platform.svelte';
+  import { initPlatform } from '$lib/platform.svelte';
   import Snackbar from './components/Snackbar.svelte';
   import TrackMenu from './components/TrackMenu.svelte';
   import SettingsSheet from './components/SettingsSheet.svelte';
@@ -48,12 +47,9 @@
   const lane = new MediaQuery('min-width: 1440px');
 
   let backendRef = $state.raw<Backend | null>(null);
-  // The main window has no native frame, so the page draws the title bar. Null in a browser, where there is no window to control.
+  // The window's full-screen state (F11). Null in a browser, where there is no window to control.
   let controls = $state.raw<WindowControls | null>(null);
   let fullscreen = $state(false);
-  // Pyxee's own title bar shows wherever the window has no frame of its own (everywhere but Linux, whose window keeps the
-  // desktop's frame), except in full screen (no bar at all then).
-  const showTitleBar = $derived(controls != null && platform.os !== 'linux' && !fullscreen);
 
   // The interface size follows Settings (and, on automatic, the window's width). Does nothing in a browser.
   $effect(() => {
@@ -104,11 +100,6 @@
   $effect(() => {
     void look.value;
     look.apply();
-  });
-
-  // Overlays start below the title bar, not over it, so its buttons stay usable.
-  $effect(() => {
-    document.documentElement.toggleAttribute('data-titlebar', showTitleBar);
   });
 
   // Full screen comes and goes with F11 or Windows itself; follow the window rather than assume.
@@ -184,7 +175,6 @@
 />
 
 <div class="frame">
-{#if controls && showTitleBar}<TitleBar {controls} showBrand={!wide.current} />{/if}
 <div class="shell" inert={nav.npCovering} data-covered={nav.npCovering ? '' : undefined} data-layout={wide.current ? 'wide' : 'narrow'} data-lane={wide.current && lane.current ? '' : undefined}>
   {#if wide.current}
     <div class="masthead"><Navigation layout="tabs" /><TopBar showSettings /></div>
