@@ -39,6 +39,7 @@ mod updater;
 mod window;
 
 use pyxee_core::Player;
+use pyxee_sources::innertube;
 use pyxee_sources::jsruntime::JsRuntime;
 use pyxee_sources::local::LocalSource;
 use pyxee_sources::ytdlp::{Cookies, YtDlpSource, FORMAT_SELECTOR};
@@ -107,17 +108,31 @@ fn with_music_search_setting(source: YtDlpSource, direct_allowed: bool) -> YtDlp
     }
 }
 
+/// `PYXEE_DIRECT_STREAMS=0` keeps Pyxee from asking `YouTube`'s own `player` endpoint for stream addresses: every song is
+/// then resolved by yt-dlp alone. On (the default) asks the endpoint first and uses yt-dlp when it gives nothing.
+fn with_direct_streams_setting(source: YtDlpSource, direct_allowed: bool) -> YtDlpSource {
+    if direct_allowed {
+        source
+    } else {
+        log::info!(
+            "direct stream requests are off (PYXEE_DIRECT_STREAMS): yt-dlp resolves every song"
+        );
+        source.without_direct_streams()
+    }
+}
+
 /// Every `PYXEE_*` variable that changes how the app behaves. A release build runs with none of them: there is no
 /// Settings > Advanced and no `.env` file any more, and a variable that happens to be set in the system is not read
 /// either, so the app always runs with its built-in, safe defaults (no sign-in cookies, its own copy of yt-dlp, the
 /// default log level). Developer builds keep reading them from the environment.
-const BEHAVIOUR_VARS: [&str; 11] = [
+const BEHAVIOUR_VARS: [&str; 12] = [
     "PYXEE_YTDLP",
     "PYXEE_JS_RUNTIME",
     "PYXEE_COOKIES",
     "PYXEE_COOKIES_FROM_BROWSER",
     "PYXEE_YTDLP_PLAYER_CLIENT",
     "PYXEE_YTMUSIC_DIRECT",
+    "PYXEE_DIRECT_STREAMS",
     "PYXEE_SUGGESTIONS",
     "PYXEE_LOG",
     "PYXEE_PERF",
@@ -198,11 +213,14 @@ fn main() {
             let source: Arc<dyn MusicSource> = Arc::new(CompositeSource {
                 remote: with_updated_ytdlp(
                     with_suggestions_setting(
-                        with_music_search_setting(
-                            YtDlpSource::new(tools::locate("yt-dlp", "PYXEE_YTDLP"))
-                                .with_cookies(Cookies::from_env())
-                                .with_js_runtime(JsRuntime::from_env()),
-                            ytmusic::direct_requests_allowed_from_env(),
+                        with_direct_streams_setting(
+                            with_music_search_setting(
+                                YtDlpSource::new(tools::locate("yt-dlp", "PYXEE_YTDLP"))
+                                    .with_cookies(Cookies::from_env())
+                                    .with_js_runtime(JsRuntime::from_env()),
+                                ytmusic::direct_requests_allowed_from_env(),
+                            ),
+                            innertube::direct_streams_allowed_from_env(),
                         ),
                         ytmusic::suggestions_allowed_from_env(),
                     ),

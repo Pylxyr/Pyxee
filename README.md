@@ -19,7 +19,7 @@ A gapless music player for Windows and Linux that plays music found online.
 <br />
 
 > [!NOTE]
-> Pyxee is a hobby project and is not affiliated with YouTube or Google. It finds music on YouTube using the open-source tool [yt-dlp](https://github.com/yt-dlp/yt-dlp).
+> Pyxee is a hobby project and is not affiliated with YouTube or Google. It finds music on YouTube itself where it can, and uses the open-source tool [yt-dlp](https://github.com/yt-dlp/yt-dlp) for the rest and whenever YouTube does not answer.
 
 ## Features
 
@@ -92,7 +92,7 @@ The full guide covers both, step by step for beginners and with options for adva
 
 - **Windows:** open **Settings** -> **Updates**. Pyxee checks for a newer version and installs it for you (a portable copy downloads the new zip instead).
 - **Linux:** Pyxee does not replace itself. The two short update steps are in the [Linux install](#linux) above, with more in [Pyxee on Linux](docs/linux.md#updating). **Updates** still tells you when a newer version is out.
-- **Both:** **Updates** also keeps yt-dlp, the part that finds your music, up to date. This fixes most "it suddenly stopped finding songs" problems.
+- **Both:** **Updates** also keeps yt-dlp, the part that finds your music when Pyxee cannot get it from YouTube directly, up to date. This fixes most "it suddenly stopped finding songs" problems.
 
 ## If something goes wrong
 

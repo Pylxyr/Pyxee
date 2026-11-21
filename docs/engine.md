@@ -16,9 +16,13 @@
 
 ## How playback works now
 1. `StartTrack` flushes the pipeline, resolves the stream (URLs cached 15 minutes), opens it and queues it.
-   libav (a minimal static FFmpeg linked into the app; no ffmpeg process) is the only decoder. yt-dlp is asked for Opus in
-   WebM first and AAC-LC in M4A second; a stream it cannot read fails with the format named in the log and the song is
-   skipped (see "In-process libav" below).
+   libav (a minimal static FFmpeg linked into the app; no ffmpeg process) is the only decoder. The stream address comes
+   from YouTube's own `player` endpoint first (`innertube.rs`: one request in this process, as the `VISIONOS` client,
+   which needs no JavaScript runtime and no proof-of-origin token; the address is checked with a one-byte request before
+   it is used) and from yt-dlp when that gives nothing (any failure except a rate limit or being offline).
+   `PYXEE_DIRECT_STREAMS=0` (developer builds) leaves it to yt-dlp alone. Both ask for Opus in WebM first and AAC-LC in
+   M4A second; a stream it cannot read fails with the format named in the log and the song is skipped (see "In-process
+   libav" below). The player request goes through the same gate as yt-dlp runs (below).
 2. While a track plays, the next one is resolved, opened and decoded ahead; the pipeline joins them with no gap.
 3. "Now playing" changes only when the device has consumed the audio (see docs/core.md).
 4. A stream URL that is rejected mid-song (403/410) makes the track stop producing audio; when the listener reaches that

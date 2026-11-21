@@ -23,6 +23,7 @@
 
 mod cover;
 pub mod gate;
+pub mod innertube;
 pub mod jsruntime;
 pub mod key;
 pub mod local;

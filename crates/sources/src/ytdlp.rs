@@ -2,6 +2,7 @@
 //! and turns failures into errors the UI can explain.
 
 use crate::gate::{Gate, GateConfig};
+use crate::innertube;
 use crate::jsruntime::JsRuntime;
 use crate::suggest::{encode, Suggester};
 use crate::ytmusic;
@@ -188,6 +189,8 @@ pub struct YtDlpSource {
     music_endpoint: Option<String>,
     /// Where Explore asks `YouTube` Music for its Explore page (`None`: Explore is unsupported).
     browse_endpoint: Option<String>,
+    /// Where stream addresses are asked for first, with no yt-dlp run (`None`: yt-dlp alone resolves every song).
+    player_endpoint: Option<String>,
 }
 
 impl YtDlpSource {
@@ -205,6 +208,7 @@ impl YtDlpSource {
             songs_page_bare_until: Mutex::new(None),
             music_endpoint: Some(ytmusic::ENDPOINT.to_string()),
             browse_endpoint: Some(ytmusic::BROWSE_ENDPOINT.to_string()),
+            player_endpoint: Some(innertube::ENDPOINT.to_string()),
         }
     }
 
@@ -218,6 +222,18 @@ impl YtDlpSource {
     pub fn without_music_search(mut self) -> Self {
         self.music_endpoint = None;
         self.browse_endpoint = None;
+        self
+    }
+
+    /// Songs are resolved by yt-dlp alone: `YouTube`'s own `player` endpoint is never asked for a stream address.
+    pub fn without_direct_streams(mut self) -> Self {
+        self.player_endpoint = None;
+        self
+    }
+
+    /// Asks `url` instead of `YouTube`'s `player` endpoint for stream addresses (for tests).
+    pub fn with_player_endpoint(mut self, url: impl Into<String>) -> Self {
+        self.player_endpoint = Some(url.into());
         self
     }
 
@@ -565,7 +581,7 @@ fn text(v: &Value, key: &str) -> Option<String> {
 
 /// The largest thumbnail yt-dlp lists (by area, then by its own preference), else the top-level
 /// `thumbnail`, else `YouTube`'s standard still for `id`. Plain `http` is upgraded to `https`.
-fn thumbnail(v: &Value, id: Option<&str>) -> Option<String> {
+pub(crate) fn thumbnail(v: &Value, id: Option<&str>) -> Option<String> {
     // Only covers the window can show are kept (see `cover`); a foreign one is passed over, not shown as nothing.
     let usable = |u: &str| {
         let u = u.replacen("http://", "https://", 1);
@@ -838,8 +854,26 @@ impl MusicSource for YtDlpSource {
         Ok(items)
     }
 
+    /// The player endpoint first (one request made here, checked to be fetchable), yt-dlp when that gives nothing: any
+    /// failure but a rate limit or being offline, which yt-dlp would meet as well, falls through to it.
     fn resolve_stream(&self, key: &str) -> Result<StreamInfo, SourceError> {
         let id = video_id(key)?;
+        if let Some(endpoint) = &self.player_endpoint {
+            match self
+                .gate
+                .run("resolve", || innertube::fetch_stream(endpoint, id))
+            {
+                Ok(stream) => {
+                    log::info!("resolve: stream from YouTube's player endpoint, no yt-dlp run");
+                    return Ok(stream);
+                }
+                Err(e @ (SourceError::RateLimited | SourceError::Offline)) => return Err(e),
+                Err(e) => log::warn!(
+                    "resolve: the player endpoint gave no stream ({}); using yt-dlp",
+                    scrub(&e.to_string())
+                ),
+            }
+        }
         let args: Vec<String> = [
             "--no-playlist",
             "--no-warnings",
@@ -1697,6 +1731,7 @@ mod tests {
             YtDlpSource::new(script)
                 .with_gate(GateConfig::NONE)
                 .without_music_search()
+                .without_direct_streams()
         }
 
         fn runs_logged(log: &Path) -> usize {
@@ -1814,6 +1849,90 @@ esac"#,
             assert!(args.contains("list=RDabc12345678"), "{args}");
         }
 
+        /// A source that asks `endpoint` for stream addresses first, with `script` as the fallback.
+        fn with_player(script: &Path, endpoint: &str) -> YtDlpSource {
+            quick(script).with_player_endpoint(endpoint)
+        }
+
+        #[test]
+        fn a_player_endpoint_that_gives_nothing_usable_falls_back_to_yt_dlp() {
+            use crate::ytmusic::testserver;
+            let unplayable =
+                r#"{"playabilityStatus":{"status":"ERROR","reason":"Video unavailable"}}"#;
+            for (name, status, body) in [
+                ("html", 200, "<html>"),
+                ("unplayable", 200, unplayable),
+                ("refused", 403, "{}"),
+            ] {
+                let (script, log) = fake(&format!("player-{name}"), &canned());
+                let (url, request) = testserver::once(status, body);
+                let stream = with_player(&script, &url)
+                    .resolve_stream("yt:abc12345678")
+                    .unwrap();
+                request.try_recv().unwrap();
+                assert_eq!(stream.url, "https://stream.example/a", "{name}");
+                assert_eq!(runs_logged(&log), 1, "{name}: yt-dlp resolved it");
+            }
+        }
+
+        #[test]
+        fn a_rate_limited_or_unreachable_player_endpoint_does_not_start_yt_dlp() {
+            use crate::ytmusic::testserver;
+            let (script, log) = fake("player-limited", &canned());
+            let (url, _) = testserver::once(429, "{}");
+            let s = with_player(&script, &url);
+            assert_eq!(
+                s.resolve_stream("yt:abc12345678"),
+                Err(SourceError::RateLimited)
+            );
+            let gone = {
+                let l = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+                format!("http://{}/", l.local_addr().unwrap())
+            };
+            assert_eq!(
+                with_player(&script, &gone).resolve_stream("yt:abc12345678"),
+                Err(SourceError::Offline)
+            );
+            assert_eq!(runs_logged(&log), 0, "yt-dlp was started");
+        }
+
+        #[test]
+        fn the_player_endpoint_takes_its_turn_in_the_gate_and_a_cooldown_refuses_it() {
+            let (limited, log) = fake(
+                "player-cooldown",
+                "echo 'ERROR: HTTP Error 429: Too Many Requests' >&2; exit 1",
+            );
+            let gate = GateConfig {
+                min_gap: Duration::ZERO,
+                cooldown: Duration::from_secs(60),
+                max_cooldown: Duration::ZERO,
+                ..GateConfig::NONE
+            };
+            // Nothing listens at this address: if the gate let the request through, the answer would be Offline.
+            let s = YtDlpSource::new(&limited)
+                .with_gate(gate)
+                .with_player_endpoint("http://127.0.0.1:9/never");
+            assert_eq!(
+                s.search("a", SearchFilter::All),
+                Err(SourceError::RateLimited)
+            );
+            assert_eq!(
+                s.resolve_stream("yt:abc12345678"),
+                Err(SourceError::RateLimited)
+            );
+            assert_eq!(runs_logged(&log), 1);
+        }
+
+        #[test]
+        fn without_direct_streams_yt_dlp_resolves_alone() {
+            let (script, log) = fake("player-off", &canned());
+            // Would answer Offline if it were asked: nothing listens there.
+            let s = with_player(&script, "http://127.0.0.1:9/never").without_direct_streams();
+            let stream = s.resolve_stream("yt:abc12345678").unwrap();
+            assert_eq!(stream.url, "https://stream.example/a");
+            assert_eq!(runs_logged(&log), 1);
+        }
+
         #[test]
         fn tool_failures_become_clear_errors() {
             let (limited, _) = fake(
@@ -1826,7 +1945,9 @@ esac"#,
             );
             let (gone, _) = fake("gone", "echo 'ERROR: Video unavailable' >&2; exit 1");
             assert!(matches!(
-                YtDlpSource::new(&gone).resolve_stream("yt:abc"),
+                YtDlpSource::new(&gone)
+                    .without_direct_streams()
+                    .resolve_stream("yt:abc"),
                 Err(SourceError::Unavailable(_))
             ));
         }
