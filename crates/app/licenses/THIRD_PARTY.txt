@@ -22,8 +22,9 @@ FFmpeg libraries (linked into Pyxee: libavformat, libavcodec, libswresample, lib
 
 yt-dlp (bundled program; it runs as a separate process and Pyxee does not link it)
   https://github.com/yt-dlp/yt-dlp
-  Version: 2026.10.21 (the yt-dlp.exe published with that release, bundled unmodified in the installers and the
-  portable zip; Settings > Updates can later replace it with a newer upstream release on the user's machine).
+  Version: the newest upstream release when this copy of Pyxee was built (run `yt-dlp.exe --version` to see which). It
+  is the yt-dlp.exe published with that release, bundled unmodified in the installers and the portable zip;
+  Settings > Updates can later replace it with a newer upstream release on the user's machine.
   License: yt-dlp's own code is released under The Unlicense. The Windows yt-dlp.exe is a PyInstaller build, and
   upstream states that these executables include GPLv3+ licensed code, so the executable as a whole is a combined work
   licensed under the GNU General Public License, version 3 or later (https://www.gnu.org/licenses/gpl-3.0.html).
@@ -32,9 +33,11 @@ yt-dlp (bundled program; it runs as a separate process and Pyxee does not link i
   The full GPL v3 text is in GPL-3.0.txt, and upstream's list of the licenses of everything bundled in its
   executables is in yt-dlp-THIRD_PARTY_LICENSES.txt. Both ship with Pyxee next to this file.
 
-  Where to get the source code: the source of yt-dlp 2026.10.21, with the build recipe for the executable (bundle/ and
-  bundle/requirements/), is published by its authors at
-  https://github.com/yt-dlp/yt-dlp/archive/refs/tags/2026.10.21.tar.gz
+  Where to get the source code: the source of every yt-dlp release, with the build recipe for the executable (bundle/
+  and bundle/requirements/), is published by its authors at https://github.com/yt-dlp/yt-dlp/releases ; the source of
+  the version you have is
+  https://github.com/yt-dlp/yt-dlp/archive/refs/tags/<version>.tar.gz
+  where <version> is the number that `yt-dlp.exe --version` prints.
   The third-party components that upstream's build bundles are the ones named in yt-dlp-THIRD_PARTY_LICENSES.txt.
   Pyxee does not change yt-dlp.exe; it is the file upstream published for that release.
 
