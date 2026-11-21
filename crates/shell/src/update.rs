@@ -448,7 +448,9 @@ fn make_executable(path: &Path) -> Result<(), UpdateError> {
     fs::set_permissions(path, fs::Permissions::from_mode(0o755)).map_err(io)
 }
 
+// Nothing to do where a downloaded file is already runnable; the signature stays the one of the unix version above.
 #[cfg(not(unix))]
+#[allow(clippy::unnecessary_wraps)]
 fn make_executable(_path: &Path) -> Result<(), UpdateError> {
     Ok(())
 }
