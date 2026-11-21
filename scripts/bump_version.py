@@ -28,6 +28,8 @@ PACKAGE_LOCK = ROOT / "ui" / "package-lock.json"
 TAURI_CONF = ROOT / "crates" / "app" / "tauri.conf.json"
 PKGBUILD = ROOT / "packaging" / "arch" / "PKGBUILD"
 
+# How big a release each bump kind is, so a pre-release can tell whether a requested bump is already covered.
+_LEVEL = {"patch": 0, "minor": 1, "major": 2}
 SEMVER = re.compile(r"^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$")
 # [workspace.package] table: the first `version = "..."` after the header.
 WORKSPACE_VERSION = re.compile(r'(\[workspace\.package\][^\[]*?^version = ")([^"]*)(")', re.MULTILINE | re.DOTALL)
@@ -82,21 +84,25 @@ def current_version() -> str:
 
 
 def next_version(current: str, kind: str) -> str:
-    """The version after `current`. On a pre-release, patch releases it: 0.5.1-rc1 + patch = 0.5.1 and
-    0.6.0-rc3 + patch = 0.6.0, because that version has not been released yet. Minor and major drop the suffix
-    and bump from the base (1.2.0-rc1 + minor = 1.3.0). To cut the next candidate, give the exact version."""
+    """The version after `current`. A pre-release already says what kind of release it is heading for:
+    X.Y.Z-rcN with Z > 0 is a patch, X.Y.0-rcN a minor, X.0.0-rcN a major. Asking for that kind (or a smaller
+    one) releases the candidate itself, because that version has not shipped yet: 0.6.0-rc4 + minor = 0.6.0,
+    0.6.0-rc4 + patch = 0.6.0, 0.5.1-rc1 + patch = 0.5.1. Asking for a bigger kind bumps from the base:
+    0.5.1-rc1 + minor = 0.6.0, 0.6.0-rc4 + major = 1.0.0. To cut the next candidate, give the exact version."""
     if not SEMVER.match(current):
         raise ValueError(f"'{current}' is not MAJOR.MINOR.PATCH[-suffix].")
+    if kind not in _LEVEL:
+        raise ValueError(f"Unknown bump kind '{kind}' (use patch, minor or major).")
     major, minor, patch = (int(part) for part in current.split("-", 1)[0].split("."))
-    if kind == "patch" and "-" in current:
-        return f"{major}.{minor}.{patch}"
+    if "-" in current:
+        heading_for = "patch" if patch else "minor" if minor else "major"
+        if _LEVEL[kind] <= _LEVEL[heading_for]:
+            return f"{major}.{minor}.{patch}"
     if kind == "major":
         return f"{major + 1}.0.0"
     if kind == "minor":
         return f"{major}.{minor + 1}.0"
-    if kind == "patch":
-        return f"{major}.{minor}.{patch + 1}"
-    raise ValueError(f"Unknown bump kind '{kind}' (use patch, minor or major).")
+    return f"{major}.{minor}.{patch + 1}"
 
 
 def check(tag: str) -> int:

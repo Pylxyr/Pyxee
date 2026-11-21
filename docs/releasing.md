@@ -3,7 +3,7 @@
 ## One click
 
 1. On GitHub: **Actions -> Cut release -> Run workflow**. Leave the branch on `main`.
-2. Pick **patch**, **minor** or **major** (or type an exact version such as `0.2.0` or `0.2.0-rc1`; a `-` makes it a pre-release) and run it. On a release candidate, **patch** releases it (`0.5.1-rc1` becomes `0.5.1`, `0.6.0-rc3` becomes `0.6.0`); type an exact version such as `0.6.0-rc4` for the next candidate.
+2. Pick **patch**, **minor** or **major** (or type an exact version such as `0.2.0` or `0.2.0-rc1`; a `-` makes it a pre-release) and run it. On a release candidate, the pick that matches it releases it: `0.6.0-rc4` becomes `0.6.0` with **minor** or **patch**, `0.5.1-rc1` becomes `0.5.1` with **patch**. A bigger pick bumps from its base (`0.5.1-rc1` + **minor** is `0.6.0`, `0.6.0-rc4` + **major** is `1.0.0`). Type an exact version such as `0.6.0-rc5` for the next candidate.
 
 That is all. The workflow then:
 

@@ -23,8 +23,20 @@ class NextVersion(unittest.TestCase):
         self.assertEqual(bv.next_version("0.6.0-rc3", "patch"), "0.6.0")
         self.assertEqual(bv.next_version("1.2.3-beta.2", "patch"), "1.2.3")
 
-    def test_minor_and_major_on_a_prerelease_drop_the_suffix(self):
-        self.assertEqual(bv.next_version("1.2.0-rc1", "minor"), "1.3.0")
+    def test_minor_on_a_minor_candidate_releases_it(self):
+        # The bug: 0.6.0-rc4 + minor used to give 0.7.0, skipping 0.6.0 for good.
+        self.assertEqual(bv.next_version("0.6.0-rc4", "minor"), "0.6.0")
+        self.assertEqual(bv.next_version("1.2.0-rc1", "minor"), "1.2.0")
+
+    def test_major_on_a_major_candidate_releases_it(self):
+        self.assertEqual(bv.next_version("1.0.0-rc1", "major"), "1.0.0")
+        self.assertEqual(bv.next_version("1.0.0-rc1", "minor"), "1.0.0")
+        self.assertEqual(bv.next_version("1.0.0-rc1", "patch"), "1.0.0")
+
+    def test_a_bigger_bump_than_the_candidate_bumps_from_its_base(self):
+        self.assertEqual(bv.next_version("0.5.1-rc1", "minor"), "0.6.0")
+        self.assertEqual(bv.next_version("0.5.1-rc1", "major"), "1.0.0")
+        self.assertEqual(bv.next_version("0.6.0-rc4", "major"), "1.0.0")
         self.assertEqual(bv.next_version("1.2.0-rc1", "major"), "2.0.0")
 
     def test_bad_input_is_refused(self):
