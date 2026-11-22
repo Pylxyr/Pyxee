@@ -20,6 +20,23 @@ pub struct TrackDto {
     pub thumbnail: Option<String>,
 }
 
+/// The picture a song gets when it has none of its own: a song on this PC shows the cover in its file or folder (see
+/// `pyxee_sources::local::cover_url`). Songs saved before covers were read (queue, playlists, likes, history) carry no
+/// thumbnail, so they are given the address here, where every list on its way to the window passes. The answer for a
+/// song with no picture is "not found", and the window shows its placeholder.
+fn own_or_local_cover(key: &str, thumbnail: Option<&String>) -> Option<String> {
+    if let Some(own) = thumbnail {
+        return Some(own.clone());
+    }
+    match pyxee_sources::key::parse(key) {
+        Some(pyxee_sources::key::TrackKey::File(path)) => Some(pyxee_sources::local::cover_url(
+            std::path::Path::new(path),
+            0,
+        )),
+        _ => None,
+    }
+}
+
 impl From<&Track> for TrackDto {
     fn from(t: &Track) -> Self {
         Self {
@@ -27,7 +44,7 @@ impl From<&Track> for TrackDto {
             title: t.title.clone(),
             artist: t.artist.clone(),
             duration_ms: t.duration_ms,
-            thumbnail: t.thumbnail.clone(),
+            thumbnail: own_or_local_cover(&t.key, t.thumbnail.as_ref()),
         }
     }
 }
@@ -39,7 +56,7 @@ impl From<&pyxee_sources::TrackInfo> for TrackDto {
             title: t.title.clone(),
             artist: t.artist.clone(),
             duration_ms: t.duration_ms,
-            thumbnail: t.thumbnail.clone(),
+            thumbnail: own_or_local_cover(&t.key, t.thumbnail.as_ref()),
         }
     }
 }
@@ -345,13 +362,7 @@ impl From<&SearchItem> for SearchItemDto {
     fn from(i: &SearchItem) -> Self {
         match i {
             SearchItem::Track(t) => SearchItemDto::Track {
-                track: TrackDto {
-                    key: t.key.clone(),
-                    title: t.title.clone(),
-                    artist: t.artist.clone(),
-                    duration_ms: t.duration_ms,
-                    thumbnail: t.thumbnail.clone(),
-                },
+                track: TrackDto::from(t),
             },
             SearchItem::Playlist {
                 key,
@@ -780,6 +791,23 @@ pub fn state_dto(p: &Player) -> PlayerStateDto {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_song_on_this_pc_without_a_picture_is_given_the_address_of_its_cover() {
+        let path = if cfg!(windows) { "C:\\Music\\a.flac" } else { "/music/a.flac" };
+        let mut t = Track::new(&format!("file:{path}"), "A", "B");
+        let dto = TrackDto::from(&t);
+        let url = dto.thumbnail.expect("a cover address");
+        assert!(pyxee_sources::local::is_cover_url(&url), "{url}");
+        // A picture the song already has is kept, and a song from the web gets none.
+        t.thumbnail = Some("https://i.ytimg.com/vi/x/hq.jpg".into());
+        assert_eq!(
+            TrackDto::from(&t).thumbnail.as_deref(),
+            Some("https://i.ytimg.com/vi/x/hq.jpg")
+        );
+        let web = Track::new("yt:abcdefghijk", "A", "B");
+        assert_eq!(TrackDto::from(&web).thumbnail, None);
+    }
 
     #[test]
     fn commands_parse_from_the_json_the_ui_sends() {
