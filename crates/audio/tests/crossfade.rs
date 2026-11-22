@@ -152,7 +152,12 @@ fn the_level_never_dips_through_the_fade() {
         assert!((frame(i) - LEVEL).abs() < 1e-6, "after the fade, frame {i}");
     }
     // Both channels carry the same thing.
-    assert!(out.chunks_exact(2).all(|f| (f[0] - f[1]).abs() < 1e-6));
+    assert!(
+        out.as_chunks::<2>()
+            .0
+            .iter()
+            .all(|f| (f[0] - f[1]).abs() < 1e-6)
+    );
 }
 
 #[test]
