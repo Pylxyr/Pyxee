@@ -90,7 +90,7 @@ made, and `-c` removes the work folders. What stays is described in [Freeing dis
 Search for "Pyxee" in your application menu, or run `pyxee-app` in a terminal.
 
 **5. Optional: install a JavaScript runtime.** yt-dlp uses one to keep every audio format available, and Pyxee shows a
-warning without one. See "A warning about a JavaScript runtime" in the [README](../README.md#if-something-goes-wrong).
+warning without one. See "A warning about a JavaScript runtime" in [If something goes wrong](troubleshooting.md#a-warning-about-a-javascript-runtime).
 
 ```
 sudo pacman -S deno
@@ -260,7 +260,7 @@ does not show up in the menu straight away, log out and back in. To install for 
 `/usr/local/bin` with `sudo install -Dm755`, and the other files under `/usr/local/share`.
 
 **10. Optional: install a JavaScript runtime.** Install `nodejs` with your package manager, or Deno from
-[deno.com](https://deno.com/). See the [README](../README.md#if-something-goes-wrong) for why.
+[deno.com](https://deno.com/). See [If something goes wrong](troubleshooting.md#a-warning-about-a-javascript-runtime) for why.
 
 ### Options for advanced users
 
@@ -416,7 +416,7 @@ If you built from source without `--features tauri/custom-protocol`, rebuild wit
 
 **No tray icon on GNOME.** Install the "AppIndicator and KStatusNotifierItem Support" extension.
 
-**Songs will not load.** See "If something goes wrong" in the [README](../README.md#if-something-goes-wrong).
+**Songs will not load.** See [If something goes wrong](troubleshooting.md).
 
 **Still stuck?** [Open an issue](https://github.com/Pylxyr/Pyxee/issues) with your distribution and desktop, your
 graphics card if the window is the problem, and the last lines of `logs/pyxee.log`.
