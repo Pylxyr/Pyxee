@@ -188,6 +188,8 @@ impl Wake {
 struct Shared {
     wake: Wake,
     source: Mutex<GaplessSource>,
+    /// How many seeks or skips are waiting for `source`: the producer leaves it free between its reads meanwhile.
+    source_wanted: AtomicUsize,
     /// Changes waiting for the producer (taken only briefly; never held while reading).
     pending: Mutex<Vec<Change>>,
     inner: Mutex<Inner>,
@@ -203,6 +205,34 @@ struct Shared {
 
 fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
     m.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
+/// Takes the source lock for a seek or a skip, waiting a moment for the producer to let go of it. `None`: it did not
+/// (it is waiting on a stalled stream), and the caller flushes and opens the song again instead.
+fn lock_source_soon(s: &Shared) -> Option<MutexGuard<'_, GaplessSource>> {
+    // A mutex goes to whoever asks first, and a producer with room to fill asks again at once, so on a busy machine
+    // it would win every time. While this waits it keeps away from the lock between its reads.
+    struct Waiting<'a>(&'a AtomicUsize);
+    impl Drop for Waiting<'_> {
+        fn drop(&mut self) {
+            self.0.fetch_sub(1, Ordering::Relaxed);
+        }
+    }
+    s.source_wanted.fetch_add(1, Ordering::Relaxed);
+    let _waiting = Waiting(&s.source_wanted);
+    let deadline = Instant::now() + Duration::from_millis(200);
+    loop {
+        match s.source.try_lock() {
+            Ok(guard) => return Some(guard),
+            Err(TryLockError::Poisoned(e)) => return Some(e.into_inner()),
+            Err(TryLockError::WouldBlock) => {
+                if Instant::now() >= deadline {
+                    return None;
+                }
+                thread::sleep(Duration::from_millis(2));
+            }
+        }
+    }
 }
 
 pub struct Pipeline {
@@ -222,6 +252,7 @@ impl Pipeline {
         let shared = Arc::new(Shared {
             wake: Wake::new(),
             source: Mutex::new(GaplessSource::new()),
+            source_wanted: AtomicUsize::new(0),
             pending: Mutex::new(Vec::new()),
             inner: Mutex::new(Inner {
                 buf: VecDeque::new(),
@@ -325,18 +356,8 @@ impl Pipeline {
     pub fn seek_in_place(&self, id: EntryId, ms: u64) -> bool {
         // Not `cancel`: unlike a flush this must not break the read that is under way. A producer that is waiting for
         // the network holds the lock for as long as that takes, so give up after a moment.
-        let deadline = Instant::now() + Duration::from_millis(200);
-        let mut src = loop {
-            match self.shared.source.try_lock() {
-                Ok(guard) => break guard,
-                Err(TryLockError::Poisoned(e)) => break e.into_inner(),
-                Err(TryLockError::WouldBlock) => {
-                    if Instant::now() >= deadline {
-                        return false;
-                    }
-                    thread::sleep(Duration::from_millis(2));
-                }
-            }
+        let Some(mut src) = lock_source_soon(&self.shared) else {
+            return false;
         };
         if let Err(e) = src.seek_current(id.0, ms) {
             log::debug!("seek in place not possible: {e}");
@@ -357,18 +378,8 @@ impl Pipeline {
     /// producer is busy (a stalled stream), and the caller flushes and opens it the slow way.
     #[must_use]
     pub fn skip_to_queued(&self, id: EntryId) -> bool {
-        let deadline = Instant::now() + Duration::from_millis(200);
-        let mut src = loop {
-            match self.shared.source.try_lock() {
-                Ok(guard) => break guard,
-                Err(TryLockError::Poisoned(e)) => break e.into_inner(),
-                Err(TryLockError::WouldBlock) => {
-                    if Instant::now() >= deadline {
-                        return false;
-                    }
-                    thread::sleep(Duration::from_millis(2));
-                }
-            }
+        let Some(mut src) = lock_source_soon(&self.shared) else {
+            return false;
         };
         // The track may have been pushed a moment ago and not yet reached the queue.
         apply_pending(&self.shared, &mut src);
@@ -460,6 +471,9 @@ fn produce(s: &Shared) {
                 s.wake.wait_for_space(seen, FULL_LIMIT);
             }
             continue;
+        }
+        if s.source_wanted.load(Ordering::Relaxed) > 0 {
+            thread::sleep(Duration::from_millis(5)); // a seek or skip is waiting for the lock: see `lock_source_soon`
         }
         let mut src = lock(&s.source);
         apply_pending(s, &mut src);
