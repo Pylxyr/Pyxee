@@ -103,8 +103,9 @@ cargo test --workspace
 ## Dependency checks
 CI has a `deny` job (cargo-deny, advisories only) and an `npm audit --omit=dev` step. Run them locally with `cargo deny --locked check advisories` and `npm audit --omit=dev --prefix ui`.
 
-* **Advisories: not blocking** (`continue-on-error`) while the baseline is not clean. Baseline on 2026-11-05, after raising every dependency that Rust 1.91 and Tauri's own version pins allow (`ureq` 3 no longer pulls in `rustls-pemfile`, `tokio` is 1.54.1, and no locked version is yanked): no vulnerabilities, and warnings only (unmaintained: `proc-macro-error`, `zbus_names`, `zvariant`, `zvariant_derive`; unsound: `glib` 0.18 from Tauri's GTK3 stack). Run `cargo deny --locked check advisories` to confirm; once it is clean the advisories step can become blocking.
-* **npm audit: informational.** Zero vulnerabilities in the runtime dependencies on 2026-10-22.
+* **Advisories: not blocking** (`continue-on-error`) while the baseline is not clean. Baseline on 2026-11-22, after the move to Rust 1.100 and a refresh of both lockfiles (`cargo update`: 39 packages, all within their semver range): no vulnerabilities and no locked version is yanked. Warnings only (unmaintained: `proc-macro-error`, `paste` via `lofty`, `zbus_names`, `zvariant`, `zvariant_derive`; unsound: `glib` 0.18 from Tauri's GTK3 stack). cargo-deny 0.22.0 with its default settings reports `advisories ok`; the list above is what it reports with `unmaintained = "all"` and `unsound = "all"`. Run `cargo deny --locked check advisories` to confirm; once it is clean the advisories step can become blocking.
+* **Held back on purpose:** `windows-core` stays at 0.62.2 (0.100.0 exists and needs Rust 1.95): `cpal`, `tao`, `webview2-com` and `wry` all use 0.62.2, and the WebView2 interface types must come from the same version. `toml`/`toml_edit` 0.8/0.20 are pinned by `system-deps` and `generic-array` 0.14.7 by `crypto-common`, both inside Tauri's and RustCrypto's own stacks. On the UI side `typescript` stays on 6.0.3, because `svelte-check` 4.7.8 refuses 7.x.
+* **npm audit: informational.** Zero vulnerabilities in all dependencies (runtime and dev) on 2026-11-22.
 
 ## Layout
 `crates/core` queue + state machine (no I/O) · `crates/audio` decode, resample, gapless, output · `crates/sources` yt-dlp, local ·
