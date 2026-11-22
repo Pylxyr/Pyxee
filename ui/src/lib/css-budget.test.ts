@@ -99,6 +99,7 @@ describe('nothing runs without end that the page does not need', () => {
   const CUSTOM_TRANSITIONS_ALLOWED: Record<string, string> = {
     ':root': '--accent: once, 600 ms, when the colour taken from a new song arrives; it ends by itself (it does restyle the page each frame meanwhile)',
     '.hero': '--hero-a/b/c: once, 700 ms, when the colors of a new cover arrive; the card repaints each frame meanwhile and nothing after',
+    '.np-root': '--hero-a/b/c: once, 700 ms, when the colors of a new cover arrive (Now Playing follows the top card\'s look); the page repaints each frame meanwhile and nothing after',
     '.mix-card': '--mix-a/b: once, 700 ms, from the stand-in colors to the cover\'s; the card repaints each frame meanwhile and nothing after',
   };
 

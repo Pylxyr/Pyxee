@@ -11,6 +11,9 @@
   import { MOTION, markListChange, motionMs, motionPx, swapOnChange, turnOnChange } from '$lib/motion';
   import { sleep } from '$lib/sleep.svelte';
   import { sleepLabel } from '$lib/lyrics';
+  import { look } from '$lib/look.svelte';
+  import { heroTones } from '$lib/color';
+  import { coverColorsOf } from '$lib/covercolors.svelte';
   import Button from './Button.svelte';
   import EditableRow from './EditableRow.svelte';
   import Icon from './Icon.svelte';
@@ -25,6 +28,14 @@
   import Thumb from './Thumb.svelte';
 
   const entry = $derived(player.shown);
+  // The page behind the player follows the choice for Home's top card (Settings > Look); Flat surfaces give a plain page.
+  // The looks painted in the cover's colors read them only while this page is open (Home has usually read them already).
+  const wash = $derived(look.value.surfaces === 'flat' ? 'plain' : look.value.hero);
+  const washColors = coverColorsOf(() => (nav.nowPlayingOpen && (wash === 'aurora' || wash === 'gradient' || wash === 'vinyl') ? (entry?.track.thumbnail ?? null) : null));
+  const washStyle = $derived.by(() => {
+    const t = washColors.value ? heroTones(washColors.value) : null;
+    return t ? `--hero-a: ${t.a}; --hero-b: ${t.b}; --hero-c: ${t.c}` : undefined;
+  });
   let scrub = $state<number | null>(null);
   const tabs: { id: NowPlayingTab; label: string }[] = [
     { id: 'upnext', label: 'Up next' },
@@ -42,7 +53,8 @@
 {#if nav.nowPlayingOpen && entry}
   <div
     class="np-root fixed inset-0 z-40 flex flex-col overflow-hidden"
-    style="background:color-mix(in srgb, var(--accent) 14%, var(--solid))"
+    data-wash={wash}
+    style={washStyle}
     data-testid="np-root"
     role="region"
     aria-label="Now Playing"
@@ -51,7 +63,7 @@
     in:fly={{ y: motionPx(96), duration: nav.morphing ? 0 : motionMs(MOTION.slow), easing: expoOut }}
     out:fly={{ y: motionPx(96), duration: nav.morphing ? 0 : motionMs(MOTION.base), easing: cubicIn }}
   >
-    <Backdrop class="np-bg" src={entry.track.thumbnail} seed={entry.track.key} />
+    {#if wash === 'blur'}<Backdrop class="np-bg" src={entry.track.thumbnail} seed={entry.track.key} />{/if}
     <div class="page-pad flex shrink-0 items-center gap-2 py-3" data-testid="np-header">
       <IconButton icon="down" label="Close Now Playing" size="lg" strong onclick={() => nav.closeNowPlaying()} />
       <span class="t-strong muted">Now playing</span>

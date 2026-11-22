@@ -67,8 +67,19 @@ describe('Mica-safe colours', () => {
     expect(source('Sheet.svelte')).toContain('bg-solid-2');
     expect(source('Sheet.svelte')).not.toMatch(/bg-surface-2 p-4/);
     expect(source('TopBar.svelte')).toMatch(/id="search-suggestions"[^>]*bg-solid-2/);
-    expect(source('NowPlaying.svelte')).toContain('var(--solid)');
-    expect(source('NowPlaying.svelte')).not.toMatch(/style="background:[^"]*var\(--surface\)/);
+    expect(source('NowPlaying.svelte')).not.toMatch(/style="background:/);
+  });
+
+  it('Now Playing is opaque under every look of its background (they follow the top card), because it covers the whole window', () => {
+    // The base (blur and aurora paint over it), then the looks that replace it: each rests on `--solid`, never on `--bg`, `--surface` or `--layer`.
+    const base = css.match(/\.np-root \{\s*--hero-a[^}]*\}/)?.[0] ?? '';
+    expect(base).toMatch(/background:\s*color-mix\([^;]*var\(--solid\)/);
+    for (const wash of ['gradient', 'vinyl', 'plain']) {
+      const r = rule(`.np-root[data-wash='${wash}']`);
+      expect(r, wash).toContain('var(--solid)');
+      expect(r, wash).not.toMatch(/var\(--(bg|surface|layer)\)/);
+    }
+    expect(base).not.toMatch(/var\(--(bg|surface|layer)\)/);
   });
 
   it('exposes the opaque tokens to Tailwind utilities', () => {

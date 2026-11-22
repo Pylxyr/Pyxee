@@ -34,11 +34,11 @@ export const COVERS = [
 ] as const satisfies readonly LookOption<string>[];
 
 export const HEROES = [
-  { id: 'blur', label: 'Blur', hint: 'The cover, blurred into a wash behind the card.' },
-  { id: 'aurora', label: 'Aurora', hint: 'Soft glows in the cover\'s own colors.' },
-  { id: 'gradient', label: 'Gradient', hint: 'A clean sweep from one of the cover\'s colors to another.' },
-  { id: 'vinyl', label: 'Vinyl', hint: 'A record slides out from behind the cover.' },
-  { id: 'plain', label: 'Plain', hint: 'No background, just the card.' },
+  { id: 'blur', label: 'Blur', hint: 'The cover, blurred into a wash behind the card and Now Playing.' },
+  { id: 'aurora', label: 'Aurora', hint: 'Soft glows in the cover\'s own colors, on Home and Now Playing.' },
+  { id: 'gradient', label: 'Gradient', hint: 'A clean sweep from one of the cover\'s colors to another, on Home and Now Playing.' },
+  { id: 'vinyl', label: 'Vinyl', hint: 'A record slides out from behind the cover on Home; Now Playing gets a soft wash.' },
+  { id: 'plain', label: 'Plain', hint: 'No background: just the card on Home, a plain Now Playing.' },
 ] as const satisfies readonly LookOption<string>[];
 
 export const TUNES = [

@@ -2886,6 +2886,40 @@ input[type='range'].slider:disabled {
   }
 }
 
+/* Now Playing: the page behind the player follows the choice for Home's top card (`data-wash`, set by the component; Flat
+   surfaces always give `plain`). Same colours as the card (`--hero-a/b/c`, the cover's, set inline once read), laid more
+   softly because the whole window is text and controls. Blur is the canvas (`.np-bg`) over the base below. */
+.np-root {
+  --hero-a: var(--accent);
+  --hero-b: var(--accent-2);
+  --hero-c: color-mix(in srgb, var(--accent) 50%, var(--accent-2));
+  background: color-mix(in srgb, var(--accent) 14%, var(--solid));
+  transition: --hero-a 700ms var(--ease), --hero-b 700ms var(--ease), --hero-c 700ms var(--ease);
+}
+.np-root[data-wash='aurora']::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background:
+    radial-gradient(60% 95% at 6% 110%, color-mix(in srgb, var(--hero-a) 52%, transparent), transparent 72%),
+    radial-gradient(52% 85% at 58% -14%, color-mix(in srgb, var(--hero-b) 44%, transparent), transparent 72%),
+    radial-gradient(46% 80% at 102% 92%, color-mix(in srgb, var(--hero-c) 40%, transparent), transparent 72%);
+  animation: fade-in 900ms ease-out both;
+}
+.np-root[data-wash='gradient'] {
+  background: linear-gradient(115deg, color-mix(in srgb, var(--hero-a) 46%, var(--solid)), color-mix(in srgb, var(--hero-b) 34%, var(--solid)));
+}
+.np-root[data-wash='vinyl'] {
+  background:
+    radial-gradient(80% 140% at 96% 0%, color-mix(in srgb, var(--hero-a) 42%, transparent), transparent 70%),
+    radial-gradient(70% 120% at 0% 110%, color-mix(in srgb, var(--hero-b) 32%, transparent), transparent 70%),
+    var(--solid);
+}
+.np-root[data-wash='plain'] {
+  background: var(--solid);
+}
+
 /* Home: "Tune in" cards. The colours are the song's cover's (set inline once read) and blend in over a moment. */
 .mix-card {
   --mix-a: hsl(var(--mix-h) 68% 34%);

@@ -12,7 +12,7 @@
     { key: 'surfaces', label: 'Surfaces', items: SURFACES },
     { key: 'panels', label: 'Panels', items: PANELS },
     { key: 'covers', label: 'Cover shape', items: COVERS },
-    { key: 'hero', label: 'Home: top card', items: HEROES },
+    { key: 'hero', label: 'Home top card and Now Playing', items: HEROES },
     { key: 'tune', label: 'Home: Tune in cards', items: TUNES },
   ];
   const hintOf = (items: Group['items'], id: string) => items.find((i) => i.id === id)?.hint ?? '';
@@ -31,6 +31,9 @@
         onselect={(id) => look.set(g.key, id as never)}
       />
       <p class="setting-hint">{hintOf(g.items, look.value[g.key])}</p>
+      {#if g.key === 'hero' && look.value.surfaces === 'flat'}
+        <p class="setting-hint">Now Playing stays plain while Surfaces is Flat.</p>
+      {/if}
     </div>
   {/each}
   <div class="look-group">

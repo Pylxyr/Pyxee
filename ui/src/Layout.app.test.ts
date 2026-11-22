@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/svelte';
 import { DEMO_TRACKS, MockBackend } from '$lib/mock';
 import { library } from '$lib/library.svelte';
+import { look } from '$lib/look.svelte';
 import { nav } from '$lib/nav.svelte';
 import { player, EMPTY_STATE } from '$lib/player.svelte';
 import { prefs } from '$lib/prefs.svelte';
@@ -36,6 +37,7 @@ beforeEach(() => {
   for (const s of [...snackbar.items]) snackbar.dismiss(s.id);
   prefs.setVolume(80);
   setWide(false);
+  look.reset();
 });
 
 async function openApp() {
@@ -203,5 +205,45 @@ describe('volume reaches the audio engine', () => {
     await waitFor(() => expect(mock.volume).toBe(100));
     prefs.setVolume(-5);
     await waitFor(() => expect(mock.volume).toBe(0));
+  });
+});
+
+describe('Now Playing background follows the top card look', () => {
+  async function openNowPlaying() {
+    await openApp();
+    await fireEvent.click(await screen.findByRole('button', { name: /^Neon Harbor/ }));
+    await fireEvent.click(await screen.findByRole('button', { name: 'Open Now Playing' }));
+    return screen.findByTestId('np-root');
+  }
+
+  it('is the blurred cover by default', async () => {
+    const root = await openNowPlaying();
+    expect(root.getAttribute('data-wash')).toBe('blur');
+    expect(root.querySelector('canvas.np-bg')).not.toBeNull();
+  });
+
+  it.each(['aurora', 'gradient', 'vinyl', 'plain'] as const)('%s: takes the choice, with no blurred canvas', async (hero) => {
+    look.set('hero', hero);
+    const root = await openNowPlaying();
+    expect(root.getAttribute('data-wash')).toBe(hero);
+    expect(root.querySelector('canvas.np-bg')).toBeNull();
+  });
+
+  it('changes with the choice while it is open', async () => {
+    const root = await openNowPlaying();
+    look.set('hero', 'gradient');
+    await waitFor(() => expect(root.getAttribute('data-wash')).toBe('gradient'));
+    look.set('hero', 'blur');
+    await waitFor(() => expect(root.getAttribute('data-wash')).toBe('blur'));
+  });
+
+  it('is plain with Flat surfaces, whatever the top card is', async () => {
+    look.set('surfaces', 'flat');
+    look.set('hero', 'aurora');
+    const root = await openNowPlaying();
+    expect(root.getAttribute('data-wash')).toBe('plain');
+    expect(root.querySelector('canvas.np-bg')).toBeNull();
+    look.set('surfaces', 'vivid');
+    await waitFor(() => expect(root.getAttribute('data-wash')).toBe('aurora'));
   });
 });

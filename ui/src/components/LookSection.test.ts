@@ -12,7 +12,7 @@ beforeEach(() => {
 describe('LookSection', () => {
   it('offers every choice and applies one when it is picked', async () => {
     render(LookSection);
-    for (const name of ['Corners', 'Surfaces', 'Panels', 'Cover shape', 'Home: top card', 'Home: Tune in cards', 'Progress bar']) {
+    for (const name of ['Corners', 'Surfaces', 'Panels', 'Cover shape', 'Home top card and Now Playing', 'Home: Tune in cards', 'Progress bar']) {
       expect(screen.getByRole('group', { name })).toBeTruthy();
     }
     await fireEvent.click(within(screen.getByRole('group', { name: 'Corners' })).getByRole('button', { name: 'Square' }));
@@ -26,5 +26,11 @@ describe('LookSection', () => {
     expect(seekMode.value).toBe('steps');
     await fireEvent.click(screen.getByRole('button', { name: 'Reset the look' }));
     expect(look.value.hero).toBe('blur');
+  });
+  it('says Now Playing stays plain only while Surfaces is Flat', async () => {
+    render(LookSection);
+    expect(screen.queryByText(/Now Playing stays plain/)).toBeNull();
+    await fireEvent.click(screen.getByRole('button', { name: 'Flat' }));
+    expect(screen.getByText(/Now Playing stays plain/)).toBeTruthy();
   });
 });
