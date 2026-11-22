@@ -794,11 +794,11 @@ mod tests {
 
     #[test]
     fn a_song_on_this_pc_without_a_picture_is_given_the_address_of_its_cover() {
-+        let path = if cfg!(windows) {
-+            "C:\\Music\\a.flac"
-+        } else {
-+            "/music/a.flac"
-+        };
+        let path = if cfg!(windows) {
+            "C:\\Music\\a.flac"
+        } else {
+            "/music/a.flac"
+        };
         let mut t = Track::new(&format!("file:{path}"), "A", "B");
         let dto = TrackDto::from(&t);
         let url = dto.thumbnail.expect("a cover address");
