@@ -522,8 +522,10 @@ impl GaplessSource {
         };
         incoming[got..].fill(0.0);
         for (i, (o, b)) in out
-            .chunks_exact_mut(CHANNELS)
-            .zip(incoming.chunks_exact(CHANNELS))
+            .as_chunks_mut::<CHANNELS>()
+            .0
+            .iter_mut()
+            .zip(incoming.as_chunks::<CHANNELS>().0)
             .enumerate()
         {
             let t = ((mix.done + i) as f32 + 0.5) / mix.total as f32;
