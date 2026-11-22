@@ -66,6 +66,8 @@ export interface LibraryBackend {
   localRemoveFolder(folder: string): Promise<LocalLibraryDto>;
   /** Reads the chosen folders again (only the files that changed). */
   localRescan(): Promise<LocalLibraryDto>;
+  /** Which of these songs (keys) have lost their file: moved, renamed, deleted, or on a drive that is not connected. */
+  localMissing(keys: string[]): Promise<string[]>;
 }
 
 /** Everything the UI needs from Rust. Implemented by Tauri at runtime and by a mock in the browser and in tests. */
@@ -226,6 +228,7 @@ export async function tauriBackend(): Promise<Backend> {
     localAddFolder: () => invoke<LocalLibraryDto>('local_add_folder'),
     localRemoveFolder: (folder) => invoke<LocalLibraryDto>('local_remove_folder', { folder }),
     localRescan: () => invoke<LocalLibraryDto>('local_rescan'),
+    localMissing: (keys) => invoke<string[]>('local_missing', { keys }),
     devCatalog: () => invoke<TrackDto[]>('dev_catalog'),
     coverBytes: (url) => invoke<ArrayBuffer>('cover_bytes', { url }),
     lyricsGet: (t) =>

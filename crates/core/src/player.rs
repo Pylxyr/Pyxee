@@ -27,6 +27,9 @@ pub enum Failure {
     /// Removed, region-locked, private.
     Unavailable,
     Decode,
+    /// A song on this PC whose file is gone (moved, renamed, deleted, or on a drive that is not connected). Carries the
+    /// explanation for the listener, which names where it was.
+    FileMissing(String),
     /// The server refused the stream URL (401/403/410) and re-resolving did not help. Carries the
     /// HTTP status when it is known.
     Expired(Option<u16>),

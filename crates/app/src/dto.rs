@@ -82,6 +82,8 @@ pub enum FailureDto {
     RateLimited,
     Unavailable,
     Decode,
+    // A song on this PC whose file is gone; `message` says where it was and why it may be gone.
+    FileMissing { message: String },
     Expired { status: Option<u16> },
     Other { message: String },
 }
@@ -512,6 +514,9 @@ pub struct LocalLibraryDto {
     pub track_count: u32,
     /// A scan is running: the song count may still grow.
     pub scanning: bool,
+    /// Chosen folders the last scan could not list (a drive that is not connected, a renamed folder): their songs are
+    /// kept, but cannot be played until the folder is back.
+    pub unreachable: Vec<String>,
 }
 
 /// What the UI keeps in sync with the library: which songs are liked and the playlist list.
@@ -708,6 +713,7 @@ fn failure_dto(f: &Failure) -> FailureDto {
         Failure::RateLimited => FailureDto::RateLimited,
         Failure::Unavailable => FailureDto::Unavailable,
         Failure::Decode => FailureDto::Decode,
+        Failure::FileMissing(m) => FailureDto::FileMissing { message: m.clone() },
         Failure::Expired(status) => FailureDto::Expired { status: *status },
         Failure::Tool(m) | Failure::Other(m) => FailureDto::Other { message: m.clone() },
     }

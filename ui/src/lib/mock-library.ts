@@ -42,7 +42,7 @@ export class MockLibrary implements LibraryBackend {
   #localListeners = new Set<(s: LocalLibraryDto) => void>();
 
   #local(): LocalLibraryDto {
-    return { revision: this.#localRevision, folders: [...this.#localFolders], trackCount: this.#localFolders.length > 0 ? MOCK_LOCAL.length : 0, scanning: false };
+    return { revision: this.#localRevision, folders: [...this.#localFolders], trackCount: this.#localFolders.length > 0 ? MOCK_LOCAL.length : 0, scanning: false, unreachable: [] };
   }
 
   #localChanged(): LocalLibraryDto {
@@ -122,6 +122,7 @@ export class MockLibrary implements LibraryBackend {
     return this.#localChanged();
   }
   async localRescan() { return this.#localChanged(); }
+  async localMissing(keys: string[]) { return keys.filter((k) => k.includes('missing')); }
 
   async playlistCreate(name: string, tracks: TrackDto[]) {
     const n = MockLibrary.#name(name);

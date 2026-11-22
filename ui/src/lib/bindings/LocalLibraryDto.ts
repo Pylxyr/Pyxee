@@ -11,4 +11,9 @@ revision: number, folders: Array<string>, trackCount: number,
 /**
  * A scan is running: the song count may still grow.
  */
-scanning: boolean, };
+scanning: boolean, 
+/**
+ * Chosen folders the last scan could not list (a drive that is not connected, a renamed folder): their songs are
+ * kept, but cannot be played until the folder is back.
+ */
+unreachable: Array<string>, };

@@ -1568,6 +1568,11 @@ input[type='range'].slider:disabled {
     text-align: right;
     font-variant-numeric: tabular-nums;
   }
+  /* A song whose file is gone (moved, deleted, a drive that is not connected): dimmed, and its line says "File missing". */
+  .trow[data-missing='true'] .trow-main,
+  .row-edit[data-missing='true'] .row-edit-main {
+    opacity: 0.6;
+  }
   /* On the selected row's tint the quiet text is pulled toward the text colour, so it stays readable (4.5:1). */
   .trow[data-current='true'] .trow-artist,
   .trow[data-current='true'] .trow-time,

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { availability } from '$lib/availability.svelte';
   import { local } from '$lib/local.svelte';
   import { library } from '$lib/library.svelte';
   import { player } from '$lib/player.svelte';
@@ -24,6 +25,12 @@
     const b = library.backend;
     if (!b) return;
     void source.load(() => b.localTracks(q));
+  });
+
+  // After a scan or a change of folders, the rows look at their files again.
+  $effect(() => {
+    void info.revision;
+    availability.reset();
   });
 
   const songs = (n: number) => `${n} ${n === 1 ? 'song' : 'songs'}`;
@@ -80,10 +87,17 @@
     {#each info.folders as folder (folder)}
       <li class="flex items-center gap-2">
         <span class="muted min-w-0 flex-1 truncate" title={folder}>{folder}</span>
+        {#if info.unreachable.includes(folder)}<span class="accent-text shrink-0">Can't be reached</span>{/if}
         <Button size="sm" variant="quiet" aria-label="Remove {folder}" onclick={() => removeFolder(folder)}><Icon name="close" size={16} /></Button>
       </li>
     {/each}
   </ul>
+  {#if info.unreachable.length > 0}
+    <p class="notice mb-3" role="status">
+      {info.unreachable.length === 1 ? 'This folder' : 'These folders'} can't be reached right now. Is the drive or network location connected?
+      Its songs stay in your list, marked as missing, until it is back. If it is gone for good, remove it above.
+    </p>
+  {/if}
   <input class="field mb-3" type="search" aria-label="Search your songs" placeholder="Search your songs" autocomplete="off" bind:value={query} />
   {#if source.error}<p class="accent-text mb-3" role="alert">{source.error}</p>{/if}
   {#if !source.loaded && !source.error}

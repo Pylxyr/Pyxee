@@ -23,6 +23,7 @@ export function describeFailure(f: FailureDto): string {
     case 'unavailable': return "This track isn't available.";
     case 'decode': return "This track couldn't be played.";
     case 'expired': return f.status ? `YouTube refused to send it (HTTP ${f.status}).` : 'YouTube refused to send it.';
+    case 'fileMissing': return `${f.message.charAt(0).toUpperCase()}${f.message.slice(1)}.`;
     case 'other': return f.message;
   }
 }

@@ -23,12 +23,13 @@ export const noLibrary: LibraryBackend = {
   genresGet: async () => [],
   genreGet: async () => [],
   playlistTracksGet: async () => [],
-  localGet: async () => ({ revision: 1, folders: [], trackCount: 0, scanning: false }),
+  localGet: async () => ({ revision: 1, folders: [], trackCount: 0, scanning: false, unreachable: [] }),
   onLocal: async () => () => {},
   localTracks: async () => [],
-  localAddFolder: async () => ({ revision: 1, folders: [], trackCount: 0, scanning: false }),
-  localRemoveFolder: async () => ({ revision: 1, folders: [], trackCount: 0, scanning: false }),
-  localRescan: async () => ({ revision: 1, folders: [], trackCount: 0, scanning: false }),
+  localAddFolder: async () => ({ revision: 1, folders: [], trackCount: 0, scanning: false, unreachable: [] }),
+  localRemoveFolder: async () => ({ revision: 1, folders: [], trackCount: 0, scanning: false, unreachable: [] }),
+  localRescan: async () => ({ revision: 1, folders: [], trackCount: 0, scanning: false, unreachable: [] }),
+  localMissing: async () => [],
 };
 
 /** Diagnostics methods for test backends that do not care about them. */

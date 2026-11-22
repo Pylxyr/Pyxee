@@ -1,7 +1,7 @@
 import type { LibraryBackend } from './backend';
 import type { LocalLibraryDto } from './bindings/LocalLibraryDto';
 
-const EMPTY: LocalLibraryDto = { revision: 0, folders: [], trackCount: 0, scanning: false };
+const EMPTY: LocalLibraryDto = { revision: 0, folders: [], trackCount: 0, scanning: false, unreachable: [] };
 
 /** The songs on this PC at a glance: the chosen folders and where the scan of them stands. The songs are asked for by the page. */
 export class LocalStore {

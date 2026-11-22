@@ -330,18 +330,34 @@ fn is_skipped_folder(name: &str) -> bool {
         || name.eq_ignore_ascii_case("System Volume Information")
 }
 
+/// What a scan found, and what it could not look at.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct Scan {
+    pub tracks: Vec<LocalTrack>,
+    /// Chosen folders that could not be listed: a drive that is not connected, a network location that is down, a
+    /// folder that was renamed or deleted. The songs `previous` held under them are kept in `tracks`, so a drive that
+    /// is only unplugged does not empty the library.
+    pub unreachable: Vec<PathBuf>,
+    /// How many songs of `previous` are no longer there, in the folders that could be listed.
+    pub removed: usize,
+}
+
 /// The songs in `folders` and everything below them, read from their tags. A file that has not changed since
 /// `previous` was made (same size and modified time) is not read again, so a rescan of a large collection takes a
-/// moment. Links are not followed (a folder that links back to its parent would never end), and what cannot be listed
-/// is skipped. `stop` is asked between files; when it says so the scan ends and returns `None`.
-pub fn scan(
+/// moment. Links are not followed (a folder that links back to its parent would never end). A folder that cannot be
+/// listed keeps the songs it held in `previous` (see `Scan::unreachable`) instead of losing them. `stop` is asked
+/// between files; when it says so the scan ends and returns `None`.
+pub fn scan_folders(
     folders: &[PathBuf],
     previous: &[LocalTrack],
     stop: &dyn Fn() -> bool,
-) -> Option<Vec<LocalTrack>> {
+) -> Option<Scan> {
     let known: HashMap<&str, &LocalTrack> = previous.iter().map(|t| (t.path.as_str(), t)).collect();
     let mut seen: HashSet<PathBuf> = HashSet::new();
     let mut found: Vec<LocalTrack> = Vec::new();
+    let mut unreachable: Vec<PathBuf> = Vec::new();
+    // Folders that could not be listed: what `previous` held under them stays.
+    let mut unlisted: Vec<PathBuf> = Vec::new();
     for root in folders {
         if !root.is_absolute() {
             continue;
@@ -349,6 +365,10 @@ pub fn scan(
         let mut pending = vec![(root.clone(), 0usize)];
         while let Some((dir, depth)) = pending.pop() {
             let Ok(entries) = std::fs::read_dir(&dir) else {
+                if depth == 0 {
+                    unreachable.push(dir.clone());
+                }
+                unlisted.push(dir);
                 continue;
             };
             for entry in entries.flatten() {
@@ -383,8 +403,58 @@ pub fn scan(
             }
         }
     }
+    if !unlisted.is_empty() {
+        let have: HashSet<&str> = found.iter().map(|t| t.path.as_str()).collect();
+        let kept: Vec<LocalTrack> = previous
+            .iter()
+            .filter(|t| !have.contains(t.path.as_str()))
+            .filter(|t| unlisted.iter().any(|d| Path::new(&t.path).starts_with(d)))
+            .cloned()
+            .collect();
+        found.extend(kept);
+    }
+    let now: HashSet<&str> = found.iter().map(|t| t.path.as_str()).collect();
+    let removed = previous
+        .iter()
+        .filter(|t| !now.contains(t.path.as_str()))
+        .count();
     sort_tracks(&mut found);
-    Some(found)
+    Some(Scan {
+        tracks: found,
+        unreachable,
+        removed,
+    })
+}
+
+/// `scan_folders` without the report: just the songs.
+pub fn scan(
+    folders: &[PathBuf],
+    previous: &[LocalTrack],
+    stop: &dyn Fn() -> bool,
+) -> Option<Vec<LocalTrack>> {
+    scan_folders(folders, previous, stop).map(|s| s.tracks)
+}
+
+/// Why the file at `path` cannot be opened because it is gone, in words for the listener (it follows "so it was
+/// skipped:"). `None` when the file is there, or cannot be told to be gone (no permission, say).
+#[must_use]
+pub fn missing_reason(path: &Path) -> Option<String> {
+    match std::fs::metadata(path) {
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+        _ => return None,
+    }
+    let folder = path.parent()?;
+    Some(if folder.is_dir() {
+        format!(
+            "its file is no longer in {} (moved, renamed or deleted)",
+            folder.display()
+        )
+    } else {
+        format!(
+            "its folder {} can't be found (is the drive or network location connected?)",
+            folder.display()
+        )
+    })
 }
 
 #[derive(Default)]
@@ -422,8 +492,10 @@ impl MusicSource for LocalSource {
             return Err(SourceError::Failed("not a local file path".into()));
         }
         if !Path::new(path).is_file() {
+            let why = missing_reason(Path::new(path))
+                .unwrap_or_else(|| "its file can't be opened".to_string());
             return Err(SourceError::Unavailable(format!(
-                "the file {path} is missing"
+                "the file {path} is missing: {why}"
             )));
         }
         let ext = Path::new(path)
@@ -624,6 +696,53 @@ mod tests {
         // A file that is gone is gone from the result.
         std::fs::remove_file(&a).unwrap();
         assert!(scan(&[dir], &changed, &never).unwrap().is_empty());
+    }
+
+    #[test]
+    fn a_folder_that_cannot_be_listed_keeps_its_songs_and_deleted_files_are_counted() {
+        let dir = scratch("unreach");
+        let there = dir.join("there");
+        std::fs::create_dir_all(&there).unwrap();
+        std::fs::write(there.join("a.wav"), wav(1)).unwrap();
+        std::fs::write(there.join("b.wav"), wav(1)).unwrap();
+        let gone_root = dir.join("unplugged");
+        let before = LocalTrack {
+            path: gone_root.join("old.mp3").display().to_string(),
+            title: "Old".into(),
+            artist: "Band".into(),
+            album: String::new(),
+            duration_ms: None,
+            modified: 1,
+            size: 1,
+        };
+        let first = scan_folders(
+            &[there.clone(), gone_root.clone()],
+            std::slice::from_ref(&before),
+            &never,
+        )
+        .unwrap();
+        assert_eq!(first.unreachable, vec![gone_root.clone()]);
+        assert_eq!(first.removed, 0);
+        assert!(first.tracks.iter().any(|t| t.title == "Old"), "kept");
+        assert_eq!(first.tracks.len(), 3);
+
+        // A file deleted from a folder that can be listed is removed, and counted.
+        std::fs::remove_file(there.join("b.wav")).unwrap();
+        let again = scan_folders(&[there, gone_root], &first.tracks, &never).unwrap();
+        assert_eq!(again.removed, 1);
+        assert_eq!(again.tracks.len(), 2);
+        assert_eq!(again.unreachable.len(), 1);
+    }
+
+    #[test]
+    fn a_missing_file_is_explained_by_what_is_missing() {
+        let dir = scratch("reason");
+        let song = dir.join("a.wav");
+        assert!(missing_reason(&song).unwrap().contains("no longer in"));
+        std::fs::write(&song, wav(1)).unwrap();
+        assert_eq!(missing_reason(&song), None);
+        let lost = dir.join("unplugged").join("b.wav");
+        assert!(missing_reason(&lost).unwrap().contains("can't be found"));
     }
 
     #[test]

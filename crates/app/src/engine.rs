@@ -58,7 +58,7 @@ pub fn skip_reason(f: &Failure) -> String {
         }
         Failure::Offline => "you appear to be offline".into(),
         Failure::RateLimited => "the music service is limiting requests".into(),
-        Failure::Tool(m) | Failure::Other(m) => m.clone(),
+        Failure::Tool(m) | Failure::Other(m) | Failure::FileMissing(m) => m.clone(),
     }
 }
 
@@ -627,6 +627,7 @@ impl Engine {
                         self.host.engine_event(EngineEvent::Prefetched { id });
                     }
                     (Purpose::Start, Err(failure)) => {
+                        let failure = self.refine(id, failure);
                         log::warn!("could not start {}: {failure:?}", self.describe(id));
                         self.start_failed = Some(id);
                         self.held_prefetch = None;
@@ -636,6 +637,7 @@ impl Engine {
                             .engine_event(EngineEvent::LoadFailed { id, failure });
                     }
                     (Purpose::Prefetch, Err(failure)) => {
+                        let failure = self.refine(id, failure);
                         log::warn!("could not prefetch {}: {failure:?}", self.describe(id));
                         self.notify_skip(id, &failure, true);
                         self.host
@@ -686,12 +688,12 @@ impl Engine {
                     self.failed_later.insert(id, (kind, frames_emitted));
                 } else if self.start_id == Some(id) {
                     self.start_failed = Some(id);
-                    let failure = failure_for(kind);
+                    let failure = self.refine(id, failure_for(kind));
                     self.notify_skip(id, &failure, false);
                     self.host
                         .engine_event(EngineEvent::LoadFailed { id, failure });
                 } else {
-                    let failure = failure_for(kind);
+                    let failure = self.refine(id, failure_for(kind));
                     self.notify_skip(id, &failure, true);
                     self.host
                         .engine_event(EngineEvent::PrefetchFailed { id, failure });
@@ -754,8 +756,9 @@ impl Engine {
                         expected
                     );
                     if let (Some((kind, _)), Some(t)) = (failed, self.known.get(&id)) {
+                        let failure = self.refine(id, failure_for(kind));
                         self.host
-                            .notice(stopped_early_notice(&t.title, &failure_for(kind)));
+                            .notice(stopped_early_notice(&t.title, &failure));
                     } else if ended_early(heard, expected) {
                         let title = self.known.get(&id).map_or("A song", |t| t.title.as_str());
                         log::warn!(
@@ -780,6 +783,28 @@ impl Engine {
     }
 
     /// Tell the listener when a song is skipped for a reason that will not go away by itself.
+    /// Says what is really wrong when a song on this PC cannot be played because its file is gone. The decoder only
+    /// knows "could not be read" (and, for a drive that was unplugged, nothing better), and the music services' wording
+    /// ("private, removed or blocked in your region") means nothing for a file.
+    fn refine(&self, id: EntryId, failure: Failure) -> Failure {
+        if !matches!(
+            failure,
+            Failure::Unavailable | Failure::Decode | Failure::Other(_)
+        ) {
+            return failure;
+        }
+        let Some(track) = self.known.get(&id) else {
+            return failure;
+        };
+        match pyxee_sources::key::parse(&track.key) {
+            Some(pyxee_sources::key::TrackKey::File(path)) => {
+                pyxee_sources::local::missing_reason(std::path::Path::new(path))
+                    .map_or(failure, Failure::FileMissing)
+            }
+            _ => failure,
+        }
+    }
+
     fn notify_skip(&self, id: EntryId, failure: &Failure, upcoming: bool) {
         if failure.is_transient() {
             return; // the player bar already shows "offline" / "rate limited" with a Retry

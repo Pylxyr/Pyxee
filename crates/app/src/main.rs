@@ -326,6 +326,7 @@ fn main() {
             local_library::local_add_folder,
             local_library::local_remove_folder,
             local_library::local_rescan,
+            local_library::local_missing,
             commands::set_volume,
             commands::get_log_info,
             commands::perf_enabled,

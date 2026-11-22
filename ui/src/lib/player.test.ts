@@ -159,11 +159,12 @@ describe('describeFailure', () => {
     for (const f of [
       { kind: 'offline' }, { kind: 'rateLimited' }, { kind: 'unavailable' },
       { kind: 'decode' }, { kind: 'expired', status: 403 }, { kind: 'expired', status: null },
-      { kind: 'other', message: 'boom' },
+      { kind: 'other', message: 'boom' }, { kind: 'fileMissing', message: 'its file is gone' },
     ] as const) {
       expect(describeFailure(f).length).toBeGreaterThan(3);
     }
     expect(describeFailure({ kind: 'other', message: 'boom' })).toBe('boom');
+    expect(describeFailure({ kind: 'fileMissing', message: 'its file is no longer in D:\\Music (moved, renamed or deleted)' })).toBe('Its file is no longer in D:\\Music (moved, renamed or deleted).');
     expect(describeFailure({ kind: 'expired', status: 403 })).toBe('YouTube refused to send it (HTTP 403).');
     expect(describeFailure({ kind: 'expired', status: null })).toBe('YouTube refused to send it.');
   });

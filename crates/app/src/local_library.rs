@@ -20,6 +20,8 @@ pub const LOCAL_EVENT: &str = "local-changed";
 
 /// A list longer than this is cut: more rows than anyone scrolls, and the window has to draw them.
 const MAX_LISTED: usize = 10_000;
+/// The most files looked at for one `local_missing` question (a list on screen is far shorter).
+const MAX_CHECKED: usize = 2_000;
 
 #[derive(Default, Serialize, Deserialize)]
 struct Saved {
@@ -33,6 +35,9 @@ struct Saved {
 struct Inner {
     folders: Vec<PathBuf>,
     tracks: Vec<LocalTrack>,
+    /// Chosen folders the last scan could not list (a drive that is not connected, a folder that was renamed). Their
+    /// songs stay in `tracks`; the window says why they cannot be played.
+    unreachable: Vec<PathBuf>,
     scanning: bool,
     /// Increases with every change, so the window can tell an old push from a new one.
     revision: u32,
@@ -69,6 +74,7 @@ impl LocalLibrary {
             inner: Mutex::new(Inner {
                 folders: saved.folders.into_iter().map(PathBuf::from).collect(),
                 tracks: saved.tracks,
+                unreachable: Vec::new(),
                 scanning: false,
                 revision: 1,
             }),
@@ -90,6 +96,11 @@ impl LocalLibrary {
                 .collect(),
             track_count: u32::try_from(inner.tracks.len()).unwrap_or(u32::MAX),
             scanning: inner.scanning,
+            unreachable: inner
+                .unreachable
+                .iter()
+                .map(|f| f.display().to_string())
+                .collect(),
         }
     }
 
@@ -155,9 +166,13 @@ impl LocalLibrary {
             return false;
         }
         let Inner {
-            folders, tracks, ..
+            folders,
+            tracks,
+            unreachable,
+            ..
         } = &mut *g;
         tracks.retain(|t| folders.iter().any(|f| Path::new(&t.path).starts_with(f)));
+        unreachable.retain(|u| folders.contains(u));
         // The scan that was running covered the folder just removed; the songs it had found of the others are kept.
         self.generation.fetch_add(1, Ordering::SeqCst);
         g.scanning = false;
@@ -171,6 +186,70 @@ fn emit(app: &AppHandle) {
     if let Err(e) = crate::shell::emit_awake(app, LOCAL_EVENT, snapshot) {
         log::warn!("could not emit the local library: {e}");
     }
+}
+
+fn notify(app: &AppHandle, message: String) {
+    log::info!("notice shown to the listener: {message}");
+    if let Err(e) = crate::shell::emit_noted(
+        app,
+        crate::state::NOTICE_EVENT,
+        crate::dto::NoticeDto { message },
+    ) {
+        log::warn!("could not send a notice to the window: {e}");
+    }
+}
+
+/// What to tell the listener after a scan: songs that are gone from their folders, and folders that could not be
+/// reached (whose songs were kept). Nothing when the scan found nothing to say.
+fn scan_notices(removed: usize, unreachable: &[PathBuf]) -> Vec<String> {
+    let mut notices = Vec::new();
+    if removed > 0 {
+        let (songs, are) = if removed == 1 {
+            ("1 song is".to_string(), "it was")
+        } else {
+            (format!("{removed} songs are"), "they were")
+        };
+        notices.push(format!(
+            "{songs} no longer in your music folders (deleted or moved), so {are} taken out of the list. \
+             Playlists, likes and the queue still hold them, marked as missing."
+        ));
+    }
+    if !unreachable.is_empty() {
+        let names: Vec<String> = unreachable
+            .iter()
+            .map(|f| f.display().to_string())
+            .collect();
+        let (what, its) = if names.len() == 1 {
+            ("This folder can't be reached", "its songs stay")
+        } else {
+            ("These folders can't be reached", "their songs stay")
+        };
+        notices.push(format!(
+            "{what}: {}. Is the drive or network location connected? Until it is, {its} in your list but can't be played.",
+            names.join(", ")
+        ));
+    }
+    notices
+}
+
+/// Which of these songs' files are gone (moved, renamed, deleted, or on a drive that is not connected). Only `file:`
+/// keys are looked at, and only a file that is plainly not there counts: one that cannot be told (no permission) is
+/// left alone, so a song is never marked missing on a guess.
+fn missing_keys(keys: &[String]) -> Vec<String> {
+    keys.iter()
+        .take(MAX_CHECKED)
+        .filter(|key| match pyxee_sources::key::parse(key) {
+            Some(pyxee_sources::key::TrackKey::File(path)) => {
+                Path::new(path).is_absolute()
+                    && matches!(
+                        std::fs::metadata(path),
+                        Err(e) if e.kind() == std::io::ErrorKind::NotFound
+                    )
+            }
+            _ => false,
+        })
+        .cloned()
+        .collect()
 }
 
 /// Reads the chosen folders again on a thread of its own, and replaces the list of songs with what it finds. A scan
@@ -194,13 +273,19 @@ pub fn rescan(app: &AppHandle) {
         .spawn(move || {
             let lib = handle.state::<LocalLibrary>();
             let started = Instant::now();
-            let found = local::scan(&folders, &previous, &|| {
+            let found = local::scan_folders(&folders, &previous, &|| {
                 lib.generation.load(Ordering::SeqCst) != generation
             });
             // `None`: the folders changed meanwhile, and the scan that change started reports.
-            let Some(tracks) = found else {
+            let Some(scan) = found else {
                 return;
             };
+            let notices = scan_notices(scan.removed, &scan.unreachable);
+            let local::Scan {
+                tracks,
+                unreachable,
+                ..
+            } = scan;
             {
                 let mut g = lib.lock();
                 if lib.generation.load(Ordering::SeqCst) != generation {
@@ -213,11 +298,15 @@ pub fn rescan(app: &AppHandle) {
                     started.elapsed().as_secs_f32()
                 );
                 g.tracks = tracks;
+                g.unreachable = unreachable;
                 g.scanning = false;
                 g.revision += 1;
             }
             lib.save();
             emit(&handle);
+            for message in notices {
+                notify(&handle, message);
+            }
         });
     if let Err(e) = spawned {
         log::warn!("could not start the local scan: {e}");
@@ -277,6 +366,15 @@ pub fn local_remove_folder(app: AppHandle, folder: String) -> LocalLibraryDto {
     lib.snapshot()
 }
 
+/// Which of these songs (keys) have lost their file, so the lists can mark them. Looks at the disk, so it runs off the
+/// window's thread.
+#[tauri::command]
+pub async fn local_missing(keys: Vec<String>) -> Vec<String> {
+    tauri::async_runtime::spawn_blocking(move || missing_keys(&keys))
+        .await
+        .unwrap_or_default()
+}
+
 #[tauri::command]
 pub fn local_rescan(app: AppHandle) -> LocalLibraryDto {
     rescan(&app);
@@ -297,6 +395,38 @@ mod tests {
             modified: 1,
             size: 1,
         }
+    }
+
+    #[test]
+    fn a_scan_that_lost_songs_or_folders_says_so_and_a_quiet_one_says_nothing() {
+        assert!(scan_notices(0, &[]).is_empty());
+        let one = scan_notices(1, &[]);
+        assert_eq!(one.len(), 1);
+        assert!(one[0].starts_with("1 song is no longer"), "{one:?}");
+        assert!(one[0].contains("it was taken out"), "{one:?}");
+        let many = scan_notices(3, &[PathBuf::from("E:\\Music"), PathBuf::from("F:\\More")]);
+        assert_eq!(many.len(), 2);
+        assert!(many[0].starts_with("3 songs are no longer"), "{many:?}");
+        assert!(many[0].contains("they were taken out"), "{many:?}");
+        assert!(many[1].contains("E:\\Music, F:\\More") && many[1].contains("their songs stay"), "{many:?}");
+        let single = scan_notices(0, &[PathBuf::from("E:\\Music")]);
+        assert!(single[0].starts_with("This folder can't be reached"), "{single:?}");
+    }
+
+    #[test]
+    fn only_a_file_that_is_plainly_not_there_is_reported_missing() {
+        let dir = std::env::temp_dir().join(format!("pyxee-missing-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let there = dir.join("there.mp3");
+        std::fs::write(&there, b"x").unwrap();
+        let gone = dir.join("gone.mp3");
+        let keys = vec![
+            pyxee_sources::key::file(&there),
+            pyxee_sources::key::file(&gone),
+            "yt:abcdefghijk".to_string(),
+            "file:relative/song.mp3".to_string(),
+        ];
+        assert_eq!(missing_keys(&keys), vec![pyxee_sources::key::file(&gone)]);
     }
 
     fn with(folders: &[&str], tracks: Vec<LocalTrack>) -> LocalLibrary {

@@ -1122,7 +1122,9 @@ fn a_skipped_song_is_announced_with_its_title_and_the_reason() {
         "{notices:?}"
     );
     assert!(
-        notices[0].contains("it was skipped") && notices[0].contains("isn't available"),
+        notices[0].contains("it was skipped")
+            && notices[0].contains("its file is no longer in")
+            && notices[0].contains("moved, renamed or deleted"),
         "{notices:?}"
     );
     assert!(notices[0].contains("The log has details"), "{notices:?}");
