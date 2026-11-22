@@ -27,13 +27,14 @@ Titles, artists, albums and lengths come from the files' tags (`lofty`, read onc
 - **Where the picture comes from:** the front cover in the file's tags (else the first picture), else a picture beside the song named `cover`, `folder`, `front` or `albumart` (`.jpg`, `.jpeg`, `.png`, `.webp`, any letter case). No picture: 404, and the UI keeps its music-note placeholder.
 - **Safety:** the hex path must be an absolute, non-network path to a file the player plays by extension, and only bytes that start like a JPEG, PNG, GIF or WebP leave the app. The CSP lists the scheme under `img-src`.
 - **Colours:** the page reads the pixels directly (the answer carries a CORS header); if that fails, `cover_bytes` reads the same picture from the file.
+- **Older songs:** songs saved before covers were read (queue, playlists, likes, history) have no thumbnail of their own; `TrackDto` gives every `file:` song without one the same address on its way to the window (`own_or_local_cover` in `dto.rs`).
 - **Cost:** nothing at scan time, nothing for a song that is not on screen; a cover is read when its row or the player shows it, and the webview caches it (the address changes when the file does).
 
 ## When songs on this PC are removed, moved or their drive is gone
 
 | What happened | What Pyxee does |
 |---|---|
-| A file was deleted or moved out of a chosen folder | The next scan (at start, "Rescan") takes it out of the Songs list and says how many went. Playlists, likes, history and the queue keep it: their rows are dimmed and read "File missing · Artist" (`availability.svelte.ts`, one `local_missing` call per list). |
+| A file was deleted or moved out of a chosen folder | The next scan (at start, "Rescan") takes it out of the Songs list and says how many went. Playlists, likes, history and the queue keep it: their rows are dimmed and read "File missing · Artist" (`availability.svelte.ts`, one `local_missing` call per list; coming back to the window looks again, at most every 5 s). |
 | A chosen folder cannot be listed (drive unplugged, network location down, folder renamed or deleted) | The scan **keeps** that folder's songs instead of emptying the library (`scan_folders` → `Scan::unreachable`), says which folder, and Settings shows "Can't be reached" on it. Remove it there if it is gone for good. |
 | A missing song is played, or reached in the queue | It is skipped with the real reason ("its file is no longer in D:\\Music (moved, renamed or deleted)" or "its folder … can't be found (is the drive or network location connected?)"), not the streaming wording. At most three in a row are skipped; then the player stops on the last one with the same reason (`Failure::FileMissing`). |
 | A file disappears while it plays | The open file keeps playing on Windows (deleting does not close it); if the drive itself goes, the song stops early with the same explanation. |
