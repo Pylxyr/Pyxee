@@ -247,23 +247,31 @@ input[type='range'].slider::-webkit-slider-runnable-track {
 input[type='range'].slider.accent::-webkit-slider-runnable-track {
   background: linear-gradient(to right, var(--accent) var(--pct), var(--surface-2) var(--pct));
 }
+/* The thumb is a round dot with a soft ring, shown on hover or focus (a tall bar looked clumsy on a thin line).
+   Its centre sits on the track: margin-top = (track height - thumb height) / 2. */
 input[type='range'].slider::-webkit-slider-thumb {
   -webkit-appearance: none;
-  width: 8px;
-  height: 16px;
-  margin-top: -6px;
-  border-radius: 4px;
+  width: 14px;
+  height: 14px;
+  margin-top: -5px;
+  border: 0;
+  border-radius: 50%;
   background: var(--fg);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--fg) 22%, transparent), 0 1px 4px rgb(0 0 0 / 0.35);
   opacity: 0;
   transition: opacity var(--dur-fast) var(--ease), transform 300ms var(--spring-pop);
+}
+input[type='range'].slider.accent::-webkit-slider-thumb {
+  background: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 28%, transparent), 0 1px 4px rgb(0 0 0 / 0.35);
 }
 input[type='range'].slider:hover::-webkit-slider-thumb,
 input[type='range'].slider:focus-visible::-webkit-slider-thumb {
   opacity: 1;
-  transform: scale(1.3);
+  transform: scale(1.1);
 }
 input[type='range'].slider:active::-webkit-slider-thumb {
-  transform: scale(1.6, 1.2);
+  transform: scale(1.25);
 }
 /* The smooth seek-bar modes (PYXEE_SEEK_MODE=glide|steps): the fill is its own rectangle, scaled from the left by one
    Web Animations transform animation (compositor only, finite: it ends with the song). The range input on top is
@@ -2151,7 +2159,7 @@ input[type='range'].slider:disabled {
 
 /* Polish for 1.0 (unlayered, so it wins over the layered rules above). */
 
-/* The seek line: 6 px instead of 4, so it can be seen and hit. The thumb is 16 px tall: (6 - 16) / 2 = -5 px. */
+/* The seek line: 6 px instead of 4, so it can be seen and hit. The thumb is 14 px tall: (6 - 14) / 2 = -4 px. */
 .deck-seek .seek-clip,
 .deck-seek .seek-wake,
 .dock-seek .seek-clip,
@@ -2167,7 +2175,7 @@ input[type='range'].slider:disabled {
 }
 .deck-seek input[type='range'].slider::-webkit-slider-thumb,
 .dock-seek input[type='range'].slider::-webkit-slider-thumb {
-  margin-top: -5px;
+  margin-top: -4px;
 }
 
 /* Narrow rows (a phone-sized window, the queue in Now Playing): the length and "play next" make room for the title. */
