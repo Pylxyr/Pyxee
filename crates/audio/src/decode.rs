@@ -46,7 +46,7 @@ mod ffi {
     pub type SeekFn = unsafe extern "C" fn(*mut c_void, i64, c_int) -> i64;
     pub type SizeFn = unsafe extern "C" fn(*mut c_void) -> i64;
 
-    extern "C" {
+    unsafe extern "C" {
         pub fn px_open(
             opaque: *mut c_void,
             rd: ReadFn,

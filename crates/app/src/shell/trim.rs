@@ -156,7 +156,7 @@ mod sys {
     }
 
     #[link(name = "kernel32")]
-    extern "system" {
+    unsafe extern "system" {
         fn CreateToolhelp32Snapshot(flags: u32, process_id: u32) -> Handle;
         fn Process32FirstW(snapshot: Handle, entry: *mut ProcessEntry32W) -> i32;
         fn Process32NextW(snapshot: Handle, entry: *mut ProcessEntry32W) -> i32;

@@ -152,7 +152,7 @@ pub mod vault {
     }
 
     #[link(name = "advapi32")]
-    extern "system" {
+    unsafe extern "system" {
         fn CredWriteW(credential: *const Credential, flags: u32) -> i32;
         fn CredReadW(
             target: *const u16,

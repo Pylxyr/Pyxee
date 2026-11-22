@@ -2,7 +2,7 @@ use crate::dto::BackdropDto;
 
 #[cfg(windows)]
 #[link(name = "dwmapi")]
-extern "system" {
+unsafe extern "system" {
     fn DwmSetWindowAttribute(
         hwnd: *mut std::ffi::c_void,
         attribute: u32,

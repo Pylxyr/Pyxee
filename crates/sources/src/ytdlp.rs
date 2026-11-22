@@ -1475,7 +1475,7 @@ mod tests {
         assert!(broken.to_string().contains("out of date"));
     }
 
-    fn env(pairs: &[(&str, &str)]) -> impl Fn(&str) -> Option<String> {
+    fn env(pairs: &[(&str, &str)]) -> impl Fn(&str) -> Option<String> + use<> {
         let m: std::collections::HashMap<String, String> = pairs
             .iter()
             .map(|(k, v)| ((*k).to_string(), (*v).to_string()))

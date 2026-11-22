@@ -155,7 +155,9 @@ fn vars_to_ignore(dev_tools: bool) -> &'static [&'static str] {
 fn main() {
     // Before anything else (no other thread exists yet, and nothing has read the environment).
     for name in vars_to_ignore(commands::DEV_TOOLS) {
-        std::env::remove_var(name);
+        // SAFETY: this is the first statement of `main`, so no other thread exists yet that could read or write the
+        // environment.
+        unsafe { std::env::remove_var(name) };
     }
     local_cover::register(tauri::Builder::default())
         // First, so a second launch is caught before anything else starts: it hands its arguments to the
