@@ -21,8 +21,10 @@ use tauri::State;
 const EXTENSIONS: [&str; 2] = ["webm", "m4a"];
 const PART: &str = "part";
 const MIB: u64 = 1024 * 1024;
-/// The limit until the listener chooses one.
-pub const DEFAULT_LIMIT_MB: u32 = 1024;
+/// The limit until the listener chooses one: 0, so nothing is kept.
+pub const DEFAULT_LIMIT_MB: u32 = 0;
+/// The most the cache may ever take (4 GB), whatever was asked or saved.
+pub const MAX_LIMIT_MB: u32 = 4096;
 
 #[derive(Serialize, Deserialize)]
 struct Saved {
@@ -65,17 +67,22 @@ fn extension_of(ext: &str) -> Option<&'static str> {
 impl AudioCache {
     /// The cache in `dir` (created when the first song is kept), with the limit saved in `settings` or the default.
     pub fn open(dir: Option<PathBuf>, settings: Option<PathBuf>) -> Self {
-        let limit_mb = settings
+        let saved_mb = settings
             .as_deref()
             .and_then(|p| std::fs::read(p).ok())
             .and_then(|b| serde_json::from_slice::<Saved>(&b).ok())
             .map_or(DEFAULT_LIMIT_MB, |s| s.limit_mb);
+        let limit_mb = saved_mb.min(MAX_LIMIT_MB);
         let cache = Self {
             dir,
             settings,
             limit_bytes: AtomicU64::new(u64::from(limit_mb) * MIB),
         };
         cache.remove_partial_files();
+        if saved_mb > limit_mb {
+            // A limit saved by an older version that allowed more than the cap: trim what no longer fits.
+            cache.evict();
+        }
         cache
     }
 
@@ -88,8 +95,10 @@ impl AudioCache {
         self.dir.is_some() && self.limit_bytes.load(Ordering::Relaxed) > 0
     }
 
-    /// Changes the limit (0 keeps nothing and empties the folder), remembers it, and deletes what no longer fits.
+    /// Changes the limit (0 keeps nothing and empties the folder; more than `MAX_LIMIT_MB` is cut to it), remembers it,
+    /// and deletes what no longer fits.
     pub fn set_limit_mb(&self, mb: u32) {
+        let mb = mb.min(MAX_LIMIT_MB);
         self.limit_bytes
             .store(u64::from(mb) * MIB, Ordering::Relaxed);
         if let Some(p) = &self.settings {
@@ -392,6 +401,22 @@ mod tests {
         let again = AudioCache::open(Some(dir.clone()), Some(settings));
         assert_eq!(again.usage().limit_mb, 256);
         assert!(!dir.join("aaaaaaaaaaa.webm.part").exists());
+    }
+
+    #[test]
+    fn the_cache_starts_off_and_never_takes_more_than_4_gb() {
+        let dir = scratch("max");
+        std::fs::create_dir_all(&dir).unwrap();
+        let settings = dir.join("settings.json");
+        let c = AudioCache::open(Some(dir.clone()), Some(settings.clone()));
+        assert_eq!(c.usage().limit_mb, 0);
+        assert!(!c.enabled(), "off until the listener turns it on");
+        c.set_limit_mb(16384);
+        assert_eq!(c.usage().limit_mb, MAX_LIMIT_MB);
+        // A bigger limit saved by an older version is cut to the cap too.
+        std::fs::write(&settings, br#"{"limit_mb":16384}"#).unwrap();
+        let again = AudioCache::open(Some(dir), Some(settings));
+        assert_eq!(again.usage().limit_mb, MAX_LIMIT_MB);
     }
 
     #[test]

@@ -441,6 +441,8 @@ fn a_song_kept_from_an_earlier_play_starts_without_resolving_or_any_network() {
     let dir = std::env::temp_dir().join(format!("pyxee-keptsong-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     let kept = Arc::new(AudioCache::open(Some(dir), None));
+    // The cache is off until a limit is chosen.
+    kept.set_limit_mb(256);
     let bytes = std::fs::read(fixture("a_48k.webm")).unwrap();
     kept.store("yt:aaaaaaaaaaa", "webm", &[Arc::new(bytes)]);
     assert!(

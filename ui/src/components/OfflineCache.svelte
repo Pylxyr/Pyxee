@@ -5,13 +5,11 @@
   import type { AudioCacheDto } from '$lib/bindings/AudioCacheDto';
   import Button from './Button.svelte';
 
-  const LIMITS: { mb: number; label: string }[] = [
-    { mb: 0, label: 'Off' },
-    { mb: 256, label: '256 MB' },
-    { mb: 1024, label: '1 GB' },
-    { mb: 4096, label: '4 GB' },
-    { mb: 16384, label: '16 GB' },
-  ];
+  const size = (mb: number) => (mb >= 1024 ? `${+(mb / 1024).toFixed(2)} GB` : `${mb} MB`);
+
+  // Off, then 64, 128 and 256 MB, then every 256 MB up to 4 GB (the most the app allows).
+  const STEPS = [0, 64, 128, ...Array.from({ length: 16 }, (_, i) => (i + 1) * 256)];
+  const LIMITS: { mb: number; label: string }[] = STEPS.map((mb) => ({ mb, label: mb === 0 ? 'Off' : size(mb) }));
 
   let cache = $state<AudioCacheDto | null>(null);
 
@@ -22,7 +20,6 @@
     void b.audioCacheGet().then((c) => (cache = c)).catch((e) => snackbar.push(messageOf(e)));
   });
 
-  const size = (mb: number) => (mb >= 1024 ? `${(mb / 1024).toFixed(1)} GB` : `${mb} MB`);
   const limits = $derived(cache && !LIMITS.some((l) => l.mb === cache!.limitMb) ? [...LIMITS, { mb: cache.limitMb, label: size(cache.limitMb) }] : LIMITS);
 
   async function setLimit(mb: number) {
