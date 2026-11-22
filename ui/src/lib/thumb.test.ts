@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { deviceSize, thumbCandidates } from './thumb';
+import { deviceSize, isLocalCover, thumbCandidates } from './thumb';
 
 describe('deviceSize', () => {
   it('scales by the display ratio, rounds up to 64 and caps at 1200', () => {
@@ -47,5 +47,19 @@ describe('thumbCandidates', () => {
     expect(thumbCandidates('https://lh3.googleusercontent.com/NoParams', 100, 2)).toEqual([
       'https://lh3.googleusercontent.com/NoParams',
     ]);
+  });
+});
+
+describe('a local song\'s cover', () => {
+  it('is used as it is (the window\'s own scheme, never upgraded to https) in either form the webview uses', () => {
+    for (const url of ['http://pyxeecover.localhost/2f6d2e666c6163?v=3', 'pyxeecover://localhost/2f6d2e666c6163?v=3']) {
+      expect(isLocalCover(url)).toBe(true);
+      expect(thumbCandidates(url, 56, 2)).toEqual([url]);
+    }
+  });
+
+  it('is told apart from a web cover', () => {
+    expect(isLocalCover('https://i.ytimg.com/vi/x/hqdefault.jpg')).toBe(false);
+    expect(isLocalCover('http://pyxeecover.localhost.evil.example/x')).toBe(false);
   });
 });

@@ -1,7 +1,7 @@
 <script lang="ts">
   import { hueFor } from '$lib/format';
   import { network } from '$lib/network.svelte';
-  import { deviceSize, isKnownMissing, isMissingStill, noteMissing, thumbCandidates } from '$lib/thumb';
+  import { deviceSize, isKnownMissing, isLocalCover, isMissingStill, noteMissing, thumbCandidates } from '$lib/thumb';
   import { viewport } from '$lib/viewport.svelte';
   import Icon from './Icon.svelte';
 
@@ -107,7 +107,8 @@
     loaded = true;
   }
   function onfailed() {
-    transient = true;
+    // A song on this PC with no picture answers "not found" for good: no point asking again when back online.
+    if (!(current && isLocalCover(current))) transient = true;
     tried++;
   }
   // After a fullscreen switch / resize / monitor change: a cover that never showed (blank, or every candidate failed

@@ -18,7 +18,18 @@ export function deviceSize(px: number, dpr: number): number {
   return Math.min(1200, Math.ceil(wanted / 64) * 64);
 }
 
+/**
+ * The address of a local song's cover, which the app serves from the file's tags or its folder (the window's own
+ * scheme, so it must not be upgraded to https like a web address, and it has one size only).
+ */
+const LOCAL_COVER = /^(?:https?:\/\/pyxeecover\.localhost|pyxeecover:\/\/localhost)\//;
+
+export function isLocalCover(src: string): boolean {
+  return LOCAL_COVER.test(src);
+}
+
 export function thumbCandidates(src: string, px: number, dpr = 1): string[] {
+  if (isLocalCover(src)) return [src];
   const secure = src.replace(/^http:\/\//, 'https://');
   const size = deviceSize(px, dpr);
 

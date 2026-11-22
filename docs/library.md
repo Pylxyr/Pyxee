@@ -20,6 +20,15 @@ Every method takes the current time as an argument and nothing reads a clock, so
 - If `library.db` cannot be opened (corrupt, read-only), the app runs with an in-memory library and shows a banner:
   "Your library couldn't be opened (...). Likes, playlists and history won't be saved this session." It never silently drops data.
 
+## Covers of songs on this PC
+
+Titles, artists, albums and lengths come from the files' tags (`lofty`, read once per scan). The cover is not stored: every local song's thumbnail is an address in the window's own `pyxeecover` scheme (`http://pyxeecover.localhost/<hex path>?v=<modified>` on Windows), and the app answers it when the window asks (`crates/app/src/local_cover.rs`, `pyxee_sources::local::read_cover`).
+
+- **Where the picture comes from:** the front cover in the file's tags (else the first picture), else a picture beside the song named `cover`, `folder`, `front` or `albumart` (`.jpg`, `.jpeg`, `.png`, `.webp`, any letter case). No picture: 404, and the UI keeps its music-note placeholder.
+- **Safety:** the hex path must be an absolute, non-network path to a file the player plays by extension, and only bytes that start like a JPEG, PNG, GIF or WebP leave the app. The CSP lists the scheme under `img-src`.
+- **Colours:** the page reads the pixels directly (the answer carries a CORS header); if that fails, `cover_bytes` reads the same picture from the file.
+- **Cost:** nothing at scan time, nothing for a song that is not on screen; a cover is read when its row or the player shows it, and the webview caches it (the address changes when the file does).
+
 ## How the UI stays in sync
 After any change Rust emits `library-changed` with a snapshot (revision, liked keys, playlist summaries, history count). The UI
 store mirrors it; detail views (Liked songs, a playlist, History, Home) reload when the revision changes. Commands reject with a

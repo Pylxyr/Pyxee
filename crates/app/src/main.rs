@@ -26,6 +26,7 @@ mod engine;
 #[cfg(test)]
 mod engine_tests;
 mod library_service;
+mod local_cover;
 mod local_library;
 mod logging;
 mod opener;
@@ -155,7 +156,7 @@ fn main() {
     for name in vars_to_ignore(commands::DEV_TOOLS) {
         std::env::remove_var(name);
     }
-    tauri::Builder::default()
+    local_cover::register(tauri::Builder::default())
         // First, so a second launch is caught before anything else starts: it hands its arguments to the
         // running player (jump-list tasks, `--next`) and brings it to the front.
         .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {

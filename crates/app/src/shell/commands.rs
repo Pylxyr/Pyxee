@@ -23,6 +23,14 @@ fn cover_host_ok(url: &str) -> bool {
 /// site unless that site allows it, so the app fetches the (small) picture itself and hands it over.
 #[tauri::command]
 pub async fn cover_bytes(url: String) -> Result<tauri::ipc::Response, String> {
+    // The cover of a song on this PC: read from the file itself (the address names it, and only a song is opened).
+    if let Some(song) = pyxee_sources::local::cover_url_path(&url) {
+        let cover = tauri::async_runtime::spawn_blocking(move || pyxee_sources::local::read_cover(&song))
+            .await
+            .map_err(|e| e.to_string())?
+            .ok_or_else(|| "this song has no cover".to_string())?;
+        return Ok(tauri::ipc::Response::new(cover.bytes));
+    }
     if !cover_host_ok(&url) {
         return Err("not a cover address".into());
     }

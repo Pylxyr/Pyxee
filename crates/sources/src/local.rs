@@ -47,7 +47,7 @@ impl LocalTrack {
             title: self.title.clone(),
             artist: self.artist.clone(),
             duration_ms: self.duration_ms,
-            thumbnail: None,
+            thumbnail: Some(cover_url(Path::new(&self.path), self.modified)),
         }
     }
 
@@ -79,6 +79,178 @@ pub fn is_audio_file(path: &Path) -> bool {
     path.extension()
         .and_then(|e| e.to_str())
         .is_some_and(|e| EXTENSIONS.iter().any(|x| x.eq_ignore_ascii_case(e)))
+}
+
+/// The name of the URL scheme the window loads a local song's cover from (the app answers it, see `read_cover`).
+pub const COVER_SCHEME: &str = "pyxeecover";
+
+/// The most a cover picture may weigh to be shown (a few MB is a large cover; more is not a cover).
+const COVER_MAX_BYTES: u64 = 16 * 1024 * 1024;
+
+/// A picture file in a song's folder that counts as its cover, best name first. Compared in lower case.
+const FOLDER_COVERS: [&str; 12] = [
+    "cover.jpg",
+    "cover.jpeg",
+    "cover.png",
+    "cover.webp",
+    "folder.jpg",
+    "folder.jpeg",
+    "folder.png",
+    "front.jpg",
+    "front.jpeg",
+    "front.png",
+    "albumart.jpg",
+    "albumart.png",
+];
+
+/// A cover picture: its bytes and its media type.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Cover {
+    pub mime: &'static str,
+    pub bytes: Vec<u8>,
+}
+
+fn hex_encode(text: &str) -> String {
+    use std::fmt::Write;
+    text.bytes().fold(String::with_capacity(text.len() * 2), |mut out, b| {
+        let _ = write!(out, "{b:02x}");
+        out
+    })
+}
+
+fn hex_decode(hex: &str) -> Option<String> {
+    if hex.is_empty() || hex.len() % 2 == 1 || !hex.is_ascii() {
+        return None;
+    }
+    let bytes: Option<Vec<u8>> = (0..hex.len())
+        .step_by(2)
+        .map(|i| u8::from_str_radix(&hex[i..i + 2], 16).ok())
+        .collect();
+    String::from_utf8(bytes?).ok()
+}
+
+/// The address the window loads the cover of the song at `path` from. It names the file in hex (nothing in it needs
+/// escaping) and carries `version` (the file's modified time), so a song whose picture was changed is asked for again.
+/// Windows' webview serves a custom scheme from `http://<scheme>.localhost`, the others from `<scheme>://localhost`.
+#[must_use]
+pub fn cover_url(path: &Path, version: u64) -> String {
+    let name = hex_encode(&path.display().to_string());
+    if cfg!(windows) {
+        format!("http://{COVER_SCHEME}.localhost/{name}?v={version}")
+    } else {
+        format!("{COVER_SCHEME}://localhost/{name}?v={version}")
+    }
+}
+
+/// Whether `url` is the address of a local cover (see `cover_url`), whichever form the webview uses.
+#[must_use]
+pub fn is_cover_url(url: &str) -> bool {
+    cover_url_name(url).is_some()
+}
+
+fn cover_url_name(url: &str) -> Option<&str> {
+    let rest = [
+        format!("http://{COVER_SCHEME}.localhost/"),
+        format!("https://{COVER_SCHEME}.localhost/"),
+        format!("{COVER_SCHEME}://localhost/"),
+    ]
+    .iter()
+    .find_map(|prefix| url.strip_prefix(prefix.as_str()))?;
+    rest.split(['?', '#']).next()
+}
+
+/// The song a cover address names, and only a song: the path must be a local (not network) absolute path to a file
+/// the player plays by its extension. The webview can ask for any address, so nothing else is ever opened for it.
+#[must_use]
+pub fn cover_url_path(url: &str) -> Option<PathBuf> {
+    let text = hex_decode(cover_url_name(url)?)?;
+    crate::key::parse(&format!("file:{text}"))?;
+    let path = PathBuf::from(text);
+    (path.is_absolute() && is_audio_file(&path)).then_some(path)
+}
+
+/// The media type of a picture by its first bytes, for the formats a webview shows. `None` for anything else, so a
+/// file that merely has a picture's name is never handed over.
+fn sniff_image(bytes: &[u8]) -> Option<&'static str> {
+    if bytes.starts_with(&[0xFF, 0xD8, 0xFF]) {
+        Some("image/jpeg")
+    } else if bytes.starts_with(&[0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A]) {
+        Some("image/png")
+    } else if bytes.starts_with(b"GIF8") {
+        Some("image/gif")
+    } else if bytes.len() > 12 && &bytes[..4] == b"RIFF" && &bytes[8..12] == b"WEBP" {
+        Some("image/webp")
+    } else {
+        None
+    }
+}
+
+/// The picture inside the file's tags: the front cover when it has one, else the first picture.
+fn embedded_cover(path: &Path) -> Option<Cover> {
+    let tagged = Probe::open(path)
+        .ok()?
+        .options(ParseOptions::new().read_cover_art(true))
+        .guess_file_type()
+        .ok()?
+        .read()
+        .ok()?;
+    let pictures: Vec<&lofty::picture::Picture> = tagged
+        .tags()
+        .iter()
+        .flat_map(|tag| tag.pictures())
+        .filter(|p| p.data().len() as u64 <= COVER_MAX_BYTES)
+        .collect();
+    let picked = pictures
+        .iter()
+        .find(|p| p.pic_type() == lofty::picture::PictureType::CoverFront)
+        .or_else(|| pictures.first())?;
+    let mime = sniff_image(picked.data())?;
+    Some(Cover {
+        mime,
+        bytes: picked.data().to_vec(),
+    })
+}
+
+/// A picture beside the song that is named like a cover (`cover.jpg`, `folder.png`, ...), by the best name first.
+fn folder_cover(path: &Path) -> Option<Cover> {
+    let names: Vec<(String, PathBuf)> = std::fs::read_dir(path.parent()?)
+        .ok()?
+        .flatten()
+        .filter(|e| e.file_type().is_ok_and(|t| t.is_file()))
+        .filter_map(|e| Some((e.file_name().to_str()?.to_lowercase(), e.path())))
+        .collect();
+    for wanted in FOLDER_COVERS {
+        let Some((_, file)) = names.iter().find(|(name, _)| name == wanted) else {
+            continue;
+        };
+        let Ok(meta) = std::fs::metadata(file) else {
+            continue;
+        };
+        if meta.len() > COVER_MAX_BYTES {
+            continue;
+        }
+        let Ok(bytes) = std::fs::read(file) else {
+            continue;
+        };
+        if let Some(mime) = sniff_image(&bytes) {
+            return Some(Cover { mime, bytes });
+        }
+    }
+    None
+}
+
+/// The cover of the song at `path`: the picture in its tags, else a cover picture in its folder. `None` when there is
+/// neither, or when `path` is not a song the player plays. Reads the file, so call it off the main thread.
+#[must_use]
+pub fn read_cover(path: &Path) -> Option<Cover> {
+    if !path.is_absolute() || !is_audio_file(path) || !path.is_file() {
+        return None;
+    }
+    // A broken file must not take the app down: the parser's panic ends up as a song without a cover.
+    std::panic::catch_unwind(|| embedded_cover(path))
+        .ok()
+        .flatten()
+        .or_else(|| folder_cover(path))
 }
 
 struct Tags {
@@ -233,7 +405,7 @@ pub fn track_for(path: &Path) -> TrackInfo {
             .map_or_else(|| "Unknown".into(), |s| s.to_string_lossy().into_owned()),
         artist: "Local file".into(),
         duration_ms: None,
-        thumbnail: None,
+        thumbnail: Some(cover_url(path, 0)),
     }
 }
 
@@ -324,6 +496,70 @@ mod tests {
 
     fn never() -> bool {
         false
+    }
+
+    #[test]
+    fn a_cover_address_names_the_song_in_hex_and_only_a_song_can_be_asked_for() {
+        let song = Path::new(if cfg!(windows) {
+            "C:\\Music\\Ünï cöde.flac"
+        } else {
+            "/music/Ünï cöde.flac"
+        });
+        let url = cover_url(song, 7);
+        assert!(is_cover_url(&url), "{url}");
+        assert!(url.ends_with("?v=7"), "{url}");
+        assert_eq!(cover_url_path(&url).as_deref(), Some(song));
+        // Not a song, not absolute, a network path, no name at all, not hex, or not ours: nothing is opened.
+        for name in [
+            hex_encode("/etc/passwd"),
+            hex_encode("relative/song.mp3"),
+            hex_encode("\\\\host\\share\\song.mp3"),
+            hex_encode("//host/share/song.mp3"),
+            String::new(),
+            "zz".into(),
+            "abc".into(),
+        ] {
+            let url = format!("{COVER_SCHEME}://localhost/{name}");
+            assert_eq!(cover_url_path(&url), None, "{url}");
+        }
+        assert_eq!(cover_url_path("https://i.ytimg.com/vi/x/hq.jpg"), None);
+        assert!(!is_cover_url("https://i.ytimg.com/vi/x/hq.jpg"));
+    }
+
+    #[test]
+    fn a_cover_is_the_picture_in_the_tags_else_one_named_like_a_cover_in_the_folder() {
+        let dir = scratch("cover");
+        let song = dir.join("song.wav");
+        std::fs::write(&song, wav(1)).unwrap();
+        assert_eq!(read_cover(&song), None, "no picture anywhere");
+
+        // A PNG header is enough for the picture to be recognised; a text file named cover.jpg is not a cover.
+        std::fs::write(dir.join("cover.jpg"), b"not a picture").unwrap();
+        assert_eq!(read_cover(&song), None);
+        let png = [0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A, 1, 2, 3];
+        std::fs::write(dir.join("Folder.PNG"), png).unwrap();
+        let found = read_cover(&song).unwrap();
+        assert_eq!(found.mime, "image/png");
+        assert_eq!(found.bytes, png);
+
+        // The better name wins.
+        let jpg = [0xFF, 0xD8, 0xFF, 0xE0, 9];
+        std::fs::write(dir.join("cover.jpg"), jpg).unwrap();
+        assert_eq!(read_cover(&song).unwrap().mime, "image/jpeg");
+
+        // Only songs have covers.
+        assert_eq!(read_cover(&dir.join("notes.txt")), None);
+        assert_eq!(read_cover(Path::new("relative.wav")), None);
+    }
+
+    #[test]
+    fn pictures_are_told_by_their_first_bytes() {
+        assert_eq!(sniff_image(&[0xFF, 0xD8, 0xFF, 0]), Some("image/jpeg"));
+        assert_eq!(sniff_image(b"GIF89a"), Some("image/gif"));
+        assert_eq!(sniff_image(b"RIFF\0\0\0\0WEBPVP8 "), Some("image/webp"));
+        assert_eq!(sniff_image(b"RIFF\0\0\0\0WAVEfmt "), None);
+        assert_eq!(sniff_image(b"<svg>"), None);
+        assert_eq!(sniff_image(b""), None);
     }
 
     #[test]
