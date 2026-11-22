@@ -2,6 +2,8 @@ import { library } from './library.svelte';
 
 /** How long an answer is trusted before the file is looked at again (a drive can come back, a file can be restored). */
 const FRESH_MS = 30_000;
+/** Coming back to the window looks again, but not more often than this. */
+const REFRESH_MS = 5_000;
 /** Keys asked about in one call. */
 const BATCH = 500;
 /** Rows ask one by one as they appear; asking waits this long so a whole list goes in one call. */
@@ -20,6 +22,18 @@ export class AvailabilityStore {
   #looked = new Map<string, number>();
   #wanted = new Set<string>();
   #timer: ReturnType<typeof setTimeout> | null = null;
+  #resetAt = 0;
+
+  constructor() {
+    // Coming back to the window (after restoring a file, or plugging the drive in) looks at the files again.
+    if (typeof window !== 'undefined') {
+      const back = () => {
+        if (document.visibilityState !== 'hidden' && Date.now() - this.#resetAt > REFRESH_MS) this.reset();
+      };
+      window.addEventListener('focus', back);
+      document.addEventListener('visibilitychange', back);
+    }
+  }
 
   isMissing(key: string): boolean {
     return this.missing.has(key);
@@ -37,6 +51,7 @@ export class AvailabilityStore {
   /** Forgets what was looked at, so the next rows that show a song look again (after a scan, or a folder came back). */
   reset(): void {
     this.#looked.clear();
+    this.#resetAt = Date.now();
     this.epoch++;
   }
 
