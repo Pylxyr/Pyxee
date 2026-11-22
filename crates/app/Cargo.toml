@@ -2,6 +2,7 @@
 name = "pyxee-app"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 description = "Pyxee desktop music player: the Tauri shell"
 repository.workspace = true
