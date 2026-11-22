@@ -213,6 +213,8 @@ mod imp {
 
     /// `IsSuspended` and `IsVisible` of the page, `None` for a value that could not be read.
     unsafe fn read_state(controller: &ICoreWebView2Controller) -> (Option<bool>, Option<bool>) {
+        // SAFETY: the caller is on the UI thread (the contract of this function), where WebView2 may be called.
+        unsafe {
         let suspended = controller
             .CoreWebView2()
             .ok()
@@ -229,12 +231,14 @@ mod imp {
                 .map(|()| flag.as_bool())
         };
         (suspended, visible)
+        }
     }
 
     /// The one-off check: still asleep is a debug line, awake again is a warning that names the likely causes.
     unsafe fn recheck(controller: &ICoreWebView2Controller, label: &str, since: Instant) {
         let secs = RECHECK_DELAY.as_secs();
-        match read_state(controller) {
+        // SAFETY: the caller is on the UI thread (the contract of this function).
+        match unsafe { read_state(controller) } {
             (Some(true), _) => {
                 log::debug!("{label} page: still asleep after {secs} s");
                 crate::commands::perf_note(&format!("{label} page: still asleep after {secs} s"));
@@ -254,6 +258,9 @@ mod imp {
         label: &str,
         generation: u64,
     ) {
+        // SAFETY: the caller is on the UI thread (the contract of this function), where WebView2 may be called; the
+        // completion handler below runs there too.
+        unsafe {
         let core = controller.CoreWebView2().ok();
         if active {
             if let Some(v3) = core.as_ref().and_then(|c| c.cast::<ICoreWebView2_3>().ok()) {
@@ -308,8 +315,8 @@ mod imp {
                         }
                         // What WebView2 reports now, next to what TrySuspend answered.
                         let mut flag = BOOL::default();
-                        // SAFETY: this handler runs on the UI thread, where WebView2 may be called.
-                        match unsafe { checked.IsSuspended(&mut flag) } {
+                        // Covered by the unsafe block of `change`: this handler runs on the UI thread.
+                        match checked.IsSuspended(&mut flag) {
                             Ok(()) => log::debug!(
                                 "{label} page: IsSuspended = {} after TrySuspend",
                                 flag.as_bool()
@@ -322,6 +329,7 @@ mod imp {
                     log::warn!("could not ask WebView2 to suspend the {label} page: {e}");
                 }
             }
+        }
         }
     }
 }
