@@ -1,13 +1,13 @@
 //! cpal output (WASAPI shared mode on Windows) fed by a producer thread through a ring buffer.
 //! The producer decodes; the audio callback only copies, so decoding never blocks the device.
 
-use anyhow::{bail, Context, Result};
-use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
+use anyhow::{Context, Result, bail};
 use cpal::SampleFormat;
+use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use pyxee_audio::gap::Gap;
 use pyxee_audio::gapless::{Event, GaplessSource, PreparedTrack};
-use ringbuf::traits::{Consumer, Observer, Producer, Split};
 use ringbuf::HeapRb;
+use ringbuf::traits::{Consumer, Observer, Producer, Split};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
@@ -76,7 +76,10 @@ impl Player {
             .context("no default output device")?;
         let cfg = device.default_output_config()?;
         if cfg.sample_format() != SampleFormat::F32 {
-            bail!("device default format is {:?}; the spike expects f32 (WASAPI shared mode normally is)", cfg.sample_format());
+            bail!(
+                "device default format is {:?}; the spike expects f32 (WASAPI shared mode normally is)",
+                cfg.sample_format()
+            );
         }
         if cfg.sample_rate() != rate {
             bail!("device rate changed between calls");

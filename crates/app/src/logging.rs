@@ -137,9 +137,9 @@ impl FileLogger {
                 .create(true)
                 .append(true)
                 .open(&self.path)
-            {
-                *file = fresh;
-            }
+        {
+            *file = fresh;
+        }
     }
 }
 

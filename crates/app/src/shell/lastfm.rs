@@ -22,8 +22,8 @@ use serde_json::Value;
 use std::collections::VecDeque;
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
-use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
 use std::sync::Mutex;
+use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 const API_URL: &str = "https://ws.audioscrobbler.com/2.0/";
@@ -517,10 +517,11 @@ fn clean_song(title: &str, artist: &str) -> (String, String) {
             let rest = rest.trim_start();
             if let Some(song) =
                 rest.strip_prefix(['-', '\u{2013}', '\u{2014}', ':', '|', '\u{ff5c}'])
-                && !song.trim().is_empty() {
-                    t = song.trim().to_owned();
-                    break;
-                }
+                && !song.trim().is_empty()
+            {
+                t = song.trim().to_owned();
+                break;
+            }
         }
     }
 
@@ -1532,7 +1533,13 @@ mod tests {
             )
         );
         // The song inside brackets, the artist before them.
-        assert_eq!(clean("YOASOBI\u{300c}\u{30a2}\u{30f3}\u{30b3}\u{30fc}\u{30eb}\u{300d}Official Music Video", "YOASOBI and Echoes"), want("\u{30a2}\u{30f3}\u{30b3}\u{30fc}\u{30eb}", "YOASOBI"));
+        assert_eq!(
+            clean(
+                "YOASOBI\u{300c}\u{30a2}\u{30f3}\u{30b3}\u{30fc}\u{30eb}\u{300d}Official Music Video",
+                "YOASOBI and Echoes"
+            ),
+            want("\u{30a2}\u{30f3}\u{30b3}\u{30fc}\u{30eb}", "YOASOBI")
+        );
         // Tags and channel decoration.
         assert_eq!(
             clean("Gurenge (Official Video)", "LiSA Official YouTube"),

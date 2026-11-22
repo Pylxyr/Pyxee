@@ -19,8 +19,8 @@
 )]
 
 use pyxee_lyrics::{
-    clean_artist, clean_title, current_index, fetch, from_lrclib, parse_lrc, pick_best, Candidate,
-    Line, Lyrics, Query,
+    Candidate, Line, Lyrics, Query, clean_artist, clean_title, current_index, fetch, from_lrclib,
+    parse_lrc, pick_best,
 };
 use std::io::{Read, Write};
 use std::net::TcpListener;

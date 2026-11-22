@@ -3,8 +3,8 @@
 //! beside it) is served the way a website's image would be. Only a song's own picture is ever read: the address is
 //! checked in `pyxee_sources::local::cover_url_path`, and nothing but a recognised picture leaves here.
 
-use pyxee_sources::local::{cover_url_path, read_cover, COVER_SCHEME};
-use tauri::http::{header, Response, StatusCode};
+use pyxee_sources::local::{COVER_SCHEME, cover_url_path, read_cover};
+use tauri::http::{Response, StatusCode, header};
 
 /// The answer to a request for `uri`: the cover, or 404 when the song has none (the window then shows its placeholder).
 pub fn answer(uri: &str) -> Response<Vec<u8>> {

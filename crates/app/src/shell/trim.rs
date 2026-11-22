@@ -130,7 +130,7 @@ fn trim_family() -> usize {
 
 #[cfg(windows)]
 mod sys {
-    use super::{family, Proc};
+    use super::{Proc, family};
     use std::ffi::c_void;
 
     type Handle = *mut c_void;

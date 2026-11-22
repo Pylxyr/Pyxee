@@ -4,9 +4,9 @@
 #![allow(clippy::needless_pass_by_value)]
 
 use super::dto::{LyricsDto, ShellSettingsDto, SleepSettingDto, SleepStateDto, SleepStatusDto};
-use super::{flyout, mini, sleep, ShellState};
+use super::{ShellState, flyout, mini, sleep};
 use crate::state::now_ms;
-use pyxee_lyrics::{fetch, Query, LRCLIB};
+use pyxee_lyrics::{LRCLIB, Query, fetch};
 use std::time::Duration;
 use tauri::{AppHandle, Manager};
 

@@ -662,12 +662,14 @@ mod tests {
             "{:?}",
             first.duration_ms
         );
-        assert!(found
-            .iter()
-            .find(|t| t.title == "broken")
-            .unwrap()
-            .duration_ms
-            .is_none());
+        assert!(
+            found
+                .iter()
+                .find(|t| t.title == "broken")
+                .unwrap()
+                .duration_ms
+                .is_none()
+        );
         assert_eq!(
             first.key(),
             key_for(&dir.join("Artist").join("01 First.wav"))

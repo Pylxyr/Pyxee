@@ -25,8 +25,8 @@ mod client;
 mod lrc;
 
 pub use client::{
-    fetch, from_lrclib, pick_best, retry_after_secs, Candidate, Cooldown, LyricsError, Query,
-    LRCLIB,
+    Candidate, Cooldown, LRCLIB, LyricsError, Query, fetch, from_lrclib, pick_best,
+    retry_after_secs,
 };
 pub use lrc::{clean_artist, clean_title, current_index, parse_lrc};
 

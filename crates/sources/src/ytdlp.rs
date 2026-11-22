@@ -4,11 +4,11 @@
 use crate::gate::{Gate, GateConfig};
 use crate::innertube;
 use crate::jsruntime::JsRuntime;
-use crate::suggest::{encode, Suggester};
+use crate::suggest::{Suggester, encode};
 use crate::ytmusic;
 use crate::{
-    classify_stderr, program_name, scrub, ExploreShelf, GenreInfo, MusicSource, SearchFilter,
-    SearchItem, SourceError, StreamInfo, StreamMeta, TrackInfo, UNKNOWN_ARTIST,
+    ExploreShelf, GenreInfo, MusicSource, SearchFilter, SearchItem, SourceError, StreamInfo,
+    StreamMeta, TrackInfo, UNKNOWN_ARTIST, classify_stderr, program_name, scrub,
 };
 use serde::Deserialize;
 use serde_json::Value;
@@ -41,8 +41,7 @@ use std::time::{Duration, Instant};
 ///
 /// If none matches, yt-dlp reports "Requested format is not available", which becomes a clear
 /// "no audio stream this player can decode" error instead of falling back to a codec we cannot play.
-pub const FORMAT_SELECTOR: &str =
-    "bestaudio[ext=webm][acodec=opus][protocol=https][audio_channels<=?2]/bestaudio[ext=m4a][acodec^=mp4a.40.2][protocol=https][audio_channels<=?2]/bestaudio[acodec~='^(opus|vorbis|flac|mp3|alac)$'][ext~='^(webm|ogg|opus|mka|flac|mp3|m4a)$'][protocol=https][audio_channels<=?2]";
+pub const FORMAT_SELECTOR: &str = "bestaudio[ext=webm][acodec=opus][protocol=https][audio_channels<=?2]/bestaudio[ext=m4a][acodec^=mp4a.40.2][protocol=https][audio_channels<=?2]/bestaudio[acodec~='^(opus|vorbis|flac|mp3|alac)$'][ext~='^(webm|ogg|opus|mka|flac|mp3|m4a)$'][protocol=https][audio_channels<=?2]";
 const RESULTS: usize = 20;
 /// How long a search answer is reused for the same query and filter (no request at all in that time).
 const SEARCH_CACHE_TTL: Duration = Duration::from_secs(10 * 60);
@@ -389,9 +388,11 @@ impl YtDlpSource {
                 &flat_args(search_target(query, SearchFilter::Videos)?, RESULTS),
             )?;
             if let Ok(richer) = parse_entries(&out)
-                && !richer.is_empty() && !too_bare(&richer) {
-                    return Ok(richer);
-                }
+                && !richer.is_empty()
+                && !too_bare(&richer)
+            {
+                return Ok(richer);
+            }
         }
         Ok(items)
     }
@@ -671,10 +672,10 @@ fn duration_secs(v: &Value) -> Option<f64> {
     if let Some(d) = v.get("duration").and_then(|d| {
         d.as_f64()
             .or_else(|| d.as_str().and_then(|s| s.trim().parse::<f64>().ok()))
-    })
-        && d > 0.0 {
-            return Some(d);
-        }
+    }) && d > 0.0
+    {
+        return Some(d);
+    }
     for key in ["duration_string", "duration_text", "length"] {
         let Some(s) = text(v, key) else { continue };
         let mut total = 0.0;
@@ -1269,12 +1270,16 @@ mod tests {
             search_target("low tide", SearchFilter::Songs).unwrap(),
             "https://music.youtube.com/search?q=low%20tide"
         );
-        assert!(search_target("x", SearchFilter::Playlists)
-            .unwrap()
-            .ends_with("sp=EgIQAw%253D%253D"));
-        assert!(search_target("x", SearchFilter::Artists)
-            .unwrap()
-            .ends_with("sp=EgIQAg%253D%253D"));
+        assert!(
+            search_target("x", SearchFilter::Playlists)
+                .unwrap()
+                .ends_with("sp=EgIQAw%253D%253D")
+        );
+        assert!(
+            search_target("x", SearchFilter::Artists)
+                .unwrap()
+                .ends_with("sp=EgIQAg%253D%253D")
+        );
         assert!(matches!(
             search_target("x", SearchFilter::Albums),
             Err(SourceError::Unsupported(_))
@@ -1288,10 +1293,12 @@ mod tests {
             (r.ext.as_str(), r.acodec.as_deref(), r.uploader.as_deref()),
             ("webm", Some("opus"), Some("C"))
         );
-        assert!(parse_dump(r#"{"id":"a"}"#)
-            .unwrap_err()
-            .to_string()
-            .contains("no stream url"));
+        assert!(
+            parse_dump(r#"{"id":"a"}"#)
+                .unwrap_err()
+                .to_string()
+                .contains("no stream url")
+        );
         assert!(matches!(parse_dump("not json"), Err(SourceError::Parse(_))));
     }
 
@@ -1324,7 +1331,12 @@ mod tests {
             c("ERROR: Sign in to confirm you're not a bot"),
             SourceError::RateLimited
         );
-        assert_eq!(c("ERROR: [youtube] x: Unable to download webpage: <urlopen error [Errno 11001] getaddrinfo failed>"), SourceError::Offline);
+        assert_eq!(
+            c(
+                "ERROR: [youtube] x: Unable to download webpage: <urlopen error [Errno 11001] getaddrinfo failed>"
+            ),
+            SourceError::Offline
+        );
         assert!(matches!(
             c("ERROR: [youtube] x: Video unavailable. This video has been removed"),
             SourceError::Unavailable(_)
@@ -2192,9 +2204,11 @@ esac"#,
                 .with_cookies(Cookies::Browser("firefox:default".into()))
                 .search("x", SearchFilter::All)
                 .unwrap();
-            assert!(std::fs::read_to_string(log)
-                .unwrap()
-                .starts_with("--ignore-config --cookies-from-browser firefox:default "));
+            assert!(
+                std::fs::read_to_string(log)
+                    .unwrap()
+                    .starts_with("--ignore-config --cookies-from-browser firefox:default ")
+            );
         }
 
         #[test]

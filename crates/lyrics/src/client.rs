@@ -1,9 +1,9 @@
-use crate::{clean_artist, clean_title, parse_lrc, Lyrics};
+use crate::{Lyrics, clean_artist, clean_title, parse_lrc};
 use serde::Deserialize;
 use std::fmt::Write as _;
 use std::time::Duration;
-use ureq::http::header::{RETRY_AFTER, USER_AGENT as USER_AGENT_HEADER};
 use ureq::http::StatusCode;
+use ureq::http::header::{RETRY_AFTER, USER_AGENT as USER_AGENT_HEADER};
 
 pub const LRCLIB: &str = "https://lrclib.net";
 /// LRCLIB asks clients to say who they are, with a version.

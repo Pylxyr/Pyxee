@@ -18,7 +18,7 @@
 
 use crate::ytmusic::parse_switch;
 use crate::{SourceError, StreamInfo, StreamMeta};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::time::Duration;
 use ureq::http::header::{CONTENT_TYPE, COOKIE, RANGE, USER_AGENT};
 

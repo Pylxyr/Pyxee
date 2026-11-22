@@ -15,7 +15,7 @@
 //! | `PYXEE_SIGNTOOL` | path to `signtool.exe` (default: newest in the Windows SDK, then PATH) |
 //! | `PYXEE_REQUIRE_SIGNING` | `1`: a build without a certificate is an error instead of an unsigned build |
 
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
@@ -53,7 +53,7 @@ impl Signing {
         let cert = match (file, thumb) {
             (None, None) => return Ok(None),
             (Some(_), Some(_)) => {
-                return Err("set PYXEE_SIGN_CERT_FILE or PYXEE_SIGN_THUMBPRINT, not both".into())
+                return Err("set PYXEE_SIGN_CERT_FILE or PYXEE_SIGN_THUMBPRINT, not both".into());
             }
             (Some(path), None) => Cert::File {
                 path: PathBuf::from(path),
@@ -170,9 +170,13 @@ pub fn merge(into: &mut Value, patch: &Value) {
 /// What to say when a build ends up unsigned.
 pub fn unsigned_notice(required: bool) -> Result<&'static str, &'static str> {
     if required {
-        Err("signing is required (PYXEE_REQUIRE_SIGNING=1) but no certificate is configured: set PYXEE_SIGN_CERT_FILE (+ PYXEE_SIGN_CERT_PASSWORD) or PYXEE_SIGN_THUMBPRINT")
+        Err(
+            "signing is required (PYXEE_REQUIRE_SIGNING=1) but no certificate is configured: set PYXEE_SIGN_CERT_FILE (+ PYXEE_SIGN_CERT_PASSWORD) or PYXEE_SIGN_THUMBPRINT",
+        )
     } else {
-        Ok("not signed (no PYXEE_SIGN_CERT_FILE / PYXEE_SIGN_THUMBPRINT): Windows SmartScreen will warn on first run")
+        Ok(
+            "not signed (no PYXEE_SIGN_CERT_FILE / PYXEE_SIGN_THUMBPRINT): Windows SmartScreen will warn on first run",
+        )
     }
 }
 
@@ -397,9 +401,10 @@ mod tests {
             .unwrap()
             .unwrap();
         let args = s.signtool_args(Path::new("a.exe"));
-        assert!(args
-            .windows(2)
-            .any(|w| w[0] == "/sha1" && w[1] == "ABCDEF0123456789ABCDEF0123456789ABCDEF01"));
+        assert!(
+            args.windows(2)
+                .any(|w| w[0] == "/sha1" && w[1] == "ABCDEF0123456789ABCDEF0123456789ABCDEF01")
+        );
         assert!(!args.contains(&"/p".to_string()));
     }
 
@@ -475,9 +480,11 @@ mod tests {
     #[test]
     fn an_unsigned_build_is_allowed_unless_signing_is_required() {
         assert!(unsigned_notice(false).unwrap().contains("SmartScreen"));
-        assert!(unsigned_notice(true)
-            .unwrap_err()
-            .contains("PYXEE_SIGN_CERT_FILE"));
+        assert!(
+            unsigned_notice(true)
+                .unwrap_err()
+                .contains("PYXEE_SIGN_CERT_FILE")
+        );
     }
 
     #[test]
@@ -541,29 +548,39 @@ mod tests {
     fn a_portable_zip_that_is_incomplete_or_wrong_is_refused() {
         let mut missing = good("P");
         missing.retain(|e| !e.ends_with("yt-dlp.exe"));
-        assert!(check_portable_entries("P", &missing)
-            .unwrap_err()
-            .contains("yt-dlp.exe"));
+        assert!(
+            check_portable_entries("P", &missing)
+                .unwrap_err()
+                .contains("yt-dlp.exe")
+        );
         let mut no_marker = good("P");
         no_marker.retain(|e| !e.ends_with(PORTABLE_MARKER));
-        assert!(check_portable_entries("P", &no_marker)
-            .unwrap_err()
-            .contains(PORTABLE_MARKER));
+        assert!(
+            check_portable_entries("P", &no_marker)
+                .unwrap_err()
+                .contains(PORTABLE_MARKER)
+        );
         let mut ff = good("P");
         ff.push("P/avcodec-61.dll".into());
-        assert!(check_portable_entries("P", &ff)
-            .unwrap_err()
-            .contains("libav"));
+        assert!(
+            check_portable_entries("P", &ff)
+                .unwrap_err()
+                .contains("libav")
+        );
         let mut data = good("P");
         data.push("P/data/library.db".into());
-        assert!(check_portable_entries("P", &data)
-            .unwrap_err()
-            .contains("data folder"));
+        assert!(
+            check_portable_entries("P", &data)
+                .unwrap_err()
+                .contains("data folder")
+        );
         let mut stray = good("P");
         stray.push("Other/x.txt".into());
-        assert!(check_portable_entries("P", &stray)
-            .unwrap_err()
-            .contains("not inside"));
+        assert!(
+            check_portable_entries("P", &stray)
+                .unwrap_err()
+                .contains("not inside")
+        );
     }
 
     #[test]

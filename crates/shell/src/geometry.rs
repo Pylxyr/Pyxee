@@ -1,7 +1,7 @@
 //! Remembering a window's place (the mini player) and making sure it is still reachable after monitors changed.
 
-use crate::anchor::clamp_into;
 use crate::Rect;
+use crate::anchor::clamp_into;
 
 /// A saved window is "still reachable" when at least this much of it (both ways) is on a monitor.
 const MIN_VISIBLE: i32 = 80;

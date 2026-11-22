@@ -25,7 +25,7 @@
 
 mod player;
 
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use pyxee_audio::decode::{LibavSource, SampleSource};
 use pyxee_audio::gap::find_gaps;
 use pyxee_audio::gapless::{Event, GaplessSource, PreparedTrack};
@@ -175,7 +175,7 @@ fn play_report(qa: &str, qb: &str, o: &Opts) -> Result<()> {
 
 /// Prints what the live search returns, with timings, so parsing can be checked against reality.
 fn search_report(query: &str, o: &Opts) -> Result<()> {
-    use pyxee_sources::{ytdlp::YtDlpSource, MusicSource, SearchFilter, SearchItem};
+    use pyxee_sources::{MusicSource, SearchFilter, SearchItem, ytdlp::YtDlpSource};
     let filter = match o.filter.as_str() {
         "songs" => SearchFilter::Songs,
         "videos" => SearchFilter::Videos,
@@ -220,7 +220,7 @@ fn search_report(query: &str, o: &Opts) -> Result<()> {
 
 /// Prints the autoplay-radio list for a track key.
 fn related_report(key: &str, o: &Opts) -> Result<()> {
-    use pyxee_sources::{ytdlp::YtDlpSource, MusicSource};
+    use pyxee_sources::{MusicSource, ytdlp::YtDlpSource};
     let t = Instant::now();
     let list = YtDlpSource::new(&o.ytdlp).related(key, 15)?;
     println!(
@@ -246,6 +246,8 @@ fn main() -> Result<()> {
         ("play", [qa, qb]) => play_report(qa, qb, &o).context("play spike failed"),
         ("search", [q]) => search_report(q, &o),
         ("related", [key]) => related_report(key, &o),
-        _ => bail!("usage: spike search \"<query>\" [--filter all|songs|videos|artists|playlists] | spike related yt:<id> | spike files <a> <b> | spike play \"<query 1>\" \"<query 2>\"  [--ytdlp path]"),
+        _ => bail!(
+            "usage: spike search \"<query>\" [--filter all|songs|videos|artists|playlists] | spike related yt:<id> | spike files <a> <b> | spike play \"<query 1>\" \"<query 2>\"  [--ytdlp path]"
+        ),
     }
 }

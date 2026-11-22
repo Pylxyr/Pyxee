@@ -23,7 +23,7 @@
 )]
 
 use pyxee_core::Track;
-use rusqlite::{params, Connection, OptionalExtension, Transaction};
+use rusqlite::{Connection, OptionalExtension, Transaction, params};
 use std::collections::HashSet;
 use std::path::Path;
 use thiserror::Error;
@@ -37,7 +37,9 @@ const QUICK_PICK_WINDOW_DAYS: i64 = 30;
 pub enum LibraryError {
     #[error("The library could not be read or written: {0}")]
     Db(#[from] rusqlite::Error),
-    #[error("This library was made by a newer Pyxee (database version {found}; this one understands up to {supported}). It was left exactly as it is; update Pyxee to use it.")]
+    #[error(
+        "This library was made by a newer Pyxee (database version {found}; this one understands up to {supported}). It was left exactly as it is; update Pyxee to use it."
+    )]
     NewerVersion { found: i64, supported: i64 },
     #[error("Playlist names must be 1 to {MAX_NAME_LEN} characters.")]
     InvalidName,
@@ -238,17 +240,18 @@ impl Library {
             });
         }
         let _ = conn.pragma_update(None, "journal_mode", "WAL"); // not supported for in-memory databases
-                                                                 // With WAL, NORMAL cannot corrupt the file; a power cut can only lose the last few plays, not break the library.
+        // With WAL, NORMAL cannot corrupt the file; a power cut can only lose the last few plays, not break the library.
         let _ = conn.pragma_update(None, "synchronous", "NORMAL");
         for (target, schema) in [(1, SCHEMA_V1), (2, SCHEMA_V2)] {
             if version < target
                 && let Err(e) = conn.execute_batch(&format!(
                     "BEGIN; {schema} PRAGMA user_version = {target}; COMMIT;"
-                )) {
-                    // A batch that stops half way leaves its transaction open: close it, so nothing is half made.
-                    let _ = conn.execute_batch("ROLLBACK");
-                    return Err(e.into());
-                }
+                ))
+            {
+                // A batch that stops half way leaves its transaction open: close it, so nothing is half made.
+                let _ = conn.execute_batch("ROLLBACK");
+                return Err(e.into());
+            }
         }
         Ok(Self { conn })
     }
@@ -300,7 +303,9 @@ impl Library {
 
     /// Most recently liked first.
     pub fn liked(&self) -> Result<Vec<Track>> {
-        let sql = format!("SELECT {TRACK_COLS} FROM likes l JOIN tracks t ON t.key = l.track_key ORDER BY l.liked_at DESC, t.key");
+        let sql = format!(
+            "SELECT {TRACK_COLS} FROM likes l JOIN tracks t ON t.key = l.track_key ORDER BY l.liked_at DESC, t.key"
+        );
         let mut st = self.conn.prepare(&sql)?;
         let rows = st.query_map([], |r| track_from_row(r, 0))?;
         Ok(rows.collect::<rusqlite::Result<_>>()?)

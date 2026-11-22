@@ -1,12 +1,12 @@
 //! Sleep timer glue: a one-second clock, the volume fade, and keeping the player's "stop after current" in step.
 
-use super::dto::{SleepStateDto, SleepStatusDto};
 use super::ShellState;
-use crate::state::{now_ms, publish, AppState};
+use super::dto::{SleepStateDto, SleepStatusDto};
+use crate::state::{AppState, now_ms, publish};
 use pyxee_core::Command;
 use pyxee_shell::sleep::SleepSetting;
-use std::sync::atomic::Ordering;
 use std::sync::OnceLock;
+use std::sync::atomic::Ordering;
 use std::time::Duration;
 use tauri::{AppHandle, Manager};
 
@@ -18,18 +18,20 @@ static CLOCK: OnceLock<std::thread::Thread> = OnceLock::new();
 const IDLE_WAIT: Duration = Duration::from_secs(300);
 
 pub fn spawn(app: AppHandle) {
-    let clock = std::thread::spawn(move || loop {
-        // Nothing to count down (no timer, or one that counts songs): rest instead of waking every second.
-        let timed = app
-            .state::<ShellState>()
-            .sleep
-            .lock()
-            .is_ok_and(|t| t.is_timed());
-        if timed {
-            std::thread::sleep(Duration::from_secs(1));
-            tick(&app);
-        } else {
-            std::thread::park_timeout(IDLE_WAIT);
+    let clock = std::thread::spawn(move || {
+        loop {
+            // Nothing to count down (no timer, or one that counts songs): rest instead of waking every second.
+            let timed = app
+                .state::<ShellState>()
+                .sleep
+                .lock()
+                .is_ok_and(|t| t.is_timed());
+            if timed {
+                std::thread::sleep(Duration::from_secs(1));
+                tick(&app);
+            } else {
+                std::thread::park_timeout(IDLE_WAIT);
+            }
         }
     });
     let _ = CLOCK.set(clock.thread().clone());

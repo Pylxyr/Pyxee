@@ -1,6 +1,6 @@
 //! The system tray icon: a menu, the tooltip, and a left click that opens the flyout.
 
-use super::{flyout, mini, show_main, ShellState};
+use super::{ShellState, flyout, mini, show_main};
 use pyxee_core::Command;
 use tauri::image::Image;
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};

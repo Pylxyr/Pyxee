@@ -3,7 +3,7 @@
 //! A format the build cannot open fails with `AudioError::Unsupported`.
 
 use crate::AudioError;
-use std::ffi::{c_int, c_void, CStr};
+use std::ffi::{CStr, c_int, c_void};
 use std::io::{Read, Seek, SeekFrom};
 use std::path::Path;
 
@@ -132,7 +132,7 @@ unsafe extern "C" fn seek_cb(ctx: *mut c_void, offset: i64, whence: c_int) -> i6
                 return Err(std::io::Error::new(
                     std::io::ErrorKind::InvalidInput,
                     "bad seek mode",
-                ))
+                ));
             }
         };
         c.src.seek(from).map(|p| p as i64)

@@ -20,7 +20,7 @@
     clippy::cast_precision_loss
 )]
 
-use pyxee_lyrics::{clean_artist, from_lrclib, Lyrics};
+use pyxee_lyrics::{Lyrics, clean_artist, from_lrclib};
 
 /// `to_lowercase` can change a string's byte length (`İ` is 2 bytes, its lower case `i̇` is 3), so offsets found in
 /// the lower-cased copy are not offsets into the original.

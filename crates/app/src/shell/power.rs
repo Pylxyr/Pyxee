@@ -5,7 +5,7 @@ use crate::dto::TransportDto;
 use crate::state::{now_ms, publish};
 use pyxee_core::Command;
 use pyxee_shell::power::{
-    decide, Action, NetState, NetworkWatcher, ResumeDetector, Situation, Trigger,
+    Action, NetState, NetworkWatcher, ResumeDetector, Situation, Trigger, decide,
 };
 use std::net::UdpSocket;
 use std::time::Duration;

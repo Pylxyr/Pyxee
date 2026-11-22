@@ -6,16 +6,16 @@
 //! channel tagged with a generation, so results for a track the user already skipped are dropped.
 
 use crate::audio_cache::AudioCache;
+use pyxee_audio::AudioError;
 use pyxee_audio::decode::{LibavSource, SampleSource};
 use pyxee_audio::gapless::{FailKind, PreparedTrack};
 use pyxee_audio::http::{CompletionHook, HttpRangeSource};
 use pyxee_audio::pipeline::{Consumer, PipeEvent, Pipeline, Volume};
-use pyxee_audio::AudioError;
 use pyxee_core::{Command, Effect, EngineEvent, EntryId, Failure, Heard, Track, TrackDetails};
 use pyxee_sources::{MusicSource, SourceError, StreamInfo, StreamMeta, TrackInfo};
 use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::sync::mpsc::{channel, Receiver, Sender};
+use std::sync::mpsc::{Receiver, Sender, channel};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -878,10 +878,12 @@ impl Engine {
                 self.host.engine_event(EngineEvent::Stalled { id });
             }
             if let Some((sid, since)) = self.stalled_since
-                && underruns == self.seen_underruns && now.duration_since(since) > RECOVER_AFTER {
-                    self.stalled_since = None;
-                    self.host.engine_event(EngineEvent::Recovered { id: sid });
-                }
+                && underruns == self.seen_underruns
+                && now.duration_since(since) > RECOVER_AFTER
+            {
+                self.stalled_since = None;
+                self.host.engine_event(EngineEvent::Recovered { id: sid });
+            }
             self.report_position_if_new_second();
         }
         if underruns != self.seen_underruns {
@@ -919,9 +921,10 @@ fn resolve_cached(
 ) -> Result<StreamInfo, SourceError> {
     if !refresh
         && let Some((s, at)) = cache.lock().ok().and_then(|c| c.get(key).cloned())
-            && at.elapsed() < URL_TTL {
-                return Ok(s);
-            }
+        && at.elapsed() < URL_TTL
+    {
+        return Ok(s);
+    }
     let s = source.resolve_stream(key)?;
     log::info!(
         "resolved {key}: ext={} acodec={:?} abr={:?} from {}",

@@ -6,8 +6,8 @@
 //! thread never waits for the producer: `push` and `clear_queued` leave a note in `pending` for it to apply, and `flush`
 //! cancels a read that is waiting for the network (see `Pipeline::cancel_token`).
 
-use crate::gapless::{Event, FailKind, GaplessSource, PreparedTrack};
 use crate::CHANNELS;
+use crate::gapless::{Event, FailKind, GaplessSource, PreparedTrack};
 use pyxee_core::{EntryId, Heard, HeardTracker};
 use std::collections::VecDeque;
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, AtomicUsize, Ordering};

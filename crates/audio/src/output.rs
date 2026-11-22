@@ -1,11 +1,11 @@
 //! The real output device (WASAPI shared mode on Windows, through cpal).
 
-use crate::pipeline::Consumer;
 use crate::AudioError;
+use crate::pipeline::Consumer;
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{SampleFormat, Stream};
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 /// An output device as the system knows it. The id is cpal's stable device id (the same for the same device across
 /// restarts, and different for two devices that happen to share a name); the name is what the listener sees.

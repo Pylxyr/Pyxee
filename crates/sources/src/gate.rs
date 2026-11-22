@@ -447,8 +447,8 @@ impl Gate {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::Arc;
+    use std::sync::atomic::{AtomicUsize, Ordering};
 
     fn cfg(gap_ms: u64, cooldown_ms: u64) -> GateConfig {
         GateConfig {
@@ -784,8 +784,8 @@ mod tests {
 
     #[test]
     fn a_waiting_caller_that_is_no_longer_wanted_leaves_without_running() {
-        use std::sync::atomic::{AtomicBool, Ordering};
         use std::sync::Arc;
+        use std::sync::atomic::{AtomicBool, Ordering};
         let gate = Arc::new(Gate::new(GateConfig::NONE));
         let stale = Arc::new(AtomicBool::new(false));
         let ran = Arc::new(AtomicBool::new(false));

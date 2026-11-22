@@ -813,7 +813,11 @@ fn serve(body: Vec<u8>, allow: usize, healthy: Arc<AtomicBool>, delay: Duration)
                 .unwrap_or(body.len() - 1)
                 .min(body.len() - 1);
             let part = &body[from..=to];
-            let head = format!("HTTP/1.1 206 Partial Content\r\nContent-Range: bytes {from}-{to}/{}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n", body.len(), part.len());
+            let head = format!(
+                "HTTP/1.1 206 Partial Content\r\nContent-Range: bytes {from}-{to}/{}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                body.len(),
+                part.len()
+            );
             let _ = s.write_all(head.as_bytes());
             let _ = s.write_all(part);
         }
@@ -1352,13 +1356,18 @@ fn the_wording_names_the_song_and_the_reason() {
     use crate::engine::{early_end_notice, skipped_notice};
     use pyxee_core::Failure;
     let n = skipped_notice("My Song", &Failure::Decode, false);
-    assert_eq!(n, "\u{201c}My Song\u{201d} can't be played, so it was skipped: its audio could not be read. The log has details.");
-    assert!(skipped_notice(
-        "S",
-        &Failure::Other("the tool could not be started".into()),
-        true
-    )
-    .contains("the tool could not be started"));
+    assert_eq!(
+        n,
+        "\u{201c}My Song\u{201d} can't be played, so it was skipped: its audio could not be read. The log has details."
+    );
+    assert!(
+        skipped_notice(
+            "S",
+            &Failure::Other("the tool could not be started".into()),
+            true
+        )
+        .contains("the tool could not be started")
+    );
     assert!(early_end_notice("S", 41_000, 200_000).contains("0:41 of 3:20"));
 }
 

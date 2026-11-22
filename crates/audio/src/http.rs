@@ -13,8 +13,8 @@ use std::io::{self, Read, Seek, SeekFrom};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Condvar, Mutex, MutexGuard, OnceLock, PoisonError};
 use std::time::{Duration, Instant};
-use ureq::http::header::{HeaderName, CONTENT_RANGE, RANGE};
 use ureq::http::StatusCode;
+use ureq::http::header::{CONTENT_RANGE, HeaderName, RANGE};
 
 const CHUNK: u64 = 512 * 1024;
 /// Files up to this size are downloaded completely; bigger ones only around the playhead.
@@ -262,12 +262,14 @@ fn download_loop(shared: Arc<Shared>, f: Fetcher, mut hook: Option<CompletionHoo
                 st.chunks.insert(idx, Arc::new(data));
                 shared.wake.notify_all();
                 // The last chunk makes the song whole. The hook runs without the lock: it writes a file.
-                if !big && st.chunks.len() as u64 == total
-                    && let Some(done) = hook.take() {
-                        let all: Vec<Arc<Vec<u8>>> = st.chunks.values().cloned().collect();
-                        drop(st);
-                        done(&all);
-                    }
+                if !big
+                    && st.chunks.len() as u64 == total
+                    && let Some(done) = hook.take()
+                {
+                    let all: Vec<Arc<Vec<u8>>> = st.chunks.values().cloned().collect();
+                    drop(st);
+                    done(&all);
+                }
             }
             Err(FetchError::Fatal(code)) => {
                 shared.lock().fatal = Some(code);
@@ -385,9 +387,10 @@ impl HttpRangeSource {
     /// The chunk `idx`, waiting for the download if it is not here yet.
     fn chunk_for(&mut self, idx: u64) -> io::Result<Arc<Vec<u8>>> {
         if let Some((i, data)) = &self.current
-            && *i == idx {
-                return Ok(Arc::clone(data));
-            }
+            && *i == idx
+        {
+            return Ok(Arc::clone(data));
+        }
         let mut st = self.shared.lock();
         if st.cursor != idx {
             st.cursor = idx;

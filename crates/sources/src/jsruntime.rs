@@ -258,9 +258,11 @@ mod tests {
         let files = [("bin", exe("deno"))];
         let path = path_of(&["bin"]);
         for v in ["none", "OFF"] {
-            assert!(JsRuntime::resolve(Some(v), Some(&path), &only(&files))
-                .args()
-                .is_empty());
+            assert!(
+                JsRuntime::resolve(Some(v), Some(&path), &only(&files))
+                    .args()
+                    .is_empty()
+            );
         }
     }
 
@@ -274,9 +276,11 @@ mod tests {
             ["--js-runtimes", "node"],
             "falls back to detection"
         );
-        assert!(JsRuntime::resolve(Some("python"), None, &|_| false)
-            .args()
-            .is_empty());
+        assert!(
+            JsRuntime::resolve(Some("python"), None, &|_| false)
+                .args()
+                .is_empty()
+        );
     }
 
     #[test]

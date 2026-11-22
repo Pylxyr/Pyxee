@@ -3,16 +3,16 @@
 
 use crate::engine::{Engine, Host};
 use crate::recorder::HistoryRecorder;
-use crate::sim::{catalog, Sim, SimOut, TICK_MS};
-use crate::state::{now_ms, publish, with_library, AppState};
-use pyxee_audio::output::{DeviceIdent, DeviceInfo, Output};
+use crate::sim::{Sim, SimOut, TICK_MS, catalog};
+use crate::state::{AppState, now_ms, publish, with_library};
 use pyxee_audio::AudioError;
+use pyxee_audio::output::{DeviceIdent, DeviceInfo, Output};
 use pyxee_core::{Command, Effect, EngineEvent, Failure};
 use pyxee_shell::audiodev::{
     Action as DeviceAction, DeviceRef, DeviceWatch, Observation, UserEffect,
 };
 use std::collections::VecDeque;
-use std::sync::mpsc::{channel, Receiver, RecvTimeoutError, Sender};
+use std::sync::mpsc::{Receiver, RecvTimeoutError, Sender, channel};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -68,9 +68,10 @@ impl AppHost {
                     .get(*id)
                     .map(|entry| entry.track.clone());
                 if let Some(track) = track
-                    && let Err(err) = with_library(&self.app, |l| l.refresh_track(&track)) {
-                        log::warn!("could not update a saved song: {err}");
-                    }
+                    && let Err(err) = with_library(&self.app, |l| l.refresh_track(&track))
+                {
+                    log::warn!("could not update a saved song: {err}");
+                }
             }
             _ => {}
         }

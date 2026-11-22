@@ -162,11 +162,11 @@ mod imp {
     use std::time::{Duration, Instant};
     use tauri::WebviewWindow;
     use webview2_com::Microsoft::Web::WebView2::Win32::{
-        ICoreWebView2Controller, ICoreWebView2_19, ICoreWebView2_3,
         COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW, COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_NORMAL,
+        ICoreWebView2_3, ICoreWebView2_19, ICoreWebView2Controller,
     };
     use webview2_com::TrySuspendCompletedHandler;
-    use windows_core::{Interface, BOOL};
+    use windows_core::{BOOL, Interface};
 
     /// How long after a page was put to sleep it is checked once more (is it still suspended, and if not, why).
     const RECHECK_DELAY: Duration = Duration::from_secs(5);
@@ -215,22 +215,22 @@ mod imp {
     unsafe fn read_state(controller: &ICoreWebView2Controller) -> (Option<bool>, Option<bool>) {
         // SAFETY: the caller is on the UI thread (the contract of this function), where WebView2 may be called.
         unsafe {
-        let suspended = controller
-            .CoreWebView2()
-            .ok()
-            .and_then(|c| c.cast::<ICoreWebView2_3>().ok())
-            .and_then(|v3| {
-                let mut flag = BOOL::default();
-                v3.IsSuspended(&mut flag).ok().map(|()| flag.as_bool())
-            });
-        let visible = {
-            let mut flag = BOOL::default();
-            controller
-                .IsVisible(&mut flag)
+            let suspended = controller
+                .CoreWebView2()
                 .ok()
-                .map(|()| flag.as_bool())
-        };
-        (suspended, visible)
+                .and_then(|c| c.cast::<ICoreWebView2_3>().ok())
+                .and_then(|v3| {
+                    let mut flag = BOOL::default();
+                    v3.IsSuspended(&mut flag).ok().map(|()| flag.as_bool())
+                });
+            let visible = {
+                let mut flag = BOOL::default();
+                controller
+                    .IsVisible(&mut flag)
+                    .ok()
+                    .map(|()| flag.as_bool())
+            };
+            (suspended, visible)
         }
     }
 
@@ -261,75 +261,80 @@ mod imp {
         // SAFETY: the caller is on the UI thread (the contract of this function), where WebView2 may be called; the
         // completion handler below runs there too.
         unsafe {
-        let core = controller.CoreWebView2().ok();
-        if active {
-            if let Some(v3) = core.as_ref().and_then(|c| c.cast::<ICoreWebView2_3>().ok()) {
-                let _ = v3.Resume();
-            }
-            if let Err(e) = controller.SetIsVisible(true) {
-                log::warn!("could not show the {label} page again: {e}");
-            }
-            if let Some(v19) = core
-                .as_ref()
-                .and_then(|c| c.cast::<ICoreWebView2_19>().ok())
-            {
-                let _ =
-                    v19.SetMemoryUsageTargetLevel(COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_NORMAL);
-            }
-            log::debug!("{label} page: awake");
-            crate::commands::perf_note(&format!("{label} page: resumed"));
-        } else {
-            if let Err(e) = controller.SetIsVisible(false) {
-                log::warn!("could not mark the {label} page hidden: {e}");
-                return; // a visible page cannot be suspended
-            }
-            if let Some(v19) = core
-                .as_ref()
-                .and_then(|c| c.cast::<ICoreWebView2_19>().ok())
-            {
-                let _ = v19.SetMemoryUsageTargetLevel(COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW);
-            }
-            if let Some(v3) = core.as_ref().and_then(|c| c.cast::<ICoreWebView2_3>().ok()) {
-                let label_owned = label.to_string();
-                let checked = v3.clone();
-                let done =
-                    TrySuspendCompletedHandler::create(Box::new(move |result, suspended| {
-                        let label = &label_owned;
-                        // WebView2 may refuse (see its "Sleeping Tabs" conditions); say so instead of claiming it slept.
-                        match result {
-                            Ok(()) if suspended => {
-                                log::debug!("{label} page: asleep");
-                                crate::commands::perf_note(&format!(
-                                    "{label} page: suspended (WebView2 confirmed)"
-                                ));
-                                // Give the memory back at once instead of when WebView2 gets round to it (see trim.rs).
-                                let owned = label.to_string();
-                                let wanted = label.to_string();
-                                crate::shell::trim::trim_after_sleep(
-                                    owned,
-                                    Box::new(move || super::is_current(&wanted, generation)),
-                                );
+            let core = controller.CoreWebView2().ok();
+            if active {
+                if let Some(v3) = core.as_ref().and_then(|c| c.cast::<ICoreWebView2_3>().ok()) {
+                    let _ = v3.Resume();
+                }
+                if let Err(e) = controller.SetIsVisible(true) {
+                    log::warn!("could not show the {label} page again: {e}");
+                }
+                if let Some(v19) = core
+                    .as_ref()
+                    .and_then(|c| c.cast::<ICoreWebView2_19>().ok())
+                {
+                    let _ = v19
+                        .SetMemoryUsageTargetLevel(COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_NORMAL);
+                }
+                log::debug!("{label} page: awake");
+                crate::commands::perf_note(&format!("{label} page: resumed"));
+            } else {
+                if let Err(e) = controller.SetIsVisible(false) {
+                    log::warn!("could not mark the {label} page hidden: {e}");
+                    return; // a visible page cannot be suspended
+                }
+                if let Some(v19) = core
+                    .as_ref()
+                    .and_then(|c| c.cast::<ICoreWebView2_19>().ok())
+                {
+                    let _ =
+                        v19.SetMemoryUsageTargetLevel(COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW);
+                }
+                if let Some(v3) = core.as_ref().and_then(|c| c.cast::<ICoreWebView2_3>().ok()) {
+                    let label_owned = label.to_string();
+                    let checked = v3.clone();
+                    let done =
+                        TrySuspendCompletedHandler::create(Box::new(move |result, suspended| {
+                            let label = &label_owned;
+                            // WebView2 may refuse (see its "Sleeping Tabs" conditions); say so instead of claiming it slept.
+                            match result {
+                                Ok(()) if suspended => {
+                                    log::debug!("{label} page: asleep");
+                                    crate::commands::perf_note(&format!(
+                                        "{label} page: suspended (WebView2 confirmed)"
+                                    ));
+                                    // Give the memory back at once instead of when WebView2 gets round to it (see trim.rs).
+                                    let owned = label.to_string();
+                                    let wanted = label.to_string();
+                                    crate::shell::trim::trim_after_sleep(
+                                        owned,
+                                        Box::new(move || super::is_current(&wanted, generation)),
+                                    );
+                                }
+                                Ok(()) => {
+                                    log::warn!("{label} page: WebView2 declined to suspend it")
+                                }
+                                Err(e) => log::warn!("{label} page: could not be suspended: {e}"),
                             }
-                            Ok(()) => log::warn!("{label} page: WebView2 declined to suspend it"),
-                            Err(e) => log::warn!("{label} page: could not be suspended: {e}"),
-                        }
-                        // What WebView2 reports now, next to what TrySuspend answered.
-                        let mut flag = BOOL::default();
-                        // Covered by the unsafe block of `change`: this handler runs on the UI thread.
-                        match checked.IsSuspended(&mut flag) {
-                            Ok(()) => log::debug!(
-                                "{label} page: IsSuspended = {} after TrySuspend",
-                                flag.as_bool()
-                            ),
-                            Err(e) => log::debug!("{label} page: could not read IsSuspended: {e}"),
-                        }
-                        Ok(())
-                    }));
-                if let Err(e) = v3.TrySuspend(&done) {
-                    log::warn!("could not ask WebView2 to suspend the {label} page: {e}");
+                            // What WebView2 reports now, next to what TrySuspend answered.
+                            let mut flag = BOOL::default();
+                            // Covered by the unsafe block of `change`: this handler runs on the UI thread.
+                            match checked.IsSuspended(&mut flag) {
+                                Ok(()) => log::debug!(
+                                    "{label} page: IsSuspended = {} after TrySuspend",
+                                    flag.as_bool()
+                                ),
+                                Err(e) => {
+                                    log::debug!("{label} page: could not read IsSuspended: {e}")
+                                }
+                            }
+                            Ok(())
+                        }));
+                    if let Err(e) = v3.TrySuspend(&done) {
+                        log::warn!("could not ask WebView2 to suspend the {label} page: {e}");
+                    }
                 }
             }
-        }
         }
     }
 }

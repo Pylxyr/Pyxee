@@ -1,6 +1,6 @@
 //! Shared app state and the one place that turns player changes into UI events and engine work.
 
-use crate::dto::{state_dto, BackdropDto, PlayerStateDto, PositionDto};
+use crate::dto::{BackdropDto, PlayerStateDto, PositionDto, state_dto};
 use crate::library_service::LibraryService;
 use crate::session;
 use pyxee_core::{Effect, Player};

@@ -45,13 +45,14 @@ fn locate_in(
     if let Some(dir) = app_dir
         && let Some(p) =
             first_file(&dir, &plain).or_else(|| first_file(&dir.join("binaries"), &plain))
-        {
-            return p;
-        }
+    {
+        return p;
+    }
     if let Some(dir) = dev_dir
-        && let Some(p) = first_file(&dir, &sidecar).or_else(|| first_file(&dir, &plain)) {
-            return p;
-        }
+        && let Some(p) = first_file(&dir, &sidecar).or_else(|| first_file(&dir, &plain))
+    {
+        return p;
+    }
     PathBuf::from(name) // left to the OS to find on PATH
 }
 

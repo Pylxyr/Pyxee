@@ -21,8 +21,8 @@
     clippy::cast_precision_loss
 )]
 
-use pyxee_audio::http::HttpRangeSource;
 use pyxee_audio::AudioError;
+use pyxee_audio::http::HttpRangeSource;
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::path::{Path, PathBuf};

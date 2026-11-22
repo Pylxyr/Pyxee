@@ -21,10 +21,10 @@
     clippy::cast_precision_loss
 )]
 
+use pyxee_audio::AudioError;
 use pyxee_audio::decode::SampleSource;
 use pyxee_audio::gapless::{Event, GaplessSource, PreparedTrack};
 use pyxee_audio::pipeline::{PipeEvent, Pipeline, Volume};
-use pyxee_audio::AudioError;
 use pyxee_core::{EntryId, Heard};
 use std::sync::mpsc::channel;
 use std::time::{Duration, Instant};

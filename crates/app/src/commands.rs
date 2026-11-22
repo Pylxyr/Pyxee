@@ -2,13 +2,13 @@
 #![allow(clippy::needless_pass_by_value)]
 
 use crate::dto::{
-    state_dto, AddResultDto, CommandDto, ExploreShelfDto, FilterInfoDto, GenreDto, HistoryItemDto,
-    HomeDto, LibrarySnapshotDto, LogInfoDto, PerfReportDto, PlayerStateDto, PlaylistDto,
+    AddResultDto, CommandDto, ExploreShelfDto, FilterInfoDto, GenreDto, HistoryItemDto, HomeDto,
+    LibrarySnapshotDto, LogInfoDto, PerfReportDto, PlayerStateDto, PlaylistDto,
     PlaylistSnapshotDto, RemovedEntryDto, SearchErrorDto, SearchFilterDto, SearchItemDto,
-    SearchResponseDto, TrackDto, WindowInfoDto,
+    SearchResponseDto, TrackDto, WindowInfoDto, state_dto,
 };
 use crate::sim::catalog;
-use crate::state::{now_ms, publish, with_library, AppState};
+use crate::state::{AppState, now_ms, publish, with_library};
 use tauri::{AppHandle, State};
 
 #[tauri::command]

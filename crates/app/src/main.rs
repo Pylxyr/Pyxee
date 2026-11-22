@@ -45,7 +45,7 @@ use pyxee_core::Player;
 use pyxee_sources::innertube;
 use pyxee_sources::jsruntime::JsRuntime;
 use pyxee_sources::local::LocalSource;
-use pyxee_sources::ytdlp::{Cookies, YtDlpSource, FORMAT_SELECTOR};
+use pyxee_sources::ytdlp::{Cookies, FORMAT_SELECTOR, YtDlpSource};
 use pyxee_sources::ytmusic;
 use pyxee_sources::{CompositeSource, MusicSource};
 use state::AppState;
@@ -95,7 +95,9 @@ fn with_suggestions_setting(source: YtDlpSource, allowed: bool) -> YtDlpSource {
     if allowed {
         source
     } else {
-        log::info!("search suggestions are off (the default; PYXEE_SUGGESTIONS=1 turns them on in a developer build)");
+        log::info!(
+            "search suggestions are off (the default; PYXEE_SUGGESTIONS=1 turns them on in a developer build)"
+        );
         source.without_suggestions()
     }
 }
@@ -145,11 +147,7 @@ const BEHAVIOUR_VARS: [&str; 12] = [
 
 /// The variables to drop from the environment before anything reads it.
 fn vars_to_ignore(dev_tools: bool) -> &'static [&'static str] {
-    if dev_tools {
-        &[]
-    } else {
-        &BEHAVIOUR_VARS
-    }
+    if dev_tools { &[] } else { &BEHAVIOUR_VARS }
 }
 
 fn main() {
@@ -277,10 +275,12 @@ fn main() {
                 let handle = app.handle().clone();
                 std::thread::Builder::new()
                     .name("session-writer".into())
-                    .spawn(move || loop {
-                        if save_signal.wait(std::time::Duration::from_secs(3600)) {
-                            std::thread::sleep(std::time::Duration::from_millis(250));
-                            handle.state::<AppState>().save_session();
+                    .spawn(move || {
+                        loop {
+                            if save_signal.wait(std::time::Duration::from_secs(3600)) {
+                                std::thread::sleep(std::time::Duration::from_millis(250));
+                                handle.state::<AppState>().save_session();
+                            }
                         }
                     })
                     .ok();
@@ -391,8 +391,10 @@ mod main_tests {
         }
         assert!(ignored.iter().all(|n| n.starts_with("PYXEE_")));
         // build-time values are baked in, not read at run time
-        assert!(!ignored
-            .iter()
-            .any(|n| n.contains("DISCORD") || n.contains("LASTFM") || n.contains("UPDATE")));
+        assert!(
+            !ignored
+                .iter()
+                .any(|n| n.contains("DISCORD") || n.contains("LASTFM") || n.contains("UPDATE"))
+        );
     }
 }

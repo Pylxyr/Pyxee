@@ -23,8 +23,8 @@
 use pyxee_audio::http::HttpRangeSource;
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::net::TcpListener;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
 /// A range server that can be switched "offline": while the flag is set it drops every connection unanswered.

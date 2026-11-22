@@ -23,14 +23,14 @@
     clippy::float_cmp
 )]
 
+use pyxee_audio::AudioError;
 use pyxee_audio::decode::{LibavSource, SampleSource};
 use pyxee_audio::gap::find_gaps;
 use pyxee_audio::gapless::{FailKind, PreparedTrack};
-use pyxee_audio::pipeline::{gain_for_percent, Consumer, PipeEvent, Pipeline, Volume};
-use pyxee_audio::AudioError;
+use pyxee_audio::pipeline::{Consumer, PipeEvent, Pipeline, Volume, gain_for_percent};
 use pyxee_core::{EntryId, Heard};
 use std::path::{Path, PathBuf};
-use std::sync::mpsc::{channel, Receiver};
+use std::sync::mpsc::{Receiver, channel};
 use std::thread::sleep;
 use std::time::{Duration, Instant};
 

@@ -2,9 +2,9 @@
 //! monitors change.
 
 use super::ShellState;
+use pyxee_shell::Rect;
 use pyxee_shell::anchor::clamp_into;
 use pyxee_shell::geometry::fit_on_screen;
-use pyxee_shell::Rect;
 use std::sync::atomic::Ordering;
 use std::time::{Duration, Instant};
 use tauri::{

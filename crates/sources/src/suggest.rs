@@ -1,7 +1,7 @@
 //! Live search suggestions from Google's public suggest endpoint (the one `YouTube`'s search box uses).
 
-use crate::gate::escalate;
 use crate::SourceError;
+use crate::gate::escalate;
 use std::collections::HashMap;
 use std::fmt::Write as _;
 use std::sync::{Mutex, MutexGuard, PoisonError};
@@ -135,15 +135,16 @@ impl State {
     fn store(&mut self, key: String, list: Vec<String>, now: Instant) {
         self.cache
             .retain(|_, (at, _)| now.saturating_duration_since(*at) < CACHE_TTL);
-        if self.cache.len() >= CACHE_MAX && !self.cache.contains_key(&key)
+        if self.cache.len() >= CACHE_MAX
+            && !self.cache.contains_key(&key)
             && let Some(oldest) = self
                 .cache
                 .iter()
                 .min_by_key(|(_, (at, _))| *at)
                 .map(|(k, _)| k.clone())
-            {
-                self.cache.remove(&oldest);
-            }
+        {
+            self.cache.remove(&oldest);
+        }
         self.cache.insert(key, (now, list));
     }
 

@@ -16,7 +16,7 @@ use crate::{
     AlbumInfo, ExploreShelf, GenreInfo, PlaylistInfo, SearchItem, SourceError, TrackInfo,
     UNKNOWN_ARTIST,
 };
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::collections::HashSet;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use ureq::http::header::{CONTENT_TYPE, COOKIE, ORIGIN, USER_AGENT as USER_AGENT_HEADER};
@@ -509,9 +509,10 @@ pub fn parse_explore(body: &str) -> Result<Vec<ExploreShelf>, SourceError> {
                 None
             };
             if let Some(t) = track
-                && !tracks.iter().any(|x| x.key == t.key) {
-                    tracks.push(t);
-                }
+                && !tracks.iter().any(|x| x.key == t.key)
+            {
+                tracks.push(t);
+            }
         }
         let id = format!("explore-{i}");
         let title = title.to_string();
@@ -624,15 +625,17 @@ pub fn parse_genre(body: &str) -> Result<Vec<ExploreShelf>, SourceError> {
                         playlists.push(p);
                     }
                 } else if let Some(t) = video_from_card(card)
-                    && !tracks.iter().any(|x| x.key == t.key) {
-                        tracks.push(t);
-                    }
+                    && !tracks.iter().any(|x| x.key == t.key)
+                {
+                    tracks.push(t);
+                }
             } else if let Some(t) = item
                 .get("musicResponsiveListItemRenderer")
                 .and_then(song_from_row)
-                && !tracks.iter().any(|x| x.key == t.key) {
-                    tracks.push(t);
-                }
+                && !tracks.iter().any(|x| x.key == t.key)
+            {
+                tracks.push(t);
+            }
         }
         let id = format!("genre-{i}");
         let title = title.to_string();
@@ -923,7 +926,7 @@ fn enlarge(url: &str) -> String {
 pub(crate) mod testserver {
     use std::io::{Read, Write};
     use std::net::TcpListener;
-    use std::sync::mpsc::{channel, Receiver};
+    use std::sync::mpsc::{Receiver, channel};
 
     /// A one-request local HTTP server: answers with `status` and `body`, and reports the request it got
     /// (head and body as one string). Returns the URL to call.
@@ -1353,11 +1356,13 @@ mod tests {
                 assert_eq!(tracks[0].title, "Neon Harbor");
                 assert_eq!(tracks[0].artist, "Lowtide");
                 assert_eq!(tracks[0].duration_ms, None);
-                assert!(tracks[0]
-                    .thumbnail
-                    .as_deref()
-                    .unwrap()
-                    .contains("w544-h544"));
+                assert!(
+                    tracks[0]
+                        .thumbnail
+                        .as_deref()
+                        .unwrap()
+                        .contains("w544-h544")
+                );
             }
             other => panic!("not a songs shelf: {other:?}"),
         }
@@ -1640,10 +1645,12 @@ mod tests {
             "the type label is not repeated"
         );
         assert_eq!(playlists[1].subtitle, "");
-        assert!(playlists[0]
-            .thumbnail
-            .as_deref()
-            .is_some_and(|t| t.contains("w544")));
+        assert!(
+            playlists[0]
+                .thumbnail
+                .as_deref()
+                .is_some_and(|t| t.contains("w544"))
+        );
         assert!(
             matches!(&shelves[1], ExploreShelf::Songs { title, tracks, .. } if title == "Top songs" && tracks.len() == 1)
         );
@@ -1782,7 +1789,7 @@ mod tests {
 
     #[test]
     fn no_parser_panics_on_answers_with_wrong_types_or_odd_values() {
-        use std::panic::{catch_unwind, AssertUnwindSafe};
+        use std::panic::{AssertUnwindSafe, catch_unwind};
         let songs = answer(vec![
             song("song0000001", "Idol", "YOASOBI", "THE BOOK", "3:33"),
             row(Some("song0000002"), "No artist", vec![]),

@@ -28,14 +28,14 @@
     clippy::cast_precision_loss
 )]
 
-use anyhow::{anyhow, bail, Result};
+use anyhow::{Result, anyhow, bail};
+use pyxee_audio::AudioError;
 use pyxee_audio::decode::{LibavSource, SampleSource};
 use pyxee_audio::gap::find_gaps;
 use pyxee_audio::gapless::{Event, GaplessSource, PreparedTrack};
 use pyxee_audio::http::HttpRangeSource;
-use pyxee_audio::AudioError;
 use pyxee_sources::gate::GateConfig;
-use pyxee_sources::ytdlp::{Cookies, YtDlpSource, FORMAT_SELECTOR};
+use pyxee_sources::ytdlp::{Cookies, FORMAT_SELECTOR, YtDlpSource};
 use pyxee_sources::{
     ExploreShelf, MusicSource, SearchFilter, SearchItem, SourceError, StreamInfo, TrackInfo,
 };
@@ -727,7 +727,10 @@ fn gapless(
                 "silence-at-join",
                 match near {
                     None => "none: audio runs straight through the join".to_string(),
-                    Some(n) => format!("{:.0} ms of digital silence around the join (usually the recordings' own fade-out/in, not the player)", n as f64 / 48.0),
+                    Some(n) => format!(
+                        "{:.0} ms of digital silence around the join (usually the recordings' own fade-out/in, not the player)",
+                        n as f64 / 48.0
+                    ),
                 },
             );
         }
@@ -854,7 +857,10 @@ fn fake429(_o: &Opts) -> Result<()> {
         let p = dir.join("fake-yt-dlp.cmd");
         std::fs::write(
             &p,
-            format!("@echo off\r\necho call>> \"{}\"\r\necho ERROR: HTTP Error 429: Too Many Requests 1>&2\r\nexit /b 1\r\n", log.display()),
+            format!(
+                "@echo off\r\necho call>> \"{}\"\r\necho ERROR: HTTP Error 429: Too Many Requests 1>&2\r\nexit /b 1\r\n",
+                log.display()
+            ),
         )?;
         p
     };
@@ -862,7 +868,13 @@ fn fake429(_o: &Opts) -> Result<()> {
     let script = {
         use std::os::unix::fs::PermissionsExt;
         let p = dir.join("fake-yt-dlp.sh");
-        std::fs::write(&p, format!("#!/bin/sh\necho call >> '{}'\necho 'ERROR: HTTP Error 429: Too Many Requests' >&2\nexit 1\n", log.display()))?;
+        std::fs::write(
+            &p,
+            format!(
+                "#!/bin/sh\necho call >> '{}'\necho 'ERROR: HTTP Error 429: Too Many Requests' >&2\nexit 1\n",
+                log.display()
+            ),
+        )?;
         std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o755))?;
         p
     };
@@ -940,7 +952,9 @@ fn main() {
         "stream" => stream(&o),
         "stress" => stress(&o),
         "fake429" => fake429(&o),
-        _ => Err(anyhow!("usage: livecheck <formats|search|genres|stream|stress|fake429> [--ytdlp PATH] [--q1 Q] [--q2 Q]")),
+        _ => Err(anyhow!(
+            "usage: livecheck <formats|search|genres|stream|stress|fake429> [--ytdlp PATH] [--q1 Q] [--q2 Q]"
+        )),
     };
     if let Err(e) = r {
         emit("FAIL", &cmd, format!("{e:#}"));

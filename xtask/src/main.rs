@@ -26,9 +26,9 @@
 mod release;
 
 use release::{
-    check_portable_entries, portable_entries, portable_folder_name, portable_zip_name, redacted,
-    signed_tauri_config, unsigned_notice, write_zip, zip_names, Cert, Signing, BUNDLES,
-    PORTABLE_MARKER, PORTABLE_README,
+    BUNDLES, Cert, PORTABLE_MARKER, PORTABLE_README, Signing, check_portable_entries,
+    portable_entries, portable_folder_name, portable_zip_name, redacted, signed_tauri_config,
+    unsigned_notice, write_zip, zip_names,
 };
 use sha2::{Digest, Sha256};
 use std::fmt::Write as _;
@@ -113,9 +113,13 @@ fn update_keygen() -> Res<()> {
         .map_err(|_| "no random numbers available")?;
     let seed_hex = to_hex(&seed);
     let public = to_hex(keypair_from_seed(&seed_hex)?.public_key().as_ref());
-    println!("Signing seed (SECRET: store it as the repository secret PYXEE_UPDATE_SIGNING_SEED, then delete this output):");
+    println!(
+        "Signing seed (SECRET: store it as the repository secret PYXEE_UPDATE_SIGNING_SEED, then delete this output):"
+    );
     println!("{seed_hex}\n");
-    println!("Public key (store it as the repository variable PYXEE_UPDATE_PUBLIC_KEY; it is built into releases):");
+    println!(
+        "Public key (store it as the repository variable PYXEE_UPDATE_PUBLIC_KEY; it is built into releases):"
+    );
     println!("{public}");
     Ok(())
 }
@@ -170,7 +174,9 @@ pub fn verify(what: &str, bytes: &[u8], expected: &str) -> Res<()> {
     if got == expected.to_ascii_lowercase() {
         Ok(())
     } else {
-        Err(format!("{what}: checksum mismatch (expected {expected}, got {got}). The download is corrupt or is not the file the release lists; nothing was installed."))
+        Err(format!(
+            "{what}: checksum mismatch (expected {expected}, got {got}). The download is corrupt or is not the file the release lists; nothing was installed."
+        ))
     }
 }
 
@@ -496,7 +502,9 @@ fn tools(args: &[String]) -> Res<()> {
     }
 
     println!("\nDone. The app finds it automatically in development; the installer bundles it.");
-    println!("Licenses: yt-dlp.exe is a GPLv3+ combined work (a separate program, not linked); the FFmpeg libraries are LGPL v2.1+ (see crates/app/licenses/).");
+    println!(
+        "Licenses: yt-dlp.exe is a GPLv3+ combined work (a separate program, not linked); the FFmpeg libraries are LGPL v2.1+ (see crates/app/licenses/)."
+    );
     Ok(())
 }
 
@@ -564,12 +572,13 @@ fn sign_file(args: &[String]) -> Res<()> {
         "no signing certificate is configured (PYXEE_SIGN_CERT_FILE or PYXEE_SIGN_THUMBPRINT)",
     )?;
     if let Cert::File { path, .. } = &signing.cert
-        && !path.is_file() {
-            return Err(format!(
-                "the certificate file {} does not exist",
-                path.display()
-            ));
-        }
+        && !path.is_file()
+    {
+        return Err(format!(
+            "the certificate file {} does not exist",
+            path.display()
+        ));
+    }
     let argv = signing.signtool_args(Path::new(file));
     println!("signing: signtool {}", redacted(&argv).join(" "));
     let out = Command::new(find_signtool())
@@ -834,7 +843,7 @@ mod tests {
 
     #[test]
     fn a_signed_checksum_list_verifies_with_the_public_key_and_not_after_a_change() {
-        use ring::signature::{KeyPair, UnparsedPublicKey, ED25519};
+        use ring::signature::{ED25519, KeyPair, UnparsedPublicKey};
         let seed = "07".repeat(32);
         let public = keypair_from_seed(&seed)
             .unwrap()
@@ -845,9 +854,10 @@ mod tests {
         let sig = from_hex(&sign_hex(&seed, sums).unwrap()).unwrap();
         let key = UnparsedPublicKey::new(&ED25519, &public);
         assert!(key.verify(sums, &sig).is_ok());
-        assert!(key
-            .verify(b"abd  Pyxee_1.0.0_x64-setup.exe\n", &sig)
-            .is_err());
+        assert!(
+            key.verify(b"abd  Pyxee_1.0.0_x64-setup.exe\n", &sig)
+                .is_err()
+        );
         assert!(keypair_from_seed("zz").is_err());
         assert!(keypair_from_seed(&"07".repeat(31)).is_err());
     }
@@ -935,11 +945,12 @@ mod tests {
                 || p.starts_with("repo\\ui\\node_modules\\.bin"),
             "{p:?}"
         );
-        assert!(p
-            .file_name()
-            .unwrap()
-            .to_string_lossy()
-            .starts_with("tauri"));
+        assert!(
+            p.file_name()
+                .unwrap()
+                .to_string_lossy()
+                .starts_with("tauri")
+        );
     }
 
     #[test]
@@ -965,9 +976,11 @@ mod tests {
         })
         .unwrap();
         assert_eq!(custom, PathBuf::from(r"D:\tools\bash.exe"));
-        assert!(locate_bash(Some(r"D:\nope\bash.exe".into()), |_| false)
-            .unwrap_err()
-            .contains(r"D:\nope\bash.exe"));
+        assert!(
+            locate_bash(Some(r"D:\nope\bash.exe".into()), |_| false)
+                .unwrap_err()
+                .contains(r"D:\nope\bash.exe")
+        );
     }
 
     #[test]
@@ -978,7 +991,9 @@ mod tests {
             "nothing printed means nothing is missing"
         );
         assert_eq!(
-            missing_tools_error("Copying skeleton files.\nThese files are for the users to personalise their msys2 experience.\n"),
+            missing_tools_error(
+                "Copying skeleton files.\nThese files are for the users to personalise their msys2 experience.\n"
+            ),
             None
         );
         let e = missing_tools_error("nasm\nmake\n").unwrap();
@@ -1129,9 +1144,10 @@ mod tests {
             },
         )
         .expect("the environment is imported");
-        assert!(env
-            .iter()
-            .any(|(k, v)| k == "Path" && v.contains(r"C:\VC\bin\Hostx64\x64")));
+        assert!(
+            env.iter()
+                .any(|(k, v)| k == "Path" && v.contains(r"C:\VC\bin\Hostx64\x64"))
+        );
         assert!(env.iter().any(|(k, _)| k == "INCLUDE"));
     }
 

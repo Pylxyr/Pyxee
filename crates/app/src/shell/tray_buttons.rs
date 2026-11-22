@@ -8,10 +8,10 @@
 use super::{command, current_phase};
 use pyxee_core::Command;
 use pyxee_shell::progress::Phase;
-use pyxee_shell::tray_controls::{Control, Glyph, CONTROLS};
+use pyxee_shell::tray_controls::{CONTROLS, Control, Glyph};
+use tauri::AppHandle;
 use tauri::image::Image;
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
-use tauri::AppHandle;
 
 fn icon(glyph: Glyph) -> tauri::Result<Image<'static>> {
     let bytes: &[u8] = match glyph {
@@ -64,9 +64,10 @@ pub fn sync(app: &AppHandle, enabled: bool) {
     let (phase, _) = current_phase(app);
     for control in CONTROLS {
         if app.tray_by_id(control.id()).is_none()
-            && let Err(e) = build(app, control, phase) {
-                log::warn!("could not create the {} tray button: {e}", control.id());
-            }
+            && let Err(e) = build(app, control, phase)
+        {
+            log::warn!("could not create the {} tray button: {e}", control.id());
+        }
     }
 }
 

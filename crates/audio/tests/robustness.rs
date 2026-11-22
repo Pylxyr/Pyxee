@@ -22,11 +22,11 @@
     clippy::float_cmp
 )]
 
+use pyxee_audio::AudioError;
 use pyxee_audio::decode::{LibavSource, SampleSource};
 use pyxee_audio::gapless::{Event, GaplessSource, PreparedTrack};
 use pyxee_audio::http::HttpRangeSource;
 use pyxee_audio::pipeline::{Pipeline, Volume};
-use pyxee_audio::AudioError;
 use std::io::{Read, Write};
 use std::net::TcpListener;
 use std::path::{Path, PathBuf};
@@ -67,11 +67,7 @@ impl SampleSource for Fake {
         48_000
     }
     fn channels(&self) -> usize {
-        if self.mono {
-            1
-        } else {
-            2
-        }
+        if self.mono { 1 } else { 2 }
     }
     fn read(&mut self, out: &mut Vec<f32>) -> Result<bool, AudioError> {
         if self.left == 0 {

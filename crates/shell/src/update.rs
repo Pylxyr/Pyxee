@@ -17,7 +17,9 @@ use std::path::{Path, PathBuf};
 pub enum UpdateError {
     #[error("{0} is not listed in the published checksums, so it was not installed.")]
     NotListed(String),
-    #[error("The download does not match its published checksum (expected {expected}, got {got}). It is corrupt or is not the file the release lists; nothing was installed.")]
+    #[error(
+        "The download does not match its published checksum (expected {expected}, got {got}). It is corrupt or is not the file the release lists; nothing was installed."
+    )]
     ChecksumMismatch { expected: String, got: String },
     #[error("The download is not a Windows program; nothing was installed.")]
     NotAnExecutable,
@@ -27,15 +29,23 @@ pub enum UpdateError {
     Io(String),
     #[error("The release information could not be read: {0}")]
     BadRelease(String),
-    #[error("This copy of Pyxee is signed by {expected}, but the installer is not validly signed ({found}); nothing was installed.")]
+    #[error(
+        "This copy of Pyxee is signed by {expected}, but the installer is not validly signed ({found}); nothing was installed."
+    )]
     InstallerNotSigned { expected: String, found: String },
-    #[error("This copy of Pyxee is signed by {expected}, but the installer is signed by {got}; nothing was installed.")]
+    #[error(
+        "This copy of Pyxee is signed by {expected}, but the installer is signed by {got}; nothing was installed."
+    )]
     PublisherMismatch { expected: String, got: String },
     #[error("The installer's signature could not be checked ({0}); nothing was installed.")]
     SignatureCheck(String),
-    #[error("This release has no signature for its checksum list, and this copy of Pyxee only installs signed releases; nothing was installed.")]
+    #[error(
+        "This release has no signature for its checksum list, and this copy of Pyxee only installs signed releases; nothing was installed."
+    )]
     SumsNotSigned,
-    #[error("The signature of the release's checksum list is not valid for this copy of Pyxee; nothing was installed.")]
+    #[error(
+        "The signature of the release's checksum list is not valid for this copy of Pyxee; nothing was installed."
+    )]
     SumsSignatureInvalid,
 }
 
@@ -601,7 +611,7 @@ pub fn check_publisher(
         Err(e) => {
             return Err(UpdateError::SignatureCheck(format!(
                 "this copy's own signature could not be read: {e}"
-            )))
+            )));
         }
     };
     match checker.signature(installer) {
@@ -985,8 +995,7 @@ mod tests {
         assert!(text.contains("## 0.5.30"));
     }
 
-    const SUMS: &str =
-        "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA *yt-dlp.exe\n\
+    const SUMS: &str = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA *yt-dlp.exe\n\
                         bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb  yt-dlp\n";
 
     #[test]

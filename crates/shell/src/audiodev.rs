@@ -138,9 +138,11 @@ impl DeviceWatch {
             State::Running => {
                 // The same device under a new name (the user renamed it): nothing to rebuild, only the name to learn.
                 if let (Some(now), Some(was)) = (&o.default_device, &mut self.active)
-                    && now.id == was.id && now.name != was.name {
-                        was.name.clone_from(&now.name);
-                    }
+                    && now.id == was.id
+                    && now.name != was.name
+                {
+                    was.name.clone_from(&now.name);
+                }
                 if o.callbacks != self.last_callbacks || !o.playing {
                     self.last_callbacks = o.callbacks;
                     self.last_progress_ms = o.now_ms;
@@ -261,9 +263,10 @@ mod tests {
     fn a_healthy_stream_needs_nothing() {
         let mut w = watch();
         for i in 1..20u64 {
-            assert!(w
-                .tick(&obs(i * 500, Some("Earbuds"), i * 50, true))
-                .is_empty());
+            assert!(
+                w.tick(&obs(i * 500, Some("Earbuds"), i * 50, true))
+                    .is_empty()
+            );
         }
     }
 
@@ -273,9 +276,10 @@ mod tests {
         let a = w.on_stream_error("device not available", true);
         assert_eq!(a.iter().filter(|a| **a == Action::PausePlayer).count(), 1);
         assert_eq!(logs(&a), 1);
-        assert!(a
-            .iter()
-            .any(|a| matches!(a, Action::Notice(m) if m.contains("disconnected"))));
+        assert!(
+            a.iter()
+                .any(|a| matches!(a, Action::Notice(m) if m.contains("disconnected")))
+        );
         // cpal calls the error callback again; nothing more happens.
         assert!(w.on_stream_error("device not available", true).is_empty());
         assert!(w.is_lost());
@@ -353,9 +357,10 @@ mod tests {
         );
         assert!(!w.is_lost());
         // A second recovery without a new loss resumes nothing.
-        assert!(!w
-            .rebuilt(&dev("Earbuds"), 44_100, 9_000)
-            .contains(&Action::ResumePlayer));
+        assert!(
+            !w.rebuilt(&dev("Earbuds"), 44_100, 9_000)
+                .contains(&Action::ResumePlayer)
+        );
     }
 
     #[test]
@@ -363,9 +368,10 @@ mod tests {
         let mut w = watch();
         w.on_stream_error("gone", true);
         w.on_user(UserEffect::TookOver); // they hit play, picked another song or pressed stop
-        assert!(!w
-            .rebuilt(&dev("Earbuds"), 48_000, 4_000)
-            .contains(&Action::ResumePlayer));
+        assert!(
+            !w.rebuilt(&dev("Earbuds"), 48_000, 4_000)
+                .contains(&Action::ResumePlayer)
+        );
     }
 
     #[test]
@@ -376,9 +382,10 @@ mod tests {
             matches!(&a[..], [Action::Rebuild { reason }] if reason.contains("Earbuds") && reason.contains("Speakers"))
         );
         let done = w.rebuilt(&dev("Speakers"), 48_000, 600);
-        assert!(done
-            .iter()
-            .all(|a| !matches!(a, Action::Notice(_) | Action::ResumePlayer)));
+        assert!(
+            done.iter()
+                .all(|a| !matches!(a, Action::Notice(_) | Action::ResumePlayer))
+        );
         assert!(w.tick(&obs(1_100, Some("Speakers"), 20, true)).is_empty());
     }
 
@@ -442,9 +449,10 @@ mod tests {
     fn a_paused_player_is_never_mistaken_for_a_stalled_device() {
         let mut w = watch();
         for i in 1..30u64 {
-            assert!(w
-                .tick(&obs(i * 1_000, Some("Earbuds"), 0, false))
-                .is_empty());
+            assert!(
+                w.tick(&obs(i * 1_000, Some("Earbuds"), 0, false))
+                    .is_empty()
+            );
         }
         // ...and playing again starts the stall clock from now, not from before.
         assert!(w.tick(&obs(31_000, Some("Earbuds"), 0, true)).is_empty());

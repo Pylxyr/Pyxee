@@ -775,8 +775,8 @@ fn a_stale_end_event_does_not_spend_stop_after_current() {
 }
 
 #[test]
-fn a_prefetch_that_fails_while_the_player_waits_for_it_at_the_boundary_does_not_leave_loading_forever(
-) {
+fn a_prefetch_that_fails_while_the_player_waits_for_it_at_the_boundary_does_not_leave_loading_forever()
+ {
     // Permanent: the song is skipped and the next one starts.
     let (mut p, ids, _) = started(3);
     p.engine(E::Audible { id: ids[0] });

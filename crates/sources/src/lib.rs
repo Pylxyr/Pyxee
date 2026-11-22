@@ -47,7 +47,9 @@ pub enum SourceError {
     RateLimited,
     /// `YouTube` answered HTTP 403: it refused this request (this song, this player client, or this network). Unlike a
     /// rate limit it says nothing about the requests that follow, so the gate waits for several in a row.
-    #[error("YouTube refused the request (HTTP 403). Try again; if it keeps happening, update yt-dlp in Settings > Updates.")]
+    #[error(
+        "YouTube refused the request (HTTP 403). Try again; if it keeps happening, update yt-dlp in Settings > Updates."
+    )]
     Forbidden,
     #[error("This track isn't available: {0}")]
     Unavailable(String),

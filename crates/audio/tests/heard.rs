@@ -20,9 +20,9 @@
     clippy::cast_precision_loss
 )]
 
+use pyxee_audio::AudioError;
 use pyxee_audio::decode::SampleSource;
 use pyxee_audio::gapless::{Event, GaplessSource, PreparedTrack};
-use pyxee_audio::AudioError;
 use pyxee_core::{EntryId, Heard, HeardTracker};
 
 struct Tone {

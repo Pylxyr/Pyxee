@@ -14,8 +14,8 @@ use discord_rich_presence::activity::{Activity, ActivityType, Assets, Timestamps
 use discord_rich_presence::{DiscordIpc, DiscordIpcClient};
 use pyxee_shell::progress::Phase;
 use std::collections::VecDeque;
-use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
 use std::sync::Mutex;
+use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 /// Discord shows at most 128 characters per line and rejects lines shorter than 2.
@@ -396,9 +396,10 @@ fn run(client_id: String, rx: &Receiver<Msg>) {
             None => {}
         }
         if let Some(w) = want.take()
-            && !worker.apply(w.as_ref()) {
-                want = Some(w);
-            }
+            && !worker.apply(w.as_ref())
+        {
+            want = Some(w);
+        }
     }
     worker.shutdown();
 }
@@ -673,9 +674,10 @@ mod tests {
     fn a_restored_paused_song_shows_nothing_and_loading_then_playing_updates() {
         let t = track("Song", "Artist", Some(1000));
         let mut p = Publisher::default();
-        assert!(p
-            .decide(build_spec(Phase::Paused, Some(&t), 500, NOW))
-            .is_none());
+        assert!(
+            p.decide(build_spec(Phase::Paused, Some(&t), 500, NOW))
+                .is_none()
+        );
         // The user asked for a song: show it at once, then add the bar when it is audible.
         assert!(matches!(
             p.decide(build_spec(Phase::Loading, Some(&t), 0, NOW)),

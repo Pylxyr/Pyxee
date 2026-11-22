@@ -22,14 +22,14 @@
     clippy::cast_precision_loss
 )]
 
+use pyxee_audio::AudioError;
 use pyxee_audio::decode::SampleSource;
 use pyxee_audio::gapless::PreparedTrack;
 use pyxee_audio::pipeline::{Pipeline, Volume};
-use pyxee_audio::AudioError;
 use pyxee_core::EntryId;
+use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::channel;
-use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 const RATE: u32 = 48_000;

@@ -234,9 +234,10 @@ impl Queue {
             self.current = None;
             self.slot = Some(order_idx);
         } else if let Some(s) = self.slot
-            && order_idx < s {
-                self.slot = Some(s - 1);
-            }
+            && order_idx < s
+        {
+            self.slot = Some(s - 1);
+        }
         self.history.retain(|&h| h != id);
         self.push_undo(Undo::Remove {
             entry,
@@ -378,10 +379,12 @@ impl Queue {
         if n == 0 {
             return None;
         }
-        if natural && self.repeat == Repeat::One
-            && let Some(c) = self.current {
-                return Some(c);
-            }
+        if natural
+            && self.repeat == Repeat::One
+            && let Some(c) = self.current
+        {
+            return Some(c);
+        }
         let start = match (self.current_pos(), self.slot) {
             (Some(p), _) => p + 1,
             (None, Some(s)) => s,
@@ -406,12 +409,13 @@ impl Queue {
 
     fn set_current(&mut self, id: EntryId) {
         if let Some(c) = self.current
-            && c != id {
-                self.history.push(c);
-                if self.history.len() > HISTORY_CAP {
-                    self.history.remove(0);
-                }
+            && c != id
+        {
+            self.history.push(c);
+            if self.history.len() > HISTORY_CAP {
+                self.history.remove(0);
             }
+        }
         self.current = Some(id);
         self.slot = None;
     }

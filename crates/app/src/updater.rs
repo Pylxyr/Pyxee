@@ -316,9 +316,10 @@ fn update_dir() -> PathBuf {
 /// stays; it goes the next time.
 fn clear_dir(dir: &Path) {
     if let Err(e) = std::fs::remove_dir_all(dir)
-        && e.kind() != std::io::ErrorKind::NotFound {
-            log::debug!("update: could not clear {}: {e}", dir.display());
-        }
+        && e.kind() != std::io::ErrorKind::NotFound
+    {
+        log::debug!("update: could not clear {}: {e}", dir.display());
+    }
 }
 
 /// Removes the installers earlier updates downloaded. Run once at start-up: by then the installer that started
@@ -337,7 +338,9 @@ fn check_sums_signature(release: &update::Release, sums: &str) -> Result<(), Str
     let Some(key) = UPDATE_PUBLIC_KEY
         .filter(|_| update::sums_trust(UPDATE_PUBLIC_KEY) == update::SumsTrust::MustVerify)
     else {
-        log::warn!("update: this build has no update signing key, so the checksum list was not authenticated");
+        log::warn!(
+            "update: this build has no update signing key, so the checksum list was not authenticated"
+        );
         return Ok(());
     };
     let sig_url = release
@@ -451,7 +454,9 @@ fn gate_installer(path: &Path) -> Result<(), String> {
     let running = match std::env::current_exe() {
         Ok(p) => p,
         Err(e) => {
-            log::warn!("update: could not find the running program to compare signers ({e}); the checksum alone was checked");
+            log::warn!(
+                "update: could not find the running program to compare signers ({e}); the checksum alone was checked"
+            );
             return Ok(());
         }
     };
