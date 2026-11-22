@@ -132,15 +132,14 @@ impl FileLogger {
         }
         let old = self.path.with_extension("log.1");
         let _ = fs::remove_file(&old);
-        if fs::rename(&self.path, &old).is_ok() {
-            if let Ok(fresh) = OpenOptions::new()
+        if fs::rename(&self.path, &old).is_ok()
+            && let Ok(fresh) = OpenOptions::new()
                 .create(true)
                 .append(true)
                 .open(&self.path)
             {
                 *file = fresh;
             }
-        }
     }
 }
 

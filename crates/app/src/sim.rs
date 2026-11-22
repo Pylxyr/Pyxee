@@ -135,11 +135,10 @@ impl Sim {
                 }
             }
             // The engine ran dry while this was preparing: start it as soon as it is ready.
-            if p.ready && self.current.is_none() {
-                if let Some(p) = self.prefetch.take() {
+            if p.ready && self.current.is_none()
+                && let Some(p) = self.prefetch.take() {
                     self.current = Some(Slot::new(p.id, &p.track, 0, 0));
                 }
-            }
         }
 
         if let Some(job) = self.radio.as_mut() {
@@ -185,14 +184,13 @@ impl Sim {
             out.push(SimOut::Engine(EngineEvent::Ended { id }));
             self.current = None;
             // Gapless: continue straight into a ready prefetched track.
-            if self.prefetch.as_ref().is_some_and(|p| p.ready) {
-                if let Some(p) = self.prefetch.take() {
+            if self.prefetch.as_ref().is_some_and(|p| p.ready)
+                && let Some(p) = self.prefetch.take() {
                     let mut next = Slot::new(p.id, &p.track, 0, 0);
                     next.audible = true;
                     out.push(SimOut::Engine(EngineEvent::Audible { id: p.id }));
                     self.current = Some(next);
                 }
-            }
         }
     }
 }

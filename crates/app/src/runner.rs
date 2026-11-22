@@ -67,11 +67,10 @@ impl AppHost {
                     .queue()
                     .get(*id)
                     .map(|entry| entry.track.clone());
-                if let Some(track) = track {
-                    if let Err(err) = with_library(&self.app, |l| l.refresh_track(&track)) {
+                if let Some(track) = track
+                    && let Err(err) = with_library(&self.app, |l| l.refresh_track(&track)) {
                         log::warn!("could not update a saved song: {err}");
                     }
-                }
             }
             _ => {}
         }

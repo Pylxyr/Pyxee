@@ -395,11 +395,10 @@ fn run(client_id: String, rx: &Receiver<Msg>) {
             }
             None => {}
         }
-        if let Some(w) = want.take() {
-            if !worker.apply(w.as_ref()) {
+        if let Some(w) = want.take()
+            && !worker.apply(w.as_ref()) {
                 want = Some(w);
             }
-        }
     }
     worker.shutdown();
 }

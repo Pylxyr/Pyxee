@@ -241,15 +241,14 @@ impl Library {
                                                                  // With WAL, NORMAL cannot corrupt the file; a power cut can only lose the last few plays, not break the library.
         let _ = conn.pragma_update(None, "synchronous", "NORMAL");
         for (target, schema) in [(1, SCHEMA_V1), (2, SCHEMA_V2)] {
-            if version < target {
-                if let Err(e) = conn.execute_batch(&format!(
+            if version < target
+                && let Err(e) = conn.execute_batch(&format!(
                     "BEGIN; {schema} PRAGMA user_version = {target}; COMMIT;"
                 )) {
                     // A batch that stops half way leaves its transaction open: close it, so nothing is half made.
                     let _ = conn.execute_batch("ROLLBACK");
                     return Err(e.into());
                 }
-            }
         }
         Ok(Self { conn })
     }

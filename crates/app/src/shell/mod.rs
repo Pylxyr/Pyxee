@@ -267,14 +267,13 @@ fn lastfm_session(app: &AppHandle, legacy: Option<String>) -> Option<String> {
     let Some(key) = legacy else {
         return lastfm::vault::load();
     };
-    if lastfm::vault::store(&key).is_ok() {
-        if let Some(shell) = app.try_state::<ShellState>() {
+    if lastfm::vault::store(&key).is_ok()
+        && let Some(shell) = app.try_state::<ShellState>() {
             if let Ok(mut s) = shell.settings.lock() {
                 s.lastfm_session = None;
             }
             shell.save_settings();
         }
-    }
     Some(key)
 }
 
@@ -466,11 +465,10 @@ pub fn on_state(app: &AppHandle, s: &PlayerStateDto) {
         } else {
             tray::set_tooltip(app, "Pyxee");
         }
-        if let (Some(m), Ok(mut guard)) = (entry, shell.media.lock()) {
-            if let Some(media) = guard.as_mut() {
+        if let (Some(m), Ok(mut guard)) = (entry, shell.media.lock())
+            && let Some(media) = guard.as_mut() {
                 media.set_track(&m.track);
             }
-        }
         sent.playback = None; // new song: send its state afresh
     }
 
@@ -490,24 +488,21 @@ pub fn on_state(app: &AppHandle, s: &PlayerStateDto) {
     );
     if sent.playback != Some(key) {
         sent.playback = Some(key);
-        if let Ok(mut guard) = shell.media.lock() {
-            if let Some(media) = guard.as_mut() {
+        if let Ok(mut guard) = shell.media.lock()
+            && let Some(media) = guard.as_mut() {
                 media.set_playback(phase, s.position_ms, id.is_some());
             }
-        }
     }
 
     // Discord decides for itself (and cheaply) whether anything changed enough to be worth sending.
-    if let Ok(guard) = shell.discord.lock() {
-        if let Some(discord) = guard.as_ref() {
+    if let Ok(guard) = shell.discord.lock()
+        && let Some(discord) = guard.as_ref() {
             discord.on_state(phase, entry.map(|e| &e.track), s.position_ms);
         }
-    }
-    if let Ok(guard) = shell.lastfm.lock() {
-        if let Some(lastfm) = guard.as_ref() {
+    if let Ok(guard) = shell.lastfm.lock()
+        && let Some(lastfm) = guard.as_ref() {
             lastfm.on_state(phase, id, entry.map(|e| &e.track), s.position_ms);
-        }
-    };
+        };
 }
 
 fn apply_taskbar_progress(app: &AppHandle, p: TaskbarProgress) {
@@ -583,8 +578,8 @@ fn toast_for(app: &AppHandle, id: u64) {
         .queue()
         .get(pyxee_core::EntryId(id))
         .map(|e| e.track.clone());
-    if let Some(t) = track {
-        if let Err(e) = app
+    if let Some(t) = track
+        && let Err(e) = app
             .notification()
             .builder()
             .title(&t.title)
@@ -593,7 +588,6 @@ fn toast_for(app: &AppHandle, id: u64) {
         {
             log::debug!("toast not shown: {e}");
         }
-    }
 }
 
 /// The player's phase right now (for code that is not handed a state, like the taskbar button callback).

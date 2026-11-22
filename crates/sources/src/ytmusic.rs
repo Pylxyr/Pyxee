@@ -508,11 +508,10 @@ pub fn parse_explore(body: &str) -> Result<Vec<ExploreShelf>, SourceError> {
             } else {
                 None
             };
-            if let Some(t) = track {
-                if !tracks.iter().any(|x| x.key == t.key) {
+            if let Some(t) = track
+                && !tracks.iter().any(|x| x.key == t.key) {
                     tracks.push(t);
                 }
-            }
         }
         let id = format!("explore-{i}");
         let title = title.to_string();
@@ -624,19 +623,16 @@ pub fn parse_genre(body: &str) -> Result<Vec<ExploreShelf>, SourceError> {
                     if !playlists.iter().any(|x| x.id == p.id) {
                         playlists.push(p);
                     }
-                } else if let Some(t) = video_from_card(card) {
-                    if !tracks.iter().any(|x| x.key == t.key) {
+                } else if let Some(t) = video_from_card(card)
+                    && !tracks.iter().any(|x| x.key == t.key) {
                         tracks.push(t);
                     }
-                }
             } else if let Some(t) = item
                 .get("musicResponsiveListItemRenderer")
                 .and_then(song_from_row)
-            {
-                if !tracks.iter().any(|x| x.key == t.key) {
+                && !tracks.iter().any(|x| x.key == t.key) {
                     tracks.push(t);
                 }
-            }
         }
         let id = format!("genre-{i}");
         let title = title.to_string();

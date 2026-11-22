@@ -388,11 +388,10 @@ impl YtDlpSource {
                 "search",
                 &flat_args(search_target(query, SearchFilter::Videos)?, RESULTS),
             )?;
-            if let Ok(richer) = parse_entries(&out) {
-                if !richer.is_empty() && !too_bare(&richer) {
+            if let Ok(richer) = parse_entries(&out)
+                && !richer.is_empty() && !too_bare(&richer) {
                     return Ok(richer);
                 }
-            }
         }
         Ok(items)
     }
@@ -672,11 +671,10 @@ fn duration_secs(v: &Value) -> Option<f64> {
     if let Some(d) = v.get("duration").and_then(|d| {
         d.as_f64()
             .or_else(|| d.as_str().and_then(|s| s.trim().parse::<f64>().ok()))
-    }) {
-        if d > 0.0 {
+    })
+        && d > 0.0 {
             return Some(d);
         }
-    }
     for key in ["duration_string", "duration_text", "length"] {
         let Some(s) = text(v, key) else { continue };
         let mut total = 0.0;

@@ -315,11 +315,10 @@ fn update_dir() -> PathBuf {
 /// Empties `dir` (and removes it). A file that is still in use, such as an installer that is only now finishing,
 /// stays; it goes the next time.
 fn clear_dir(dir: &Path) {
-    if let Err(e) = std::fs::remove_dir_all(dir) {
-        if e.kind() != std::io::ErrorKind::NotFound {
+    if let Err(e) = std::fs::remove_dir_all(dir)
+        && e.kind() != std::io::ErrorKind::NotFound {
             log::debug!("update: could not clear {}: {e}", dir.display());
         }
-    }
 }
 
 /// Removes the installers earlier updates downloaded. Run once at start-up: by then the installer that started

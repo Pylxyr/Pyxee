@@ -877,12 +877,11 @@ impl Engine {
                 self.stalled_since = Some((id, now));
                 self.host.engine_event(EngineEvent::Stalled { id });
             }
-            if let Some((sid, since)) = self.stalled_since {
-                if underruns == self.seen_underruns && now.duration_since(since) > RECOVER_AFTER {
+            if let Some((sid, since)) = self.stalled_since
+                && underruns == self.seen_underruns && now.duration_since(since) > RECOVER_AFTER {
                     self.stalled_since = None;
                     self.host.engine_event(EngineEvent::Recovered { id: sid });
                 }
-            }
             self.report_position_if_new_second();
         }
         if underruns != self.seen_underruns {
@@ -918,13 +917,11 @@ fn resolve_cached(
     key: &str,
     refresh: bool,
 ) -> Result<StreamInfo, SourceError> {
-    if !refresh {
-        if let Some((s, at)) = cache.lock().ok().and_then(|c| c.get(key).cloned()) {
-            if at.elapsed() < URL_TTL {
+    if !refresh
+        && let Some((s, at)) = cache.lock().ok().and_then(|c| c.get(key).cloned())
+            && at.elapsed() < URL_TTL {
                 return Ok(s);
             }
-        }
-    }
     let s = source.resolve_stream(key)?;
     log::info!(
         "resolved {key}: ext={} acodec={:?} abr={:?} from {}",

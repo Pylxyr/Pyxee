@@ -34,16 +34,14 @@ impl Track {
     /// metadata); the thumbnail is replaced by the resolver's, which is the largest one on offer.
     pub fn fill(&mut self, d: &TrackDetails) -> bool {
         let before = self.clone();
-        if let Some(a) = d.artist.as_deref().map(str::trim).filter(|a| !a.is_empty()) {
-            if !self.artist_known() {
+        if let Some(a) = d.artist.as_deref().map(str::trim).filter(|a| !a.is_empty())
+            && !self.artist_known() {
                 self.artist = a.to_string();
             }
-        }
-        if let Some(ms) = d.duration_ms.filter(|ms| *ms > 0) {
-            if self.duration_ms.is_none_or(|cur| cur == 0) {
+        if let Some(ms) = d.duration_ms.filter(|ms| *ms > 0)
+            && self.duration_ms.is_none_or(|cur| cur == 0) {
                 self.duration_ms = Some(ms);
             }
-        }
         if let Some(t) = d.thumbnail.as_ref().filter(|t| !t.is_empty()) {
             self.thumbnail = Some(t.clone());
         }

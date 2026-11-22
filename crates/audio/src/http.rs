@@ -262,13 +262,12 @@ fn download_loop(shared: Arc<Shared>, f: Fetcher, mut hook: Option<CompletionHoo
                 st.chunks.insert(idx, Arc::new(data));
                 shared.wake.notify_all();
                 // The last chunk makes the song whole. The hook runs without the lock: it writes a file.
-                if !big && st.chunks.len() as u64 == total {
-                    if let Some(done) = hook.take() {
+                if !big && st.chunks.len() as u64 == total
+                    && let Some(done) = hook.take() {
                         let all: Vec<Arc<Vec<u8>>> = st.chunks.values().cloned().collect();
                         drop(st);
                         done(&all);
                     }
-                }
             }
             Err(FetchError::Fatal(code)) => {
                 shared.lock().fatal = Some(code);
@@ -385,11 +384,10 @@ impl HttpRangeSource {
 
     /// The chunk `idx`, waiting for the download if it is not here yet.
     fn chunk_for(&mut self, idx: u64) -> io::Result<Arc<Vec<u8>>> {
-        if let Some((i, data)) = &self.current {
-            if *i == idx {
+        if let Some((i, data)) = &self.current
+            && *i == idx {
                 return Ok(Arc::clone(data));
             }
-        }
         let mut st = self.shared.lock();
         if st.cursor != idx {
             st.cursor = idx;

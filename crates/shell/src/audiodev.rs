@@ -137,11 +137,10 @@ impl DeviceWatch {
         match self.state.clone() {
             State::Running => {
                 // The same device under a new name (the user renamed it): nothing to rebuild, only the name to learn.
-                if let (Some(now), Some(was)) = (&o.default_device, &mut self.active) {
-                    if now.id == was.id && now.name != was.name {
+                if let (Some(now), Some(was)) = (&o.default_device, &mut self.active)
+                    && now.id == was.id && now.name != was.name {
                         was.name.clone_from(&now.name);
                     }
-                }
                 if o.callbacks != self.last_callbacks || !o.playing {
                     self.last_callbacks = o.callbacks;
                     self.last_progress_ms = o.now_ms;

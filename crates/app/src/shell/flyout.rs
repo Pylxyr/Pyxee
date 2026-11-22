@@ -39,15 +39,14 @@ pub fn toggle(app: &AppHandle, icon: tauri::Rect) {
 }
 
 pub fn hide(app: &AppHandle) {
-    if let Some(w) = app.get_webview_window(LABEL) {
-        if w.is_visible().unwrap_or(false) {
+    if let Some(w) = app.get_webview_window(LABEL)
+        && w.is_visible().unwrap_or(false) {
             let _ = w.hide();
             super::webview_power::set_active(&w, false);
             if let Ok(mut t) = app.state::<ShellState>().flyout_hidden_at.lock() {
                 *t = Some(Instant::now());
             }
         }
-    }
 }
 
 fn build(app: &AppHandle) -> tauri::Result<WebviewWindow> {

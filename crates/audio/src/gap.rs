@@ -38,14 +38,13 @@ pub fn find_gaps(
             _ => {}
         }
     }
-    if let Some(s) = run_start {
-        if frames - s >= min_run_frames {
+    if let Some(s) = run_start
+        && frames - s >= min_run_frames {
             gaps.push(Gap {
                 start_frame: s,
                 len_frames: frames - s,
             });
         }
-    }
     gaps
 }
 

@@ -135,8 +135,8 @@ impl State {
     fn store(&mut self, key: String, list: Vec<String>, now: Instant) {
         self.cache
             .retain(|_, (at, _)| now.saturating_duration_since(*at) < CACHE_TTL);
-        if self.cache.len() >= CACHE_MAX && !self.cache.contains_key(&key) {
-            if let Some(oldest) = self
+        if self.cache.len() >= CACHE_MAX && !self.cache.contains_key(&key)
+            && let Some(oldest) = self
                 .cache
                 .iter()
                 .min_by_key(|(_, (at, _))| *at)
@@ -144,7 +144,6 @@ impl State {
             {
                 self.cache.remove(&oldest);
             }
-        }
         self.cache.insert(key, (now, list));
     }
 

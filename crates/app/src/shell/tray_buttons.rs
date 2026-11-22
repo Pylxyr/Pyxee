@@ -63,11 +63,10 @@ pub fn sync(app: &AppHandle, enabled: bool) {
     }
     let (phase, _) = current_phase(app);
     for control in CONTROLS {
-        if app.tray_by_id(control.id()).is_none() {
-            if let Err(e) = build(app, control, phase) {
+        if app.tray_by_id(control.id()).is_none()
+            && let Err(e) = build(app, control, phase) {
                 log::warn!("could not create the {} tray button: {e}", control.id());
             }
-        }
     }
 }
 

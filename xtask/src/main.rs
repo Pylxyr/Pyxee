@@ -563,14 +563,13 @@ fn sign_file(args: &[String]) -> Res<()> {
     let signing = signing_from_env()?.ok_or(
         "no signing certificate is configured (PYXEE_SIGN_CERT_FILE or PYXEE_SIGN_THUMBPRINT)",
     )?;
-    if let Cert::File { path, .. } = &signing.cert {
-        if !path.is_file() {
+    if let Cert::File { path, .. } = &signing.cert
+        && !path.is_file() {
             return Err(format!(
                 "the certificate file {} does not exist",
                 path.display()
             ));
         }
-    }
     let argv = signing.signtool_args(Path::new(file));
     println!("signing: signtool {}", redacted(&argv).join(" "));
     let out = Command::new(find_signtool())

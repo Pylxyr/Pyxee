@@ -42,18 +42,16 @@ fn locate_in(
     // Installed sidecars are `<name>.exe`; the development folder keeps Tauri's `<name>-<triple>.exe`.
     let plain = [exe_name(name)];
     let sidecar = [format!("{name}-{TRIPLE}.exe")];
-    if let Some(dir) = app_dir {
-        if let Some(p) =
+    if let Some(dir) = app_dir
+        && let Some(p) =
             first_file(&dir, &plain).or_else(|| first_file(&dir.join("binaries"), &plain))
         {
             return p;
         }
-    }
-    if let Some(dir) = dev_dir {
-        if let Some(p) = first_file(&dir, &sidecar).or_else(|| first_file(&dir, &plain)) {
+    if let Some(dir) = dev_dir
+        && let Some(p) = first_file(&dir, &sidecar).or_else(|| first_file(&dir, &plain)) {
             return p;
         }
-    }
     PathBuf::from(name) // left to the OS to find on PATH
 }
 

@@ -517,12 +517,10 @@ fn clean_song(title: &str, artist: &str) -> (String, String) {
             let rest = rest.trim_start();
             if let Some(song) =
                 rest.strip_prefix(['-', '\u{2013}', '\u{2014}', ':', '|', '\u{ff5c}'])
-            {
-                if !song.trim().is_empty() {
+                && !song.trim().is_empty() {
                     t = song.trim().to_owned();
                     break;
                 }
-            }
         }
     }
 

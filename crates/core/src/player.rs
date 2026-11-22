@@ -439,23 +439,21 @@ impl Player {
             .next_candidate(true, &|i| self.skip.contains(&i))
             .filter(|w| Some(*w) != self.no_prefetch_for)
             .filter(|_| !self.stop_after_current);
-        if let (Some((p, _)), Some(w)) = (self.prefetch, want) {
-            if p == w {
+        if let (Some((p, _)), Some(w)) = (self.prefetch, want)
+            && p == w {
                 return;
             }
-        }
         if self.prefetch.take().is_some() {
             self.effects.push(Effect::CancelPrefetch);
         }
-        if let Some(w) = want {
-            if let Some(e) = self.queue.get(w) {
+        if let Some(w) = want
+            && let Some(e) = self.queue.get(w) {
                 self.effects.push(Effect::Prefetch {
                     id: w,
                     track: e.track.clone(),
                 });
                 self.prefetch = Some((w, false));
             }
-        }
     }
 
     fn plan_radio(&mut self) {
@@ -621,11 +619,10 @@ impl Player {
             Command::Undo => {
                 if let Some(kind) = self.queue.undo() {
                     self.dirty = true;
-                    if kind == UndoKind::Clear {
-                        if let Some(id) = self.queue.current_id() {
+                    if kind == UndoKind::Clear
+                        && let Some(id) = self.queue.current_id() {
                             self.transport = Transport::Paused { id, loaded: false };
                         }
-                    }
                 }
             }
             Command::AppendRadio(tracks) => self.append_radio(tracks),
@@ -873,11 +870,10 @@ impl Player {
         } else {
             self.end_of_queue();
             // Waiting for radio after the last song ended: nothing is audible, so do not show Playing.
-            if self.pending_advance {
-                if let Some(id) = self.queue.current_id() {
+            if self.pending_advance
+                && let Some(id) = self.queue.current_id() {
                     self.transport = Transport::Loading { id };
                 }
-            }
         }
     }
 
