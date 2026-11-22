@@ -45,6 +45,19 @@ describe('AvailabilityStore', () => {
     expect(asked).toHaveLength(2);
   });
 
+  it('looks at the files again when the window comes back, but not in a burst', async () => {
+    const store = new AvailabilityStore();
+    store.want('file:C:\\Music\\missing.mp3');
+    await vi.advanceTimersByTimeAsync(100);
+    expect(store.isMissing('file:C:\\Music\\missing.mp3')).toBe(true);
+    const epoch = store.epoch;
+    vi.setSystemTime(Date.now() + 10_000);
+    window.dispatchEvent(new Event('focus'));
+    expect(store.epoch).toBe(epoch + 1);
+    window.dispatchEvent(new Event('focus'));
+    expect(store.epoch).toBe(epoch + 1);
+  });
+
   it('marks nothing when the check fails', async () => {
     backend.localMissing = async () => {
       throw new Error('no');
