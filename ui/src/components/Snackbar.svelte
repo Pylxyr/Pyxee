@@ -4,11 +4,13 @@
   import { snackbar } from '$lib/snackbar.svelte';
   import { MOTION, motionMs, motionPx } from '$lib/motion';
   import { toastRail } from '$lib/rail';
+  import Icon from './Icon.svelte';
 </script>
 
 <!-- Above the dock and the bottom bar in a narrow window; at the foot of the page in a wide one. -->
 <div class="pointer-events-none fixed inset-x-0 bottom-36 z-[1000] flex flex-col items-center gap-2 px-4 min-[900px]:bottom-6" aria-live="polite">
   {#each snackbar.items as s (s.id)}
+    <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
     <div
       transition:fly={{ y: motionPx(20), duration: motionMs(MOTION.base + 60), easing: backOut }}
       class="toast pointer-events-auto flex w-full max-w-md items-center gap-4 bg-fg px-4 py-3 text-on-fg"
@@ -17,6 +19,7 @@
       onmouseleave={() => snackbar.resume(s.id)}
       onfocusin={() => snackbar.pause(s.id)}
       onfocusout={() => snackbar.resume(s.id)}
+      onkeydown={(e) => { if (e.key === 'Escape') snackbar.dismiss(s.id); }}
     >
       <span class="flex-1">{s.message}</span>
       {#if s.action}
@@ -24,6 +27,7 @@
           {s.action.label}
         </button>
       {/if}
+      <button class="toast-close" aria-label="Dismiss" title="Dismiss" onclick={() => snackbar.dismiss(s.id)}><Icon name="close" size={16} /></button>
       {#if snackbar.rails[s.id]}<span class="toast-rail" aria-hidden="true" use:toastRail={snackbar.rails[s.id]!}></span>{/if}
     </div>
   {/each}

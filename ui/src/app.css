@@ -1850,6 +1850,25 @@ input[type='range'].slider:disabled {
     border-radius: var(--r-md);
     box-shadow: var(--shadow-pop);
   }
+  /* Every toast can be closed: a small x at its end, in the toast's own text colour. */
+  .toast-close {
+    display: inline-flex;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    margin: -4px -8px -4px -8px;
+    border-radius: 50%;
+    color: var(--on-fg);
+    opacity: 0.7;
+    transition: opacity var(--dur-fast) var(--ease), background-color var(--dur-fast) var(--ease);
+  }
+  .toast-close:hover,
+  .toast-close:focus-visible {
+    opacity: 1;
+    background: color-mix(in srgb, var(--on-fg) 16%, transparent);
+  }
   /* The time left to Undo: a 2 px rail along the foot that runs down by transform (see lib/rail.ts). Drawn once. */
   /* The thrown song: one dot, created for the flight and removed after it (see lib/toss.ts). It lives only in the animation. */
   .toss-dot {
