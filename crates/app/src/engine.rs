@@ -757,8 +757,7 @@ impl Engine {
                     );
                     if let (Some((kind, _)), Some(t)) = (failed, self.known.get(&id)) {
                         let failure = self.refine(id, failure_for(kind));
-                        self.host
-                            .notice(stopped_early_notice(&t.title, &failure));
+                        self.host.notice(stopped_early_notice(&t.title, &failure));
                     } else if ended_early(heard, expected) {
                         let title = self.known.get(&id).map_or("A song", |t| t.title.as_str());
                         log::warn!(

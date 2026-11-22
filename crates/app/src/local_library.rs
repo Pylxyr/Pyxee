@@ -408,9 +408,15 @@ mod tests {
         assert_eq!(many.len(), 2);
         assert!(many[0].starts_with("3 songs are no longer"), "{many:?}");
         assert!(many[0].contains("they were taken out"), "{many:?}");
-        assert!(many[1].contains("E:\\Music, F:\\More") && many[1].contains("their songs stay"), "{many:?}");
+        assert!(
+            many[1].contains("E:\\Music, F:\\More") && many[1].contains("their songs stay"),
+            "{many:?}"
+        );
         let single = scan_notices(0, &[PathBuf::from("E:\\Music")]);
-        assert!(single[0].starts_with("This folder can't be reached"), "{single:?}");
+        assert!(
+            single[0].starts_with("This folder can't be reached"),
+            "{single:?}"
+        );
     }
 
     #[test]

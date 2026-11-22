@@ -25,10 +25,11 @@ fn cover_host_ok(url: &str) -> bool {
 pub async fn cover_bytes(url: String) -> Result<tauri::ipc::Response, String> {
     // The cover of a song on this PC: read from the file itself (the address names it, and only a song is opened).
     if let Some(song) = pyxee_sources::local::cover_url_path(&url) {
-        let cover = tauri::async_runtime::spawn_blocking(move || pyxee_sources::local::read_cover(&song))
-            .await
-            .map_err(|e| e.to_string())?
-            .ok_or_else(|| "this song has no cover".to_string())?;
+        let cover =
+            tauri::async_runtime::spawn_blocking(move || pyxee_sources::local::read_cover(&song))
+                .await
+                .map_err(|e| e.to_string())?
+                .ok_or_else(|| "this song has no cover".to_string())?;
         return Ok(tauri::ipc::Response::new(cover.bytes));
     }
     if !cover_host_ok(&url) {

@@ -112,10 +112,11 @@ pub struct Cover {
 
 fn hex_encode(text: &str) -> String {
     use std::fmt::Write;
-    text.bytes().fold(String::with_capacity(text.len() * 2), |mut out, b| {
-        let _ = write!(out, "{b:02x}");
-        out
-    })
+    text.bytes()
+        .fold(String::with_capacity(text.len() * 2), |mut out, b| {
+            let _ = write!(out, "{b:02x}");
+            out
+        })
 }
 
 fn hex_decode(hex: &str) -> Option<String> {
@@ -667,7 +668,10 @@ mod tests {
             .unwrap()
             .duration_ms
             .is_none());
-        assert_eq!(first.key(), key_for(&dir.join("Artist").join("01 First.wav")));
+        assert_eq!(
+            first.key(),
+            key_for(&dir.join("Artist").join("01 First.wav"))
+        );
         assert_eq!(first.to_info().key, first.key());
     }
 

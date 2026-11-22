@@ -48,7 +48,11 @@ mod tests {
         let song = dir.join("song.flac");
         std::fs::write(&song, b"not really audio").unwrap();
         let url = cover_url(&song, 1);
-        assert_eq!(answer(&url).status(), StatusCode::NOT_FOUND, "no picture yet");
+        assert_eq!(
+            answer(&url).status(),
+            StatusCode::NOT_FOUND,
+            "no picture yet"
+        );
 
         let png = [0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A, 5, 6];
         std::fs::write(dir.join("cover.png"), png).unwrap();
@@ -58,7 +62,10 @@ mod tests {
         assert_eq!(found.body(), &png);
 
         // An address that is not a song's cover is never opened.
-        assert_eq!(answer("https://i.ytimg.com/x.jpg").status(), StatusCode::NOT_FOUND);
+        assert_eq!(
+            answer("https://i.ytimg.com/x.jpg").status(),
+            StatusCode::NOT_FOUND
+        );
         assert_eq!(
             answer(&format!("{COVER_SCHEME}://localhost/not-hex")).status(),
             StatusCode::NOT_FOUND
