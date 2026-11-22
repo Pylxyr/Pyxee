@@ -6,7 +6,7 @@
   import { sleep } from '$lib/sleep.svelte';
   import { sleepLabel } from '$lib/lyrics';
   import { shellSettings } from '$lib/shell.svelte';
-  import { prefs } from '$lib/prefs.svelte';
+  import { CROSSFADE_SECONDS, prefs } from '$lib/prefs.svelte';
   import { UI_SCALES, type UiScale } from '$lib/uiscale';
   import { hasOwnWindow } from '$lib/windowControls';
   import { platform } from '$lib/platform.svelte';
@@ -32,6 +32,7 @@
   const TABS: { id: SettingsTab; label: string; icon: string; blurb: string }[] = [
     { id: 'appearance', label: 'Appearance', icon: 'palette', blurb: 'Theme, colors and size' },
     { id: 'layout', label: 'Layout', icon: 'layout', blurb: 'Corners, surfaces, panels and the home page' },
+    { id: 'playback', label: 'Playback', icon: 'music', blurb: 'Crossfade between songs' },
     { id: 'system', label: platform.os === 'windows' ? 'Windows' : 'System', icon: 'monitor', blurb: 'Tray, notifications and sleep timer' },
     { id: 'connections', label: 'Connections', icon: 'plug', blurb: 'Discord and Last.fm' },
     { id: 'updates', label: 'Updates', icon: 'refresh', blurb: 'Pyxee and its tools' },
@@ -112,6 +113,16 @@
           </section>
         {:else if tab.id === 'layout'}
           <LookSection />
+        {:else if tab.id === 'playback'}
+          <section class="settings-section" aria-label="Playback">
+            <label class="setting-hint block px-3">
+              Crossfade between songs
+              <select class="field mt-1" aria-label="Crossfade between songs" value={String(prefs.crossfade)} onchange={(e) => prefs.setCrossfade(Number(e.currentTarget.value))}>
+                {#each CROSSFADE_SECONDS as s (s)}<option value={String(s)}>{s === 0 ? 'Off' : `${s} seconds`}</option>{/each}
+              </select>
+              <span class="mt-1 block">One song fades out while the next fades in. It only happens when a song ends by itself: Next, Previous, seeking and stopping stay instant. A song whose length is unknown plays without it. Off keeps songs joined without a gap.</span>
+            </label>
+          </section>
         {:else if tab.id === 'system'}
           <section class="settings-section" aria-label={tab.label}>
             <Toggle

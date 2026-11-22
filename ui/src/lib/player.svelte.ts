@@ -162,6 +162,7 @@ export class PlayerStore {
   }
 
   setVolume = (percent: number): Promise<void> => this.#backend?.setVolume(percent) ?? Promise.resolve();
+  setCrossfade = (seconds: number): Promise<void> => this.#backend?.setCrossfade(seconds) ?? Promise.resolve();
   toggle = () => this.dispatch({ type: 'toggle' });
   next = () => this.dispatch({ type: 'next' });
   previous = () => this.dispatch({ type: 'previous' });

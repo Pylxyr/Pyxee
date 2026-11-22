@@ -21,6 +21,7 @@ function stub(initial: PlayerStateDto = EMPTY_STATE) {
     onPosition: async () => () => {},
     windowInfo: async () => ({ backdrop: 'none' }),
     setVolume: async () => {},
+    setCrossfade: async () => {},
     devCatalog: async () => DEMO_TRACKS,
     search: async () => ({ items: [] }),
     suggest: async () => [],

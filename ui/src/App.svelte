@@ -89,6 +89,11 @@
     if (player.ready) void player.setVolume(prefs.volume);
   });
 
+  // Likewise the crossfade between songs (Settings -> Playback).
+  $effect(() => {
+    if (player.ready) void player.setCrossfade(prefs.crossfade);
+  });
+
   // The native window (title bar, Mica) follows the chosen theme, not only the Windows setting.
   $effect(() => {
     const wanted = theme.windowTheme;

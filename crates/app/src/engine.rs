@@ -10,7 +10,7 @@ use pyxee_audio::AudioError;
 use pyxee_audio::decode::{LibavSource, SampleSource};
 use pyxee_audio::gapless::{FailKind, PreparedTrack};
 use pyxee_audio::http::{CompletionHook, HttpRangeSource};
-use pyxee_audio::pipeline::{Consumer, PipeEvent, Pipeline, Volume};
+use pyxee_audio::pipeline::{Consumer, Crossfade, PipeEvent, Pipeline, Volume};
 use pyxee_core::{Command, Effect, EngineEvent, EntryId, Failure, Heard, Track, TrackDetails};
 use pyxee_sources::{MusicSource, SourceError, StreamInfo, StreamMeta, TrackInfo};
 use std::collections::{HashMap, HashSet};
@@ -148,6 +148,8 @@ pub struct Engine {
     source: Arc<dyn MusicSource>,
     rate: u32,
     volume: Volume,
+    /// How long one song fades into the next (0 = off); the pipeline follows it, also after it is rebuilt.
+    crossfade: Crossfade,
     pipeline: Pipeline,
     pipe_rx: Receiver<PipeEvent>,
     work_tx: Sender<Work>,
@@ -202,6 +204,7 @@ impl Engine {
         source: Arc<dyn MusicSource>,
         rate: u32,
         volume: Volume,
+        crossfade: Crossfade,
     ) -> Self {
         let (pipe_tx, pipe_rx) = channel();
         let (work_tx, work_rx) = channel();
@@ -210,7 +213,8 @@ impl Engine {
             source,
             rate,
             volume: volume.clone(),
-            pipeline: Pipeline::new(rate, pipe_tx, volume),
+            crossfade: crossfade.clone(),
+            pipeline: Pipeline::with_crossfade(rate, pipe_tx, volume, crossfade),
             pipe_rx,
             work_tx,
             work_rx,
@@ -320,7 +324,8 @@ impl Engine {
         let (pipe_tx, pipe_rx) = channel();
         self.bump_generation();
         self.rate = rate;
-        self.pipeline = Pipeline::new(rate, pipe_tx, self.volume.clone());
+        self.pipeline =
+            Pipeline::with_crossfade(rate, pipe_tx, self.volume.clone(), self.crossfade.clone());
         self.pipe_rx = pipe_rx;
         self.held_prefetch = None;
         self.prefetched = None;
@@ -482,7 +487,7 @@ impl Engine {
         if let Some(ready) = self.held_prefetch.take() {
             // It was ready before the song that is playing was: nothing else is queued, so it goes in alone.
             self.pipeline.flush();
-            self.pipeline.push(*ready);
+            self.push_track(ready);
         } else if !self.pipeline.skip_to_queued(id) && !self.pipeline.seek_in_place(id, 0) {
             // Not queued any more: the decoder (which reads a couple of seconds ahead, and all of a short song) may
             // already have reached it. It is open, so it goes back to its start in place, as a seek to 0 does.
@@ -511,6 +516,15 @@ impl Engine {
         self.known.insert(id, track.clone());
         self.current = Some((id, track.clone()));
         true
+    }
+
+    /// Queues a prepared track, after telling it how long its song is and where in it the track was opened: the audio
+    /// side needs that to know when the end is near, for a crossfade. A song of unknown length is joined gaplessly.
+    fn push_track(&self, mut t: Box<PreparedTrack>) {
+        let id = EntryId(t.id());
+        let duration = self.known.get(&id).and_then(|k| k.duration_ms);
+        t.set_duration_hint(duration, self.offsets.get(&id).copied().unwrap_or(0));
+        self.pipeline.push(*t);
     }
 
     fn bump_generation(&mut self) {
@@ -631,17 +645,17 @@ impl Engine {
                 match (purpose, result) {
                     (Purpose::Start, Ok(t)) => {
                         log::info!("ready: {}", self.describe(id));
-                        self.pipeline.push(*t);
+                        self.push_track(t);
                         self.start_queued = true;
                         // The next track may have been ready first (a seek re-opens the current track,
                         // which can be slow); it follows, never leads.
                         if let Some(next) = self.held_prefetch.take() {
-                            self.pipeline.push(*next);
+                            self.push_track(next);
                         }
                     }
                     (Purpose::Prefetch, Ok(t)) => {
                         if self.start_queued || self.start_id.is_none() {
-                            self.pipeline.push(*t);
+                            self.push_track(t);
                         } else {
                             self.held_prefetch = Some(t);
                         }

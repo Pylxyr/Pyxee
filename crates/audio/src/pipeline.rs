@@ -75,6 +75,41 @@ impl Default for Volume {
     }
 }
 
+/// How long one song fades into the next, shared between the UI side (which sets it) and the producer thread (which
+/// reads it each time it fills the buffer). 0 is off: songs join gaplessly, as they always did. It only applies where
+/// one song follows another by itself; a skip, a seek or a stop is always instant.
+#[derive(Clone, Default)]
+pub struct Crossfade {
+    ms: Arc<AtomicU32>,
+}
+
+impl Crossfade {
+    /// The longest crossfade offered, in seconds.
+    pub const MAX_SECS: u8 = 12;
+
+    #[must_use]
+    pub fn new(secs: u8) -> Self {
+        let c = Self::default();
+        c.set_secs(secs);
+        c
+    }
+    /// Seconds, 0 (off) to `MAX_SECS`; more is taken as the longest.
+    pub fn set_secs(&self, secs: u8) {
+        self.ms.store(
+            u32::from(secs.min(Self::MAX_SECS)) * 1000,
+            Ordering::Relaxed,
+        );
+    }
+    #[must_use]
+    pub fn secs(&self) -> u8 {
+        (self.ms() / 1000) as u8
+    }
+    #[must_use]
+    pub fn ms(&self) -> u32 {
+        self.ms.load(Ordering::Relaxed)
+    }
+}
+
 /// Seconds of audio kept decoded ahead of the device.
 const BUFFER_SECS: usize = 2;
 const CHUNK_SAMPLES: usize = 4096;
@@ -200,6 +235,7 @@ struct Shared {
     queued_tracks: AtomicUsize,
     underruns: AtomicU64,
     volume: Volume,
+    crossfade: Crossfade,
     rate: u32,
 }
 
@@ -249,6 +285,17 @@ pub struct Consumer {
 impl Pipeline {
     #[must_use]
     pub fn new(rate: u32, tx: Sender<PipeEvent>, volume: Volume) -> Self {
+        Self::with_crossfade(rate, tx, volume, Crossfade::default())
+    }
+
+    /// Like `new`, with a crossfade between songs that follows `crossfade` as it changes.
+    #[must_use]
+    pub fn with_crossfade(
+        rate: u32,
+        tx: Sender<PipeEvent>,
+        volume: Volume,
+        crossfade: Crossfade,
+    ) -> Self {
         let shared = Arc::new(Shared {
             wake: Wake::new(),
             source: Mutex::new(GaplessSource::new()),
@@ -267,6 +314,7 @@ impl Pipeline {
             queued_tracks: AtomicUsize::new(0),
             underruns: AtomicU64::new(0),
             volume,
+            crossfade,
             rate,
         });
         let s = Arc::clone(&shared);
@@ -477,7 +525,7 @@ fn produce(s: &Shared) {
         }
         let mut src = lock(&s.source);
         apply_pending(s, &mut src);
-        let n = src.fill(&mut tmp);
+        let n = src.fill_with(&mut tmp, s.crossfade.ms());
         let events = src.drain_events();
         s.queued_tracks.store(src.queued(), Ordering::Relaxed);
         if s.cancel.load(Ordering::SeqCst) {

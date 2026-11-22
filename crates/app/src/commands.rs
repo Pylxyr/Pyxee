@@ -302,6 +302,13 @@ pub fn set_volume(state: State<AppState>, percent: u8) {
     state.volume.set_percent(percent);
 }
 
+/// How many seconds one song fades into the next, 0 (off) to 12. Only songs that follow each other by themselves fade;
+/// a skip, a seek or a stop is always instant. Takes effect from the next song change.
+#[tauri::command]
+pub fn set_crossfade(state: State<AppState>, seconds: u8) {
+    state.crossfade.set_secs(seconds);
+}
+
 /// Whether the app was started with `PYXEE_PERF=1` (the window then reports what it does; see `perf_log`).
 /// Developer builds only: a release build never writes the performance log.
 pub(crate) fn perf_on() -> bool {

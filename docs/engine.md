@@ -32,6 +32,19 @@
    longer the one in the pipeline, or the producer is waiting on the network for more than 200 ms) the track is re-opened at the
    offset and the pre-decoded next track is re-queued.
 
+6. Crossfade (off by default; **Settings -> Playback**, 0 to 12 s; `Crossfade` in `crates/audio/src/pipeline.rs`, the mixing in
+   `GaplessSource::fill_with`). During the last seconds of a song the queued one starts under it and the two are mixed with an
+   equal-power curve (cos / sin, so the loudness stays level). The fade needs the exact end of the song, which a stream only
+   gives once the decoder has reached it, so the engine tells each track how long its song is (`PreparedTrack::set_duration_hint`)
+   and, from a few seconds before the earliest possible start, the track decodes `fade` seconds ahead of the listener. Rules:
+   - It only happens when one song follows another by itself. A skip, a seek and a stop are instant, and a seek or skip
+     during a fade ends it.
+   - A song of unknown length, a next song that is not queued yet, or a stated length that is more than about 8 s too long
+     join gaplessly, as with the setting off. Nothing fails; there is just no fade.
+   - A fade is at most a third of the song it ends, and shorter than 50 ms is not done.
+   - The window moves on to the next song when the fade begins (`Finished` of the first and `Started` of the second are
+     announced at the same frame), so everything that follows what was heard counts the first song up to there.
+
 ## Verified here (automated, no network)
 Gapless order and zero silence, skip, pause (clock and audio freeze), seek, unplayable track skipped, offline stays on the
 track with Retry, radio continues after the queue ends, repeat-one loops seamlessly, and the expired-URL recovery against a

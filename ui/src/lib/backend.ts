@@ -89,6 +89,8 @@ export interface Backend extends LibraryBackend {
   windowInfo(): Promise<WindowInfoDto>;
   /** Output volume, 0-100. */
   setVolume(percent: number): Promise<void>;
+  /** Seconds one song fades into the next, 0 (off) to 12. Songs that end by themselves fade; skips and seeks stay instant. */
+  setCrossfade(seconds: number): Promise<void>;
   /** Makes the native window frame and backdrop follow the chosen theme; `null` follows the system again. */
   setWindowTheme(theme: 'dark' | 'light' | null): Promise<void>;
   /** Colours the native window's border (and the Windows title bar) like the cover-tinted theme; `null` goes back to the system's. */
@@ -186,6 +188,7 @@ export async function tauriBackend(): Promise<Backend> {
     onPosition: async (cb) => listen<PositionDto>(POSITION_EVENT, (e) => cb(e.payload)),
     windowInfo: () => invoke<WindowInfoDto>('window_info'),
     setVolume: (percent) => invoke<void>('set_volume', { percent: Math.round(percent) }),
+    setCrossfade: (seconds) => invoke<void>('set_crossfade', { seconds: Math.round(seconds) }),
     setWindowTheme: (theme) => invoke<void>('set_window_theme', { theme }).catch(() => {}),
     setWindowTint: (tint) =>
       invoke<void>('set_window_tint', {

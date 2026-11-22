@@ -11,6 +11,7 @@ import { lyricsStore } from '$lib/lyrics.svelte';
 import { sleep } from '$lib/sleep.svelte';
 import { shellSettings } from '$lib/shell.svelte';
 import { updates } from '$lib/updates.svelte';
+import { prefs } from '$lib/prefs.svelte';
 
 let mock: MockBackend;
 vi.mock('$lib/backend', async (orig) => ({
@@ -165,6 +166,46 @@ describe('sleep timer', () => {
     expect(bar).toBeTruthy();
     await fireEvent.click(screen.getByRole('button', { name: 'Turn off' }));
     await waitFor(() => expect(sleep.status).toBeNull());
+  });
+});
+
+describe('Playback settings', () => {
+  beforeEach(() => {
+    try {
+      localStorage.removeItem('pyxee.crossfade');
+    } catch {
+      /* ignore */
+    }
+    prefs.setCrossfade(0);
+  });
+
+  async function openPlayback() {
+    render(App);
+    await waitFor(() => expect(player.ready && library.ready).toBe(true));
+    nav.settingsTab = 'playback';
+    await fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
+    return screen.findByRole('region', { name: 'Playback' });
+  }
+
+  it('crossfade is off by default and the choice reaches the audio engine', async () => {
+    const section = await openPlayback();
+    const select = within(section).getByLabelText('Crossfade between songs') as HTMLSelectElement;
+    expect(select.value).toBe('0');
+    await waitFor(() => expect(mock.crossfade).toBe(0));
+    await fireEvent.change(select, { target: { value: '6' } });
+    await waitFor(() => expect(mock.crossfade).toBe(6));
+    expect(prefs.crossfade).toBe(6);
+    await fireEvent.change(select, { target: { value: '0' } });
+    await waitFor(() => expect(mock.crossfade).toBe(0));
+  });
+
+  it('only the offered lengths are kept, and a damaged stored value means off', () => {
+    prefs.setCrossfade(7);
+    expect([6, 8]).toContain(prefs.crossfade);
+    prefs.setCrossfade(500);
+    expect(prefs.crossfade).toBe(12);
+    prefs.setCrossfade(Number.NaN);
+    expect(prefs.crossfade).toBe(0);
   });
 });
 

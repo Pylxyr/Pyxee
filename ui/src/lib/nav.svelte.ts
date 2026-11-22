@@ -14,7 +14,7 @@ export interface NamePrompt {
 }
 export type NowPlayingTab = 'upnext' | 'lyrics' | 'related';
 /** The categories of the Settings panel, in the order the side list shows them. */
-export type SettingsTab = 'appearance' | 'layout' | 'system' | 'connections' | 'updates' | 'diagnostics';
+export type SettingsTab = 'appearance' | 'layout' | 'playback' | 'system' | 'connections' | 'updates' | 'diagnostics';
 
 /** An extra line a list puts at the end of the song menu ("Remove from queue" in the queue). */
 export interface MenuExtra {

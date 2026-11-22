@@ -121,6 +121,9 @@ export class MockBackend extends MockLibrary implements Backend {
   /** The last volume the UI asked for (0-100), so tests can check it arrived. */
   volume = 100;
   async setVolume(percent: number) { this.volume = percent; }
+  /** The last crossfade length the UI asked for (seconds), so tests can check it arrived. */
+  crossfade = 0;
+  async setCrossfade(seconds: number) { this.crossfade = seconds; }
   /** Demo log location, and a count of how many times the folder was opened. */
   logFolderOpens = 0;
   logError: string | null = null;

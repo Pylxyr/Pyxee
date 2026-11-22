@@ -27,6 +27,7 @@ A gapless music player for Windows and Linux that plays music found online and t
 |---|---|
 | **Search** | Find songs, videos, artists and playlists, and add them to your queue. |
 | **Gapless playback** | Queue songs up and let them play, one into the next. |
+| **Crossfade** | Optional: one song fades out as the next fades in (**Settings** -> **Playback**, 2 to 12 seconds). Off by default. |
 | **Your own music** | Play the music on your PC: **Library** -> **On this device**, add your music folders. Pyxee reads the tags of MP3, FLAC, Ogg, Opus, M4A, AAC and WAV files. |
 | **Home** | Brings back what you were just playing and what you play most. |
 | **Library** | Keeps your likes, playlists and listening history on your own computer. |

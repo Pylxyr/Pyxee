@@ -21,6 +21,8 @@ pub struct AppState {
     pub log: crate::logging::LogInfo,
     pub log_error: Option<String>,
     pub volume: pyxee_audio::pipeline::Volume,
+    /// Seconds one song fades into the next (0 = off), read by the audio engine.
+    pub crossfade: pyxee_audio::pipeline::Crossfade,
     pub library: Mutex<LibraryService>,
     pub source: Arc<dyn MusicSource>,
     pub player: Mutex<Player>,
