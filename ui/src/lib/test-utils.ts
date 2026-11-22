@@ -17,6 +17,7 @@ export const noLibrary: LibraryBackend = {
   playlistMoveEntry: async () => {},
   historyGet: async () => [],
   historyClear: async () => [],
+  historyRemove: async () => [],
   historyRestore: async () => {},
   homeGet: async () => ({ quickPicks: [], recent: [], likedCount: 0 }),
   relatedGet: async () => [],

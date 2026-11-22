@@ -1,17 +1,18 @@
 <script lang="ts">
   import type { TrackDto } from '$lib/bindings/TrackDto';
   import { openTrackMenu } from '$lib/menu';
+  import type { MenuExtra } from '$lib/nav.svelte';
   import { artistOf, titleOf } from '$lib/format';
   import { reveal } from '$lib/motion';
   import Icon from './Icon.svelte';
   import Thumb from './Thumb.svelte';
 
   /** Songs as covers (Recently played, Jump back in): for browsing by sight instead of by name. */
-  let { tracks, label, onplay }: { tracks: TrackDto[]; label: string; onplay: (index: number) => void } = $props();
+  let { tracks, label, onplay, extras }: { tracks: TrackDto[]; label: string; onplay: (index: number) => void; extras?: (t: TrackDto) => MenuExtra[] } = $props();
 
   // A right-click (or the Menu key) opens the same song menu as on a queue row; the sheet gives focus back to the tile.
   function openMenu(e: MouseEvent, t: TrackDto) {
-    openTrackMenu(t, { event: e, opener: (e.currentTarget as HTMLElement).querySelector<HTMLElement>('.cover-tile') });
+    openTrackMenu(t, { event: e, opener: (e.currentTarget as HTMLElement).querySelector<HTMLElement>('.cover-tile'), extras: extras?.(t) });
   }
 </script>
 

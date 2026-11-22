@@ -2,6 +2,7 @@
   import { library } from '$lib/library.svelte';
   import { nav } from '$lib/nav.svelte';
   import { openTrackMenu } from '$lib/menu';
+  import { recentMenu } from '$lib/actions';
   import { player } from '$lib/player.svelte';
   import { playWithRelated } from '$lib/radio';
   import { Loaded } from '$lib/loaded.svelte';
@@ -166,7 +167,7 @@
       {#if home.recent.length > 0}
         <section class="min-w-0">
           <SectionHead count={home.recent.length}>Recently played</SectionHead>
-          <CoverGrid label="Recently played" tracks={home.recent} onplay={(i) => void playWithRelated(home!.recent[i]!)} />
+          <CoverGrid label="Recently played" tracks={home.recent} onplay={(i) => void playWithRelated(home!.recent[i]!)} extras={recentMenu} />
         </section>
       {/if}
     </div>

@@ -340,6 +340,25 @@ fn clearing_history_can_be_undone_with_original_times() {
     );
 }
 
+#[test]
+fn removing_one_song_from_history_forgets_all_its_plays_and_can_be_undone() {
+    let mut l = lib();
+    for (n, at) in [("a", 1), ("b", 2), ("a", 3), ("c", 4)] {
+        l.record_play(&t(n), at).unwrap();
+    }
+    let before = l.history(10).unwrap();
+    let removed = l.remove_from_history("yt:a").unwrap();
+    assert_eq!(
+        removed.iter().map(|h| h.played_at).collect::<Vec<_>>(),
+        [3, 1]
+    );
+    assert_eq!(names(&l.recent_tracks(10).unwrap()), ["Title c", "Title b"]);
+    assert_eq!(l.history_count().unwrap(), 2);
+    assert!(l.remove_from_history("yt:a").unwrap().is_empty());
+    l.restore_history(&removed).unwrap();
+    assert_eq!(l.history(10).unwrap(), before);
+}
+
 // ----------------------------------------------------------------- home
 #[test]
 fn quick_picks_favour_often_played_and_liked_songs_and_ignore_the_rest() {

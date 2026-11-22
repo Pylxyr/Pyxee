@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { TrackDto } from './bindings/TrackDto';
 import { MockLibrary } from './mock-library';
 
@@ -64,6 +64,28 @@ describe('MockLibrary follows the Rust library rules', () => {
     const cleared = await l.historyClear();
     expect((await l.getLibrary()).historyCount).toBe(0);
     await l.historyRestore(cleared);
+    expect(await l.historyGet(10)).toEqual(before);
+  });
+
+  it('removing one song from history forgets all its plays, can be undone, and an unknown song changes nothing', async () => {
+    const l = new MockLibrary();
+    // Each play gets its own time, as in real use, so the order after Undo is the order before.
+    vi.useFakeTimers();
+    for (const [n, at] of [['a', 1000], ['b', 2000], ['a', 3000]] as const) {
+      vi.setSystemTime(at);
+      l.recordPlay(t(n));
+    }
+    vi.useRealTimers();
+    const before = await l.historyGet(10);
+    const removed = await l.historyRemove(t('a').key);
+    expect(removed).toHaveLength(2);
+    expect((await l.historyGet(10)).map((h) => h.track.key)).toEqual([t('b').key]);
+    const seen: number[] = [];
+    const off = await l.onLibrary((s) => seen.push(s.revision));
+    expect(await l.historyRemove(t('a').key)).toEqual([]);
+    expect(seen).toEqual([]);
+    off();
+    await l.historyRestore(removed);
     expect(await l.historyGet(10)).toEqual(before);
   });
 

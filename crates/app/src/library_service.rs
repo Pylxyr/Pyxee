@@ -242,6 +242,23 @@ impl LibraryService {
         self.changed(r)
     }
 
+    pub fn remove_from_history(&mut self, key: &str) -> Res<Vec<HistoryItemDto>> {
+        let r = self
+            .lib
+            .remove_from_history(key)
+            .map(|removed| {
+                removed
+                    .iter()
+                    .map(|h| HistoryItemDto {
+                        track: track(&h.track),
+                        played_at: h.played_at,
+                    })
+                    .collect()
+            })
+            .map_err(err);
+        self.changed(r)
+    }
+
     pub fn restore_history(&mut self, items: &[HistoryItemDto]) -> Res<()> {
         let items: Vec<HistoryItem> = items
             .iter()

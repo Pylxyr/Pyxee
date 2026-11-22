@@ -406,6 +406,26 @@ describe('the song menu in a wide window with a mouse', () => {
     await waitFor(() => expect(player.state.queue.map((e) => e.track.title)).toEqual(['Neon Harbor', 'Slow Orbit']));
   });
 
+  it('a Recently played cover can be taken out of the history, and Undo puts it back', async () => {
+    setWide(true);
+    await openApp();
+    await player.playTracks([NEON, ORBIT]);
+    await listen(NEON, 31);
+    await player.next();
+    await listen(ORBIT, 31);
+    await go(/Home/);
+    const recent = () => screen.findByRole('list', { name: 'Recently played' });
+    await fireEvent.contextMenu(within(await recent()).getByRole('button', { name: 'Play Neon Harbor' }));
+    const menu = await screen.findByRole('menu', { name: 'Neon Harbor' });
+    expect(within(menu).getByRole('menuitem', { name: 'Play now' })).toBeTruthy();
+    await fireEvent.click(within(menu).getByRole('menuitem', { name: 'Remove from Recently played' }));
+    await waitFor(() => expect(within(screen.getByRole('list', { name: 'Recently played' })).queryByRole('button', { name: 'Play Neon Harbor' })).toBeNull());
+    expect(within(screen.getByRole('list', { name: 'Recently played' })).getByRole('button', { name: 'Play Slow Orbit' })).toBeTruthy();
+    expect(snackbar.items.at(-1)?.message).toBe('Removed "Neon Harbor" from Recently played');
+    snackbar.act(snackbar.items.at(-1)!.id);
+    await waitFor(() => expect(within(screen.getByRole('list', { name: 'Recently played' })).getByRole('button', { name: 'Play Neon Harbor' })).toBeTruthy());
+  });
+
   it('a narrow window or a touch screen keeps the sheet', async () => {
     setWide(false);
     await openApp();

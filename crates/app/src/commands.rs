@@ -282,6 +282,11 @@ pub fn history_clear(app: AppHandle) -> Result<Vec<HistoryItemDto>, String> {
 }
 
 #[tauri::command(async)]
+pub fn history_remove(app: AppHandle, key: String) -> Result<Vec<HistoryItemDto>, String> {
+    with_library(&app, |l| l.remove_from_history(&key))
+}
+
+#[tauri::command(async)]
 pub fn history_restore(app: AppHandle, items: Vec<HistoryItemDto>) -> Result<(), String> {
     with_library(&app, |l| l.restore_history(&items))
 }

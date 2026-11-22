@@ -1,4 +1,7 @@
 import type { EntryDto } from './bindings/EntryDto';
+import type { TrackDto } from './bindings/TrackDto';
+import { messageOf } from './backend';
+import { library } from './library.svelte';
 import { player } from './player.svelte';
 import { snackbar } from './snackbar.svelte';
 import type { MenuExtra } from './nav.svelte';
@@ -31,4 +34,27 @@ export function queueMenu(e: EntryDto): MenuExtra[] {
   if (at !== queue.length - 1) out.push({ label: 'Move to the end', icon: 'down', run: () => player.dispatch({ type: 'move', id: e.id, to: queue.length - 1 }) });
   out.push({ label: 'Remove from queue', icon: 'trash', danger: true, run: () => removeFromQueue(e) });
   return out;
+}
+
+/**
+ * Takes a song out of Recently played (every play of it leaves the history, so the Quick picks forget it too) and offers
+ * Undo, which puts the plays back with their original times.
+ */
+export async function removeFromRecent(t: TrackDto) {
+  const b = library.backend;
+  if (!b) return;
+  try {
+    const items = await b.historyRemove(t.key);
+    if (items.length === 0) return;
+    snackbar.push(`Removed "${t.title}" from Recently played`, {
+      action: { label: 'Undo', run: () => void b.historyRestore(items).catch((e) => snackbar.push(messageOf(e))) },
+    });
+  } catch (e) {
+    snackbar.push(messageOf(e));
+  }
+}
+
+/** The line a Recently played card adds to the song menu. */
+export function recentMenu(t: TrackDto): MenuExtra[] {
+  return [{ label: 'Remove from Recently played', icon: 'trash', danger: true, run: () => void removeFromRecent(t) }];
 }

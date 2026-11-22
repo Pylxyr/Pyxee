@@ -327,6 +327,7 @@ fn main() {
             commands::playlist_move_entry,
             commands::history_get,
             commands::history_clear,
+            commands::history_remove,
             commands::history_restore,
             commands::home_get,
             audio_cache::audio_cache_get,

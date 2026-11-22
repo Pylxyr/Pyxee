@@ -209,6 +209,14 @@ export class MockLibrary implements LibraryBackend {
     this.#changed();
     return clone(all);
   }
+  async historyRemove(key: string) {
+    const removed = this.#history.filter((h) => h.track.key === key);
+    if (removed.length > 0) {
+      this.#history = this.#history.filter((h) => h.track.key !== key);
+      this.#changed();
+    }
+    return clone(removed);
+  }
   async historyRestore(items: HistoryItemDto[]) {
     this.#history = [...clone(items), ...this.#history].sort((a, b) => b.playedAt - a.playedAt);
     this.#changed();

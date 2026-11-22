@@ -625,6 +625,29 @@ impl Library {
         Ok(all)
     }
 
+    /// Forgets every play of one song (it leaves Recently played and counts for nothing in the quick picks) and returns
+    /// those plays so they can be restored (Undo). A song that is not in the history returns an empty list.
+    pub fn remove_from_history(&mut self, key: &str) -> Result<Vec<HistoryItem>> {
+        let sql = format!(
+            "SELECT {TRACK_COLS}, h.played_at FROM history h JOIN tracks t ON t.key = h.track_key
+             WHERE h.track_key = ?1 ORDER BY h.played_at DESC, h.id DESC"
+        );
+        let tx = self.conn.transaction()?;
+        let removed = {
+            let mut st = tx.prepare(&sql)?;
+            let rows = st.query_map([key], |r| {
+                Ok(HistoryItem {
+                    track: track_from_row(r, 0)?,
+                    played_at: r.get(5)?,
+                })
+            })?;
+            rows.collect::<rusqlite::Result<Vec<_>>>()?
+        };
+        tx.execute("DELETE FROM history WHERE track_key = ?1", [key])?;
+        tx.commit()?;
+        Ok(removed)
+    }
+
     pub fn restore_history(&mut self, items: &[HistoryItem]) -> Result<()> {
         let tx = self.conn.transaction()?;
         for it in items.iter().rev() {

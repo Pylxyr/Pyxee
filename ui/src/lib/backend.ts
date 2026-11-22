@@ -47,6 +47,8 @@ export interface LibraryBackend {
   playlistMoveEntry(entryId: number, to: number): Promise<void>;
   historyGet(limit: number): Promise<HistoryItemDto[]>;
   historyClear(): Promise<HistoryItemDto[]>;
+  /** Forgets every play of one song and returns them, so Undo can restore them. */
+  historyRemove(key: string): Promise<HistoryItemDto[]>;
   historyRestore(items: HistoryItemDto[]): Promise<void>;
   homeGet(): Promise<HomeDto>;
   /** Songs similar to `key` (for Explore). Rejects with a `SearchErrorDto` like `search` does. */
@@ -222,6 +224,7 @@ export async function tauriBackend(): Promise<Backend> {
     playlistMoveEntry: (entryId, to) => invoke<void>('playlist_move_entry', { entryId, to }),
     historyGet: (limit) => invoke<HistoryItemDto[]>('history_get', { limit }),
     historyClear: () => invoke<HistoryItemDto[]>('history_clear'),
+    historyRemove: (key) => invoke<HistoryItemDto[]>('history_remove', { key }),
     historyRestore: (items) => invoke<void>('history_restore', { items }),
     homeGet: () => invoke<HomeDto>('home_get'),
     relatedGet: (key, count) => invoke<TrackDto[]>('related_get', { key, count }),
