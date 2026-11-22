@@ -5,9 +5,10 @@
 //! Heavy work (resolve, open, prefill) runs on short-lived worker threads and comes back through a
 //! channel tagged with a generation, so results for a track the user already skipped are dropped.
 
+use crate::audio_cache::AudioCache;
 use pyxee_audio::decode::{LibavSource, SampleSource};
 use pyxee_audio::gapless::{FailKind, PreparedTrack};
-use pyxee_audio::http::HttpRangeSource;
+use pyxee_audio::http::{CompletionHook, HttpRangeSource};
 use pyxee_audio::pipeline::{Consumer, PipeEvent, Pipeline, Volume};
 use pyxee_audio::AudioError;
 use pyxee_core::{Command, Effect, EngineEvent, EntryId, Failure, Heard, Track, TrackDetails};
@@ -152,6 +153,8 @@ pub struct Engine {
     work_tx: Sender<Work>,
     work_rx: Receiver<Work>,
     cache: UrlCache,
+    /// Songs kept on disk after they were played (none in the tests).
+    audio_cache: Option<Arc<AudioCache>>,
     /// Bumped by anything that flushes the pipeline; older worker results are stale.
     generation: u64,
     /// `generation`, readable from the workers: one still waiting for yt-dlp's turn for a song the listener has since
@@ -212,6 +215,7 @@ impl Engine {
             work_tx,
             work_rx,
             cache: Arc::new(Mutex::new(HashMap::new())),
+            audio_cache: None,
             generation: 0,
             live_generation: Arc::new(AtomicU64::new(0)),
             prefetch_token: 0,
@@ -327,6 +331,11 @@ impl Engine {
                 self.spawn_prefetch(pid, pkey);
             }
         }
+    }
+
+    /// Songs that play to the end of their download are kept in `cache`, and a kept song plays from it.
+    pub fn set_audio_cache(&mut self, cache: Arc<AudioCache>) {
+        self.audio_cache = Some(cache);
     }
 
     pub fn handle(&mut self, effect: Effect) {
@@ -474,7 +483,9 @@ impl Engine {
             // It was ready before the song that is playing was: nothing else is queued, so it goes in alone.
             self.pipeline.flush();
             self.pipeline.push(*ready);
-        } else if !self.pipeline.skip_to_queued(id) {
+        } else if !self.pipeline.skip_to_queued(id) && !self.pipeline.seek_in_place(id, 0) {
+            // Not queued any more: the decoder (which reads a couple of seconds ahead, and all of a short song) may
+            // already have reached it. It is open, so it goes back to its start in place, as a seek to 0 does.
             return false;
         }
         log::info!(
@@ -516,6 +527,7 @@ impl Engine {
     }
 
     fn spawn_prepare(&self, id: EntryId, key: String, start_ms: u64, purpose: Purpose) {
+        let disk = self.audio_cache.clone();
         let (source, cache, rate, tx, cancel) = (
             Arc::clone(&self.source),
             Arc::clone(&self.cache),
@@ -536,7 +548,17 @@ impl Engine {
                 key: &key,
                 start_ms,
             };
-            let run = || prepare(&*source, &cache, rate, &job, &cancel, &on_meta);
+            let run = || {
+                prepare(
+                    &*source,
+                    &cache,
+                    disk.as_ref(),
+                    rate,
+                    &job,
+                    &cancel,
+                    &on_meta,
+                )
+            };
             // A song the listener skipped while it waited for its turn is not resolved at all: the one they landed on
             // would otherwise wait behind a yt-dlp run for every song they passed.
             let run = || {
@@ -936,11 +958,17 @@ fn open_stream(
     s: &StreamInfo,
     start_ms: u64,
     cancel: &Arc<AtomicBool>,
+    keep: Option<CompletionHook>,
 ) -> Result<Box<dyn SampleSource>, AudioError> {
     let remote = s.url.starts_with("http");
     let open = || -> Result<LibavSource, AudioError> {
         if remote {
-            let http = HttpRangeSource::open_with_cancel(&s.url, &s.headers, Arc::clone(cancel))?;
+            let http = HttpRangeSource::open_with_hook(
+                &s.url,
+                &s.headers,
+                Arc::clone(cancel),
+                keep.clone(),
+            )?;
             LibavSource::open(Box::new(http))
         } else {
             LibavSource::open_path(std::path::Path::new(&s.url))
@@ -981,6 +1009,7 @@ struct PrepareJob<'a> {
 fn prepare(
     source: &dyn MusicSource,
     cache: &UrlCache,
+    disk: Option<&Arc<AudioCache>>,
     rate: u32,
     job: &PrepareJob,
     cancel: &Arc<AtomicBool>,
@@ -988,8 +1017,29 @@ fn prepare(
 ) -> Result<PreparedTrack, Failure> {
     let PrepareJob { id, key, start_ms } = *job;
     let build = |stream: &StreamInfo| -> Result<PreparedTrack, AudioError> {
-        PreparedTrack::new(id.0, open_stream(stream, start_ms, cancel)?, rate)
+        let keep = disk.and_then(|d| d.hook_for(key, &stream.ext));
+        PreparedTrack::new(id.0, open_stream(stream, start_ms, cancel, keep)?, rate)
     };
+    // A song kept from an earlier play needs no network, no address and no yt-dlp.
+    if let Some((path, ext)) = disk.and_then(|d| d.lookup(key)) {
+        let kept = StreamInfo {
+            url: path.display().to_string(),
+            ext: ext.to_string(),
+            ..StreamInfo::default()
+        };
+        match build(&kept) {
+            Ok(track) => {
+                log::info!("{key}: playing the copy kept on this PC");
+                return Ok(track);
+            }
+            Err(e) => {
+                log::warn!("{key}: the kept copy cannot be played ({e}); forgetting it");
+                if let Some(d) = disk {
+                    d.remove(key);
+                }
+            }
+        }
+    }
     let stream = resolve_cached(source, cache, key, false).map_err(|e| failure_from_source(&e))?;
     match build(&stream) {
         Ok(track) => {

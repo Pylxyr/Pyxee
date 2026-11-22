@@ -5,6 +5,7 @@ import type { ExploreShelfDto } from './bindings/ExploreShelfDto';
 import type { GenreDto } from './bindings/GenreDto';
 import type { FilterInfoDto } from './bindings/FilterInfoDto';
 import type { HistoryItemDto } from './bindings/HistoryItemDto';
+import type { AudioCacheDto } from './bindings/AudioCacheDto';
 import type { LocalLibraryDto } from './bindings/LocalLibraryDto';
 import type { LogInfoDto } from './bindings/LogInfoDto';
 import type { PerfReportDto } from './bindings/PerfReportDto';
@@ -66,6 +67,11 @@ export interface LibraryBackend {
   localRemoveFolder(folder: string): Promise<LocalLibraryDto>;
   /** Reads the chosen folders again (only the files that changed). */
   localRescan(): Promise<LocalLibraryDto>;
+  /** The songs kept on this PC after they were played (they play again without the network), and the room they may take. */
+  audioCacheGet(): Promise<AudioCacheDto>;
+  /** 0 keeps nothing and empties the cache. */
+  audioCacheSetLimit(limitMb: number): Promise<AudioCacheDto>;
+  audioCacheClear(): Promise<AudioCacheDto>;
   /** Which of these songs (keys) have lost their file: moved, renamed, deleted, or on a drive that is not connected. */
   localMissing(keys: string[]): Promise<string[]>;
 }
@@ -228,6 +234,9 @@ export async function tauriBackend(): Promise<Backend> {
     localAddFolder: () => invoke<LocalLibraryDto>('local_add_folder'),
     localRemoveFolder: (folder) => invoke<LocalLibraryDto>('local_remove_folder', { folder }),
     localRescan: () => invoke<LocalLibraryDto>('local_rescan'),
+    audioCacheGet: () => invoke<AudioCacheDto>('audio_cache_get'),
+    audioCacheSetLimit: (limitMb) => invoke<AudioCacheDto>('audio_cache_set_limit', { limitMb }),
+    audioCacheClear: () => invoke<AudioCacheDto>('audio_cache_clear'),
     localMissing: (keys) => invoke<string[]>('local_missing', { keys }),
     devCatalog: () => invoke<TrackDto[]>('dev_catalog'),
     coverBytes: (url) => invoke<ArrayBuffer>('cover_bytes', { url }),

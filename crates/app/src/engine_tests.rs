@@ -2,6 +2,7 @@
 //! and a test "device" that pulls audio. Proves what the user would hear: order, gaplessness, skipping,
 //! seeking, failures, radio, and recovery from an expired stream URL.
 
+use crate::audio_cache::AudioCache;
 use crate::engine::{Engine, Host};
 use pyxee_audio::gap::find_gaps;
 use pyxee_audio::pipeline::{Consumer, Volume};
@@ -378,6 +379,101 @@ fn skipping_to_the_prefetched_song_starts_it_at_once_without_opening_it_again() 
     assert_eq!(r.audible_log, vec![None, Some(ids[0]), None, Some(ids[1])]);
     // The song after it is prefetched in turn and follows, so nothing broke the queue.
     assert!(r.run_until(20, |r| r.snapshot().audible.map(|i| i.0) == Some(ids[2])));
+}
+
+#[test]
+fn skipping_to_a_prefetched_song_the_decoder_already_reached_does_not_open_it_again_either() {
+    // A short first song: the pipeline decodes a couple of seconds ahead, so by the time of the skip the prefetched
+    // song may be the one being decoded rather than one waiting in the queue. It is open all the same, and the
+    // skip takes it back to its start in place. The server allows what opening and playing it once takes; any
+    // second open is refused, and the song would fail instead of becoming audible.
+    let url = serve(
+        make_wav(2),
+        3,
+        Arc::new(AtomicBool::new(false)),
+        Duration::ZERO,
+    );
+    let mut r = Rig::new(TestSource {
+        related: Vec::new(),
+        resolve: Box::new(move |k| {
+            if k == "yt:decoderahead" {
+                Ok(StreamInfo {
+                    url: url.clone(),
+                    ext: "wav".into(),
+                    ..Default::default()
+                })
+            } else {
+                LocalSource.resolve_stream(k)
+            }
+        }),
+    });
+    r.speed = 1.0;
+    r.cmd(Command::SetAutoplay(false));
+    let mut streamed = Track::new("yt:decoderahead", "Streamed", "x");
+    streamed.duration_ms = Some(2_000);
+    r.cmd(Command::PlayTracks {
+        tracks: vec![file_track("a_44k.wav"), streamed, file_track("a_44k.flac")],
+        start: 0,
+    });
+    assert!(r.run_until(10, |r| r.snapshot().audible.is_some()));
+    assert!(
+        r.run_until(10, |r| !r.shared.prefetches.lock().unwrap().is_empty()),
+        "no prefetch outcome: {:?}",
+        r.snapshot()
+    );
+    r.cmd(Command::Next);
+    let ids = r.entry_ids();
+    let second = Some(ids[1]);
+    assert!(
+        r.run_until(10, |r| r.snapshot().audible.map(|i| i.0) == second),
+        "{:?}\naudible_log: {:?}\nprefetches: {:?}\nnotices: {:?}",
+        r.snapshot(),
+        r.audible_log,
+        r.shared.prefetches.lock().unwrap(),
+        r.shared.notices.lock().unwrap()
+    );
+    assert_eq!(r.audible_log, vec![None, Some(ids[0]), None, Some(ids[1])]);
+}
+
+#[test]
+fn a_song_kept_from_an_earlier_play_starts_without_resolving_or_any_network() {
+    let dir = std::env::temp_dir().join(format!("pyxee-keptsong-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let kept = Arc::new(AudioCache::open(Some(dir), None));
+    let bytes = std::fs::read(fixture("a_48k.webm")).unwrap();
+    kept.store("yt:aaaaaaaaaaa", "webm", &[Arc::new(bytes)]);
+    assert!(
+        kept.lookup("yt:aaaaaaaaaaa").is_some(),
+        "the fixture was kept"
+    );
+
+    let resolves = Arc::new(AtomicUsize::new(0));
+    let counted = resolves.clone();
+    let mut r = Rig::new(TestSource {
+        related: Vec::new(),
+        // Offline: if the engine asked for the address, the song could not play.
+        resolve: Box::new(move |_| {
+            counted.fetch_add(1, Ordering::SeqCst);
+            Err(SourceError::Offline)
+        }),
+    });
+    r.engine.set_audio_cache(kept);
+    r.cmd(Command::SetAutoplay(false));
+    r.cmd(Command::PlayTracks {
+        tracks: vec![Track::new("yt:aaaaaaaaaaa", "Kept", "x")],
+        start: 0,
+    });
+    assert!(
+        r.run_until(10, |r| r.snapshot().audible.is_some()),
+        "{:?}\nnotices: {:?}",
+        r.snapshot(),
+        r.shared.notices.lock().unwrap()
+    );
+    assert_eq!(
+        resolves.load(Ordering::SeqCst),
+        0,
+        "the address was never asked for"
+    );
 }
 
 #[test]

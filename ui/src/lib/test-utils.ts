@@ -29,6 +29,9 @@ export const noLibrary: LibraryBackend = {
   localAddFolder: async () => ({ revision: 1, folders: [], trackCount: 0, scanning: false, unreachable: [] }),
   localRemoveFolder: async () => ({ revision: 1, folders: [], trackCount: 0, scanning: false, unreachable: [] }),
   localRescan: async () => ({ revision: 1, folders: [], trackCount: 0, scanning: false, unreachable: [] }),
+  audioCacheGet: async () => ({ songs: 0, usedMb: 0, limitMb: 1024 }),
+  audioCacheSetLimit: async (limitMb: number) => ({ songs: 0, usedMb: 0, limitMb }),
+  audioCacheClear: async () => ({ songs: 0, usedMb: 0, limitMb: 1024 }),
   localMissing: async () => [],
 };
 

@@ -22,13 +22,14 @@
   import TrackRow from '../components/TrackRow.svelte';
   import TrackList from '../components/TrackList.svelte';
   import LocalMusic from '../components/LocalMusic.svelte';
+  import OfflineCache from '../components/OfflineCache.svelte';
 
   const tabs: { id: LibraryTab; label: string }[] = [
     { id: 'liked', label: 'Liked songs' },
     { id: 'playlists', label: 'Playlists' },
     { id: 'history', label: 'History' },
     { id: 'device', label: 'On this device' },
-    { id: 'downloads', label: 'Downloads' },
+    { id: 'downloads', label: 'Offline' },
   ];
 
   // Each tab loads on its own: its own "arrived yet", its own error, and a read that finishes late never replaces a
@@ -141,6 +142,6 @@
   {:else if nav.libraryTab === 'device'}
     <LocalMusic />
   {:else}
-    <EmptyState icon="library" title="Downloads" text="Songs saved for offline listening live here. Downloads arrive in milestone 7." />
+    <OfflineCache />
   {/if}
 </ScrollPage>

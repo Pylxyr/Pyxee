@@ -503,6 +503,17 @@ pub struct PlaylistSummaryDto {
     pub thumbnail: Option<String>,
 }
 
+/// The songs kept on this PC after they were played, and how much room they may take.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct AudioCacheDto {
+    pub songs: u32,
+    pub used_mb: u32,
+    /// 0: nothing is kept.
+    pub limit_mb: u32,
+}
+
 /// The folders the listener chose for the songs on this PC, and where the scan of them stands.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]

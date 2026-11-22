@@ -164,6 +164,9 @@ fn run_real(app: AppHandle, host: Arc<AppHost>, rx: Receiver<Effect>) {
             rate,
             app.state::<AppState>().volume.clone(),
         );
+        engine.set_audio_cache(Arc::clone(
+            &app.state::<Arc<crate::audio_cache::AudioCache>>(),
+        ));
         let (err_tx, err_rx) = channel::<String>();
         let clock = Instant::now();
         let since_start = || clock.elapsed().as_millis() as u64;

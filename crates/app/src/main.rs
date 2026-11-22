@@ -20,6 +20,7 @@
     clippy::cast_precision_loss
 )]
 
+mod audio_cache;
 mod commands;
 mod dto;
 mod engine;
@@ -255,6 +256,11 @@ fn main() {
             );
             let scan_local = local.has_folders();
             app.manage(local);
+            // Songs kept after they play. In the cache folder (not the roaming data folder): it can grow to gigabytes.
+            app.manage(std::sync::Arc::new(audio_cache::AudioCache::open(
+                app.path().app_cache_dir().ok().map(|d| d.join("audio")),
+                data_dir.as_ref().map(|d| d.join("audio-cache.json")),
+            )));
             app.manage(shell::ShellState::load(
                 data_dir.as_ref().map(|d| d.join("shell.json")),
             ));
@@ -321,6 +327,9 @@ fn main() {
             commands::history_clear,
             commands::history_restore,
             commands::home_get,
+            audio_cache::audio_cache_get,
+            audio_cache::audio_cache_set_limit,
+            audio_cache::audio_cache_clear,
             local_library::local_get,
             local_library::local_tracks,
             local_library::local_add_folder,

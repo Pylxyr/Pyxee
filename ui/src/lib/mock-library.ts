@@ -4,6 +4,7 @@ import type { AddResultDto } from './bindings/AddResultDto';
 import type { HistoryItemDto } from './bindings/HistoryItemDto';
 import type { HomeDto } from './bindings/HomeDto';
 import type { LibrarySnapshotDto } from './bindings/LibrarySnapshotDto';
+import type { AudioCacheDto } from './bindings/AudioCacheDto';
 import type { LocalLibraryDto } from './bindings/LocalLibraryDto';
 import type { PlaylistDto } from './bindings/PlaylistDto';
 import type { PlaylistSnapshotDto } from './bindings/PlaylistSnapshotDto';
@@ -122,6 +123,17 @@ export class MockLibrary implements LibraryBackend {
     return this.#localChanged();
   }
   async localRescan() { return this.#localChanged(); }
+
+  #cache: AudioCacheDto = { songs: 12, usedMb: 58, limitMb: 1024 };
+  async audioCacheGet() { return { ...this.#cache }; }
+  async audioCacheSetLimit(limitMb: number) {
+    this.#cache = limitMb === 0 ? { songs: 0, usedMb: 0, limitMb } : { ...this.#cache, limitMb, usedMb: Math.min(this.#cache.usedMb, limitMb) };
+    return { ...this.#cache };
+  }
+  async audioCacheClear() {
+    this.#cache = { ...this.#cache, songs: 0, usedMb: 0 };
+    return { ...this.#cache };
+  }
   async localMissing(keys: string[]) { return keys.filter((k) => k.includes('missing')); }
 
   async playlistCreate(name: string, tracks: TrackDto[]) {

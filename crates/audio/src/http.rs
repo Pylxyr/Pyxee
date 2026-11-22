@@ -29,6 +29,10 @@ const RETRY_PAUSE_MAX: Duration = Duration::from_secs(3);
 /// A read waiting for data looks at its cancel flag at least this often.
 const CANCEL_CHECK: Duration = Duration::from_millis(100);
 
+/// Called once, on the download thread, when every byte of a song has been downloaded: with its chunks in order,
+/// which put together are the file. Only songs small enough to be downloaded completely (`FULL_LIMIT`) get here.
+pub type CompletionHook = Arc<dyn Fn(&[Arc<Vec<u8>>]) + Send + Sync>;
+
 #[derive(Default)]
 struct State {
     chunks: BTreeMap<u64, Arc<Vec<u8>>>,
@@ -231,7 +235,7 @@ fn next_wanted(st: &mut State, total: u64, big: bool) -> Option<u64> {
 
 // The download thread owns what it runs on.
 #[allow(clippy::needless_pass_by_value)]
-fn download_loop(shared: Arc<Shared>, f: Fetcher) {
+fn download_loop(shared: Arc<Shared>, f: Fetcher, mut hook: Option<CompletionHook>) {
     let total = f.len.div_ceil(CHUNK);
     let big = f.len > FULL_LIMIT;
     let mut failures: u32 = 0;
@@ -257,6 +261,14 @@ fn download_loop(shared: Arc<Shared>, f: Fetcher) {
                 st.last_error = None;
                 st.chunks.insert(idx, Arc::new(data));
                 shared.wake.notify_all();
+                // The last chunk makes the song whole. The hook runs without the lock: it writes a file.
+                if !big && st.chunks.len() as u64 == total {
+                    if let Some(done) = hook.take() {
+                        let all: Vec<Arc<Vec<u8>>> = st.chunks.values().cloned().collect();
+                        drop(st);
+                        done(&all);
+                    }
+                }
             }
             Err(FetchError::Fatal(code)) => {
                 shared.lock().fatal = Some(code);
@@ -296,6 +308,16 @@ impl HttpRangeSource {
         url: &str,
         headers: &[(String, String)],
         cancel: Arc<AtomicBool>,
+    ) -> Result<Self, AudioError> {
+        Self::open_with_hook(url, headers, cancel, None)
+    }
+
+    /// Like `open_with_cancel`, and `hook` is called when the whole song has been downloaded (see `CompletionHook`).
+    pub fn open_with_hook(
+        url: &str,
+        headers: &[(String, String)],
+        cancel: Arc<AtomicBool>,
+        hook: Option<CompletionHook>,
     ) -> Result<Self, AudioError> {
         let agent = agent();
         // The first request is a GET that may be sent twice: a connection kept from an earlier song that the server has
@@ -339,7 +361,7 @@ impl HttpRangeSource {
         let for_thread = Arc::clone(&shared);
         std::thread::Builder::new()
             .name("pyxee-http-prefetch".into())
-            .spawn(move || download_loop(for_thread, fetcher))
+            .spawn(move || download_loop(for_thread, fetcher, hook))
             .map_err(net)?;
         Ok(Self {
             shared,
