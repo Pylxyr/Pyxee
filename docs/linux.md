@@ -195,7 +195,7 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 ```
 
 Close and reopen the terminal afterwards. You do not need to pick a version: the repository contains a
-`rust-toolchain.toml`, so rustup downloads Rust 1.91 by itself the first time you build inside the folder.
+`rust-toolchain.toml`, so rustup downloads Rust 1.100 by itself the first time you build inside the folder.
 
 **3. Install Node.js 22 or newer.** Check with `node --version`. If your distribution's package is older, install a
 current version from [nodejs.org](https://nodejs.org/) or with a version manager such as
