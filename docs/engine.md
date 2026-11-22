@@ -53,8 +53,7 @@ local HTTP server that starts returning 403 mid-song.
 ## Historical snapshot: what was not verified when this was written
 This section is a snapshot from early development, when the sandbox the engine was written in could not reach YouTube or a
 sound card. It is not kept up to date and does not say what has been verified since. For live checks on a Windows PC run
-`scripts\check-windows.cmd` (see `scripts/check-windows.ps1` for what it checks), and `docs/windows-checklist.md` for what
-only a person can judge. As written then, these shapes came from what was known of yt-dlp, not from live output:
+`scripts\check-windows.cmd` (see `scripts/check-windows.ps1` for what it checks). As written then, these shapes came from what was known of yt-dlp, not from live output:
 - `spike search "lowtide" --filter all|songs|videos|artists|playlists` and `spike related yt:<id>`: do the results parse?
   Does the Songs search URL (see `search_target`) work in your yt-dlp? Does the `list=RD<id>` mix return tracks?
   If yt-dlp needs a JavaScript runtime for YouTube it will say so on stderr.

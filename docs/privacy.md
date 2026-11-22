@@ -23,6 +23,7 @@ Like any request on the internet, each of these also sees your IP address. yt-dl
 
 - Search suggestions while you type are **off** in normal builds, so what you type is only sent when you run a search.
 - This section covers what Pyxee itself does. What YouTube, Google, lrclib.net, GitHub, Last.fm and Discord do with the information they receive is up to them and their own policies.
+- Songs kept for playing offline (**Library** -> **Offline**, off by default) are stored only on your computer. Keeping them sends nothing extra: they are what Pyxee had already downloaded to play them.
 - On Windows, the installer may also download Microsoft's WebView2 runtime if your PC does not have it.
 
 Back to the [README](../README.md). Pyxee's own files on your computer are described in [Where Pyxee keeps its files](data-folder.md).

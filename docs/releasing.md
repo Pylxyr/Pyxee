@@ -12,7 +12,7 @@ That is all. The workflow then:
 3. builds on Windows: builds the minimal static FFmpeg libraries the audio decoder links (cached; there is no ffmpeg program, audio is decoded in-app), downloads the pinned yt-dlp (SHA-256 checked against the value pinned in the repo), builds the UI, builds the installer, **installs it silently, checks that no ffmpeg program or libav DLL slipped in and that the FFmpeg LGPL text is installed, and runs the bundled yt-dlp from where it landed**;
 4. writes the release notes (below), creates the release as a draft, uploads the installers, `SHA256SUMS.txt`, the third-party notices and the FFmpeg LGPL text, then publishes it. A signed build-provenance attestation is added when the repository allows it.
 
-The first release ever (no `v*.*.*` tag yet) publishes the version already in the files as it is. `0.0.1` is the current one.
+The first release ever (no `v*.*.*` tag yet) publishes the version already in the files as it is.
 
 Every version, pre-releases (`-rc1`...) included, gets the NSIS installer (`Pyxee_x.y.z_x64-setup.exe`) and the portable zip. There is no MSI.
 

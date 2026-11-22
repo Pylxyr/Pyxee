@@ -92,7 +92,6 @@ The full guide covers installing, updating and troubleshooting, step by step for
 
 - [Building and developing Pyxee](docs/development.md): prerequisites, running, testing, the optional settings and the layout of the code.
 - [Releasing](docs/releasing.md): how a release is cut, built and signed.
-- [Windows checklist](docs/windows-checklist.md): things to check by hand on Windows.
 - [Icon and logo](docs/icon.md): the mark and its colours.
 
 **How Pyxee works inside**

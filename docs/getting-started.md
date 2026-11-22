@@ -11,6 +11,8 @@
 | **Updates** | Check for a new version of Pyxee and update yt-dlp. |
 | **Diagnostics** | Open the log folder. Only shown while logging is turned on. |
 
+**Library** -> **Offline** keeps the songs you play on this PC, so they play again without the network. It is **off until you pick a size** (from 64 MB up to 4 GB); the songs played longest ago are removed first when it is full.
+
 Discord and Last.fm are optional and **off until you switch them on**. Both only work in builds that include the matching application ID or key, which the official releases do. See [What leaves your computer](privacy.md).
 
 Your library, queue and the updated yt-dlp are kept in Pyxee's data folder: see [Where Pyxee keeps its files](data-folder.md).

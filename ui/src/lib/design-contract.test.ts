@@ -4,13 +4,15 @@ import { resolve } from 'node:path';
 import { BUILTIN_THEMES, themeVars } from './themes';
 
 // vitest runs from the ui folder
-const css = readFileSync(resolve(process.cwd(), 'src/app.css'), 'utf8');
+// A Windows checkout may have CRLF line endings (core.autocrlf); the selectors below span lines with LF.
+const lf = (text: string) => text.replace(/\r\n/g, '\n');
+const css = lf(readFileSync(resolve(process.cwd(), 'src/app.css'), 'utf8'));
 
 const sources = import.meta.glob('../**/*.svelte', { query: '?raw', import: 'default', eager: true }) as Record<string, string>;
 const source = (name: string) => {
   const hit = Object.entries(sources).find(([path]) => path.endsWith(`/${name}`));
   if (!hit) throw new Error(`no source named ${name}`);
-  return hit[1];
+  return lf(hit[1]);
 };
 
 /** The text of the first CSS rule whose selector is exactly `selector`. */
