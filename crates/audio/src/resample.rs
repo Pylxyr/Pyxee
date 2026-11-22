@@ -88,8 +88,8 @@ impl StreamResampler {
         let expected = (a.in_frames as f64 * a.ratio).round() as u64;
         while a.out_frames < expected {
             let need = a.rs.input_frames_next();
-            for ch in 0..CHANNELS {
-                a.pending[ch].resize(need.max(a.pending[ch].len()), 0.0);
+            for pending in &mut a.pending {
+                pending.resize(need.max(pending.len()), 0.0);
             }
             let res = Self::run(a, need)?;
             Self::emit(a, res, out);
