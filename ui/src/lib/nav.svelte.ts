@@ -13,6 +13,22 @@ export interface NamePrompt {
   run: (name: string) => Promise<void>;
 }
 export type NowPlayingTab = 'upnext' | 'lyrics' | 'related';
+/** The categories of the Settings panel, in the order the side list shows them. */
+export type SettingsTab = 'appearance' | 'layout' | 'system' | 'connections' | 'updates' | 'diagnostics';
+
+/** An extra line a list puts at the end of the song menu ("Remove from queue" in the queue). */
+export interface MenuExtra {
+  label: string;
+  icon?: string;
+  danger?: boolean;
+  run: () => void;
+}
+/** Where a song menu is drawn: at the pointer (`start`) or under the button that opened it, lined up with its right edge (`end`). */
+export interface MenuPoint {
+  x: number;
+  y: number;
+  align: 'start' | 'end';
+}
 
 /** Pages in the order they sit in: a page after the current one slides in from the right, before it from the left. */
 const ORDER: Route[] = ['home', 'explore', 'library', 'playlist', 'queue', 'search'];
@@ -29,6 +45,17 @@ class NavStore {
   menuTrack = $state<TrackDto | null>(null);
   /** The row that a right-click opened the menu from: the sheet gives focus back to it when it closes. */
   menuOpener = $state.raw<HTMLElement | null>(null);
+  /** Set with `menuTrack` when the menu is a pop-up at that point (a wide window with a mouse); null: the menu is a sheet. */
+  menuAt = $state.raw<MenuPoint | null>(null);
+  /** Lines the list that opened the menu adds to it. */
+  menuExtras = $state.raw<MenuExtra[]>([]);
+  /** The menu is of a queue entry: its extras replace Play now / Play next / Add to queue. */
+  menuQueue = $state(false);
+  /** The category Settings opens on. */
+  settingsTab = $state<SettingsTab>('appearance');
+  /** The queue lane: hidden by the person (wide windows) and, in windows too narrow for a lane, opened as a drawer. */
+  laneHidden = $state(false);
+  queueDrawer = $state(false);
   themeSheetOpen = $state(false);
   sleepSheetOpen = $state(false);
   /** The theme editor (opened from the Settings sheet). */
@@ -71,6 +98,17 @@ class NavStore {
   }
   openPlaylist(id: number) {
     this.#show('playlist', () => (this.playlistId = id));
+  }
+  /** Opens Settings, on a category. */
+  openSettings(tab?: SettingsTab) {
+    if (tab) this.settingsTab = tab;
+    this.themeSheetOpen = true;
+  }
+  closeMenu() {
+    this.menuTrack = null;
+    this.menuAt = null;
+    this.menuExtras = [];
+    this.menuQueue = false;
   }
   openThemeEditor() {
     this.themeEditorOpen = true;

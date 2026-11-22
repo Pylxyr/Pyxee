@@ -2988,3 +2988,598 @@ input[type='range'].slider:disabled {
     padding: 20px 32px;
   }
 }
+
+/* =====================================================================================================================
+   2.0 layout pass. Everything below is added on top of the rules above and wins over them.
+   - Pages: a slimmer header, so a 720p window keeps its height for the content.
+   - Home: a compact top card with two quick-start tiles beside it; shelves that grow with the window.
+   - Song menu: a pop-up at the pointer (wide windows with a mouse). Queue lane: a drawer when there is no column for it.
+   - Queue page: the list, and the song that plays now beside it. Settings: categories on the side.
+   - Nothing here runs forever: only short transitions (a menu or drawer opening).
+   ===================================================================================================================== */
+
+/* ---- Pages --------------------------------------------------------------------------------------------------- */
+.page-kicker {
+  display: none;
+}
+.page-head {
+  margin-bottom: 4px;
+  padding-top: 14px;
+  padding-bottom: 10px;
+}
+.page-head .t-title {
+  font-size: clamp(26px, 2.4vw, 40px);
+  line-height: 1.1;
+}
+.section-head {
+  margin-top: 24px;
+}
+@media (min-width: 2200px) {
+  .page-head .t-title {
+    font-size: clamp(40px, 2vw, 56px);
+  }
+}
+
+/* ---- Home ---------------------------------------------------------------------------------------------------- */
+.home-body {
+  container: home / inline-size;
+}
+.home-top {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 14px;
+}
+.home-top + .home-cols {
+  margin-top: 22px;
+}
+.home-body .hero {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  min-height: clamp(150px, 25vh, 300px);
+  padding: 20px 28px;
+  --stage: clamp(104px, min(13vw, 22vh), 220px);
+}
+.home-body .hero .t-title {
+  font-size: clamp(26px, min(3vw, 5vh), 52px);
+}
+.home-body .hero-art {
+  transform: rotate(-2deg);
+}
+.home-body .hero .mt-4,
+.hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 14px;
+}
+.home-tiles {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.home-tile {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+  padding: 14px 16px;
+  border: 1px solid var(--rule);
+  border-radius: var(--r-lg);
+  background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 26%, var(--surface)), var(--surface));
+  color: var(--fg);
+  text-align: left;
+  transition: transform 260ms var(--spring-pop), border-color 160ms;
+}
+.home-tile > svg:first-child {
+  flex: none;
+  color: var(--accent);
+}
+.home-tile > svg:last-child {
+  flex: none;
+  margin-left: auto;
+  color: var(--muted);
+}
+.home-tile-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.home-tile-title {
+  font-weight: 650;
+}
+.home-tile-sub {
+  color: var(--muted);
+  font-size: 13px;
+}
+@media (hover: hover) {
+  .home-tile:hover {
+    transform: translateY(-2px);
+    border-color: var(--accent);
+  }
+}
+.home-tile-mix .mix-card {
+  height: 100%;
+  min-height: 74px;
+  padding: 12px 16px;
+}
+.home-tile-mix .mix-sub {
+  display: none;
+}
+.home-tile-mix .mix-dice svg {
+  width: 30px;
+  height: 30px;
+}
+@container home (min-width: 820px) {
+  .home-top {
+    grid-template-columns: minmax(0, 1fr) clamp(230px, 27cqw, 400px);
+    align-items: stretch;
+  }
+  .home-top[data-single] {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .home-tiles {
+    grid-template-columns: minmax(0, 1fr);
+    grid-auto-rows: minmax(0, 1fr);
+  }
+  .home-tile-mix .mix-card {
+    min-height: 0;
+  }
+}
+@media (max-width: 560px) {
+  .home-body .hero {
+    align-items: stretch;
+  }
+  .home-tile {
+    padding: 12px;
+  }
+}
+/* A tall window has room for a bigger Tune in and bigger covers; a wide one for more of both. */
+@media (min-height: 961px) {
+  .shelves .mix-card {
+    min-height: 168px;
+  }
+}
+@media (min-width: 2000px) {
+  .shelves .cover-grid {
+    grid-auto-columns: clamp(180px, 9vw, 300px);
+    gap: 20px;
+  }
+  .shelves .mix-grid {
+    grid-auto-columns: clamp(250px, 14vw, 360px);
+    gap: 20px;
+  }
+}
+@media (min-width: 1800px) {
+  .hero {
+    display: flex;
+  }
+}
+
+/* ---- Deck ---------------------------------------------------------------------------------------------------- */
+.deck-extra {
+  gap: 2px;
+}
+.deck-extra button {
+  position: relative;
+}
+.deck-pair {
+  display: inline-flex;
+  margin-right: 4px;
+}
+.deck-volume {
+  width: clamp(72px, 7vw, 132px);
+  margin: 0 6px 0 4px;
+}
+@media (max-width: 1199px) {
+  .deck-pair {
+    display: none;
+  }
+}
+@media (max-width: 1019px) {
+  .deck-volume {
+    width: 64px;
+  }
+}
+
+/* ---- Queue lane and its drawer --------------------------------------------------------------------------------- */
+.lane-count {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 8px;
+  border-radius: var(--r-pill);
+  background: var(--hover);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+  vertical-align: 2px;
+}
+.lane-head {
+  padding-right: 10px;
+}
+.lane-head-tools {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+.lane-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 39;
+  background: transparent;
+  cursor: default;
+}
+.shell[data-layout='wide'] .lane[data-drawer] {
+  position: fixed;
+  top: 78px;
+  right: 14px;
+  bottom: calc(var(--deck-h) + 30px);
+  z-index: 40;
+  width: min(var(--lane-w), calc(100vw - 28px));
+  background: linear-gradient(to bottom, var(--stage-wash), transparent 45%), var(--layer);
+  box-shadow: var(--shadow-pop);
+  animation: lane-in 180ms var(--ease-out) both;
+}
+@keyframes lane-in {
+  from {
+    opacity: 0;
+    transform: translateX(16px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .shell[data-layout='wide'] .lane[data-drawer],
+  .ctx {
+    animation: none;
+  }
+}
+
+/* ---- Song menu (pop-up) ---------------------------------------------------------------------------------------- */
+.ctx-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  background: transparent;
+}
+.ctx {
+  position: fixed;
+  z-index: 91;
+  display: flex;
+  flex-direction: column;
+  min-width: 232px;
+  max-width: min(320px, calc(100vw - 16px));
+  max-height: calc(100dvh - 16px);
+  padding: 6px;
+  overflow-y: auto;
+  border-radius: var(--r-md);
+  animation: ctx-in 110ms var(--ease-out) both;
+}
+.ctx:not([data-placed]) {
+  visibility: hidden;
+}
+@keyframes ctx-in {
+  from {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+}
+.ctx-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 4px;
+  padding: 4px 8px 8px;
+  border-bottom: 1px solid var(--rule);
+}
+.ctx-head .trow-title,
+.ctx-head .trow-artist {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ctx-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 34px;
+  padding: 0 10px;
+  border-radius: var(--r-sm);
+  color: var(--fg);
+  font-size: 14px;
+  text-align: left;
+}
+.ctx-item > svg {
+  flex: none;
+  color: var(--muted);
+}
+.ctx-item:hover,
+.ctx-item:focus-visible {
+  background: var(--hover);
+  outline: none;
+}
+.ctx-item:focus-visible {
+  box-shadow: inset 0 0 0 2px var(--accent);
+}
+.ctx-item[data-danger] {
+  color: color-mix(in srgb, #e5484d 78%, var(--fg));
+}
+.ctx-item[data-danger] > svg {
+  color: inherit;
+}
+.ctx-gap {
+  flex: none;
+  width: 16px;
+}
+.ctx-sep {
+  height: 1px;
+  margin: 5px 6px;
+  background: var(--rule);
+}
+
+/* ---- Queue page ---------------------------------------------------------------------------------------------- */
+.queue-split {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 28px;
+}
+.queue-now {
+  display: none;
+}
+@media (min-width: 1100px) {
+  .queue-split {
+    grid-template-columns: minmax(0, 1fr) clamp(280px, 28%, 440px);
+    align-items: start;
+  }
+  .queue-now {
+    position: sticky;
+    top: 8px;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 14px;
+    padding: 18px;
+    border: 1px solid var(--rule);
+    border-radius: var(--r-xl);
+    background: linear-gradient(160deg, color-mix(in srgb, var(--accent) 16%, var(--surface)), var(--surface) 60%);
+    box-shadow: 0 24px 48px -36px var(--glow);
+  }
+}
+.queue-now-art {
+  width: min(100%, 44vh);
+  margin-inline: auto;
+  aspect-ratio: 1;
+  overflow: hidden;
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-art), 0 0 48px -14px var(--glow);
+}
+.queue-now-kicker {
+  color: var(--accent-ink);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.queue-now-controls {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+.queue-now-time {
+  text-align: center;
+}
+.queue-stats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0;
+  padding-top: 12px;
+  border-top: 1px solid var(--rule);
+}
+.queue-stats dt {
+  color: var(--muted);
+  font-size: 12px;
+}
+.queue-stats dd {
+  margin: 0;
+  font-weight: 650;
+}
+/* A mouse shows a row's move buttons when the row is pointed at or focused; touch always shows them. */
+@media (hover: hover) and (pointer: fine) {
+  .row-edit:not(:hover):not(:focus-within) .row-tools {
+    opacity: 0;
+  }
+}
+.row-tools {
+  display: inline-flex;
+}
+
+/* ---- Settings ------------------------------------------------------------------------------------------------ */
+.sheet-dialog {
+  display: flex;
+  flex-direction: column;
+  width: min(66rem, 100vw);
+  height: min(48rem, 94dvh);
+  padding: 0;
+  overflow: hidden;
+  border-radius: var(--r-xl);
+}
+.settings {
+  display: grid;
+  flex: 1 1 0;
+  grid-template-columns: 15rem minmax(0, 1fr);
+  min-height: 0;
+}
+.settings-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 22px 12px;
+  border-right: 1px solid var(--rule);
+  background: color-mix(in srgb, var(--accent) 6%, var(--layer));
+}
+.settings-nav-title {
+  padding: 0 12px 14px;
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+.settings-tabs {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.settings-tab {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: var(--r-md);
+  color: var(--muted);
+  font-weight: 550;
+  text-align: left;
+  white-space: nowrap;
+}
+.settings-tab:hover {
+  background: var(--hover);
+  color: var(--fg);
+}
+.settings-tab[aria-selected='true'] {
+  background: var(--selected);
+  box-shadow: inset 3px 0 0 var(--accent);
+  color: var(--fg);
+}
+.settings-tab[aria-selected='true'] > svg {
+  color: var(--accent);
+}
+.settings-main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+.settings-head {
+  display: flex;
+  flex: none;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 20px 24px 12px;
+}
+.settings-head .t-title {
+  font-size: 26px;
+  line-height: 1.15;
+}
+.settings-blurb {
+  margin-top: 2px;
+}
+.settings-pane {
+  flex: 1 1 0;
+  min-height: 0;
+  padding: 0 24px 28px;
+  overflow-y: auto;
+}
+.settings-pane .settings-section {
+  margin-top: 0;
+  border-top: 0;
+}
+.settings-pane .theme-grid {
+  grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr));
+}
+.look-section {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 22rem), 1fr));
+  gap: 6px 32px;
+  align-items: start;
+}
+.look-section .look-group:last-child {
+  grid-column: 1 / -1;
+}
+@media (max-width: 719px) {
+  .settings {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+  .settings-nav {
+    padding: 10px 10px 0;
+    overflow-x: auto;
+    border-right: 0;
+    border-bottom: 1px solid var(--rule);
+  }
+  .settings-nav-title {
+    display: none;
+  }
+  .settings-tabs {
+    flex-direction: row;
+    gap: 4px;
+    padding-bottom: 8px;
+  }
+  .settings-tab {
+    width: auto;
+    padding: 8px 12px;
+    border-radius: var(--r-pill);
+  }
+  .settings-tab[aria-selected='true'] {
+    box-shadow: none;
+  }
+  .settings-head {
+    padding: 14px 16px 8px;
+  }
+  .settings-pane {
+    padding: 0 12px 24px;
+  }
+}
+
+/* Home keeps its rows close, so the covers of Recently played show in a 1080p window too. */
+.home-body .hero {
+  min-height: clamp(150px, 22vh, 260px);
+}
+.home-cols {
+  gap: 14px;
+}
+.home-top + .home-cols {
+  margin-top: 16px;
+}
+.home-cols .section-head {
+  margin-top: 0;
+}
+.shelves .mix-grid {
+  padding-bottom: 6px;
+}
+@media (min-height: 961px) {
+  .shelves .mix-card {
+    min-height: 140px;
+  }
+}
+@media (max-height: 1100px) {
+  .home-cols > section > p.muted {
+    display: none;
+  }
+}
+
+/* Settings fills a small screen. A very large window gives Home's top card more to show. */
+@media (max-width: 639px) {
+  .sheet-dialog {
+    width: 100vw;
+    height: 100dvh;
+    border-radius: 0;
+  }
+}
+@media (min-width: 2400px) {
+  .home-body .hero {
+    --stage: clamp(200px, 9vw, 320px);
+    gap: 40px;
+    min-height: clamp(240px, 20vh, 360px);
+    padding: 28px 44px;
+  }
+  .home-body .hero .t-title {
+    font-size: clamp(44px, 2.6vw, 72px);
+  }
+  .home-tile {
+    padding: 20px 24px;
+  }
+  .home-tile-title {
+    font-size: 20px;
+  }
+}

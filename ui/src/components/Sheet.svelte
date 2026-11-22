@@ -17,9 +17,11 @@
   // `bottom` (the default) is a card that rises from the bottom, centred on wide windows. `left` and `right` are tabs
   // that slide in from that edge and take half of the window (all of it when the window is narrow); Settings uses
   // them, on the side its button is on.
-  let { open, title, onclose, children, side = 'bottom', returnFocus = null }: { open: boolean; title: string; onclose: () => void; children: Snippet; side?: 'bottom' | 'left' | 'right'; returnFocus?: HTMLElement | null } = $props();
+  // `dialog` is a large centred panel that brings its own header and layout (Settings): it takes most of a wide window.
+  let { open, title, onclose, children, side = 'bottom', returnFocus = null }: { open: boolean; title: string; onclose: () => void; children: Snippet; side?: 'bottom' | 'left' | 'right' | 'dialog'; returnFocus?: HTMLElement | null } = $props();
   const right = $derived(side === 'right');
-  const tab = $derived(side !== 'bottom');
+  const dialog = $derived(side === 'dialog');
+  const tab = $derived(side === 'left' || side === 'right');
   let panel = $state<HTMLElement>();
   let restore: HTMLElement | null = null;
   let z = $state(100);
@@ -59,7 +61,7 @@
 </script>
 
 {#if open}
-  <div class="fixed inset-0 flex {right ? 'justify-end' : tab ? 'justify-start' : 'items-end justify-center sm:items-center'}" style="z-index:{z}" role="presentation" data-sheet {onkeydown}>
+  <div class="fixed inset-0 flex {right ? 'justify-end' : tab ? 'justify-start' : dialog ? 'items-center justify-center' : 'items-end justify-center sm:items-center'}" style="z-index:{z}" role="presentation" data-sheet {onkeydown}>
     <button class="absolute inset-0 bg-black/50" aria-label="Close" tabindex="-1" onclick={onclose} in:fade={{ duration: motionMs(MOTION.fast) }} out:fade={{ duration: motionMs(MOTION.exit) }}></button>
     <div
       bind:this={panel}
@@ -67,15 +69,19 @@
       aria-modal="true"
       aria-label={title}
       data-side={side}
-      in:fly={tab ? { x: motionPx(right ? 640 : -640), duration: motionMs(MOTION.base + 80), easing: expoOut } : { y: motionPx(40), duration: motionMs(MOTION.base), easing: cubicOut }}
-      out:fly={tab ? { x: motionPx(right ? 640 : -640), duration: motionMs(MOTION.exit + 30), easing: cubicIn } : { y: motionPx(40), duration: motionMs(MOTION.exit), easing: cubicIn }}
-      class="sheet-panel bg-solid-2 {right
+      in:fly={dialog ? { y: motionPx(24), duration: motionMs(MOTION.base + 40), easing: expoOut } : tab ? { x: motionPx(right ? 640 : -640), duration: motionMs(MOTION.base + 80), easing: expoOut } : { y: motionPx(40), duration: motionMs(MOTION.base), easing: cubicOut }}
+      out:fly={dialog ? { y: motionPx(16), duration: motionMs(MOTION.exit), easing: cubicIn } : tab ? { x: motionPx(right ? 640 : -640), duration: motionMs(MOTION.exit + 30), easing: cubicIn } : { y: motionPx(40), duration: motionMs(MOTION.exit), easing: cubicIn }}
+      class="sheet-panel bg-solid-2 {dialog
+        ? 'sheet-dialog h-[min(48rem,94dvh)] w-[min(66rem,100vw)] max-w-full overflow-hidden rounded-xl p-0 max-sm:h-dvh max-sm:rounded-none'
+        : right
         ? 'h-full w-1/2 max-w-full min-w-[min(26rem,100vw)] rounded-l-xl border-r-0 px-4 pb-6'
         : tab
           ? 'h-full w-1/2 max-w-full min-w-[min(26rem,100vw)] rounded-r-xl border-l-0 px-4 pb-6'
           : 'max-h-[92dvh] w-full max-w-md rounded-t-xl p-4 pb-6 sm:rounded-xl'}"
     >
-      {#if tab}
+      {#if dialog}
+        <!-- the dialog draws its own header -->
+      {:else if tab}
         <div class="sticky top-0 z-10 -mx-4 mb-2 flex items-center justify-between border-b border-line bg-solid-2 px-6 py-3">
           <h2 class="t-subtitle">{title}</h2>
           <IconButton icon="close" label="Close {title}" onclick={onclose} />

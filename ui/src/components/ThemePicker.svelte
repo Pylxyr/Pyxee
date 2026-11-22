@@ -28,7 +28,7 @@
 />
 
 {#if theme.settings.followSystem}
-  <div class="grid grid-cols-2 gap-3 px-3 pb-2">
+  <div class="theme-grid grid gap-3 px-3 pb-2">
     <label class="setting-hint">
       When light
       <select class="field mt-1" aria-label="Light theme" value={theme.settings.lightId} onchange={(e) => theme.update({ lightId: e.currentTarget.value })}>
@@ -44,9 +44,9 @@
   </div>
 {/if}
 
-<div class="grid grid-cols-2 gap-2 px-2 py-2" role="group" aria-label="Theme">
+<div class="theme-grid grid gap-2 px-2 py-2" role="group" aria-label="Theme">
   {#each groups as g (g.label)}
-    {#if g.items.length}<p class="group-title col-span-2 !px-1 pt-2">{g.label}</p>{/if}
+    {#if g.items.length}<p class="group-title col-span-full !px-1 pt-2">{g.label}</p>{/if}
     {#each g.items as t (t.id)}
       <button class="theme-chip" aria-label={t.name} aria-pressed={active === t.id} title={t.description ?? 'Custom theme'} onclick={() => theme.select(t.id)}>
         <span class="flex shrink-0 overflow-hidden r-full border border-line" aria-hidden="true">

@@ -34,6 +34,7 @@ beforeEach(() => {
   nav.nowPlayingOpen = false;
   nav.menuTrack = null;
   nav.themeSheetOpen = false;
+  nav.settingsTab = 'appearance';
   nav.sleepSheetOpen = false;
   nav.tab = 'upnext';
   lyricsStore.state = { kind: 'idle' };
@@ -168,11 +169,13 @@ describe('sleep timer', () => {
 });
 
 describe('Windows settings', () => {
-  async function openSettings() {
+  // Settings has a list of categories; one shows at a time. These tests are about the Windows one unless they say otherwise.
+  async function openSettings(tab: 'system' | 'connections' = 'system') {
     render(App);
     await waitFor(() => expect(player.ready && library.ready).toBe(true));
+    nav.settingsTab = tab;
     await fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
-    return screen.findByRole('region', { name: 'Windows' });
+    return screen.findByRole('region', { name: tab === 'system' ? 'Windows' : 'Connections' });
   }
 
   it('the three switches save through the backend', async () => {
@@ -198,7 +201,7 @@ describe('Windows settings', () => {
   });
 
   it('the Discord switch is on by default and saves through the backend', async () => {
-    const section = await openSettings();
+    const section = await openSettings('connections');
     const discord = within(section).getByLabelText(/playing on Discord/i);
     expect((discord as HTMLInputElement).checked).toBe(true);
     await fireEvent.click(discord);
@@ -207,11 +210,12 @@ describe('Windows settings', () => {
     await waitFor(() => expect(mock.shell.discordPresence).toBe(true));
   });
 
-  it('on a narrow window Settings is a tab that slides in from the right, and closes with its button, Escape or a click outside', async () => {
+  it('Settings is a centred panel with its categories on the side, and closes with its button, Escape or a click outside', async () => {
     await openSettings();
     const tab = screen.getByRole('dialog', { name: 'Settings' });
-    expect(tab.getAttribute('data-side')).toBe('right');
-    expect(tab.className).toContain('w-1/2');
+    expect(tab.getAttribute('data-side')).toBe('dialog');
+    expect(within(tab).getByRole('tablist')).toBeTruthy();
+    expect(within(tab).getByRole('tab', { name: 'Windows' }).getAttribute('aria-selected')).toBe('true');
     await fireEvent.click(within(tab).getByRole('button', { name: 'Close Settings' }));
     await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Settings' })).toBeNull());
     await fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
@@ -219,14 +223,17 @@ describe('Windows settings', () => {
     await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Settings' })).toBeNull());
   });
 
-  it('on a wide window Settings also slides in from the right, beside the top-right button that opens it', async () => {
+  it('on a wide window Settings is the same panel, and a category can be chosen with the arrow keys', async () => {
     window.matchMedia = ((q: string) => ({
       matches: q.includes('min-width'), media: q, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {}, dispatchEvent: () => false, onchange: null,
     })) as typeof window.matchMedia;
     await openSettings();
     const tab = screen.getByRole('dialog', { name: 'Settings' });
-    expect(tab.getAttribute('data-side')).toBe('right');
-    expect(tab.className).toContain('w-1/2');
+    expect(tab.getAttribute('data-side')).toBe('dialog');
+    const windows = within(tab).getByRole('tab', { name: 'Windows' });
+    windows.focus();
+    await fireEvent.keyDown(windows.parentElement!, { key: 'ArrowDown' });
+    await waitFor(() => expect(within(tab).getByRole('tab', { name: 'Connections' }).getAttribute('aria-selected')).toBe('true'));
   });
 
   it('a switch that could not be saved goes back and says why', async () => {
@@ -302,6 +309,7 @@ describe('Updates settings', () => {
   async function openUpdates() {
     render(App);
     await waitFor(() => expect(player.ready && library.ready).toBe(true));
+    nav.settingsTab = 'updates';
     await fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
     return screen.findByRole('region', { name: 'Updates' });
   }

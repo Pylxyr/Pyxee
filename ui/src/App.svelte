@@ -47,6 +47,9 @@
   // From 1440 px there is room for the queue lane beside the page.
   const lane = new MediaQuery('min-width: 1440px');
 
+  // The queue lane takes its column from 1440 px, unless the person hid it. The Queue page shows the queue itself.
+  const showLane = $derived(wide.current && lane.current && !nav.laneHidden && nav.route !== 'queue');
+
   let backendRef = $state.raw<Backend | null>(null);
   // The window's full-screen state (F11). Null in a browser, where there is no window to control.
   let controls = $state.raw<WindowControls | null>(null);
@@ -177,7 +180,7 @@
 />
 
 <div class="frame">
-<div class="shell" inert={nav.npCovering} data-covered={nav.npCovering ? '' : undefined} data-layout={wide.current ? 'wide' : 'narrow'} data-lane={wide.current && lane.current ? '' : undefined}>
+<div class="shell" inert={nav.npCovering} data-covered={nav.npCovering ? '' : undefined} data-layout={wide.current ? 'wide' : 'narrow'} data-lane={showLane ? '' : undefined}>
   {#if wide.current}
     <div class="masthead"><Navigation layout="tabs" /><TopBar showSettings /></div>
   {/if}
@@ -205,7 +208,7 @@
       <Navigation layout="bar" />
     {/if}
   </div>
-  {#if wide.current}<Stage lane={lane.current} />{/if}
+  {#if wide.current}<Stage lane={showLane} room={lane.current} />{/if}
 </div>
 </div>
 

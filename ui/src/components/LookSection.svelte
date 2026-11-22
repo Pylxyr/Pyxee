@@ -19,8 +19,7 @@
   const changed = $derived((Object.keys(DEFAULT_LOOK) as (keyof Look)[]).some((k) => look.value[k] !== DEFAULT_LOOK[k]));
 </script>
 
-<section class="settings-section" aria-label="Look">
-  <h3 class="group-title">Look</h3>
+<section class="settings-section look-section" aria-label="Look">
   {#each GROUPS as g (g.key)}
     <div class="look-group">
       <p class="look-label" id="look-{g.key}">{g.label}</p>

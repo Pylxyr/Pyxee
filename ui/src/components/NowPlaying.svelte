@@ -3,7 +3,7 @@
   import { cubicIn, expoOut } from 'svelte/easing';
   import { player, describeFailure } from '$lib/player.svelte';
   import { nav, type NowPlayingTab } from '$lib/nav.svelte';
-  import { removeFromQueue } from '$lib/actions';
+  import { queueMenu, removeFromQueue } from '$lib/actions';
   import { artistOf, formatTime, titleOf } from '$lib/format';
   import { reorder } from '$lib/reorder';
   import { focusNeighbour } from '$lib/focus';
@@ -131,6 +131,8 @@
                   coverSize={44}
                   over={overOf(e.id, i)}
                   dragging={drag?.id === e.id}
+                  inQueue
+                  menuExtras={() => queueMenu(e)}
                   onplay={() => player.playEntry(e.id)}
                 >
                   {#snippet handle()}

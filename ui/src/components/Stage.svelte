@@ -3,6 +3,8 @@
   import { nav } from '$lib/nav.svelte';
   import { artistOf, formatTime, titleOf } from '$lib/format';
   import { flipList } from '$lib/flip';
+  import { openTrackMenu } from '$lib/menu';
+  import { queueMenu } from '$lib/actions';
   import Button from './Button.svelte';
   import IconButton from './IconButton.svelte';
   import LikeButton from './LikeButton.svelte';
@@ -17,7 +19,15 @@
   // The player of a wide window, in two parts that the shell places on its grid: the deck along the bottom (what is
   // playing, the transport, and a seek line that runs the full width of the window), and from 1440 px the queue lane
   // beside the page, so what comes next stays in sight while you browse.
-  let { lane = false }: { lane?: boolean } = $props();
+  // `lane`: the lane has its column (a window of 1440 px or more, and the person has not hidden it). In a narrower
+  // window the queue button on the deck opens it as a drawer over the page's right edge.
+  let { lane = false, room = false }: { lane?: boolean; room?: boolean } = $props();
+  const drawer = $derived(!lane && nav.queueDrawer);
+  const queueShown = $derived(lane || drawer);
+  function toggleQueue() {
+    if (room) nav.laneHidden = !nav.laneHidden;
+    else nav.queueDrawer = !nav.queueDrawer;
+  }
   const entry = $derived(player.shown);
   // Where the seek bar's thumb is held (dragged, or released and waiting for the player): the time shows it too.
   let scrub = $state<number | null>(null);
@@ -29,16 +39,21 @@
   }
 </script>
 
-{#if entry && lane}
-  <aside class="lane" aria-label="Up next" data-testid="queue-lane">
+{#if entry && queueShown}
+  {#if drawer}<button class="lane-scrim" aria-label="Close the queue" tabindex="-1" onclick={() => (nav.queueDrawer = false)}></button>{/if}
+  <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+  <aside class="lane" data-drawer={drawer ? '' : undefined} aria-label="Up next" data-testid="queue-lane" onkeydown={(e) => { if (drawer && e.key === 'Escape') { e.stopPropagation(); nav.queueDrawer = false; } }}>
     <div class="lane-head">
-      <h2 class="t-lead">Up next</h2>
-      <Button variant="quiet" size="sm" onclick={() => nav.go('queue')}>Open queue</Button>
+      <h2 class="t-lead">Up next <span class="lane-count nums">{player.upNext.length}</span></h2>
+      <span class="lane-head-tools">
+        <Button variant="quiet" size="sm" onclick={() => { nav.queueDrawer = false; nav.go('queue'); }}>Open queue</Button>
+        <IconButton icon="close" iconSize={18} label="Hide the queue" onclick={toggleQueue} />
+      </span>
     </div>
     <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
     <ul class="lane-list" data-scroll tabindex="0" use:flipList>
       {#key entry.track.key}
-      <li class="lane-now track-in">
+      <li class="lane-now track-in" oncontextmenu={(ev) => { const e0 = player.shown; if (e0) openTrackMenu(e0.track, { event: ev, extras: queueMenu(e0), queue: true }); }}>
         <Thumb src={entry.track.thumbnail} seed={entry.track.key} size={40} rounded="r-sm" />
         <span class="min-w-0 flex-1">
           <span class="trow-title accent-text block" dir="auto">{titleOf(entry.track)}</span>
@@ -48,7 +63,7 @@
       </li>
       {/key}
       {#each player.upNext as e (e.id)}
-        <li>
+        <li oncontextmenu={(ev) => openTrackMenu(e.track, { event: ev, opener: (ev.currentTarget as HTMLElement).querySelector('button'), extras: queueMenu(e), queue: true })}>
           <MenuItem onclick={() => player.playEntry(e.id)}>
             <Thumb src={e.track.thumbnail} seed={e.track.key} size={40} rounded="r-sm" />
             <span class="min-w-0 flex-1">
@@ -68,6 +83,7 @@
   <aside class="lane" aria-label="Queue" data-testid="queue-lane-idle">
     <div class="lane-head">
       <h2 class="t-lead">Up next</h2>
+      <IconButton icon="close" iconSize={18} label="Hide the queue" onclick={toggleQueue} />
     </div>
     <div class="lane-idle">
       <div class="lane-idle-disc"><Logo size={44} /></div>
@@ -110,7 +126,15 @@
       <span class="deck-time nums">{formatTime(scrub ?? player.positionMs)} / {player.durationMs ? formatTime(player.durationMs) : '--:--'}</span>
     </div>
     <div class="deck-extra">
-      <div class="w-32"><VolumeSlider /></div>
+      <span class="deck-pair">
+        <IconButton icon="shuffle" label="Shuffle" iconSize={18} pressed={player.state.shuffle} onclick={player.toggleShuffle} />
+        <IconButton icon="repeat" label="Repeat: {player.state.repeat}" iconSize={18} class={player.state.repeat !== 'off' ? 'text-accent' : ''} onclick={player.cycleRepeat}>
+          {#if player.state.repeat === 'one'}<span class="absolute right-1 top-1 text-[10px] font-semibold">1</span>{/if}
+        </IconButton>
+      </span>
+      <IconButton icon="lyrics" label="Lyrics" iconSize={18} onclick={() => { nav.tab = 'lyrics'; nav.openNowPlaying(); }} />
+      {#if nav.route !== 'queue'}<IconButton icon="queue" label={queueShown ? 'Hide the queue' : 'Show the queue'} iconSize={18} pressed={queueShown} onclick={toggleQueue} />{/if}
+      <div class="deck-volume"><VolumeSlider /></div>
       <IconButton icon="expand" label="Expand Now Playing" onclick={() => nav.openNowPlaying()} />
     </div>
   </section>

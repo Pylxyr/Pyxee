@@ -32,7 +32,7 @@ beforeEach(() => {
   player.catalog = null;
   library.ready = false;
   library.snapshot = { revision: 0, likedKeys: [], playlists: [], historyCount: 0, error: null };
-  Object.assign(nav, { route: 'home', nowPlayingOpen: false, menuTrack: null, pickTrack: null, namePrompt: null, libraryTab: 'liked', playlistId: null, themeSheetOpen: false, tab: 'upnext' });
+  Object.assign(nav, { route: 'home', nowPlayingOpen: false, menuTrack: null, menuAt: null, menuExtras: [], menuQueue: false, laneHidden: false, queueDrawer: false, settingsTab: 'appearance', pickTrack: null, namePrompt: null, libraryTab: 'liked', playlistId: null, themeSheetOpen: false, tab: 'upnext' });
   search.query = ''; search.status = 'idle'; search.items = []; search.error = null; search.suggestions = [];
   for (const s of [...snackbar.items]) snackbar.dismiss(s.id);
   setWide(false);
@@ -90,10 +90,10 @@ describe('likes', () => {
     await go(/Queue/);
     const paper = () => [...document.querySelectorAll('li.row-edit')].find((l) => l.textContent?.includes('Paper Planes'))!;
     await fireEvent.contextMenu(await waitFor(() => paper()));
-    await fireEvent.click(await screen.findByRole('button', { name: 'Like' }));
+    await fireEvent.click(await within(await screen.findByRole('dialog', { name: 'Paper Planes' })).findByRole('button', { name: 'Like' }));
     await waitFor(() => expect(library.isLiked(PAPER.key)).toBe(true));
     await fireEvent.contextMenu(paper());
-    await fireEvent.click(await screen.findByRole('button', { name: 'Unlike' }));
+    await fireEvent.click(await within(await screen.findByRole('dialog', { name: 'Paper Planes' })).findByRole('button', { name: 'Unlike' }));
     await waitFor(() => expect(library.isLiked(PAPER.key)).toBe(false));
   });
 
@@ -273,7 +273,7 @@ describe('history and Home', () => {
     const radios = await screen.findByRole('list', { name: 'Start a radio' });
     expect(within(radios).getByRole('button', { name: 'Start a radio from Neon Harbor' })).toBeTruthy();
     expect(within(radios).getByRole('button', { name: 'Start a radio from Paper Planes' })).toBeTruthy();
-    expect(within(radios).getByRole('button', { name: 'Surprise me' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Surprise me' })).toBeTruthy(); // beside the top card, not in the row
     expect(screen.queryByText(/Demo tracks/)).toBeNull();
     expect(within(screen.getByRole('list', { name: 'Recently played' })).getByRole('button', { name: 'Play Neon Harbor' })).toBeTruthy();
     await fireEvent.click(screen.getByRole('button', { name: /Liked songs/ }));
@@ -370,5 +370,68 @@ describe('opening a playlist', () => {
     nav.openPlaylist(id);
     expect(await screen.findByText('The playlist could not be opened.')).toBeTruthy();
     expect(screen.queryByText('This playlist no longer exists')).toBeNull();
+  });
+});
+
+describe('the song menu in a wide window with a mouse', () => {
+  const queueRow = (title: string) => () => [...document.querySelectorAll('li.row-edit')].find((l) => l.textContent?.includes(title))!;
+
+  it('opens as a pop-up at the pointer, with the song on top, and Escape closes it', async () => {
+    setWide(true);
+    await openApp();
+    await mock.setLiked(NEON, true);
+    await go(/Library/);
+    await fireEvent.contextMenu(await row('Neon Harbor'), { clientX: 120, clientY: 90 });
+    const menu = await screen.findByRole('menu', { name: 'Neon Harbor' });
+    expect(nav.menuAt).toMatchObject({ x: 120, y: 90, align: 'start' });
+    for (const name of ['Play now', 'Play next', 'Add to queue', 'Start radio', 'Add to playlist', 'Go to artist']) expect(within(menu).getByRole('menuitem', { name })).toBeTruthy();
+    await fireEvent.keyDown(menu, { key: 'Escape' });
+    await waitFor(() => expect(screen.queryByRole('menu')).toBeNull());
+    expect(nav.menuTrack).toBeNull();
+  });
+
+  it('on a queue entry it offers to move or remove it, not to add it to the queue a second time', async () => {
+    setWide(true);
+    await openApp();
+    await player.playTracks([NEON, PAPER, ORBIT]);
+    await go(/Queue/);
+    await fireEvent.contextMenu(await waitFor(() => queueRow('Slow Orbit')()));
+    const menu = await screen.findByRole('menu');
+    expect(within(menu).queryByRole('menuitem', { name: 'Add to queue' })).toBeNull();
+    expect(within(menu).getByRole('menuitem', { name: 'Play next' })).toBeTruthy();
+    await fireEvent.click(within(menu).getByRole('menuitem', { name: 'Play next' }));
+    await waitFor(() => expect(player.state.queue.map((e) => e.track.title)).toEqual(['Neon Harbor', 'Slow Orbit', 'Paper Planes']));
+    await fireEvent.contextMenu(await waitFor(() => queueRow('Paper Planes')()));
+    await fireEvent.click(await screen.findByRole('menuitem', { name: 'Remove from queue' }));
+    await waitFor(() => expect(player.state.queue.map((e) => e.track.title)).toEqual(['Neon Harbor', 'Slow Orbit']));
+  });
+
+  it('a narrow window or a touch screen keeps the sheet', async () => {
+    setWide(false);
+    await openApp();
+    await player.playTracks([NEON, PAPER]);
+    await go(/Queue/);
+    await fireEvent.contextMenu(await waitFor(() => queueRow('Paper Planes')()));
+    expect(await screen.findByRole('dialog', { name: 'Paper Planes' })).toBeTruthy();
+    expect(screen.queryByRole('menu')).toBeNull();
+  });
+});
+
+describe('the queue beside the page', () => {
+  it('the deck can show and hide the queue, and the Queue page has the song that plays beside its list', async () => {
+    setWide(true);
+    await openApp();
+    await player.playTracks([NEON, PAPER, ORBIT]);
+    await waitFor(() => expect(player.shown?.track.key).toBe(NEON.key));
+    // Every width query matches in this test, so the lane has its column; the deck's button hides it and shows it again.
+    expect(await screen.findByTestId('queue-lane')).toBeTruthy();
+    await fireEvent.click(screen.getAllByRole('button', { name: 'Hide the queue' })[0]!);
+    await waitFor(() => expect(screen.queryByTestId('queue-lane')).toBeNull());
+    await fireEvent.click(await screen.findByRole('button', { name: 'Show the queue' }));
+    expect(await screen.findByTestId('queue-lane')).toBeTruthy();
+    await go(/Queue/);
+    expect(await screen.findByRole('complementary', { name: 'Now playing' })).toBeTruthy();
+    expect(screen.getByText('3 songs')).toBeTruthy();
+    expect(screen.getByText(/· \d+ min/)).toBeTruthy();
   });
 });

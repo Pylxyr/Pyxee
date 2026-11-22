@@ -9,6 +9,14 @@ export function formatTime(ms: number | null | undefined): string {
   return h > 0 ? `${h}:${String(m).padStart(2, '0')}:${ss}` : `${m}:${ss}`;
 }
 
+/** A stretch of listening in words: 4 min, 1 h 12 min. Nothing for an empty or unknown stretch. */
+export function formatSpan(ms: number): string {
+  if (!Number.isFinite(ms) || ms < 30_000) return '';
+  const min = Math.round(ms / 60_000);
+  const h = Math.floor(min / 60);
+  return h > 0 ? `${h} h${min % 60 ? ` ${min % 60} min` : ''}` : `${Math.max(1, min)} min`;
+}
+
 /** "0:42 / 3:45"; when the length is unknown only the elapsed time, never a dead "–:––". */
 export function formatProgress(positionMs: number, durationMs: number | null | undefined): string {
   return durationMs ? `${formatTime(positionMs)} / ${formatTime(durationMs)}` : formatTime(positionMs);

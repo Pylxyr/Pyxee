@@ -16,6 +16,7 @@ afterEach(() => {
 describe('Settings wording by system', () => {
   it('says Windows on Windows, with the notification-area buttons', () => {
     nav.themeSheetOpen = true;
+    nav.settingsTab = 'system';
     render(SettingsSheet, { backend: null });
     expect(screen.getByRole('heading', { name: 'Windows' })).toBeTruthy();
     expect(screen.getByText('Start Pyxee when I sign in to Windows')).toBeTruthy();
@@ -25,6 +26,7 @@ describe('Settings wording by system', () => {
   it('says System on Linux, with no Windows wording and no notification-area buttons', () => {
     platform.os = 'linux';
     nav.themeSheetOpen = true;
+    nav.settingsTab = 'system';
     const { container } = render(SettingsSheet, { backend: null });
     expect(screen.getByRole('heading', { name: 'System' })).toBeTruthy();
     expect(screen.getByText('Start Pyxee when I sign in')).toBeTruthy();

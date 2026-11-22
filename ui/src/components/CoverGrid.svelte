@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { TrackDto } from '$lib/bindings/TrackDto';
-  import { nav } from '$lib/nav.svelte';
+  import { openTrackMenu } from '$lib/menu';
   import { artistOf, titleOf } from '$lib/format';
   import { reveal } from '$lib/motion';
   import Icon from './Icon.svelte';
@@ -11,9 +11,7 @@
 
   // A right-click (or the Menu key) opens the same song menu as on a queue row; the sheet gives focus back to the tile.
   function openMenu(e: MouseEvent, t: TrackDto) {
-    e.preventDefault();
-    nav.menuOpener = (e.currentTarget as HTMLElement).querySelector<HTMLElement>('.cover-tile');
-    nav.menuTrack = t;
+    openTrackMenu(t, { event: e, opener: (e.currentTarget as HTMLElement).querySelector<HTMLElement>('.cover-tile') });
   }
 </script>
 

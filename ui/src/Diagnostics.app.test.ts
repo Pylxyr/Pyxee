@@ -21,6 +21,7 @@ beforeEach(() => {
   player.catalog = null;
   library.ready = false;
   nav.themeSheetOpen = false;
+  nav.settingsTab = 'appearance';
   for (const s of [...snackbar.items]) snackbar.dismiss(s.id);
 });
 
@@ -39,7 +40,7 @@ describe('sheets are above everything, and stack in the order they were opened',
     expect(await screen.findByRole('dialog', { name: 'Settings' })).toBeTruthy();
     expect(screen.getByRole('region', { name: 'Appearance' })).toBeTruthy();
     // The section appears once the app has said that logging is on (it looks that up when the sheet opens).
-    expect(await screen.findByRole('region', { name: 'Diagnostics' })).toBeTruthy();
+    expect(await screen.findByRole('tab', { name: 'Diagnostics' })).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Appearance' })).toBeNull();
   });
 
@@ -82,6 +83,7 @@ describe('messages from the engine', () => {
 describe('Diagnostics (where the log is)', () => {
   async function openAppearance() {
     await openApp();
+    nav.settingsTab = 'diagnostics';
     await fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
     return screen.findByRole('region', { name: 'Diagnostics' });
   }
@@ -107,6 +109,7 @@ describe('Diagnostics (where the log is)', () => {
     await waitFor(() => expect(screen.getByRole('region', { name: 'Appearance' })).toBeTruthy());
     await new Promise((r) => setTimeout(r, 20));
     expect(screen.queryByRole('region', { name: 'Diagnostics' })).toBeNull();
+    expect(screen.queryByRole('tab', { name: 'Diagnostics' })).toBeNull();
     expect(screen.queryByTestId('log-path')).toBeNull();
     expect(screen.queryByRole('button', { name: 'Open log folder' })).toBeNull();
   });

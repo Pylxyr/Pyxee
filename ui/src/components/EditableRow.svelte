@@ -3,7 +3,8 @@
   import type { HTMLLiAttributes } from 'svelte/elements';
   import { availability } from '$lib/availability.svelte';
   import { artistOf, formatTime, titleOf } from '$lib/format';
-  import { nav } from '$lib/nav.svelte';
+  import { openTrackMenu } from '$lib/menu';
+  import type { MenuExtra } from '$lib/nav.svelte';
   import { MOTION, listChangeMs, motionPx, reveal } from '$lib/motion';
   import { fly } from 'svelte/transition';
   import { cubicIn, expoOut } from 'svelte/easing';
@@ -24,10 +25,14 @@
     handle?: Snippet;
     actions: Snippet;
     coverSize?: number;
+    /** Lines this list adds to the song's menu ("Remove from queue"). */
+    menuExtras?: MenuExtra[] | (() => MenuExtra[]);
+    /** The row is an entry of the queue (the menu then offers to move it, not to add it again). */
+    inQueue?: boolean;
   };
 
   // The row of the queue, of Up next in Now Playing and of a playlist: a handle, the song, and its own buttons.
-  let { track, index, status = '', current = false, over = null, dragging = false, onplay, handle, actions, coverSize = 40, ...rest }: Props = $props();
+  let { track, index, status = '', current = false, over = null, dragging = false, onplay, handle, actions, coverSize = 40, menuExtras = [], inQueue = false, ...rest }: Props = $props();
 
   // A song on this PC whose file is gone says so, before it is played and skipped.
   const missing = $derived(availability.isMissing(track.key));
@@ -38,9 +43,7 @@
 
   // Right-click (or the menu key) on the row opens the song's menu, as the "more" button of a list row does.
   function openMenu(e: MouseEvent) {
-    e.preventDefault();
-    nav.menuOpener = (e.currentTarget as HTMLElement).querySelector<HTMLElement>('.row-edit-main');
-    nav.menuTrack = track;
+    openTrackMenu(track, { event: e, opener: (e.currentTarget as HTMLElement).querySelector<HTMLElement>('.row-edit-main'), extras: typeof menuExtras === 'function' ? menuExtras() : menuExtras, queue: inQueue });
   }
 </script>
 

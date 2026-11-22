@@ -1,6 +1,7 @@
 <script lang="ts">
   import { library } from '$lib/library.svelte';
   import { nav } from '$lib/nav.svelte';
+  import { openTrackMenu } from '$lib/menu';
   import { player } from '$lib/player.svelte';
   import { playWithRelated } from '$lib/radio';
   import { Loaded } from '$lib/loaded.svelte';
@@ -95,7 +96,7 @@
 
 <ScrollPage>
   {#snippet header()}
-    <PageHeader title="Home" kicker={greeting} />
+    <PageHeader title={greeting} />
   {/snippet}
 
   {#if home === null}
@@ -103,6 +104,7 @@
     <Skeleton rows={8} />
   {:else if hasLibrary}
     <div class="home-body shelves">
+    <div class="home-top" data-single={hero ? undefined : ''}>
     {#if hero}
       {@const button = HERO_BUTTON[hero.action]}
       <div
@@ -111,11 +113,7 @@
         style={heroStyle}
         data-testid="resume"
         role="presentation"
-        oncontextmenu={(e) => {
-          e.preventDefault();
-          nav.menuOpener = e.currentTarget.querySelector<HTMLElement>('button');
-          nav.menuTrack = hero.track;
-        }}
+        oncontextmenu={(e) => openTrackMenu(hero.track, { event: e, opener: e.currentTarget.querySelector<HTMLElement>('button') })}
       >
         {#if look.value.hero === 'blur'}<Backdrop class="hero-bg" src={hero.track.thumbnail} seed={hero.track.key} />{/if}
         <div class="hero-stage">
@@ -132,24 +130,33 @@
           <p class="hero-label">{hero.label}</p>
           <p class="t-title truncate" dir="auto">{titleOf(hero.track)}</p>
           <p class="muted truncate" dir="auto">{artistOf(hero.track)}</p>
-          <div class="mt-4 flex flex-wrap items-center gap-2">
+          <div class="hero-actions">
             <Button variant="primary" aria-label="{button.text} {hero.track.title}" onclick={() => heroClick(hero)}>
               {#if button.icon}<Icon name={button.icon} size={16} fill={button.icon === 'play'} />{/if}{button.text}
             </Button>
-            {#if home.likedCount > 0}
-              <Button onclick={() => { nav.libraryTab = 'liked'; nav.go('library'); }}>Liked songs <span class="nums muted">{home.likedCount}</span></Button>
-            {/if}
+            <Button aria-label="More about {hero.track.title}" onclick={(e) => openTrackMenu(hero.track, { button: e.currentTarget })}>More</Button>
           </div>
         </div>
       </div>
     {/if}
+    <!-- Two quick starts beside the top card (below it in a narrow window): your liked songs, and a random radio. -->
+    <div class="home-tiles">
+      {#if home.likedCount > 0}
+        <button class="home-tile" data-tile="liked" onclick={() => { nav.libraryTab = 'liked'; nav.go('library'); }}>
+          <Icon name="heart" size={22} fill />
+          <span class="home-tile-text"><span class="home-tile-title">Liked songs</span><span class="home-tile-sub nums">{home.likedCount} {home.likedCount === 1 ? 'song' : 'songs'}</span></span>
+          <Icon name="chevron" size={18} />
+        </button>
+      {/if}
+      <div class="home-tile-mix"><MixCard onpick={surprise} /></div>
+    </div>
+    </div>
     <div class="home-cols">
       {#if seeds.length > 0}
         <section class="min-w-0">
           <SectionHead>Tune in</SectionHead>
           <p class="muted mb-3">Pick one and Pyxee queues songs like it.</p>
           <ul class="mix-grid" aria-label="Start a radio">
-            <li><MixCard onpick={surprise} /></li>
             {#each seeds as t (t.key)}
               <li><MixCard track={t} onpick={() => void playWithRelated(t)} /></li>
             {/each}

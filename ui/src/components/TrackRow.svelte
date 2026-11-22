@@ -1,7 +1,7 @@
 <script lang="ts">
   import { availability } from '$lib/availability.svelte';
   import { library } from '$lib/library.svelte';
-  import { nav } from '$lib/nav.svelte';
+  import { openTrackMenu } from '$lib/menu';
   import { player } from '$lib/player.svelte';
   import { artistOf, formatTime, titleOf } from '$lib/format';
   import { popOnChange, reveal } from '$lib/motion';
@@ -27,10 +27,8 @@
 
   // Right-click (or the menu key) anywhere on the row opens the same menu as its "more" button.
   function openMenu(e: MouseEvent) {
-    e.preventDefault();
-    // A right-click leaves focus where it was: the sheet gives it back to this row when it closes.
-    nav.menuOpener = (e.currentTarget as HTMLElement).querySelector<HTMLElement>('.trow-main');
-    nav.menuTrack = track;
+    // A right-click leaves focus where it was: the menu gives it back to this row when it closes.
+    openTrackMenu(track, { event: e, opener: (e.currentTarget as HTMLElement).querySelector<HTMLElement>('.trow-main') });
   }
 </script>
 
@@ -57,6 +55,6 @@
     <IconButton icon="heart" iconSize={18} fill={liked} pressed={liked} label={liked ? `Unlike ${titleOf(track)}` : `Like ${titleOf(track)}`} onclick={() => library.toggleLike(track)} />
   </span>
   <span class="trow-actions">
-    <IconButton icon="more" iconSize={18} label="More options for {titleOf(track)}" onclick={() => { nav.menuOpener = null; nav.menuTrack = track; }} />
+    <IconButton icon="more" iconSize={18} label="More options for {titleOf(track)}" onclick={(e) => openTrackMenu(track, { button: e.currentTarget })} />
   </span>
 </li>
