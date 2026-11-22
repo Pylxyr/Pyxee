@@ -948,6 +948,26 @@ input[type='range'].slider:disabled {
     border-color: var(--accent);
     box-shadow: inset 0 -1px 0 var(--accent);
   }
+  /*
+   * A drop-down's list. The browser paints it from the select's own background, and under Windows 11 Mica --surface is
+   * see-through, so the list came out as a white sheet with pale text (invisible in the dark themes). The colour under
+   * the list is therefore an opaque token (--solid-2, the menu colour), the usual see-through tint is drawn on top of it
+   * as an image so the closed field looks as before, and the options repeat both colours for the engines that paint
+   * them on their own.
+   */
+  select.field {
+    background-color: var(--solid-2);
+    background-image: linear-gradient(var(--surface), var(--surface));
+    color-scheme: inherit;
+  }
+  select.field option,
+  select.field optgroup {
+    background-color: var(--solid-2);
+    color: var(--fg);
+  }
+  select.field option:disabled {
+    color: var(--muted);
+  }
   .field-mono {
     font-family: Consolas, 'Cascadia Mono', ui-monospace, 'JetBrains Mono', 'DejaVu Sans Mono', monospace;
     font-size: 12px;

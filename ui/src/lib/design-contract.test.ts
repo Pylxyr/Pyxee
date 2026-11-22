@@ -54,6 +54,15 @@ describe('Mica-safe colours', () => {
     }
   });
 
+  it('a drop-down list is opaque and readable: its colour comes from --solid-2, never from the see-through --surface alone', () => {
+    const select = rule('select.field');
+    expect(select).toMatch(/background-color:\s*var\(--solid-2\)/);
+    expect(select).toMatch(/background-image:\s*linear-gradient\(var\(--surface\), var\(--surface\)\)/);
+    const option = rule('select.field option,\n  select.field optgroup');
+    expect(option).toMatch(/background-color:\s*var\(--solid-2\)/);
+    expect(option).toMatch(/color:\s*var\(--fg\)/);
+  });
+
   it('overlays and menus use opaque backgrounds, so nothing shows through them', () => {
     expect(source('Sheet.svelte')).toContain('bg-solid-2');
     expect(source('Sheet.svelte')).not.toMatch(/bg-surface-2 p-4/);
