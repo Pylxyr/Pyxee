@@ -2339,7 +2339,8 @@ input[type='range'].slider:disabled {
   border-radius: var(--r-lg);
 }
 .shell[data-layout='wide'] .deck {
-  padding: 0 26px;
+  --deck-pad: 26px;
+  padding: 0 var(--deck-pad);
   border: 1px solid var(--rule);
   border-radius: var(--r-xl);
   background: linear-gradient(
@@ -2351,13 +2352,14 @@ input[type='range'].slider:disabled {
   box-shadow: 0 24px 48px -32px var(--glow);
 }
 .shell[data-layout='wide'] .deck-seek {
-  /* The line sits just inside the top edge, 7 px down (the track is 6 px in a 20 px slider). A strip cut to the card's
-     rounded corners sliced the line diagonally at both ends, so it looked like a stray edge, not a bar. Instead it starts
-     a little in from the sides, 0.4 x the corner radius, which is where the curve has moved clear of the line (the curve is
-     10.7 px in at the line's top for a 30 px radius), and it keeps its own round ends. Nothing clips it, so the thumb's
-     ring is not cut either. */
-  inset-inline: calc(var(--r-xl) * 0.4);
-  top: 0;
+  /* The line runs along what the deck holds: from the left edge of the cover (the deck's side padding) to the right edge
+     of the expand icon. That icon is 20 px in a 32 px button and its drawing stops 3.3 px short of its box, so the
+     line ends 6 + 3.3, about 9 px, in from the content's right edge. A strip cut to the card's rounded corners sliced the
+     line diagonally, so nothing clips it (the thumb's ring is not cut either) and it keeps its own round ends. It is 20 px
+     tall with the 6 px track in the middle (7 px down); `top: -5px` puts the track 2 px under the card's edge and 3 px
+     above the 64 px cover (the cover starts 11 px down). */
+  inset-inline: var(--deck-pad) calc(var(--deck-pad) + 9px);
+  top: -5px;
   height: 20px;
 }
 .shell[data-layout='narrow'] .page {
@@ -2868,10 +2870,6 @@ input[type='range'].eq-band:focus-visible::-webkit-slider-thumb {
   border: 0;
   border-radius: 0;
   box-shadow: none;
-}
-:root[data-panels='docked'] .shell[data-layout='wide'] .deck-seek {
-  /* Square corners: nothing to clear, so the line runs edge to edge. */
-  inset-inline: 0;
 }
 :root[data-panels='docked'] .shell[data-layout='wide'] .masthead {
   min-height: 60px;

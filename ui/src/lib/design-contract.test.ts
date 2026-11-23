@@ -132,14 +132,12 @@ describe('scroll bars', () => {
 });
 
 describe("the deck's seek line", () => {
-  it('starts clear of the rounded top corners and is not clipped to them (a clip slices the line diagonally)', () => {
+  it('runs from the left edge of the cover (the deck padding) to the right edge of the expand icon, and is not clipped to the corners', () => {
+    // The wide deck's selector also starts an earlier, layout-only rule, so the padding is looked for in the whole sheet.
+    expect(css).toMatch(/--deck-pad:\s*26px;\s*padding:\s*0 var\(--deck-pad\);/);
     const seek = rule(".shell[data-layout='wide'] .deck-seek");
-    expect(seek).toMatch(/inset-inline:\s*calc\(var\(--r-xl\) \* 0\.4\);/);
+    expect(seek).toMatch(/inset-inline:\s*var\(--deck-pad\) calc\(var\(--deck-pad\) \+ 9px\);/);
     expect(seek).not.toMatch(/overflow:\s*hidden/);
     expect(seek).not.toMatch(/border-radius/);
-  });
-
-  it('docked panels have square corners, so the line runs edge to edge', () => {
-    expect(rule(":root[data-panels='docked'] .shell[data-layout='wide'] .deck-seek")).toMatch(/inset-inline:\s*0;/);
   });
 });
