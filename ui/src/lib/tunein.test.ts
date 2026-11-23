@@ -19,11 +19,10 @@ describe('the songs Tune in offers', () => {
     const out = tuneInSeeds(quick, []);
     expect(keys(out)).toEqual(['a1', 'b', 'c', 'd', 'e', 'f', 'g']);
   });
-  it('fills a small library up to a few cards with more songs of the same artists', () => {
-    const quick = [song('a1', 'A'), song('a2', 'A'), song('b1', 'B'), song('a3', 'A'), song('b2', 'B'), song('a4', 'A'), song('b3', 'B'), song('a5', 'A')];
-    const out = tuneInSeeds(quick, []);
-    expect(out).toHaveLength(6);
-    expect(keys(out).slice(0, 2)).toEqual(['a1', 'b1']);
+  it('gives a small library a short row: one card per artist, never a second one of the same artist', () => {
+    const quick = [song('a1', 'A'), song('a2', 'A'), song('b1', 'B'), song('a3', 'A'), song('b2', 'B')];
+    expect(keys(tuneInSeeds(quick, []))).toEqual(['a1', 'b1']);
+    expect(keys(tuneInSeeds([song('z1', 'ZUTOMAYO'), song('z2', 'ZUTOMAYO')], [song('z3', 'zutomayo')]))).toEqual(['z1']);
   });
   it('never offers more than the row holds', () => {
     const many = Array.from({ length: 30 }, (_, i) => song(`s${i}`, `Artist ${i}`));
