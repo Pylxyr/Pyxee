@@ -22,6 +22,12 @@ def block(text: str, header: str) -> str:
     return "\n".join(out)
 
 
+class ReleaseNotesSettings(unittest.TestCase):
+    def test_the_release_notes_step_passes_on_every_setting_the_script_reads(self):
+        for name in ("AI_MAX_OUTPUT_TOKENS", "AI_MAX_INPUT_CHARS", "AI_MODEL", "AI_BASE_URL", "RELEASE_NOTES_MODEL"):
+            self.assertRegex(RELEASE, rf"{name}: \$\{{\{{ vars\.{name} \}}\}}", f"{name} is not passed to scripts/release_notes.py")
+
+
 class Security(unittest.TestCase):
     def test_security_md_uses_private_reporting_and_invents_no_address(self):
         text = (ROOT / "SECURITY.md").read_text(encoding="utf-8")

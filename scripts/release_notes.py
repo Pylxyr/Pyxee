@@ -326,7 +326,13 @@ _MAX_FILE_DIFF_CHARS = 3_000
 _MAX_HEAD_CHARS = 3_500  # commit list + file summary
 # Files that matter to the people using the app come first; whatever does not fit is only named.
 _LOW_PRIORITY_AREAS = ("Tests", "Build and release", "Documentation", "Icons and artwork", "Other")
-_DEFAULT_MAX_OUTPUT_TOKENS = 3000
+_DEFAULT_MAX_OUTPUT_TOKENS = 3000  # also under the 4,000 that GitHub Models' free tier allows
+_MAX_OUTPUT_TOKENS_CAP = 16_000
+# A reasoning model spends part of its output allowance thinking before it writes, and a big diff makes it think longer,
+# so the whole allowance can be gone before the first word (an empty reply that stopped for "length"). Only then is the
+# question asked once more, with this many times the allowance (up to the cap): a model that answered the first time
+# is never asked twice, and a service whose limit is lower fails the retry as it failed before.
+_RETRY_ALLOWANCE_FACTOR = 4
 # urllib's default agent is refused by services behind Cloudflare (Groq answers "HTTP 403: error code: 1010").
 _USER_AGENT = "Pyxee-release-notes (+https://github.com/Pylxyr/Pyxee)"
 
@@ -419,7 +425,7 @@ def _max_output_tokens(env: dict[str, str] | None = None) -> int:
         value = int(raw) if raw else _DEFAULT_MAX_OUTPUT_TOKENS
     except ValueError:
         value = _DEFAULT_MAX_OUTPUT_TOKENS
-    return max(256, min(value, 16_000))
+    return max(256, min(value, _MAX_OUTPUT_TOKENS_CAP))
 
 
 def ask_model(provider: Provider, prompt: str) -> str:
@@ -436,21 +442,39 @@ def ask_model(provider: Provider, prompt: str) -> str:
             },
         )
         return "".join(b.get("text", "") for b in data.get("content", []) if b.get("type") == "text").strip()
+    allowance = _max_output_tokens()
+    text, finish = _ask_openai(provider, prompt, allowance)
+    if not text and finish == "length" and allowance < _MAX_OUTPUT_TOKENS_CAP:
+        retry = min(allowance * _RETRY_ALLOWANCE_FACTOR, _MAX_OUTPUT_TOKENS_CAP)
+        print(
+            f"{provider.name}: the model used all {allowance} output tokens (its thinking counts) before it wrote"
+            f" anything; asking once more with {retry}.",
+            file=sys.stderr,
+        )
+        allowance = retry
+        text, finish = _ask_openai(provider, prompt, allowance)
+    if not text and finish == "length":
+        raise ValueError(
+            f"the model used its whole output allowance ({allowance} tokens) before it wrote anything"
+            " - raise AI_MAX_OUTPUT_TOKENS, or use a model that does not think first"
+        )
+    return text
+
+
+def _ask_openai(provider: Provider, prompt: str, allowance: int) -> tuple[str, str]:
+    """One chat-completions call: the reply text and why the model stopped (`length`: the allowance ran out)."""
     data = _post_json(
         provider.url,
         {"authorization": f"Bearer {provider.key}"},
         {
             "model": provider.model,
-            "max_tokens": _max_output_tokens(),
+            "max_tokens": allowance,
             "temperature": 0.2,
             "messages": [{"role": "system", "content": _AI_SYSTEM}, {"role": "user", "content": prompt}],
         },
     )
     choice = data["choices"][0]
-    text = str(choice["message"]["content"] or "").strip()
-    if not text and choice.get("finish_reason") == "length":
-        raise ValueError("the model used its whole output allowance before it wrote anything - raise AI_MAX_OUTPUT_TOKENS")
-    return text
+    return str(choice["message"]["content"] or "").strip(), str(choice.get("finish_reason") or "")
 
 
 _AI_ORDER = ("Added", "Fixed", "Changed", "Removed")

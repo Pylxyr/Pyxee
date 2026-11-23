@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
+import contextlib
+import io
+import os
 import sys
 import unittest
 from pathlib import Path
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
@@ -172,6 +176,60 @@ class AiPlumbing(unittest.TestCase):
         self.assertEqual(rn._max_output_tokens({"AI_MAX_OUTPUT_TOKENS": "5"}), 256)
         self.assertEqual(rn._max_output_tokens({"AI_MAX_OUTPUT_TOKENS": "999999"}), 16000)
         self.assertEqual(rn._max_output_tokens({"AI_MAX_OUTPUT_TOKENS": "abc"}), 3000)
+
+
+class AskModelThatThinks(unittest.TestCase):
+    """A model that thinks before it writes can use its whole output allowance before the first word."""
+
+    PROVIDER = rn.Provider("AI", "openai", "https://h/chat/completions", "k", "m", 24_000)
+    NOTES = "### Added\n- A thing"
+
+    @staticmethod
+    def reply(text, finish):
+        return {"choices": [{"message": {"content": text}, "finish_reason": finish}]}
+
+    def ask(self, replies, **env):
+        """The text, the `max_tokens` of every call made, and what was raised."""
+        seen, answers = [], iter(replies)
+
+        def post(_url, _headers, payload):
+            seen.append(payload["max_tokens"])
+            return next(answers)
+
+        patched = {k: v for k, v in os.environ.items() if k != "AI_MAX_OUTPUT_TOKENS"} | env
+        with mock.patch.object(rn, "_post_json", post), mock.patch.dict(os.environ, patched, clear=True):
+            with contextlib.redirect_stderr(io.StringIO()):
+                try:
+                    return rn.ask_model(self.PROVIDER, "prompt"), seen, None
+                except ValueError as exc:
+                    return None, seen, exc
+
+    def test_an_answer_the_first_time_is_not_asked_for_twice(self):
+        text, seen, error = self.ask([self.reply(self.NOTES, "stop")])
+        self.assertEqual((text, seen, error), (self.NOTES, [3000], None))
+
+    def test_a_model_that_thinks_away_its_allowance_is_asked_again_with_more(self):
+        text, seen, error = self.ask([self.reply("", "length"), self.reply(self.NOTES, "stop")])
+        self.assertEqual((text, seen, error), (self.NOTES, [3000, 12000], None))
+
+    def test_the_retry_starts_from_the_allowance_that_was_set_and_stops_at_the_cap(self):
+        _, seen, _ = self.ask([self.reply("", "length"), self.reply(self.NOTES, "stop")], AI_MAX_OUTPUT_TOKENS="8000")
+        self.assertEqual(seen, [8000, 16000])
+
+    def test_it_gives_up_after_one_retry_and_says_what_to_change(self):
+        text, seen, error = self.ask([self.reply("", "length"), self.reply("", "length")])
+        self.assertIsNone(text)
+        self.assertEqual(seen, [3000, 12000])
+        self.assertIn("AI_MAX_OUTPUT_TOKENS", str(error))
+
+    def test_nothing_is_retried_when_the_cap_was_already_used(self):
+        text, seen, error = self.ask([self.reply("", "length")], AI_MAX_OUTPUT_TOKENS="16000")
+        self.assertEqual((text, seen), (None, [16000]))
+        self.assertIsInstance(error, ValueError)
+
+    def test_an_empty_answer_for_another_reason_is_not_retried(self):
+        text, seen, error = self.ask([self.reply("", "content_filter")])
+        self.assertEqual((text, seen, error), ("", [3000], None))
 
 
 class Render(unittest.TestCase):

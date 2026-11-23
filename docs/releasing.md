@@ -33,6 +33,8 @@ Nothing needs configuring: GitHub Models is free and uses the workflow's own tok
 | `ANTHROPIC_API_KEY` | secret | use Claude (default model `claude-sonnet-5-5`) |
 | `AI_API_KEY` + `AI_BASE_URL` + `AI_MODEL` | secret + 2 variables | any OpenAI-compatible service (Gemini, Groq...) |
 | `RELEASE_NOTES_MODEL` | variable | override the model for whichever service is used |
+| `AI_MAX_OUTPUT_TOKENS` | variable | most tokens the model may write (default 3000, at most 16000). A model that thinks first (Gemini 2.5 and the like) spends part of it thinking, so a big diff can use it all before the first word; the script then asks once more with 4 times as much, and this sets where it starts |
+| `AI_MAX_INPUT_CHARS` | variable | most characters of diff sent to the `AI_*` service (default 24000) |
 
 Preview the notes for any two tags on your own machine: `python scripts/release_notes.py --tag v0.2.0 --prev v0.1.0 --repo Pylxyr/Pyxee` (add `--ai` with a key in the environment).
 
