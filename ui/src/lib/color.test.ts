@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { cardTones, contrast, dominantColor, dominantPair, ensureContrast, heroTones } from './color';
+import { cardTones, contrast, deepHue, dominantColor, dominantPair, ensureContrast, heroTones, paletteFromArt } from './color';
 
 function pixels(...px: [number, number, number, number][]): Uint8ClampedArray {
   return new Uint8ClampedArray(px.flat());
@@ -86,5 +86,67 @@ describe('cardTones and heroTones', () => {
   it('give the feature card three different colors', () => {
     const t = heroTones({ a: '#c8283c', b: '#2850c8' });
     expect(new Set([t.a, t.b, t.c]).size).toBe(3);
+  });
+});
+
+/** The hue of a hex colour, in degrees. */
+function hueOf(hex: string): number {
+  const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255) as [number, number, number];
+  const max = Math.max(r, g, b), d = max - Math.min(r, g, b);
+  if (d === 0) return 0;
+  const h = max === r ? ((g - b) / d + (g < b ? 6 : 0)) : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
+  return h * 60;
+}
+/** Green to the eye: a hue between yellow-green and cyan that has some colour in it. */
+const isGreen = (hex: string) => {
+  const ch = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
+  return hueOf(hex) > 75 && hueOf(hex) < 170 && Math.max(...ch) - Math.min(...ch) > 20;
+};
+
+describe('a yellow cover with white and black on it', () => {
+  // Yellow, white and black type, a pale yellow: the sleeve that came out green.
+  const cover = pixels(...repeat([252, 252, 30, 255], 50), ...repeat([255, 255, 255, 255], 25), ...repeat([10, 10, 10, 255], 15), ...repeat([245, 245, 205, 255], 10));
+  it('is yellow with the black it has, not a made-up second colour', () => {
+    const pair = dominantPair(cover)!;
+    expect(pair.a).toBe('#fcfc1e');
+    expect(contrast(pair.b, '#000000')).toBeLessThan(1.5); // near-black
+  });
+  it('reads black type that came out dark grey when the picture was made small', () => {
+    const small = pixels(...repeat([245, 245, 245, 255], 55), ...repeat([250, 250, 30, 255], 30), ...repeat([82, 82, 82, 255], 4), ...repeat([214, 214, 214, 255], 11));
+    const pair = dominantPair(small)!;
+    expect(pair.a).toBe('#fafa1e');
+    expect(pair.b).toBe('#525252');
+  });
+  it('gives no card, feature card or theme colour that is green', () => {
+    const pair = dominantPair(cover)!;
+    const card = cardTones(pair);
+    const hero = heroTones(pair);
+    const light = paletteFromArt(pair.a, 'light');
+    const dark = paletteFromArt(pair.a, 'dark');
+    for (const hex of [card.a, card.b, hero.a, hero.b, hero.c, light.accent, light.bg, light.surface, dark.accent, dark.bg, dark.surface]) {
+      expect(isGreen(hex), hex).toBe(false);
+    }
+  });
+  it('a cover of one colour only gets a darker one of the same hue, not one turned around the wheel', () => {
+    const pair = dominantPair(pixels(...repeat([252, 252, 30, 255], 60)))!;
+    expect(Math.abs(hueOf(pair.b) - hueOf(pair.a))).toBeLessThan(2);
+    expect(heroTones(pair).c).not.toBe(heroTones(pair).a);
+    expect(isGreen(heroTones(pair).c)).toBe(false);
+  });
+  it('gives a third colour when the cover has a third hue', () => {
+    const pair = dominantPair(pixels(...repeat([200, 40, 60, 255], 50), ...repeat([40, 90, 200, 255], 30), ...repeat([240, 200, 20, 255], 20)))!;
+    expect(pair.c).toBeDefined();
+    expect(new Set([pair.a, pair.b, pair.c]).size).toBe(3);
+  });
+});
+
+describe('deepHue', () => {
+  it('turns yellow toward amber as it gets darker, and leaves light yellow and other hues alone', () => {
+    expect(deepHue(60, 0.6)).toBe(60);
+    expect(deepHue(60, 0.3)).toBeLessThan(48);
+    expect(deepHue(60, 0.3)).toBeGreaterThan(40);
+    expect(deepHue(20, 0.2)).toBe(20);
+    expect(deepHue(120, 0.2)).toBe(120);
+    expect(deepHue(200, 0.2)).toBe(200);
   });
 });

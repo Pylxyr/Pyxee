@@ -35,10 +35,12 @@ export function dominantColor(data: Uint8ClampedArray): string | null {
   return heaviest(data, 0.12, 0.9, 0.15) ?? heaviest(data, 0.03, 0.97, 0.05);
 }
 
-/** The two colours a cover is known by: its main one, and one that sets itself apart from it. */
+/** The colours a cover is known by: its main one, one that sets itself apart from it, and sometimes a third. */
 export interface CoverColors {
   a: string;
   b: string;
+  /** A third colour of its own, when the cover has one (a card's looks make one up from `a` otherwise). */
+  c?: string;
 }
 
 /** How far apart two hues are, in degrees (0-180). */
@@ -47,10 +49,45 @@ const hueGap = (x: number, y: number) => {
   return d > 180 ? 360 - d : d;
 };
 
+/** A colour of the picture and how much of the picture it covers (0-1), grey, black and white included. */
+interface Swatch {
+  hex: string;
+  share: number;
+  h: number;
+  s: number;
+  l: number;
+}
+
+/** What the picture is made of, by how much of it each colour covers, largest first. */
+function swatches(data: Uint8ClampedArray): Swatch[] {
+  const found = new Map<number, { n: number; r: number; g: number; b: number }>();
+  let total = 0;
+  for (let i = 0; i + 3 < data.length; i += 4) {
+    if (data[i + 3]! < 128) continue;
+    const r = data[i]!, g = data[i + 1]!, b = data[i + 2]!;
+    const key = ((r >> 5) << 6) | ((g >> 5) << 3) | (b >> 5);
+    const e = found.get(key) ?? { n: 0, r: 0, g: 0, b: 0 };
+    e.n++; e.r += r; e.g += g; e.b += b;
+    found.set(key, e);
+    total++;
+  }
+  return [...found.values()]
+    .sort((x, y) => y.n - x.n)
+    .map((e) => {
+      const hex = toHex(e.r / e.n, e.g / e.n, e.b / e.n);
+      const [h, s, l] = toHsl(hex);
+      return { hex, share: e.n / total, h, s, l };
+    });
+}
+
+/** Colour that is not grey, black or white: something a hue can be told from. */
+const chromatic = (c: Swatch) => c.s > 0.15 && c.l >= 0.1 && c.l <= 0.93;
+
 /**
- * The cover's main colour and a second one for a gradient: the heaviest colour whose hue is clearly another one (or,
- * when it is lighter or darker by a good margin), and when the cover is all one colour, that colour turned a little
- * around the wheel and darker, so a card is never flat.
+ * The cover's main colour, and a second one that is really in the picture: another hue, or the dark that sits beside it
+ * (a yellow sleeve with black type gives yellow and near-black). Only a cover with one colour and nothing else makes
+ * the second one up, as the same colour a little darker: a hue turned around the wheel is a colour the cover never had
+ * (yellow turned a step is green). A third colour is given when the cover has a third hue.
  */
 export function dominantPair(data: Uint8ClampedArray): CoverColors | null {
   const list = buckets(data, 0.12, 0.9, 0.15);
@@ -58,11 +95,13 @@ export function dominantPair(data: Uint8ClampedArray): CoverColors | null {
   const a = all[0];
   if (!a) return null;
   const [ha, sa, la] = toHsl(a);
-  const other = all.slice(1).find((c) => {
-    const [h, sat, l] = toHsl(c);
-    return (sat > 0.12 && sa > 0.12 && hueGap(h, ha) >= 35) || Math.abs(l - la) >= 0.3;
-  });
-  return { a, b: other ?? fromHsl((ha + 38) % 360, clamp(sa, 0.25, 0.9), clamp(la * 0.75, 0.12, 0.5)) };
+  const parts = swatches(data);
+  // A picture is read small, so black type on a cover is a dark grey by then (not black): "dark" reaches up to 0.36.
+  const apart = (c: Swatch) => c.share >= 0.03 && ((chromatic(c) && sa > 0.12 && hueGap(c.h, ha) >= 35) || (c.l < 0.36 && la - c.l >= 0.2));
+  const second = parts.find(apart);
+  const b = second?.hex ?? fromHsl(ha, clamp(sa, 0.25, 0.9), clamp(la * 0.7, 0.12, 0.5));
+  const third = parts.find((c) => c !== second && c.share >= 0.03 && chromatic(c) && hueGap(c.h, ha) >= 35 && (!second || !chromatic(second) || hueGap(c.h, second.h) >= 35));
+  return third ? { a, b, c: third.hex } : { a, b };
 }
 
 export function toHex(r: number, g: number, b: number): string {
@@ -244,6 +283,16 @@ function fromHsl(h: number, s: number, l: number): string {
 
 const clamp = (n: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, n));
 
+/**
+ * A yellow made dark is not a dark yellow: at a low lightness the hue of yellow (60 degrees) reads as olive, a green. A
+ * colour of that hue is turned toward amber the darker it gets, so it stays the gold or the bronze the cover shows.
+ */
+export function deepHue(h: number, l: number): number {
+  const weight = clamp((74 - h) / 10, 0, 1) * (h >= 48 ? 1 : 0);
+  if (weight === 0) return h;
+  return h - clamp((0.56 - l) / 0.26, 0, 1) * 0.85 * weight * (h - 40);
+}
+
 /** `a` moved `t` (0-1) of the way to `b`, in sRGB. */
 export function mixHex(a: string, b: string, t: number): string {
   const [ar, ag, ab] = parseHex(a);
@@ -262,40 +311,43 @@ const surfaceTint = (s: number, ceiling: number) => (s < 0.08 ? s : clamp(s * 0.
  */
 export function paletteFromArt(art: string, scheme: 'dark' | 'light'): ThemeColors {
   const [h, s, l] = toHsl(art);
+  // Yellow turned dark would be olive green: every colour below takes the hue it needs at its own lightness.
+  const at = (sat: number, light: number) => fromHsl(deepHue(h, light), sat, light);
   if (scheme === 'dark') {
     const n = surfaceTint(s, 0.6);
-    const bg = fromHsl(h, n, 0.115);
-    const surface = fromHsl(h, n, 0.155);
-    const surface2 = fromHsl(h, n, 0.21);
+    const bg = at(n, 0.115);
+    const surface = at(n, 0.155);
+    const surface2 = at(n, 0.21);
     return {
       bg,
       surface,
       surface2,
-      line: fromHsl(h, n * 0.9, 0.3),
-      fg: fromHsl(h, n * 0.4, 0.95),
-      muted: ensureContrastOn(fromHsl(h, n * 0.8, 0.7), surface2, 'dark', 4.5),
-      accent: ensureContrastOn(fromHsl(h, clamp(s, 0.6, 0.95), clamp(l, 0.58, 0.74)), surface2, 'dark', 3),
+      line: at(n * 0.9, 0.3),
+      fg: at(n * 0.4, 0.95),
+      muted: ensureContrastOn(at(n * 0.8, 0.7), surface2, 'dark', 4.5),
+      accent: ensureContrastOn(at(clamp(s, 0.6, 0.95), clamp(l, 0.58, 0.74)), surface2, 'dark', 3),
     };
   }
   const n = surfaceTint(s, 0.5);
-  const bg = fromHsl(h, n, 0.935);
-  const surface = fromHsl(h, n, 0.9);
-  const surface2 = fromHsl(h, n, 0.855);
+  const bg = at(n, 0.935);
+  const surface = at(n, 0.9);
+  const surface2 = at(n, 0.855);
   return {
     bg,
     surface,
     surface2,
-    line: fromHsl(h, n * 0.9, 0.72),
-    fg: fromHsl(h, n * 0.6, 0.1),
-    muted: ensureContrastOn(fromHsl(h, n * 0.7, 0.34), surface2, 'light', 4.5),
-    accent: ensureContrastOn(fromHsl(h, clamp(s, 0.6, 0.95), clamp(l, 0.28, 0.4)), surface2, 'light', 3),
+    line: at(n * 0.9, 0.72),
+    fg: at(n * 0.6, 0.1),
+    muted: ensureContrastOn(at(n * 0.7, 0.34), surface2, 'light', 4.5),
+    accent: ensureContrastOn(at(clamp(s, 0.6, 0.95), clamp(l, 0.28, 0.4)), surface2, 'light', 3),
   };
 }
 
 /** `hex` with its saturation and lightness held inside the given ranges (a grey one stays grey). */
 function tone(hex: string, sat: [number, number], light: [number, number]): string {
   const [h, s, l] = toHsl(hex);
-  return fromHsl(h, s < 0.08 ? s : clamp(s, sat[0], sat[1]), clamp(l, light[0], light[1]));
+  const lightness = clamp(l, light[0], light[1]);
+  return fromHsl(deepHue(h, lightness), s < 0.08 ? s : clamp(s, sat[0], sat[1]), lightness);
 }
 
 /** The two colours of a "Tune in" card's gradient: the cover's, deepened until white words read on both (WCAG 4.5:1). */
@@ -306,12 +358,18 @@ export function cardTones(c: CoverColors): CoverColors {
   };
 }
 
-/** The three colours a feature card's looks are painted with: lively, and a third one a step around the wheel from the first. */
+/**
+ * The three colours a feature card's looks are painted with: lively, the third the cover's own when it has one, else a
+ * lighter turn of the first (a few degrees, away from green, so yellow stays gold and does not drift into lime).
+ */
 export function heroTones(c: CoverColors): { a: string; b: string; c: string } {
   const a = tone(c.a, [0.45, 0.9], [0.4, 0.62]);
   const b = tone(c.b, [0.4, 0.85], [0.35, 0.58]);
+  if (c.c) return { a, b, c: tone(c.c, [0.4, 0.85], [0.4, 0.58]) };
   const [h, s, l] = toHsl(a);
-  return { a, b, c: fromHsl((h + 60) % 360, s < 0.08 ? s : clamp(s, 0.4, 0.85), clamp(l, 0.4, 0.58)) };
+  const turned = (h + (h >= 45 && h < 200 ? -14 : 14) + 360) % 360;
+  const lightness = clamp(l + 0.08, 0.4, 0.66);
+  return { a, b, c: fromHsl(deepHue(turned, lightness), s < 0.08 ? s : clamp(s, 0.4, 0.85), lightness) };
 }
 
 /** What the native window frame wears: its border, and (with the Windows title bar) the bar and its text. */

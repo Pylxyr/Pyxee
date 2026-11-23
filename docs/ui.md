@@ -96,8 +96,8 @@ it was put until the player's position reaches it, and the time labels show wher
   sideways to the page's edges; Explore's shelves are the same). Page titles are poster-sized, with a time-of-day greeting above
   Home's. **Picking anything on Home starts a radio** (`lib/radio.ts`): the song plays at once and about 15 similar songs
   (`relatedGet`) are queued behind it; if another song is picked meanwhile, or the lookup fails, the queue is left alone (a note
-  says so on failure). "Tune in" is a row of cards (`MixCard`) that scrolls sideways like the covers, one per song you come back to (the quick picks, then
-  the recent songs), each coloured from its song's cover, plus a "Surprise me" card that starts a radio from one of them at random.
+  says so on failure). "Tune in" is a row of cards (`MixCard`) that scrolls sideways like the covers, one per song you come back to (the quick picks: songs played most in the last 30 days and liked ones, then the recent songs; `lib/tunein.ts`: the
+  song playing now is left out, a song and an artist are shown once, a small library is filled to six cards), each coloured from its song's cover, plus a "Surprise me" card that starts a radio from one of them at random.
 - **The deck** is the memorable part: a seek line across the whole window, a cover lit by the accent (of the theme, or of the
   cover with "Color from album art"), and the same accent washing down the lane. The hero, the flyout and the mini player use the wash.
 - Ink (blue-black with a signal-lime accent) is the default theme, Frost (soft grey-white with olive-lime) the default light one. The logo keeps its own red; the UI accent does not.
@@ -178,6 +178,8 @@ has no attribute, so the base rules are the default look and each option is one 
 | Cover shape | Rounded, Square, Circle | One rule on the cover classes (`.thumb`, `.cover-art`, `.hero-art`, `.mix-art`, ...) |
 | Home top card and Now Playing | Blur, Aurora, Gradient, Vinyl, Plain | Blur is the canvas of before; the others are painted with CSS from the cover's colors (`--hero-a/b/c`). Vinyl slides a record out from behind the cover once per song (`disc-out`). Now Playing's page follows the same choice (`data-wash` on `.np-root`, softer so the text stays readable; Vinyl is its two-glow wash without the record); **Flat surfaces always give it a plain page**. Aurora, Gradient and Vinyl are one opaque layer (`components/Wash.svelte`: `.hero-wash` on the card, `.np-wash` on Now Playing); a new cover's colors fade a new layer in over the old one (opacity only), so nothing is repainted while it blends. The "Tune in" cards do the same with `.mix-bg` |
 | Home: Tune in cards | Album colors, Theme color | The cards take the cover's two colors (`--mix-a/b`), deepened until white words read (4.5:1, `cardTones`) |
+
+A cover's colors (`lib/color.ts`, read from a 32x32 copy of the picture) are its main vivid colour, a second that is really in the picture (another hue, or the near-black beside it, so a yellow sleeve with black type is yellow and black) and a third when it has a third hue. Nothing is turned around the colour wheel: that made a yellow cover green. A yellow that is darkened is turned toward amber (`deepHue`), as at a low lightness the hue of yellow reads as olive, and `--accent-2` (the gradient's second colour, a step of +58 degrees in OKLCH) steps the other way for a yellow or gold accent.
 | Progress bar | Smooth glide, Steps, Once a second | `seekMode` (`lib/seekmode.svelte.ts`), saved as `pyxee.seek`; see `docs/performance.md` |
 
 The cover's colors come from `coverColors` (`lib/color.ts`: a 32 x 32 sample, the heaviest colour and the heaviest one of another

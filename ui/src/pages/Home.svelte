@@ -9,6 +9,7 @@
   import { heroTones } from '$lib/color';
   import { coverColorsOf } from '$lib/covercolors.svelte';
   import { artistOf, titleOf } from '$lib/format';
+  import { tuneInSeeds } from '$lib/tunein';
   import { look } from '$lib/look.svelte';
   import type { HomeDto } from '$lib/bindings/HomeDto';
   import type { TrackDto } from '$lib/bindings/TrackDto';
@@ -74,20 +75,8 @@
     else void player.toggle();
   }
   // "Tune in": the songs you come back to as cards, each one the start of a radio (the song, then songs like it). The
-  // first card picks one of them at random.
-  // Eleven songs and the surprise card, in one row that scrolls sideways.
-  const MIX_CARDS = 11;
-  const seeds = $derived.by((): TrackDto[] => {
-    const seen = new Set<string>();
-    const out: TrackDto[] = [];
-    for (const t of [...(home?.quickPicks ?? []), ...(home?.recent ?? [])]) {
-      if (seen.has(t.key)) continue;
-      seen.add(t.key);
-      out.push(t);
-      if (out.length >= MIX_CARDS) break;
-    }
-    return out;
-  });
+  // first card picks one of them at random. The song that is playing is left out, and an artist is shown once.
+  const seeds = $derived(tuneInSeeds(home?.quickPicks ?? [], home?.recent ?? [], player.shown?.track.key ?? null));
   function surprise() {
     const pool = [...(home?.quickPicks ?? []), ...(home?.recent ?? [])];
     const pick = pool[Math.floor(Math.random() * pool.length)];

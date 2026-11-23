@@ -2295,13 +2295,14 @@ input[type='range'].slider:disabled {
   --r-art: 26px;
   /* Pills (buttons, tabs, chips, the top bar): fully round, or as the Corners setting says. */
   --r-pill: 9999px;
-  /* A second colour a step around the colour wheel from the accent: it follows every theme (and the cover's colour). */
+  /* A second colour a step around the colour wheel from the accent: it follows every theme (and the cover's colour).
+     A yellow or gold accent (OKLCH hue 72-125) steps the other way, toward amber, because the step forward is green. */
   --accent-2: var(--accent);
   --gradient-accent: linear-gradient(120deg, var(--accent), var(--accent-2));
 }
 @supports (color: oklch(from red l c h)) {
   :root {
-    --accent-2: oklch(from var(--accent) l c calc(h + 58));
+    --accent-2: oklch(from var(--accent) l c calc(h + 58 - 88 * clamp(0, (h - 71) * 100, 1) * clamp(0, (126 - h) * 100, 1)));
   }
 }
 

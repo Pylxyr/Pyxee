@@ -271,7 +271,8 @@ describe('history and Home', () => {
     await listen(NEON, 31);
     await go(/Home/);
     const radios = await screen.findByRole('list', { name: 'Start a radio' });
-    expect(within(radios).getByRole('button', { name: 'Start a radio from Neon Harbor' })).toBeTruthy();
+    // The song that is playing has its radio on already, so it is not offered again; the liked one is.
+    expect(within(radios).queryByRole('button', { name: 'Start a radio from Neon Harbor' })).toBeNull();
     expect(within(radios).getByRole('button', { name: 'Start a radio from Paper Planes' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Surprise me' })).toBeTruthy(); // beside the top card, not in the row
     expect(screen.queryByText(/Demo tracks/)).toBeNull();
