@@ -2351,7 +2351,14 @@ input[type='range'].slider:disabled {
   box-shadow: 0 24px 48px -32px var(--glow);
 }
 .shell[data-layout='wide'] .deck-seek {
-  inset-inline: 32px;
+  /* Edge to edge: the line runs the whole width of the card. It sits just inside the top edge, and the strip is cut to the
+     card's rounded top corners (the card's radius less its 1 px border), so the line follows the curve instead of
+     sticking out past it. Room for the thumb's ring: the strip is as tall as the slider. */
+  inset-inline: 0;
+  top: 0;
+  height: 20px;
+  overflow: hidden;
+  border-radius: calc(var(--r-xl) - 1px) calc(var(--r-xl) - 1px) 0 0;
 }
 .shell[data-layout='narrow'] .page {
   background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 8%, var(--layer)), var(--layer) 320px);
@@ -2861,6 +2868,9 @@ input[type='range'].eq-band:focus-visible::-webkit-slider-thumb {
   border: 0;
   border-radius: 0;
   box-shadow: none;
+}
+:root[data-panels='docked'] .shell[data-layout='wide'] .deck-seek {
+  border-radius: 0;
 }
 :root[data-panels='docked'] .shell[data-layout='wide'] .masthead {
   min-height: 60px;

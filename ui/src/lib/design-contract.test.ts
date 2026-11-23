@@ -130,3 +130,17 @@ describe('scroll bars', () => {
     expect(source('NowPlaying.svelte')).toMatch(/data-testid="np-scroll" data-scroll tabindex="0"/);
   });
 });
+
+describe("the deck's seek line", () => {
+  it('runs edge to edge across the deck, cut to its rounded top corners instead of inset from them', () => {
+    const seek = rule(".shell[data-layout='wide'] .deck-seek");
+    expect(seek).toMatch(/inset-inline:\s*0;/);
+    expect(seek).not.toMatch(/inset-inline:\s*\d+px/);
+    expect(seek).toMatch(/overflow:\s*hidden/);
+    expect(seek).toMatch(/border-radius:\s*calc\(var\(--r-xl\) - 1px\) calc\(var\(--r-xl\) - 1px\) 0 0/);
+  });
+
+  it('docked panels have square corners, so the line is not cut', () => {
+    expect(rule(":root[data-panels='docked'] .shell[data-layout='wide'] .deck-seek")).toMatch(/border-radius:\s*0;/);
+  });
+});
