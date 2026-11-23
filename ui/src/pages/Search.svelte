@@ -57,7 +57,7 @@
 <ScrollPage>
   {#snippet header()}
     {#if search.query || search.status !== 'idle'}
-      <PageHeader title="Results for “{search.query}”">
+      <PageHeader title="Results for “{search.query}”" inline>
         <Segmented mode="toggle" items={filters} value={search.filter} onselect={(f) => search.setFilter(f)} label="Filter results" />
       </PageHeader>
     {/if}

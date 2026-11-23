@@ -275,6 +275,13 @@ export class MockBackend extends MockLibrary implements Backend {
     { title: 'J-Pop', params: 'p-jpop' },
     { title: 'Anime', params: 'p-anime' },
   ];
+  /** `?genres=30` on the page's address lists that many genres (a real YouTube Music page has about thirty), to review a long chip row. */
+  #manyGenres() {
+    const n = typeof location !== 'undefined' ? Number(new URLSearchParams(location.search).get('genres')) : 0;
+    if (!(n > this.genres.length)) return;
+    const names = ['Dance & Electronic', 'Hip-Hop', 'Indie & Alternative', 'Jazz', 'Classical', 'R&B & Soul', 'Country', 'Metal', 'Folk', 'Latin', 'Blues', 'Reggae', 'Workout', 'Focus', 'Sleep', 'Party', 'Romance', 'Commute', 'Gaming', 'Pop', 'Ambient', 'ジャズ', '韓国ドラマ', 'Soundtracks', 'Gospel', 'Funk'];
+    for (let i = this.genres.length; i < n; i++) this.genres.push({ title: names[i - 5] ?? `Genre ${i}`, params: `p-${i}` });
+  }
   /** What `genreGet` answers for any genre: a playlists shelf and a songs shelf, like a genre page. */
   genreShelves: ExploreShelfDto[] = [
     {
@@ -291,6 +298,7 @@ export class MockBackend extends MockLibrary implements Backend {
   async genresGet(): Promise<GenreDto[]> {
     this.genresCalls++;
     if (this.genreFailure) throw this.genreFailure;
+    this.#manyGenres();
     return clone(this.genres);
   }
   async genreGet(params: string): Promise<ExploreShelfDto[]> {

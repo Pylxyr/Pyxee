@@ -81,7 +81,7 @@
 
 <ScrollPage>
   {#snippet header()}
-    <PageHeader title="Library">
+    <PageHeader title="Library" inline>
       <Segmented items={tabs} value={nav.libraryTab} onselect={(id) => (nav.libraryTab = id)} label="Library sections" />
     </PageHeader>
   {/snippet}

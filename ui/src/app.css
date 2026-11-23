@@ -3800,23 +3800,25 @@ input[type='range'].slider:disabled {
 }
 
 /* ---- Second pass: tabs beside the title, bigger lyrics, the offline meter, a quieter search clear button --------- */
-/* A page's tabs or filters sit on the title's line when there is room (they wrap below it when there is not). */
+/* A page's short tabs or filters (`<PageHeader inline>`: Library, Search) sit on the title's line when there is room, and
+   drop below it as one block when there is not. Anything else a header holds, such as a row of chips that can need two lines
+   of its own, has the full-width row under the title and never shares the title's line. */
 @media (min-width: 900px) {
-  .page-head:has(> .page-head-below) {
+  .page-head[data-inline] {
     align-items: center;
     padding-bottom: 10px;
   }
-  .page-head:has(> .page-head-below) .page-head-main {
+  .page-head[data-inline] .page-head-main {
     flex: 0 1 auto;
     min-width: 8rem;
   }
-  .page-head:has(> .page-head-below) .page-head-below {
-    flex: 0 1 auto;
+  .page-head[data-inline] .page-head-below {
+    flex: 0 0 auto;
     order: 2;
-    min-width: 0;
+    max-width: 100%;
     margin-left: 12px;
   }
-  .page-head:has(> .page-head-below) .page-head-actions {
+  .page-head[data-inline] .page-head-actions {
     order: 3;
     margin-left: auto;
   }
