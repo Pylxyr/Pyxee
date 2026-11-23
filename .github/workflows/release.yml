@@ -144,7 +144,7 @@ jobs:
         with:
           shared-key: release
       - uses: ./.github/actions/ffmpeg # the audio crate's static libav (in-process; no ffmpeg program is bundled)
-      # yt-dlp, checked against its published SHA-256 (nothing is used if it does not match).
+      # yt-dlp: the newest release, checked against that release's published SHA-256 (nothing is used if it does not match).
       # Audio is decoded inside the app (libav, linked in), so yt-dlp is the only bundled tool: there is no ffmpeg program.
       - name: Download yt-dlp
         run: cargo xtask tools

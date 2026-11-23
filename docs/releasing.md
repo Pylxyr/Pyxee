@@ -9,7 +9,7 @@ That is all. The workflow then:
 
 1. runs the full CI on `main` (UI check/tests/build, `cargo fmt`, clippy, tests, generated bindings, the release scripts' own tests). If anything fails, nothing is bumped or tagged;
 2. works out the next version, writes it into every file that carries it, commits `Release X.Y.Z` and pushes the commit and the tag `vX.Y.Z` in one atomic push (if `main` moved in the meantime the push is refused and nothing is released);
-3. builds on Windows: builds the minimal static FFmpeg libraries the audio decoder links (cached; there is no ffmpeg program, audio is decoded in-app), downloads the pinned yt-dlp (SHA-256 checked against the value pinned in the repo), builds the UI, builds the installer, **installs it silently, checks that no ffmpeg program or libav DLL slipped in and that the FFmpeg LGPL text is installed, and runs the bundled yt-dlp from where it landed**;
+3. builds on Windows: builds the minimal static FFmpeg libraries the audio decoder links (cached; there is no ffmpeg program, audio is decoded in-app), downloads the newest yt-dlp release (SHA-256 checked against the `SHA2-256SUMS` of that release), builds the UI, builds the installer, **installs it silently, checks that no ffmpeg program or libav DLL slipped in and that the FFmpeg LGPL text is installed, and runs the bundled yt-dlp from where it landed**;
 4. writes the release notes (below), creates the release as a draft, uploads the installers, `SHA256SUMS.txt`, the third-party notices and the FFmpeg LGPL text, then publishes it. A signed build-provenance attestation is added when the repository allows it.
 
 The first release ever (no `v*.*.*` tag yet) publishes the version already in the files as it is.
@@ -62,14 +62,10 @@ The release workflow builds the zip after the installers, unpacks it, runs the b
 ## Notices
 `crates/app/licenses/` holds the licence texts and notices that ship with the app (the FFmpeg LGPL text and notice, the yt-dlp licences); the release uploads them next to the installers. They are plain committed files: nothing generates or checks them, so update them by hand when the FFmpeg or yt-dlp version changes.
 
-## Bumping the bundled yt-dlp
-Installers and the portable zip bundle one pinned yt-dlp release, so two builds of a tag contain the same `yt-dlp.exe`. The pin is `YTDLP_VERSION` and `YTDLP_SHA256` in `xtask/src/main.rs`; `cargo xtask tools` downloads that exact release and stops if the bytes do not match. The in-app updater is separate and still pulls the latest release at run time, which is what keeps users working when YouTube changes.
+## The bundled yt-dlp
+Installers and the portable zip bundle the **newest yt-dlp release at the time of the build**: nothing is pinned, so there is nothing to bump. `cargo xtask tools` asks `https://github.com/yt-dlp/yt-dlp/releases/latest` which release that is, downloads its `yt-dlp.exe` and its `SHA2-256SUMS`, and stops if the bytes do not match the sum. That catches a damaged or truncated download; it does not defend against a compromised upstream release, which is the same trust the in-app updater already places in yt-dlp's releases. The release workflow starts on a clean runner, so its first `cargo xtask tools` fetches the newest release and the later steps of the same run (the installer, the portable zip) keep that copy: everything one release ships has the same `yt-dlp.exe`. On your own PC a copy that is already in `crates/app/binaries` is kept; `cargo xtask tools --update` fetches the newest again. The in-app updater still pulls the latest release at run time, which is what keeps users working when YouTube changes.
 
-To bump it:
-1. Pick the release at https://github.com/yt-dlp/yt-dlp/releases and read the `yt-dlp.exe` line of its `SHA2-256SUMS`.
-2. Set `YTDLP_VERSION` and `YTDLP_SHA256` in `xtask/src/main.rs`.
-3. Optionally refresh `crates/app/licenses/yt-dlp-THIRD_PARTY_LICENSES.txt` from the repository at that tag, and the yt-dlp version and source URL in `crates/app/licenses/THIRD_PARTY.txt`. Nothing checks them.
-4. Run `cargo test -p xtask` and `python -m unittest discover -s scripts/tests`; the release workflow's smoke tests then run the new exe with the app's real format selector.
+Two things stay manual: refresh `crates/app/licenses/yt-dlp-THIRD_PARTY_LICENSES.txt` from the repository at the release's tag, and the yt-dlp version and source URL in `crates/app/licenses/THIRD_PARTY.txt`, now and then (nothing checks them). The release workflow's smoke tests run the downloaded exe with the app's real format selector, so a yt-dlp that rejects it fails the release before anything is published.
 
 ## Code signing
 Signing is wired in and **off until a certificate exists**. Nothing is faked: without a certificate the build is unsigned and says so (and the release notes say "not code-signed"). It is configured with environment variables, so no secret is ever in the repository, in a Tauri config or on a printed command line:

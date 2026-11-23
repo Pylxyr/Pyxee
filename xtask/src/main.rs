@@ -36,16 +36,50 @@ use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-/// The yt-dlp release that is bundled into installers and the portable zip. Bump it together with `YTDLP_SHA256`
-/// (docs/releasing.md has the procedure).
-const YTDLP_VERSION: &str = "2026.10.21";
-/// SHA-256 of that release's `yt-dlp.exe` (from its published SHA2-256SUMS). `cargo xtask tools` refuses any other bytes.
-const YTDLP_SHA256: &str = "33121d192d706e62f684a06f80918e3f3a8ba52ac3a65213b6951c39c7d9f555";
+/// Where yt-dlp's releases are. Installers and the portable zip bundle the newest release at the time of the build (see
+/// `latest_ytdlp_tag`): nothing is pinned, so a release ships with the yt-dlp that works with `YouTube` that day. The
+/// in-app updater (crates/app/src/updater.rs) keeps it current after that.
+const YTDLP_RELEASES: &str = "https://github.com/yt-dlp/yt-dlp/releases";
 
-/// Where the pinned release's files are. The in-app updater (crates/app/src/updater.rs) is separate on purpose: it
-/// pulls the latest release at run time, which is how users get a yt-dlp that keeps up with `YouTube`.
-fn ytdlp_base() -> String {
-    format!("https://github.com/yt-dlp/yt-dlp/releases/download/{YTDLP_VERSION}")
+/// Where the files of the yt-dlp release `tag` are.
+fn ytdlp_release_base(tag: &str) -> String {
+    format!("{YTDLP_RELEASES}/download/{tag}")
+}
+
+/// The release tag in the address that `releases/latest` redirects to (`.../releases/tag/2026.11.05`). Only a plain
+/// date-style tag (digits and dots) is let through, because it goes into a download address.
+fn tag_from_location(location: &str) -> Option<String> {
+    let tag = location.rsplit_once("/tag/")?.1.trim_end_matches('/');
+    let plain = tag.len() <= 32
+        && tag.starts_with(|c: char| c.is_ascii_digit())
+        && tag.chars().all(|c| c.is_ascii_digit() || c == '.');
+    plain.then(|| tag.to_owned())
+}
+
+/// The tag of the newest stable yt-dlp release. It is read from the redirect of `releases/latest`, not from the GitHub
+/// API, which lets an unauthenticated address make only a few requests an hour (CI runners share addresses).
+fn latest_ytdlp_tag() -> Res<String> {
+    let url = format!("{YTDLP_RELEASES}/latest");
+    let agent: ureq::Agent = pyxee_net::agent_config()
+        .timeout_connect(Some(std::time::Duration::from_secs(20)))
+        .timeout_per_read(Some(std::time::Duration::from_secs(60)))
+        .max_redirects(0)
+        .build()
+        .into();
+    let resp = pyxee_net::retry_stale(|| agent.get(url.as_str()).call())
+        .map_err(|e| format!("could not ask {url} for the newest yt-dlp release: {e}"))?;
+    let location = resp
+        .headers()
+        .get("location")
+        .and_then(|v| v.to_str().ok())
+        .ok_or_else(|| {
+            format!(
+                "{url} answered HTTP {} without a redirect to a release",
+                resp.status().as_u16()
+            )
+        })?;
+    tag_from_location(location)
+        .ok_or_else(|| format!("{url} redirected to {location}, which is not a yt-dlp release tag"))
 }
 /// Tauri finds sidecars by `<name>-<target triple>.exe`.
 const TRIPLE: &str = "x86_64-pc-windows-msvc";
@@ -452,14 +486,13 @@ fn mb(bytes: &[u8]) -> String {
     format!("{:.1} MB", bytes.len() as f64 / 1_048_576.0)
 }
 
-/// Downloads `url` and refuses it unless its SHA-256 is exactly `expected` (a pinned value, not one read from the
-/// same server).
-fn fetch_pinned(label: &str, url: &str, expected: &str) -> Res<Vec<u8>> {
+/// Downloads `url` and refuses it unless its SHA-256 is exactly `expected`.
+fn fetch_checked(label: &str, url: &str, expected: &str) -> Res<Vec<u8>> {
     println!("{label}: downloading {url}");
     let bytes = get(url)?;
     verify(label, &bytes, expected)?;
     println!(
-        "{label}: {} downloaded, sha256 matches the pin ({expected})",
+        "{label}: {} downloaded, sha256 matches ({expected})",
         mb(&bytes)
     );
     Ok(bytes)
@@ -480,19 +513,27 @@ fn tools(args: &[String]) -> Res<()> {
     }
 
     let ytdlp = dir.join(format!("yt-dlp-{TRIPLE}.exe"));
-    // A copy that is already here is kept only when it is exactly the pinned release; anything else (an older or a
-    // newer yt-dlp from an earlier build) is replaced, so every build of a tag bundles the same yt-dlp.
-    let present = std::fs::read(&ytdlp).is_ok_and(|b| sha256_hex(&b) == YTDLP_SHA256);
+    // A copy that is already here is kept (`--update` fetches the newest release again). A release build starts on a
+    // clean runner, so its first `cargo xtask tools` downloads the newest yt-dlp, and the later steps of the same run
+    // (the installer, the portable zip) keep that copy: everything one release ships has the same yt-dlp.exe.
+    let present = std::fs::read(&ytdlp).is_ok_and(|b| is_windows_exe(&b));
     if present && !update {
         println!(
-            "yt-dlp: {YTDLP_VERSION} already present ({}).",
+            "yt-dlp: already present ({}); `cargo xtask tools --update` fetches the newest release.",
             ytdlp.display()
         );
     } else {
-        let bytes = fetch_pinned(
-            &format!("yt-dlp {YTDLP_VERSION}"),
-            &format!("{}/yt-dlp.exe", ytdlp_base()),
-            YTDLP_SHA256,
+        let tag = latest_ytdlp_tag()?;
+        let base = ytdlp_release_base(&tag);
+        println!("yt-dlp: the newest release is {tag}");
+        let sums = String::from_utf8(get(&format!("{base}/SHA2-256SUMS"))?)
+            .map_err(|_| format!("{base}/SHA2-256SUMS is not text"))?;
+        let expected = parse_sums(&sums, "yt-dlp.exe")
+            .ok_or_else(|| format!("yt-dlp {tag}: its SHA2-256SUMS has no line for yt-dlp.exe"))?;
+        let bytes = fetch_checked(
+            &format!("yt-dlp {tag}"),
+            &format!("{base}/yt-dlp.exe"),
+            &expected,
         )?;
         if !is_windows_exe(&bytes) {
             return Err("the yt-dlp download is not a Windows executable".into());
@@ -887,25 +928,42 @@ mod tests {
     }
 
     #[test]
-    fn yt_dlp_is_pinned_to_one_release_never_latest() {
-        assert!(
-            ytdlp_base().ends_with(&format!("/download/{YTDLP_VERSION}")),
-            "{}",
-            ytdlp_base()
-        );
-        assert!(!ytdlp_base().contains("latest"));
-        assert!(
-            YTDLP_VERSION
-                .chars()
-                .all(|c| c.is_ascii_digit() || c == '.'),
-            "{YTDLP_VERSION}"
-        );
-        assert_eq!(YTDLP_SHA256.len(), 64);
-        assert!(
-            YTDLP_SHA256
-                .chars()
-                .all(|c| matches!(c, '0'..='9' | 'a'..='f')),
-            "lower-case hex"
+    fn the_newest_release_tag_is_read_from_the_redirect_and_nothing_odd_gets_through() {
+        for (location, tag) in [
+            (
+                "https://github.com/yt-dlp/yt-dlp/releases/tag/2026.11.05",
+                "2026.11.05",
+            ),
+            ("/yt-dlp/yt-dlp/releases/tag/2026.11.05/", "2026.11.05"),
+            (
+                "https://github.com/yt-dlp/yt-dlp/releases/tag/2026.11.05.1",
+                "2026.11.05.1",
+            ),
+        ] {
+            assert_eq!(
+                tag_from_location(location).as_deref(),
+                Some(tag),
+                "{location}"
+            );
+        }
+        for bad in [
+            "",
+            "https://github.com/yt-dlp/yt-dlp/releases",
+            "https://github.com/yt-dlp/yt-dlp/releases/tag/",
+            "https://github.com/yt-dlp/yt-dlp/releases/tag/../x",
+            "https://github.com/yt-dlp/yt-dlp/releases/tag/nightly",
+            "https://github.com/yt-dlp/yt-dlp/releases/tag/2026.11.05?x=1",
+            "https://github.com/yt-dlp/yt-dlp/releases/tag/20261105202611052026110520261105",
+        ] {
+            assert_eq!(tag_from_location(bad), None, "{bad}");
+        }
+    }
+
+    #[test]
+    fn yt_dlp_is_downloaded_from_the_release_that_was_asked_for() {
+        assert_eq!(
+            ytdlp_release_base("2026.11.05"),
+            "https://github.com/yt-dlp/yt-dlp/releases/download/2026.11.05"
         );
     }
 
