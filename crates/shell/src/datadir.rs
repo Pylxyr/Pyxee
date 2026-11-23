@@ -67,6 +67,20 @@ pub fn audio_cache_dir(
         .map(|dir| dir.join(AUDIO_CACHE))
 }
 
+/// The folder that holds the lyrics kept with the offline songs, inside the folder it is given.
+pub const LYRICS_CACHE: &str = "lyrics";
+
+/// Where kept lyrics go: beside the kept songs (see [`audio_cache_dir`]), so they come and go together.
+#[must_use]
+pub fn lyrics_cache_dir(
+    portable_data: Option<&Path>,
+    system_cache: Option<&Path>,
+) -> Option<PathBuf> {
+    portable_data
+        .or(system_cache)
+        .map(|dir| dir.join(LYRICS_CACHE))
+}
+
 /// The folder that holds yt-dlp's own cache, inside the folder it is given.
 pub const YTDLP_CACHE: &str = "yt-dlp";
 
@@ -270,6 +284,22 @@ mod tests {
         assert!(!portable.starts_with(&data), "not in the data folder");
         assert_eq!(portable_cache_dir(Path::new("")), None);
         assert_ne!(YTDLP_CACHE, AUDIO_CACHE, "they must not share a folder");
+    }
+
+    #[test]
+    fn kept_lyrics_sit_beside_the_kept_songs_in_a_folder_of_their_own() {
+        let data = Path::new("app").join("data");
+        let cache = Path::new("profile").join("cache");
+        assert_eq!(
+            lyrics_cache_dir(Some(&data), Some(&cache)),
+            Some(data.join(LYRICS_CACHE))
+        );
+        assert_eq!(
+            lyrics_cache_dir(None, Some(&cache)),
+            Some(cache.join(LYRICS_CACHE))
+        );
+        assert_eq!(lyrics_cache_dir(None, None), None);
+        assert_ne!(LYRICS_CACHE, AUDIO_CACHE, "they must not share a folder");
     }
 
     #[test]

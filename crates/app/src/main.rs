@@ -277,10 +277,17 @@ fn main() {
             app.manage(local);
             // Songs kept after they play. An installed copy keeps them in the system's cache folder (not the data
             // folder): they can take up to 4 GB. A portable copy keeps them in its own `data\audio`.
-            app.manage(std::sync::Arc::new(audio_cache::AudioCache::open(
-                pyxee_shell::datadir::audio_cache_dir(portable_dir, system_cache.as_deref()),
-                data_dir.as_ref().map(|d| d.join("audio-cache.json")),
-            )));
+            // The lyrics of the songs looked up in the meantime are kept beside them, while songs are kept at all.
+            app.manage(std::sync::Arc::new(
+                audio_cache::AudioCache::open(
+                    pyxee_shell::datadir::audio_cache_dir(portable_dir, system_cache.as_deref()),
+                    data_dir.as_ref().map(|d| d.join("audio-cache.json")),
+                )
+                .with_lyrics(pyxee_shell::datadir::lyrics_cache_dir(
+                    portable_dir,
+                    system_cache.as_deref(),
+                )),
+            ));
             app.manage(shell::ShellState::load(
                 data_dir.as_ref().map(|d| d.join("shell.json")),
             ));

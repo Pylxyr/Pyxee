@@ -33,7 +33,7 @@
   async function clear() {
     try {
       cache = await library.backend!.audioCacheClear();
-      snackbar.push('Kept songs removed.');
+      snackbar.push('Kept songs and their lyrics removed.');
     } catch (e) {
       snackbar.push(messageOf(e));
     }
@@ -41,10 +41,13 @@
 </script>
 
 <section class="flex max-w-xl flex-col gap-4" aria-label="Offline songs">
-  <p class="muted">
-    Songs you play are kept on this PC, so they play again at once, without the network and when YouTube does not answer. The songs you
-    played longest ago are removed first when the limit is reached.
-  </p>
+  <div class="flex flex-col gap-1">
+    <p class="muted">
+      Songs you play are kept on this PC, so they play again at once, without the network and when YouTube does not answer. The songs you
+      played longest ago are removed first when the limit is reached.
+    </p>
+    <p class="muted t-caption">The lyrics you open are kept with them, so they show again without the network too. With the limit Off, no lyrics are kept either.</p>
+  </div>
   {#if cache}
     <label class="flex flex-col gap-1">
       <span>Keep up to</span>

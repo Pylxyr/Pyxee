@@ -37,6 +37,9 @@ pub struct AudioCache {
     /// Where the limit is kept between runs.
     settings: Option<PathBuf>,
     limit_bytes: AtomicU64,
+    /// The lyrics of the songs looked up while songs are being kept: they follow the same switch, so turning the
+    /// cache off or removing the kept songs removes them too. `None`: there is no folder for them.
+    lyrics: Option<pyxee_lyrics::Store>,
 }
 
 /// What the Offline page shows.
@@ -77,6 +80,7 @@ impl AudioCache {
             dir,
             settings,
             limit_bytes: AtomicU64::new(u64::from(limit_mb) * MIB),
+            lyrics: None,
         };
         cache.remove_partial_files();
         if saved_mb > limit_mb {
@@ -84,6 +88,40 @@ impl AudioCache {
             cache.evict();
         }
         cache
+    }
+
+    /// The same cache, keeping lyrics in `dir` too (only while songs are kept: with the cache off, what an earlier run
+    /// left there is removed now).
+    #[must_use]
+    pub fn with_lyrics(mut self, dir: Option<PathBuf>) -> Self {
+        self.lyrics = dir.map(pyxee_lyrics::Store::new);
+        if let Some(store) = &self.lyrics {
+            store.tidy();
+            if !self.enabled() {
+                store.clear();
+            }
+        }
+        self
+    }
+
+    /// The kept lyrics of the song `key`, when songs are being kept and its lyrics were looked up before.
+    pub fn lyrics_lookup(&self, key: &str) -> Option<pyxee_lyrics::Lyrics> {
+        if !self.enabled() {
+            return None;
+        }
+        self.lyrics.as_ref()?.get(key)
+    }
+
+    /// Keeps the lyrics of the song `key` for next time, when songs are being kept.
+    pub fn lyrics_keep(&self, key: &str, lyrics: &pyxee_lyrics::Lyrics) {
+        if !self.enabled() {
+            return;
+        }
+        if let Some(store) = &self.lyrics
+            && let Err(e) = store.put(key, lyrics)
+        {
+            log::warn!("could not keep the lyrics of {key}: {e}");
+        }
     }
 
     fn limit_mb(&self) -> u32 {
@@ -246,6 +284,9 @@ impl AudioCache {
     pub fn clear(&self) {
         for (path, _, _) in self.files() {
             let _ = std::fs::remove_file(path);
+        }
+        if let Some(store) = &self.lyrics {
+            store.clear();
         }
     }
 

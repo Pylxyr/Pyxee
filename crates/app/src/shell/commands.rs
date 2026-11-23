@@ -5,8 +5,10 @@
 
 use super::dto::{LyricsDto, ShellSettingsDto, SleepSettingDto, SleepStateDto, SleepStatusDto};
 use super::{ShellState, flyout, mini, sleep};
+use crate::audio_cache::AudioCache;
 use crate::state::now_ms;
-use pyxee_lyrics::{LRCLIB, Query, fetch};
+use pyxee_lyrics::{LRCLIB, Lyrics, Query, fetch};
+use std::sync::Arc;
 use std::time::Duration;
 use tauri::{AppHandle, Manager};
 
@@ -63,7 +65,18 @@ pub async fn cover_bytes(url: String) -> Result<tauri::ipc::Response, String> {
     Ok(tauri::ipc::Response::new(bytes))
 }
 
-/// Synced lyrics for a song, from LRCLIB. Answers are kept for the session so flipping tabs never asks twice.
+/// Remembers an answer for the session, so flipping tabs never asks twice.
+fn remember_lyrics(shell: &ShellState, key: String, lyrics: &Lyrics) {
+    if let Ok(mut cache) = shell.lyrics.lock() {
+        if cache.len() >= LYRICS_CACHE_MAX {
+            cache.clear();
+        }
+        cache.insert(key, lyrics.clone());
+    }
+}
+
+/// Synced lyrics for a song, from LRCLIB. Answers are kept for the session so flipping tabs never asks twice, and
+/// on disk too while songs are being kept offline (Settings -> Offline), so they show again without the network.
 #[tauri::command]
 pub async fn lyrics_get(
     app: AppHandle,
@@ -75,6 +88,16 @@ pub async fn lyrics_get(
     let shell = app.state::<ShellState>();
     if let Some(hit) = shell.lyrics.lock().ok().and_then(|c| c.get(&key).cloned()) {
         return hit.into();
+    }
+    let kept = Arc::clone(&app.state::<Arc<AudioCache>>());
+    if kept.enabled() {
+        let (store, wanted) = (Arc::clone(&kept), key.clone());
+        let on_disk =
+            tauri::async_runtime::spawn_blocking(move || store.lyrics_lookup(&wanted)).await;
+        if let Ok(Some(hit)) = on_disk {
+            remember_lyrics(&shell, key, &hit);
+            return hit.into();
+        }
     }
     let now_ms = || u64::try_from(shell.clock.elapsed().as_millis()).unwrap_or(u64::MAX);
     // A service that just refused the app is left alone, so flipping songs cannot hammer a block.
@@ -94,11 +117,15 @@ pub async fn lyrics_get(
     let found = tauri::async_runtime::spawn_blocking(move || fetch(LRCLIB, &query)).await;
     match found {
         Ok(Ok(lyrics)) => {
-            if let Ok(mut cache) = shell.lyrics.lock() {
-                if cache.len() >= LYRICS_CACHE_MAX {
-                    cache.clear();
+            remember_lyrics(&shell, key.clone(), &lyrics);
+            if kept.enabled() {
+                let (store, lyrics) = (Arc::clone(&kept), lyrics.clone());
+                if let Err(e) =
+                    tauri::async_runtime::spawn_blocking(move || store.lyrics_keep(&key, &lyrics))
+                        .await
+                {
+                    log::warn!("could not keep the lyrics: {e}");
                 }
-                cache.insert(key, lyrics.clone());
             }
             lyrics.into()
         }

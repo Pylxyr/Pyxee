@@ -23,12 +23,14 @@
 
 mod client;
 mod lrc;
+mod store;
 
 pub use client::{
     Candidate, Cooldown, LRCLIB, LyricsError, Query, fetch, from_lrclib, pick_best,
     retry_after_secs,
 };
 pub use lrc::{clean_artist, clean_title, current_index, parse_lrc};
+pub use store::{MAX_ENTRIES, Store};
 
 use serde::{Deserialize, Serialize};
 
