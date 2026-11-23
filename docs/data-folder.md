@@ -12,6 +12,8 @@ change, closing or quitting), not on a timer while a song plays.
 
 Songs kept for playing offline (**Library** -> **Offline**, off until you pick a size) can take up to 4 GB, so an installed copy does not keep them in the data folder: they are in the `audio` folder of the system's cache folder for Pyxee (`%LOCALAPPDATA%\dev.pyxee.app\audio` on Windows, `~/.cache/dev.pyxee.app/audio` on Linux). A portable copy keeps them in `data\audio` beside the program, so nothing is left in your profile (songs that an earlier portable version kept in the system cache folder stay there; you can delete that folder). **Remove kept songs** on that page empties the folder in use.
 
+`session.json` and `shell.json` carry a `version`. If you go back to an older Pyxee, a file written by a newer one is not used and not overwritten: it is renamed to `session.json.v2` (the number is its version) and the older Pyxee starts that file from its defaults. A file that cannot be read is renamed to `.bad` in the same way, and the app starts that file from its defaults.
+
 Pyxee has no advanced settings: it always runs with its built-in defaults (no sign-in cookies, its own copy of yt-dlp,
 no log). Environment variables that change how it behaves exist only for developers and are read by
 developer builds only; see [development.md](development.md).

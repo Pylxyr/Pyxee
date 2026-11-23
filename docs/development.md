@@ -107,6 +107,15 @@ CI has a `deny` job (cargo-deny, advisories only) and an `npm audit --omit=dev` 
 * **Held back on purpose:** `windows-core` stays at 0.62.2 (0.100.0 exists and needs Rust 1.95): `cpal`, `tao`, `webview2-com` and `wry` all use 0.62.2, and the WebView2 interface types must come from the same version. `toml`/`toml_edit` 0.8/0.20 are pinned by `system-deps` and `generic-array` 0.14.7 by `crypto-common`, both inside Tauri's and RustCrypto's own stacks. On the UI side `typescript` stays on 6.0.3, because `svelte-check` 4.7.8 refuses 7.x.
 * **npm audit: informational.** Zero vulnerabilities in all dependencies (runtime and dev) on 2026-11-22.
 
+## Changing `session.json` or `shell.json`
+
+Both carry a `version` (`pyxee_shell::schema`); a file without one is version 1. Adding a field with a default needs
+nothing: the files are read with `#[serde(default)]` and unknown fields are ignored. For a change an older reader of the
+same file cannot cope with (a field renamed, a value that means something else), raise `schema::CURRENT`, add a step to
+`schema::MIGRATIONS` that turns a document of version `n` into version `n + 1`, and add a test with an old file. A file
+from a newer release is set aside as `<file>.v<version>` and the app starts from defaults, so going back to an older
+release never overwrites newer data.
+
 ## Layout
 `crates/core` queue + state machine (no I/O) · `crates/audio` decode, resample, gapless, output · `crates/sources` yt-dlp, local ·
 `crates/library` SQLite library · `crates/net` HTTP defaults (certificate store, one retry for a stale connection) ·

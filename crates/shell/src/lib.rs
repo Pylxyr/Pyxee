@@ -29,6 +29,7 @@ pub mod datadir;
 pub mod geometry;
 pub mod power;
 pub mod progress;
+pub mod schema;
 pub mod settings;
 pub mod sleep;
 pub mod toast;

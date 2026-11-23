@@ -1,6 +1,8 @@
-//! Shell settings kept in `shell.json`: tolerant to a missing, damaged or newer file, written atomically.
+//! Shell settings kept in `shell.json`: tolerant to a missing, damaged or newer file, versioned (see [`crate::schema`])
+//! and written atomically.
 
 use crate::Rect;
+use crate::schema::{self, Parsed};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
@@ -95,12 +97,27 @@ pub fn load(path: &Path) -> Loaded {
             };
         }
     };
-    match serde_json::from_str::<ShellSettings>(&text) {
-        Ok(s) => Loaded {
+    match schema::parse::<ShellSettings>(text.as_bytes()) {
+        Parsed::Usable(s) => Loaded {
             settings: s.sanitized(),
             warning: None,
         },
-        Err(e) => {
+        Parsed::Newer(version) => {
+            // Written by a newer Pyxee (someone went back to an older release): not used, and not overwritten.
+            let kept = schema::set_aside(path, &format!(".v{version}"));
+            Loaded {
+                settings: ShellSettings::default(),
+                warning: Some(format!(
+                    "{} was written by a newer Pyxee (settings format {version}); using defaults{}",
+                    path.display(),
+                    match kept {
+                        Ok(aside) => format!(", the newer file is kept as {}", aside.display()),
+                        Err(_) => String::new(),
+                    }
+                )),
+            }
+        }
+        Parsed::Bad(e) => {
             let bad = path.with_extension("json.bad");
             let kept = std::fs::rename(path, &bad).is_ok();
             Loaded {
@@ -121,8 +138,8 @@ pub fn load(path: &Path) -> Loaded {
 
 /// Saved through [`crate::atomic::write`], so a crash never leaves a half-written file.
 pub fn save(path: &Path, s: &ShellSettings) -> std::io::Result<()> {
-    let json = serde_json::to_string_pretty(s).map_err(std::io::Error::other)?;
-    crate::atomic::write(path, json.as_bytes())
+    let json = schema::to_vec_pretty(s).map_err(std::io::Error::other)?;
+    crate::atomic::write(path, &json)
 }
 
 #[cfg(test)]
@@ -231,6 +248,50 @@ mod tests {
         let l = load(&p);
         assert!(l.settings.close_to_tray && !l.settings.start_with_windows);
         assert!(l.warning.is_none());
+    }
+
+    #[test]
+    fn settings_are_saved_with_their_format_version() {
+        let p = dir("versioned").join("shell.json");
+        let s = ShellSettings {
+            close_to_tray: true,
+            ..Default::default()
+        };
+        save(&p, &s).unwrap();
+        let text = std::fs::read_to_string(&p).unwrap();
+        assert!(
+            text.contains(&format!("\"version\": {}", schema::CURRENT)),
+            "{text}"
+        );
+        let l = load(&p);
+        assert!(l.warning.is_none());
+        assert_eq!(l.settings, s);
+    }
+
+    #[test]
+    fn a_file_from_a_newer_pyxee_is_kept_aside_not_used_and_not_overwritten() {
+        let d = dir("newer");
+        let p = d.join("shell.json");
+        let text = r#"{"closeToTray":true,"version":99}"#;
+        std::fs::write(&p, text).unwrap();
+        let l = load(&p);
+        assert_eq!(l.settings, ShellSettings::default());
+        assert!(l.warning.is_some_and(|w| w.contains("newer Pyxee")));
+        assert!(!p.exists());
+        assert_eq!(
+            std::fs::read_to_string(d.join("shell.json.v99")).unwrap(),
+            text
+        );
+    }
+
+    #[test]
+    fn a_version_that_makes_no_sense_counts_as_a_damaged_file() {
+        let p = dir("badversion").join("shell.json");
+        std::fs::write(&p, r#"{"closeToTray":true,"version":"two"}"#).unwrap();
+        let l = load(&p);
+        assert_eq!(l.settings, ShellSettings::default());
+        assert!(l.warning.is_some_and(|w| w.contains("damaged")));
+        assert!(p.with_extension("json.bad").exists());
     }
 
     #[test]

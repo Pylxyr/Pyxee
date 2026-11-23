@@ -1,13 +1,14 @@
 //! Saves and restores the queue/position so playback resumes where the user left off.
 
 use pyxee_core::Persisted;
+use pyxee_shell::schema::{self, Parsed};
 use std::fs;
 use std::path::Path;
 
 /// Writes atomically (flushed temp file + rename) so a crash never leaves a half-written session.
 #[cfg(test)]
 pub fn save(path: &Path, p: &Persisted) -> std::io::Result<()> {
-    let json = serde_json::to_vec(p).map_err(std::io::Error::other)?;
+    let json = schema::to_vec(p).map_err(std::io::Error::other)?;
     pyxee_shell::atomic::write(path, &json)
 }
 
@@ -51,7 +52,7 @@ impl SaveSignal {
 /// 5-second autosave would otherwise rewrite and flush the same file all day while the player sits paused or idle.
 /// `last` is updated only after a successful write, so a failed write is tried again next time.
 pub fn save_if_changed(path: &Path, p: &Persisted, last: &mut Vec<u8>) -> std::io::Result<bool> {
-    let json = serde_json::to_vec(p).map_err(std::io::Error::other)?;
+    let json = schema::to_vec(p).map_err(std::io::Error::other)?;
     if json == *last {
         return Ok(false);
     }
@@ -62,6 +63,7 @@ pub fn save_if_changed(path: &Path, p: &Persisted, last: &mut Vec<u8>) -> std::i
 
 /// A missing file is not an error: the app just starts empty. A file that is there but cannot be read as a session is
 /// moved aside as `session.json.bad` (and logged), not silently overwritten by the next save, so it can still be looked at.
+/// So is one written by a newer Pyxee (someone went back to an older release), as `session.json.v<its version>`.
 pub fn load(path: &Path) -> Option<Persisted> {
     let bytes = match fs::read(path) {
         Ok(bytes) => bytes,
@@ -71,9 +73,21 @@ pub fn load(path: &Path) -> Option<Persisted> {
             return None;
         }
     };
-    match serde_json::from_slice(&bytes) {
-        Ok(p) => Some(p),
-        Err(e) => {
+    match schema::parse::<Persisted>(&bytes) {
+        Parsed::Usable(p) => Some(p),
+        Parsed::Newer(version) => {
+            match schema::set_aside(path, &format!(".v{version}")) {
+                Ok(aside) => log::warn!(
+                    "the session file was written by a newer Pyxee (format {version}); it was kept as {} and the app starts empty",
+                    aside.display()
+                ),
+                Err(e) => log::warn!(
+                    "the session file was written by a newer Pyxee (format {version}) and could not be moved aside ({e}); the app starts empty"
+                ),
+            }
+            None
+        }
+        Parsed::Bad(e) => {
             let mut name = path.file_name()?.to_os_string();
             name.push(".bad");
             let bad = path.with_file_name(name);
@@ -153,6 +167,43 @@ mod tests {
         assert!(!path.exists());
         assert_eq!(fs::read(d.join("session.json.bad")).unwrap(), b"{ not json");
         assert!(load(&path).is_none(), "a missing file is simply empty");
+        let _ = fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn a_saved_session_carries_its_format_version_and_loads_again() {
+        let path = dir("version").join("session.json");
+        save(&path, &Player::new(1).persisted()).unwrap();
+        let doc: serde_json::Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+        assert_eq!(doc["version"], schema::CURRENT);
+        assert!(load(&path).is_some());
+    }
+
+    #[test]
+    fn a_session_from_before_versions_existed_still_loads() {
+        let d = dir("legacy");
+        fs::create_dir_all(&d).unwrap();
+        let path = d.join("session.json");
+        fs::write(
+            &path,
+            serde_json::to_vec(&Player::new(1).persisted()).unwrap(),
+        )
+        .unwrap();
+        assert!(load(&path).is_some());
+        assert!(path.exists(), "and it is not moved aside");
+        let _ = fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn a_session_from_a_newer_pyxee_is_kept_aside_and_the_app_starts_empty() {
+        let d = dir("newer");
+        fs::create_dir_all(&d).unwrap();
+        let path = d.join("session.json");
+        let text = br#"{"version":99,"queue":{}}"#;
+        fs::write(&path, text).unwrap();
+        assert!(load(&path).is_none());
+        assert!(!path.exists());
+        assert_eq!(fs::read(d.join("session.json.v99")).unwrap(), text);
         let _ = fs::remove_dir_all(&d);
     }
 
