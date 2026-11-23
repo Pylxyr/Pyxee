@@ -118,8 +118,20 @@ impl ShellState {
     }
 }
 
+/// The equalizer as it was saved, handed to the audio side before the first song plays.
+fn apply_saved_equalizer(app: &AppHandle) {
+    let shell = app.state::<ShellState>();
+    let saved = shell.settings.lock().ok().map(|s| s.eq.clone());
+    if let Some(eq) = saved {
+        app.state::<crate::state::AppState>()
+            .eq
+            .set(eq.enabled, eq.preamp, &eq.gains);
+    }
+}
+
 /// Called once from `setup`, after `AppState` is managed.
 pub fn init(app: &AppHandle, args: &[String]) {
+    apply_saved_equalizer(app);
     let cli = parse_args(args);
     let hide_to_tray = cli.autostart
         && app

@@ -3,11 +3,14 @@
 // Tauri hands a command its arguments by value (`State`, `AppHandle`, the deserialised payload): the signature is not ours to change.
 #![allow(clippy::needless_pass_by_value)]
 
-use super::dto::{LyricsDto, ShellSettingsDto, SleepSettingDto, SleepStateDto, SleepStatusDto};
+use super::dto::{
+    EqDto, LyricsDto, ShellSettingsDto, SleepSettingDto, SleepStateDto, SleepStatusDto,
+};
 use super::{ShellState, flyout, mini, sleep};
 use crate::audio_cache::AudioCache;
-use crate::state::now_ms;
+use crate::state::{AppState, now_ms};
 use pyxee_lyrics::{LRCLIB, Lyrics, Query, fetch};
+use pyxee_shell::settings::EqSettings;
 use std::sync::Arc;
 use std::time::Duration;
 use tauri::{AppHandle, Manager};
@@ -212,6 +215,33 @@ pub fn shell_set(app: AppHandle, settings: ShellSettingsDto) -> Result<ShellSett
     super::sync_discord(&app);
     super::sync_lastfm(&app, lastfm_turned_on);
     Ok(settings)
+}
+
+#[tauri::command]
+pub fn eq_get(app: AppHandle) -> EqDto {
+    let shell = app.state::<ShellState>();
+    let settings = shell.settings.lock().map(|s| EqDto::from(&s.eq));
+    settings.unwrap_or_else(|_| EqDto::from(&EqSettings::default()))
+}
+
+/// Sets the equalizer: heard from the next audio buffer on. `save` is false while a slider is being dragged (every
+/// step would otherwise rewrite the settings file) and true when it is let go or a switch or preset is used.
+#[tauri::command]
+pub fn eq_set(app: AppHandle, eq: EqDto, save: bool) -> Result<EqDto, String> {
+    let eq = EqSettings::from(eq);
+    app.state::<AppState>()
+        .eq
+        .set(eq.enabled, eq.preamp, &eq.gains);
+    let shell = app.state::<ShellState>();
+    shell
+        .settings
+        .lock()
+        .map_err(|_| "Settings are unavailable.".to_string())?
+        .eq = eq.clone();
+    if save {
+        shell.save_settings();
+    }
+    Ok(EqDto::from(&eq))
 }
 
 #[tauri::command]

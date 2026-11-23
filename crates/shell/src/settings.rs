@@ -9,6 +9,46 @@ use std::path::Path;
 pub const MINI_MIN: (i32, i32) = (260, 90);
 pub const MINI_MAX: (i32, i32) = (900, 400);
 
+/// The equalizer has this many bands (the audio crate's `eq::BANDS`; a test in the app crate keeps them equal).
+pub const EQ_BANDS: usize = 10;
+/// Gains and the preamp stay within this many tenths of a dB either way (the audio crate's `eq::LIMIT_TENTHS`).
+pub const EQ_LIMIT: i32 = 120;
+
+/// The equalizer as the listener left it. Whole numbers in tenths of a dB, so the settings stay comparable and the
+/// file stays tidy.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct EqSettings {
+    pub enabled: bool,
+    /// Tenths of a dB.
+    pub preamp: i32,
+    /// One per band, lowest first, in tenths of a dB. A file with another count is mended by `sanitized`.
+    pub gains: Vec<i32>,
+}
+
+impl Default for EqSettings {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            preamp: 0,
+            gains: vec![0; EQ_BANDS],
+        }
+    }
+}
+
+impl EqSettings {
+    /// Exactly `EQ_BANDS` gains (missing ones 0, extra ones dropped), everything within `EQ_LIMIT`.
+    #[must_use]
+    pub fn sanitized(mut self) -> Self {
+        self.preamp = self.preamp.clamp(-EQ_LIMIT, EQ_LIMIT);
+        self.gains.resize(EQ_BANDS, 0);
+        for g in &mut self.gains {
+            *g = (*g).clamp(-EQ_LIMIT, EQ_LIMIT);
+        }
+        self
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
 pub struct ShellSettings {
@@ -39,6 +79,8 @@ pub struct ShellSettings {
     /// The update check also offers pre-releases (release candidates). Off by default, so a stable copy is only
     /// ever moved to stable releases; a copy that already is a pre-release looks at them regardless.
     pub check_prereleases: bool,
+    /// The equalizer (Settings, Sound).
+    pub eq: EqSettings,
 }
 
 impl Default for ShellSettings {
@@ -54,6 +96,7 @@ impl Default for ShellSettings {
             lastfm_session: None,
             mini_bounds: None,
             check_prereleases: false,
+            eq: EqSettings::default(),
         }
     }
 }
@@ -62,6 +105,7 @@ impl ShellSettings {
     /// Keeps stored values inside what the windows can use.
     #[must_use]
     pub fn sanitized(mut self) -> Self {
+        self.eq = self.eq.sanitized();
         self.mini_bounds = self.mini_bounds.map(|r| {
             Rect::new(
                 r.x.clamp(-32_000, 32_000),
@@ -303,5 +347,52 @@ mod tests {
         .sanitized();
         let b = s.mini_bounds.unwrap();
         assert_eq!((b.w, b.h), (MINI_MIN.0, MINI_MAX.1));
+    }
+
+    #[test]
+    fn the_equalizer_is_off_and_flat_by_default_also_for_a_file_from_before_it_existed() {
+        let d = EqSettings::default();
+        assert!(!d.enabled && d.preamp == 0 && d.gains == vec![0; EQ_BANDS]);
+        let p = dir("eq-old").join("shell.json");
+        std::fs::write(&p, r#"{"closeToTray": true}"#).unwrap();
+        assert_eq!(load(&p).settings.eq, EqSettings::default());
+    }
+
+    #[test]
+    fn the_equalizer_survives_a_save_and_load() {
+        let p = dir("eq-roundtrip").join("shell.json");
+        let eq = EqSettings {
+            enabled: true,
+            preamp: -30,
+            gains: vec![60, 50, 40, 20, 0, 0, -10, 0, 25, 120],
+        };
+        let s = ShellSettings {
+            eq: eq.clone(),
+            ..Default::default()
+        };
+        save(&p, &s).unwrap();
+        assert_eq!(load(&p).settings.eq, eq);
+    }
+
+    #[test]
+    fn an_equalizer_with_the_wrong_number_of_gains_or_silly_values_is_mended_not_thrown_away() {
+        let p = dir("eq-mend").join("shell.json");
+        std::fs::write(
+            &p,
+            r#"{"closeToTray":true,"eq":{"enabled":true,"preamp":5000,"gains":[1,-999,3]}}"#,
+        )
+        .unwrap();
+        let l = load(&p);
+        assert!(l.warning.is_none() && l.settings.close_to_tray);
+        assert!(l.settings.eq.enabled);
+        assert_eq!(l.settings.eq.preamp, EQ_LIMIT);
+        assert_eq!(l.settings.eq.gains.len(), EQ_BANDS);
+        assert_eq!(&l.settings.eq.gains[..4], &[1, -EQ_LIMIT, 3, 0]);
+        let long = EqSettings {
+            gains: vec![7; EQ_BANDS + 5],
+            ..Default::default()
+        }
+        .sanitized();
+        assert_eq!(long.gains, vec![7; EQ_BANDS]);
     }
 }

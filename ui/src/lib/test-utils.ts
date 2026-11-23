@@ -66,6 +66,8 @@ export const noShell = {
   sleepExtend: async () => {},
   sleepGet: async () => ({ status: null }),
   onSleep: async () => () => {},
+  eqGet: async () => ({ enabled: false, preamp: 0, gains: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0] }),
+  eqSet: async (eq: { enabled: boolean; preamp: number; gains: number[] }) => eq,
   shellGet: async () => ({ closeToTray: false, startWithWindows: false, toastOnChange: false, trayControls: false, flyoutOnClick: true, discordPresence: false, lastfmScrobbling: false, checkPrereleases: false }),
   shellSet: async (s: { closeToTray: boolean; startWithWindows: boolean; toastOnChange: boolean; trayControls: boolean; flyoutOnClick: boolean; discordPresence: boolean; lastfmScrobbling: boolean; checkPrereleases: boolean }) => s,
   flyoutHide: async () => {},

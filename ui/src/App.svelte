@@ -14,6 +14,7 @@
   import { lyricsStore } from '$lib/lyrics.svelte';
   import { relatedStore } from '$lib/related.svelte';
   import { sleep } from '$lib/sleep.svelte';
+  import { eq } from '$lib/eq.svelte';
   import { shellSettings } from '$lib/shell.svelte';
   import { updates } from '$lib/updates.svelte';
   import { hasOwnWindow, tauriWindowControls, type WindowControls } from '$lib/windowControls';
@@ -77,6 +78,7 @@
       void initSeekMode(backend);
       void initPlatform(backend);
       void shellSettings.init(backend);
+      void eq.init(backend);
       // Look for a newer Pyxee once, now; the changelog opens by itself if there is one.
       void updates.init(backend).catch(() => {}).then(() => updates.checkAtStartup(backend));
       await player.init(backend);

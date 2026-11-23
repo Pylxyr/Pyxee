@@ -1,7 +1,7 @@
 //! UI-facing types for the shell features (generated TypeScript lives in `ui/src/lib/bindings`).
 
 use pyxee_lyrics::Lyrics;
-use pyxee_shell::settings::ShellSettings;
+use pyxee_shell::settings::{EqSettings, ShellSettings};
 use pyxee_shell::sleep::{SleepSetting, SleepStatus};
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
@@ -135,9 +135,64 @@ impl From<&ShellSettings> for ShellSettingsDto {
     }
 }
 
+/// The equalizer: on or off, the preamp and one gain per band (lowest first), in tenths of a dB.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct EqDto {
+    pub enabled: bool,
+    pub preamp: i32,
+    pub gains: Vec<i32>,
+}
+
+impl From<&EqSettings> for EqDto {
+    fn from(s: &EqSettings) -> Self {
+        Self {
+            enabled: s.enabled,
+            preamp: s.preamp,
+            gains: s.gains.clone(),
+        }
+    }
+}
+
+impl From<EqDto> for EqSettings {
+    /// What the window sends is not trusted: the result is always inside what the equalizer can take.
+    fn from(d: EqDto) -> Self {
+        Self {
+            enabled: d.enabled,
+            preamp: d.preamp,
+            gains: d.gains,
+        }
+        .sanitized()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_equalizer_limits_agree_between_the_settings_and_the_audio_crate() {
+        assert_eq!(pyxee_shell::settings::EQ_BANDS, pyxee_audio::eq::BANDS);
+        assert_eq!(
+            pyxee_shell::settings::EQ_LIMIT,
+            pyxee_audio::eq::LIMIT_TENTHS
+        );
+    }
+
+    #[test]
+    fn what_the_window_sends_for_the_equalizer_is_made_safe() {
+        let s: EqSettings = EqDto {
+            enabled: true,
+            preamp: i32::MAX,
+            gains: vec![i32::MIN, 5],
+        }
+        .into();
+        assert_eq!(s.preamp, pyxee_shell::settings::EQ_LIMIT);
+        assert_eq!(s.gains.len(), pyxee_shell::settings::EQ_BANDS);
+        assert_eq!(&s.gains[..3], &[-pyxee_shell::settings::EQ_LIMIT, 5, 0]);
+        assert_eq!(EqDto::from(&s).gains, s.gains);
+    }
 
     #[test]
     fn lyrics_cross_the_boundary_with_their_kind() {

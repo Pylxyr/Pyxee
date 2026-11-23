@@ -2693,6 +2693,82 @@ input[type='range'].slider:disabled {
   font-size: 13px;
   font-weight: 600;
 }
+
+/* Equalizer: ten vertical sliders. Each is an ordinary horizontal range turned on its side, which every webview draws the
+   same way, with its keyboard and screen-reader behaviour intact. The fill runs from 0 dB (the middle) to the thumb. */
+.eq-bands {
+  display: flex;
+  gap: 2px;
+  padding: 4px 12px 0;
+}
+.eq-col {
+  display: flex;
+  flex: 1 1 0;
+  min-width: 0;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+.eq-db,
+.eq-hz {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 14px;
+  font-variant-numeric: tabular-nums;
+}
+.eq-track {
+  position: relative;
+  width: 100%;
+  height: 136px;
+}
+input[type='range'].eq-band {
+  -webkit-appearance: none;
+  appearance: none;
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 136px;
+  height: 28px;
+  margin: 0;
+  background: transparent;
+  cursor: pointer;
+  transform: translate(-50%, -50%) rotate(-90deg);
+  --lo: 50%;
+  --hi: 50%;
+}
+input[type='range'].eq-band::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: 2px;
+  background: linear-gradient(to right, var(--surface-2) var(--lo), var(--accent) var(--lo), var(--accent) var(--hi), var(--surface-2) var(--hi));
+}
+input[type='range'].eq-band::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 14px;
+  height: 14px;
+  margin-top: -5px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--fg);
+  box-shadow: 0 1px 4px rgb(0 0 0 / 0.35);
+}
+input[type='range'].eq-band:focus-visible::-webkit-slider-thumb {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 45%, transparent), 0 1px 4px rgb(0 0 0 / 0.35);
+}
+.eq-preamp {
+  display: grid;
+  grid-template-columns: auto 1fr 56px;
+  align-items: center;
+  gap: 12px;
+}
+.eq-preamp .look-label {
+  margin-bottom: 0;
+}
+.eq-preamp .eq-db {
+  text-align: right;
+}
+.eq-off {
+  opacity: 0.55;
+}
 .bar-pill {
   border-radius: min(var(--r-pill), 16px);
 }

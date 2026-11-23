@@ -4,6 +4,7 @@
 
 use crate::audio_cache::AudioCache;
 use crate::engine::{Engine, Host};
+use pyxee_audio::eq::EqControl;
 use pyxee_audio::gap::find_gaps;
 use pyxee_audio::pipeline::{Consumer, Crossfade, Volume};
 use pyxee_core::{Command, Effect, EngineEvent, Origin, Player, Repeat, Track, Transport};
@@ -145,6 +146,7 @@ impl Rig {
             48_000,
             volume.clone(),
             Crossfade::default(),
+            EqControl::default(),
         );
         let consumer = engine.consumer();
         Self {

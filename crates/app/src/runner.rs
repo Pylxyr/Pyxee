@@ -164,6 +164,7 @@ fn run_real(app: AppHandle, host: Arc<AppHost>, rx: Receiver<Effect>) {
             rate,
             app.state::<AppState>().volume.clone(),
             app.state::<AppState>().crossfade.clone(),
+            app.state::<AppState>().eq.clone(),
         );
         engine.set_audio_cache(Arc::clone(
             &app.state::<Arc<crate::audio_cache::AudioCache>>(),

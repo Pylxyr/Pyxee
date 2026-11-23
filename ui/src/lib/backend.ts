@@ -13,6 +13,7 @@ import type { AppUpdateDto } from './bindings/AppUpdateDto';
 import type { YtdlpUpdateDto } from './bindings/YtdlpUpdateDto';
 import type { UpdateProgressDto } from './bindings/UpdateProgressDto';
 import type { LyricsDto } from './bindings/LyricsDto';
+import type { EqDto } from './bindings/EqDto';
 import type { ShellSettingsDto } from './bindings/ShellSettingsDto';
 import type { SleepSettingDto } from './bindings/SleepSettingDto';
 import type { SleepStateDto } from './bindings/SleepStateDto';
@@ -140,6 +141,9 @@ export interface Backend extends LibraryBackend {
   shellGet(): Promise<ShellSettingsDto>;
   /** Saves the tray / start-with-Windows / toast settings; resolves to what is now in effect. */
   shellSet(settings: ShellSettingsDto): Promise<ShellSettingsDto>;
+  eqGet(): Promise<EqDto>;
+  /** Sets the equalizer. `save` is false while a slider is being dragged: the engine follows, the file is not written. */
+  eqSet(eq: EqDto, save: boolean): Promise<EqDto>;
   /** Tray flyout and mini player. */
   flyoutHide(): Promise<void>;
   flyoutOpenMain(): Promise<void>;
@@ -255,6 +259,8 @@ export async function tauriBackend(): Promise<Backend> {
     sleepExtend: (minutes) => invoke<void>('sleep_extend', { minutes }),
     sleepGet: () => invoke<SleepStateDto>('sleep_get'),
     onSleep: async (cb) => listen<SleepStateDto>(SLEEP_EVENT, (e) => cb(e.payload)),
+    eqGet: () => invoke<EqDto>('eq_get'),
+    eqSet: (eq, save) => invoke<EqDto>('eq_set', { eq, save }),
     shellGet: () => invoke<ShellSettingsDto>('shell_get'),
     shellSet: (settings) => invoke<ShellSettingsDto>('shell_set', { settings }),
     flyoutHide: () => invoke<void>('flyout_hide'),

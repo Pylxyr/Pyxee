@@ -8,6 +8,7 @@
 use crate::audio_cache::AudioCache;
 use pyxee_audio::AudioError;
 use pyxee_audio::decode::{LibavSource, SampleSource};
+use pyxee_audio::eq::EqControl;
 use pyxee_audio::gapless::{FailKind, PreparedTrack};
 use pyxee_audio::http::{CompletionHook, HttpRangeSource};
 use pyxee_audio::pipeline::{Consumer, Crossfade, PipeEvent, Pipeline, Volume};
@@ -150,6 +151,8 @@ pub struct Engine {
     volume: Volume,
     /// How long one song fades into the next (0 = off); the pipeline follows it, also after it is rebuilt.
     crossfade: Crossfade,
+    /// The equalizer's settings; the pipeline follows them, also after it is rebuilt.
+    eq: EqControl,
     pipeline: Pipeline,
     pipe_rx: Receiver<PipeEvent>,
     work_tx: Sender<Work>,
@@ -205,6 +208,7 @@ impl Engine {
         rate: u32,
         volume: Volume,
         crossfade: Crossfade,
+        eq: EqControl,
     ) -> Self {
         let (pipe_tx, pipe_rx) = channel();
         let (work_tx, work_rx) = channel();
@@ -214,7 +218,8 @@ impl Engine {
             rate,
             volume: volume.clone(),
             crossfade: crossfade.clone(),
-            pipeline: Pipeline::with_crossfade(rate, pipe_tx, volume, crossfade),
+            eq: eq.clone(),
+            pipeline: Pipeline::with_controls(rate, pipe_tx, volume, crossfade, eq),
             pipe_rx,
             work_tx,
             work_rx,
@@ -324,8 +329,13 @@ impl Engine {
         let (pipe_tx, pipe_rx) = channel();
         self.bump_generation();
         self.rate = rate;
-        self.pipeline =
-            Pipeline::with_crossfade(rate, pipe_tx, self.volume.clone(), self.crossfade.clone());
+        self.pipeline = Pipeline::with_controls(
+            rate,
+            pipe_tx,
+            self.volume.clone(),
+            self.crossfade.clone(),
+            self.eq.clone(),
+        );
         self.pipe_rx = pipe_rx;
         self.held_prefetch = None;
         self.prefetched = None;

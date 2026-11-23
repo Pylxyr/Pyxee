@@ -9,6 +9,7 @@ import type { PositionDto } from './bindings/PositionDto';
 import type { TrackDto } from './bindings/TrackDto';
 import type { WindowInfoDto } from './bindings/WindowInfoDto';
 import type { LyricsDto } from './bindings/LyricsDto';
+import type { EqDto } from './bindings/EqDto';
 import type { ShellSettingsDto } from './bindings/ShellSettingsDto';
 import type { SleepSettingDto } from './bindings/SleepSettingDto';
 import type { SleepStateDto } from './bindings/SleepStateDto';
@@ -242,6 +243,15 @@ export class MockBackend extends MockLibrary implements Backend {
     if (this.shellError) throw this.shellError;
     this.shell = { ...settings };
     return { ...this.shell };
+  }
+  eq: EqDto = { enabled: false, preamp: 0, gains: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0] };
+  /** Every `eqSet` call, with whether it asked for the settings to be saved. */
+  eqCalls: { eq: EqDto; save: boolean }[] = [];
+  async eqGet() { return { ...this.eq, gains: [...this.eq.gains] }; }
+  async eqSet(eq: EqDto, save: boolean) {
+    this.eqCalls.push({ eq: { ...eq, gains: [...eq.gains] }, save });
+    this.eq = { ...eq, gains: [...eq.gains] };
+    return { ...this.eq, gains: [...this.eq.gains] };
   }
   trayCalls: string[] = [];
   async flyoutHide() { this.trayCalls.push('flyoutHide'); }

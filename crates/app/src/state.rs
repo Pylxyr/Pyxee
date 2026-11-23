@@ -23,6 +23,8 @@ pub struct AppState {
     pub volume: pyxee_audio::pipeline::Volume,
     /// Seconds one song fades into the next (0 = off), read by the audio engine.
     pub crossfade: pyxee_audio::pipeline::Crossfade,
+    /// The equalizer settings, shared with the audio callback (see `pyxee_audio::eq`).
+    pub eq: pyxee_audio::eq::EqControl,
     pub library: Mutex<LibraryService>,
     pub source: Arc<dyn MusicSource>,
     pub player: Mutex<Player>,

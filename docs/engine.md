@@ -70,6 +70,25 @@ gain of percent squared (50% is -12 dB, which sounds like "half as loud") and ra
 so changing it never clicks. While nothing is playing the gain simply follows the setting, so a quiet setting never blips loudly
 at the start of the next track (this bug was caught by a test). Muting keeps tracks advancing and announced; only the sound stops.
 
+## Equalizer
+Ten peaking filters (one octave wide, centres 31 Hz to 16 kHz, RBJ cookbook biquads in `f64`) plus a preamp, in
+`crates/audio/src/eq.rs`. Off by default; **Settings -> Playback**. The settings (on/off, preamp, ten gains, in tenths of a dB,
+within 12 dB either way) are kept in `shell.json` (`ShellSettings::eq`) and reach the audio callback through `EqControl`, a
+handle of atomics with a version number (`eq_set`); nothing on the hot path takes a lock. A dragged slider sends every step to the
+engine with `save: false` and the file is written once, when it is let go.
+
+- **Where it runs:** in the device callback (`Consumer::pull`), after the buffer and before the volume, not in the producer
+  thread. The producer decodes about 2 s ahead, so a change made there would be heard after up to 2 s; here it is heard from
+  the next buffer. Seeks, skips and flushes reset the filters (`Equalizer::reset`) so the tail of the old audio does not ring
+  into the new, and the equalizer fades in over that buffer.
+- **No clipping:** the summed response of the bands is measured (every 1/24 octave and at each centre) and the preamp takes
+  its peak off again, so raising bands turns the whole sound down a little instead of distorting. Cuts need nothing. What
+  the headroom cannot catch (a preamp above 0 dB, a hot master) passes a soft limiter that leaves everything below 0.95 alone
+  and never reaches 1.0.
+- **Costs nothing when unused:** off, or on but flat (no band moved, preamp 0), `process` is one atomic load. Bands at 0 dB and
+  bands above 45% of the sample rate are skipped. Switching on or off, or going flat, fades over one buffer, like the preamp.
+- A NaN or infinity in the stream is replaced by silence before it can reach a filter's state.
+
 ## Seeking
 A seek normally jumps inside the open source (see the engine steps above), so none of this applies. When it cannot, the
 track is re-opened at the offset. Over a network that is slow, while the already-known next track is prepared
