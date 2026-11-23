@@ -67,6 +67,22 @@ pub fn audio_cache_dir(
         .map(|dir| dir.join(AUDIO_CACHE))
 }
 
+/// The folder that holds yt-dlp's own cache, inside the folder it is given.
+pub const YTDLP_CACHE: &str = "yt-dlp";
+
+/// Where yt-dlp keeps what it remembers between runs: without this it uses `~/.cache/yt-dlp` in the user's profile
+/// (on Windows `%USERPROFILE%\.cache\yt-dlp`). Same rule as the kept songs: a portable copy keeps it in its own data
+/// folder, an installed one in the system's cache folder for the app. `None` when there is neither.
+#[must_use]
+pub fn ytdlp_cache_dir(
+    portable_data: Option<&Path>,
+    system_cache: Option<&Path>,
+) -> Option<PathBuf> {
+    portable_data
+        .or(system_cache)
+        .map(|dir| dir.join(YTDLP_CACHE))
+}
+
 /// Picks the data folder. `old` is the former (Roaming) folder, `new` the Local one.
 pub fn resolve(old: Option<&Path>, new: Option<&Path>) -> Resolved {
     let mut notes = Vec::new();
@@ -218,6 +234,22 @@ mod tests {
             .collect();
         v.sort();
         v
+    }
+
+    #[test]
+    fn the_ytdlp_cache_follows_a_portable_folder_and_otherwise_uses_the_system_cache() {
+        let data = Path::new("app").join("data");
+        let cache = Path::new("profile").join("cache");
+        assert_eq!(
+            ytdlp_cache_dir(Some(&data), Some(&cache)),
+            Some(data.join(YTDLP_CACHE))
+        );
+        assert_eq!(
+            ytdlp_cache_dir(None, Some(&cache)),
+            Some(cache.join(YTDLP_CACHE))
+        );
+        assert_eq!(ytdlp_cache_dir(None, None), None);
+        assert_ne!(YTDLP_CACHE, AUDIO_CACHE, "they must not share a folder");
     }
 
     #[test]

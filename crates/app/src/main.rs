@@ -216,6 +216,17 @@ fn main() {
 
             let (tx, rx) = mpsc::channel();
             log::info!("yt-dlp audio format preference: {FORMAT_SELECTOR}");
+            // Installed: the system's cache folder for the app. Portable: `data\` beside the program, so nothing is
+            // left in the user's profile. Kept songs and yt-dlp's own cache both go here.
+            let portable_dir = if is_portable {
+                data_dir.as_deref()
+            } else {
+                None
+            };
+            let system_cache = app.path().app_cache_dir().ok();
+            // yt-dlp would otherwise cache in `~/.cache/yt-dlp`, a folder in the user's profile.
+            let ytdlp_cache =
+                pyxee_shell::datadir::ytdlp_cache_dir(portable_dir, system_cache.as_deref());
             let source: Arc<dyn MusicSource> = Arc::new(CompositeSource {
                 remote: with_updated_ytdlp(
                     with_suggestions_setting(
@@ -223,6 +234,7 @@ fn main() {
                             with_music_search_setting(
                                 YtDlpSource::new(tools::locate("yt-dlp", "PYXEE_YTDLP"))
                                     .with_cookies(Cookies::from_env())
+                                    .with_cache_dir(ytdlp_cache)
                                     .with_js_runtime(JsRuntime::from_env()),
                                 ytmusic::direct_requests_allowed_from_env(),
                             ),
@@ -261,16 +273,8 @@ fn main() {
             app.manage(local);
             // Songs kept after they play. An installed copy keeps them in the system's cache folder (not the data
             // folder): they can take up to 4 GB. A portable copy keeps them in its own `data\audio`.
-            let portable_dir = if is_portable {
-                data_dir.as_deref()
-            } else {
-                None
-            };
             app.manage(std::sync::Arc::new(audio_cache::AudioCache::open(
-                pyxee_shell::datadir::audio_cache_dir(
-                    portable_dir,
-                    app.path().app_cache_dir().ok().as_deref(),
-                ),
+                pyxee_shell::datadir::audio_cache_dir(portable_dir, system_cache.as_deref()),
                 data_dir.as_ref().map(|d| d.join("audio-cache.json")),
             )));
             app.manage(shell::ShellState::load(

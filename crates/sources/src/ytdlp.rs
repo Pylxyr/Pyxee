@@ -161,6 +161,30 @@ fn player_client_args(get: impl Fn(&str) -> Option<String>) -> Vec<String> {
     ]
 }
 
+/// Where yt-dlp keeps what it remembers between runs (the signature code it works out for a player, the downloaded
+/// JavaScript helper). Left alone it uses `~/.cache/yt-dlp`, which on Windows is `%USERPROFILE%\.cache\yt-dlp`: a
+/// folder in the user's profile that Pyxee never asked for and that stays behind when it is uninstalled.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+enum CacheDir {
+    /// Nothing is passed; yt-dlp picks its own folder (only for the developer tools).
+    #[default]
+    Unset,
+    /// `--cache-dir`: this folder, which yt-dlp creates when it needs it.
+    Dir(PathBuf),
+    /// `--no-cache-dir`: there is no folder to offer, so nothing is kept (every run works things out again).
+    Off,
+}
+
+impl CacheDir {
+    fn args(&self) -> Vec<String> {
+        match self {
+            Self::Unset => Vec::new(),
+            Self::Dir(dir) => vec!["--cache-dir".to_string(), dir.display().to_string()],
+            Self::Off => vec!["--no-cache-dir".to_string()],
+        }
+    }
+}
+
 /// Search cache key: (lower-cased query, filter).
 type SearchCacheKey = (String, String);
 /// Search cache value: (time stored, results).
@@ -178,6 +202,8 @@ pub struct YtDlpSource {
     /// Off: the search box never asks for suggestions (nothing typed leaves the app until a search is run).
     suggestions: bool,
     cookies: Cookies,
+    /// Where yt-dlp keeps its own cache (see [`CacheDir`]).
+    cache_dir: CacheDir,
     /// What `--js-runtimes` gets (nothing by default; the app sets it from `PATH` and `PYXEE_JS_RUNTIME`).
     js_runtime: JsRuntime,
     /// Recent search answers, keyed by lower-cased query and filter.
@@ -204,6 +230,7 @@ impl YtDlpSource {
             suggester: Suggester::new(),
             suggestions: true,
             cookies: Cookies::None,
+            cache_dir: CacheDir::Unset,
             js_runtime: JsRuntime::Off,
             search_cache: Mutex::new(HashMap::new()),
             songs_page_bare_until: Mutex::new(None),
@@ -285,6 +312,13 @@ impl YtDlpSource {
 
     pub fn with_cookies(mut self, cookies: Cookies) -> Self {
         self.cookies = cookies;
+        self
+    }
+
+    /// yt-dlp keeps its cache in `dir` (`--cache-dir`) instead of in the user's profile. `None`: there is no folder to
+    /// offer, so yt-dlp keeps no cache at all (`--no-cache-dir`) rather than falling back to the profile.
+    pub fn with_cache_dir(mut self, dir: Option<PathBuf>) -> Self {
+        self.cache_dir = dir.map_or(CacheDir::Off, CacheDir::Dir);
         self
     }
 
@@ -403,6 +437,7 @@ impl YtDlpSource {
         // what Pyxee asks for, such as the output format or extra network options. It also means a `--js-runtimes`
         // line in that file is never read, so the runtime is passed here (see `jsruntime`).
         let all: Vec<String> = std::iter::once("--ignore-config".to_string())
+            .chain(self.cache_dir.args())
             .chain(self.js_runtime.args())
             .chain(self.cookies.args())
             .chain(player_client_args(|k| std::env::var(k).ok()))
@@ -2209,6 +2244,28 @@ esac"#,
                     .unwrap()
                     .starts_with("--ignore-config --cookies-from-browser firefox:default ")
             );
+        }
+
+        #[test]
+        fn the_cache_folder_follows_ignore_config_and_never_defaults_to_the_profile_when_set() {
+            let run = |name: &str, dir: Option<PathBuf>| {
+                let (script, log) = fake(name, &canned());
+                quick(&script)
+                    .with_cache_dir(dir)
+                    .search("x", SearchFilter::All)
+                    .unwrap();
+                std::fs::read_to_string(log).unwrap()
+            };
+            let dir = std::env::temp_dir().join("pyxee-yt-cache");
+            let with = run("cachedir", Some(dir.clone()));
+            let want = format!("--ignore-config --cache-dir {} ", dir.display());
+            assert!(with.starts_with(&want), "{with}");
+            let none = run("cacheoff", None);
+            assert!(
+                none.starts_with("--ignore-config --no-cache-dir "),
+                "{none}"
+            );
+            assert!(!none.contains("--cache-dir"), "{none}");
         }
 
         #[test]
