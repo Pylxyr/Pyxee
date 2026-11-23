@@ -74,8 +74,9 @@
     else if (h.action === 'retry') void player.retry();
     else void player.toggle();
   }
-  // "Tune in": the songs you come back to as cards, each one the start of a radio (the song, then songs like it). The
-  // first card picks one of them at random. The song that is playing is left out, and an artist is shown once.
+  // "Tune in": one card per artist you come back to, each the start of a radio (a song of theirs, then songs like it: new
+  // music). "Recently played" is the other way round: your own history, played again as it was, with no radio. The Surprise
+  // card picks a song at random. The song that is playing is left out, and an artist is shown once.
   const seeds = $derived(tuneInSeeds(home?.quickPicks ?? [], home?.recent ?? [], player.shown?.track.key ?? null));
   function surprise() {
     const pool = [...(home?.quickPicks ?? []), ...(home?.recent ?? [])];
@@ -148,7 +149,6 @@
       {#if seeds.length > 0}
         <section class="min-w-0">
           <SectionHead>Tune in</SectionHead>
-          <p class="muted mb-3">Pick one and Pyxee queues songs like it.</p>
           <ul class="mix-grid" aria-label="Start a radio">
             {#each seeds as t (t.key)}
               <li><MixCard track={t} onpick={() => void playWithRelated(t)} /></li>
@@ -158,8 +158,13 @@
       {/if}
       {#if home.recent.length > 0}
         <section class="min-w-0">
-          <SectionHead count={home.recent.length}>Recently played</SectionHead>
-          <CoverGrid label="Recently played" tracks={home.recent} onplay={(i) => void playWithRelated(home!.recent[i]!)} extras={recentMenu} />
+          <SectionHead count={home.recent.length}>
+            Recently played
+            {#snippet actions()}
+              <Button size="sm" aria-label="Play recently played songs again" onclick={() => void player.playTracks(home!.recent, 0)}>Play all</Button>
+            {/snippet}
+          </SectionHead>
+          <CoverGrid label="Recently played" tracks={home.recent} onplay={(i) => void player.playTracks(home!.recent, i)} extras={recentMenu} />
         </section>
       {/if}
     </div>

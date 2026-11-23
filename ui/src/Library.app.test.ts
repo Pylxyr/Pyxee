@@ -271,14 +271,34 @@ describe('history and Home', () => {
     await listen(NEON, 31);
     await go(/Home/);
     const radios = await screen.findByRole('list', { name: 'Start a radio' });
-    // The song that is playing has its radio on already, so it is not offered again; the liked one is.
-    expect(within(radios).queryByRole('button', { name: 'Start a radio from Neon Harbor' })).toBeNull();
-    expect(within(radios).getByRole('button', { name: 'Start a radio from Paper Planes' })).toBeTruthy();
+    // The song that is playing has its radio on already, so its artist is not offered again; the liked one's artist is.
+    expect(within(radios).queryByRole('button', { name: `Start a radio from ${NEON.artist}` })).toBeNull();
+    expect(within(radios).getByRole('button', { name: `Start a radio from ${PAPER.artist}` })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Surprise me' })).toBeTruthy(); // beside the top card, not in the row
     expect(screen.queryByText(/Demo tracks/)).toBeNull();
     expect(within(screen.getByRole('list', { name: 'Recently played' })).getByRole('button', { name: 'Play Neon Harbor' })).toBeTruthy();
     await fireEvent.click(screen.getByRole('button', { name: /Liked songs/ }));
     expect(await screen.findByRole('list', { name: 'Liked songs' })).toBeTruthy();
+  });
+
+  it('Recently played replays your history (the song, then the older ones) while Tune in starts a radio of similar songs', async () => {
+    await mock.setLiked(PAPER, true);
+    await openApp();
+    await player.playTracks([NEON]);
+    await listen(NEON, 31);
+    await player.playTracks([ORBIT]);
+    await listen(ORBIT, 31);
+    await go(/Home/);
+    const recent = within(await screen.findByRole('list', { name: 'Recently played' }));
+    const related = vi.spyOn(mock, 'relatedGet');
+    await fireEvent.click(recent.getByRole('button', { name: 'Play Neon Harbor' }));
+    await waitFor(() => expect(player.shown?.track.key).toBe(NEON.key));
+    expect(related).not.toHaveBeenCalled(); // a replay, not a radio
+    await fireEvent.click(screen.getByRole('button', { name: 'Play recently played songs again' }));
+    await waitFor(() => expect(player.shown?.track.key).toBe(ORBIT.key)); // the newest first
+    expect(related).not.toHaveBeenCalled();
+    await fireEvent.click(within(screen.getByRole('list', { name: 'Start a radio' })).getByRole('button', { name: `Start a radio from ${PAPER.artist}` }));
+    await waitFor(() => expect(related).toHaveBeenCalledWith(PAPER.key, expect.any(Number)));
   });
 
   it('a right-click on a Home cover or the Pick up card opens the song menu', async () => {

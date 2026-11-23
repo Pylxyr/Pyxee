@@ -8,7 +8,7 @@
   import Thumb from './Thumb.svelte';
   import Wash from './Wash.svelte';
 
-  /** One way to start a radio from Home: a song's colours and cover ("Tune in"), or the "Surprise me" card (no song). */
+  /** One way to start a radio from Home: an artist's card in the colours and cover of the song it starts with ("Tune in"), or the "Surprise me" card (no song). */
   let { track = null, onpick }: { track?: TrackDto | null; onpick: () => void } = $props();
 
   // Songs whose keys are close (a playlist's ids) still get colours well apart: a step of 137 degrees around the wheel.
@@ -30,12 +30,12 @@
 </script>
 
 {#if track}
-  <button class="mix-card" {style} aria-label="Start a radio from {titleOf(track)}" onclick={onpick}>
+  <button class="mix-card" {style} aria-label="Start a radio from {artistOf(track)}" onclick={onpick}>
     <Wash id={layer ?? 'theme'} look="mix" class="mix-bg" style={layer} />
     <span class="mix-art"><Thumb src={track.thumbnail} seed={track.key} size={112} fill rounded="r-sm" /></span>
     <span class="mix-kicker">Radio</span>
-    <span class="mix-title" dir="auto">{titleOf(track)}</span>
-    <span class="mix-sub" dir="auto">Songs like this · {artistOf(track)}</span>
+    <span class="mix-title" dir="auto">{artistOf(track)}</span>
+    <span class="mix-sub" dir="auto">From {titleOf(track)}</span>
     <span class="mix-play" aria-hidden="true"><Icon name="play" size={18} fill /></span>
   </button>
 {:else}
