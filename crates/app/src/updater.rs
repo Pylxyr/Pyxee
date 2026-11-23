@@ -486,9 +486,18 @@ fn recheck_installer(path: &Path, expected: &str) -> Result<(), String> {
     update::verify(&bytes, expected).map_err(|e| e.to_string())
 }
 
+/// What the installer is started with. Without them it opens its wizard, finds the installed copy and offers to
+/// uninstall it first, which is what an update must not do.
+/// - `/UPDATE` is update mode: no reinstall page and no uninstall step; the files are replaced where they are, and the
+///   shortcuts, the settings and the user's data are left alone.
+/// - `/P` is passive mode: a progress bar only, no questions, and the window closes by itself.
+/// - `/R` starts Pyxee again when the files are in place (this one quit to let them be replaced).
+const INSTALLER_ARGS: [&str; 3] = ["/UPDATE", "/P", "/R"];
+
 fn launch_installer(path: &Path, expected: &str) -> Result<(), String> {
     recheck_installer(path, expected)?;
     Command::new(path)
+        .args(INSTALLER_ARGS)
         .spawn()
         .map(|_| ())
         .map_err(|e| format!("Could not start the installer: {e}"))

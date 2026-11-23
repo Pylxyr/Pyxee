@@ -132,15 +132,14 @@ describe('scroll bars', () => {
 });
 
 describe("the deck's seek line", () => {
-  it('runs edge to edge across the deck, cut to its rounded top corners instead of inset from them', () => {
+  it('starts clear of the rounded top corners and is not clipped to them (a clip slices the line diagonally)', () => {
     const seek = rule(".shell[data-layout='wide'] .deck-seek");
-    expect(seek).toMatch(/inset-inline:\s*0;/);
-    expect(seek).not.toMatch(/inset-inline:\s*\d+px/);
-    expect(seek).toMatch(/overflow:\s*hidden/);
-    expect(seek).toMatch(/border-radius:\s*calc\(var\(--r-xl\) - 1px\) calc\(var\(--r-xl\) - 1px\) 0 0/);
+    expect(seek).toMatch(/inset-inline:\s*calc\(var\(--r-xl\) \* 0\.4\);/);
+    expect(seek).not.toMatch(/overflow:\s*hidden/);
+    expect(seek).not.toMatch(/border-radius/);
   });
 
-  it('docked panels have square corners, so the line is not cut', () => {
-    expect(rule(":root[data-panels='docked'] .shell[data-layout='wide'] .deck-seek")).toMatch(/border-radius:\s*0;/);
+  it('docked panels have square corners, so the line runs edge to edge', () => {
+    expect(rule(":root[data-panels='docked'] .shell[data-layout='wide'] .deck-seek")).toMatch(/inset-inline:\s*0;/);
   });
 });
