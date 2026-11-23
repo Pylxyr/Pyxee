@@ -25,9 +25,10 @@
 
 use pyxee_audio::AudioError;
 use pyxee_audio::decode::{LibavSource, SampleSource};
+use pyxee_audio::eq::{BANDS, EqControl, response_db};
 use pyxee_audio::gap::find_gaps;
 use pyxee_audio::gapless::{FailKind, PreparedTrack};
-use pyxee_audio::pipeline::{Consumer, PipeEvent, Pipeline, Volume, gain_for_percent};
+use pyxee_audio::pipeline::{Consumer, Crossfade, PipeEvent, Pipeline, Volume, gain_for_percent};
 use pyxee_core::{EntryId, Heard};
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{Receiver, channel};
@@ -518,4 +519,93 @@ fn a_panic_payload_becomes_text() {
     assert_eq!(panic_message(from_string.as_ref()), "formatted");
     let other = std::panic::catch_unwind(|| std::panic::panic_any(7u8)).unwrap_err();
     assert_eq!(panic_message(other.as_ref()), "unknown panic");
+}
+
+/// A pipeline whose equalizer is driven by the returned control.
+fn with_eq() -> (Pipeline, Consumer, EqControl) {
+    let (tx, _rx) = channel();
+    let eq = EqControl::default();
+    let p = Pipeline::with_controls(
+        RATE,
+        tx,
+        Volume::default(),
+        Crossfade::default(),
+        eq.clone(),
+    );
+    let c = p.consumer();
+    (p, c, eq)
+}
+
+/// Pulls device buffers for half a second (the low bands need that long to settle on a constant level) and returns
+/// the last one.
+fn settled(c: &Consumer) -> Vec<f32> {
+    let mut buf = vec![0f32; CHUNK * 2];
+    for _ in 0..50 {
+        assert_eq!(c.pull(&mut buf, 0), buf.len());
+    }
+    buf
+}
+
+#[test]
+fn the_equalizer_off_hands_the_device_the_untouched_signal_and_on_it_changes_it() {
+    let (p, c, eq) = with_eq();
+    p.push(level_track(1, 3, 0.4));
+    sleep(Duration::from_millis(150));
+    assert!(settled(&c).iter().all(|&s| s == 0.4), "off: bit for bit");
+
+    eq.set(true, -60, &[0; BANDS]); // preamp -6 dB: the output follows within a few buffers
+    let on = settled(&c);
+    let want = 0.4 * 10f32.powf(-6.0 / 20.0);
+    assert!(
+        on.iter().all(|s| (s - want).abs() < 1e-4),
+        "{:?} vs {want}",
+        &on[..2]
+    );
+
+    eq.set(false, -60, &[0; BANDS]);
+    assert!(
+        settled(&c).iter().all(|&s| s == 0.4),
+        "off again: untouched"
+    );
+}
+
+#[test]
+fn a_boost_is_met_by_headroom_so_a_signal_at_the_band_edges_cannot_clip() {
+    let (p, c, eq) = with_eq();
+    p.push(level_track(1, 3, 0.4));
+    sleep(Duration::from_millis(150));
+    let gains = [120; BANDS];
+    eq.set(true, 0, &gains);
+    // The bands peak somewhere above their own 12 dB; the output is taken down by that much (a constant level sits at
+    // 0 Hz, where the bands have no say).
+    let peak = (0..240) // 20 Hz up to 20 kHz, every 1/24 octave
+        .map(|i| response_db(RATE, &gains, 20.0 * 2f64.powf(f64::from(i) / 24.0)))
+        .fold(f64::NEG_INFINITY, f64::max);
+    assert!(peak > 12.0);
+    let out = settled(&c);
+    let want = 0.4 * 10f32.powf(-(peak as f32) / 20.0);
+    assert!(
+        out.iter().all(|s| (s - want).abs() < want * 0.1),
+        "{:?} vs {want}",
+        &out[..2]
+    );
+}
+
+#[test]
+fn a_flush_forgets_what_the_equalizer_saw() {
+    let (p, c, eq) = with_eq();
+    let mut gains = [0; BANDS];
+    gains[0] = 120;
+    eq.set(true, 0, &gains);
+    p.push(level_track(1, 3, 0.4));
+    sleep(Duration::from_millis(150));
+    settled(&c);
+    p.flush();
+    let mut buf = vec![1f32; CHUNK * 2];
+    assert_eq!(
+        c.pull(&mut buf, 0),
+        0,
+        "nothing queued after a flush: silence"
+    );
+    assert!(buf.iter().all(|&s| s == 0.0));
 }

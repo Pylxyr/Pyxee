@@ -22,6 +22,7 @@
 )]
 
 pub mod decode;
+pub mod eq;
 pub mod gap;
 pub mod gapless;
 pub mod http;

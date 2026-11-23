@@ -7,6 +7,7 @@
 //! cancels a read that is waiting for the network (see `Pipeline::cancel_token`).
 
 use crate::CHANNELS;
+use crate::eq::{EqControl, Equalizer};
 use crate::gapless::{Event, FailKind, GaplessSource, PreparedTrack};
 use pyxee_core::{EntryId, Heard, HeardTracker};
 use std::collections::VecDeque;
@@ -153,6 +154,9 @@ struct Inner {
     tx: Sender<PipeEvent>,
     /// The gain applied to the previous buffer; the next one ramps from here to the current target.
     gain: f32,
+    /// The equalizer, between the buffer and the volume. It runs here, in the device callback, so that moving a band is
+    /// heard at once instead of after the 2 s of audio that are already decoded.
+    eq: Equalizer,
 }
 
 /// Something the engine thread wants done to the source, which only the producer thread may touch while it reads.
@@ -296,6 +300,18 @@ impl Pipeline {
         volume: Volume,
         crossfade: Crossfade,
     ) -> Self {
+        Self::with_controls(rate, tx, volume, crossfade, EqControl::default())
+    }
+
+    /// Like `with_crossfade`, with the equalizer settings the listener changes through `eq` (see `crate::eq`).
+    #[must_use]
+    pub fn with_controls(
+        rate: u32,
+        tx: Sender<PipeEvent>,
+        volume: Volume,
+        crossfade: Crossfade,
+        eq: EqControl,
+    ) -> Self {
         let shared = Arc::new(Shared {
             wake: Wake::new(),
             source: Mutex::new(GaplessSource::new()),
@@ -307,6 +323,7 @@ impl Pipeline {
                 consumed: 0,
                 tx,
                 gain: volume.gain(),
+                eq: Equalizer::new(rate, eq),
             }),
             paused: AtomicBool::new(false),
             stop: AtomicBool::new(false),
@@ -383,6 +400,7 @@ impl Pipeline {
         inner.buf.clear();
         inner.consumed = 0;
         inner.tracker.reset(0);
+        inner.eq.reset();
         self.shared.queued_tracks.store(0, Ordering::Relaxed);
         drop(inner);
         drop(src);
@@ -417,6 +435,7 @@ impl Pipeline {
         inner.buf.clear();
         inner.consumed = 0;
         inner.tracker.reset(0);
+        inner.eq.reset();
         true
     }
 
@@ -440,6 +459,7 @@ impl Pipeline {
         inner.buf.clear();
         inner.consumed = 0;
         inner.tracker.reset(0);
+        inner.eq.reset();
         drop(inner);
         self.shared
             .queued_tracks
@@ -589,6 +609,7 @@ impl Consumer {
         s.wake
             .space_freed(cap.saturating_sub(inner.buf.len()), cap / REFILL_DIVISOR);
         out[n..].fill(0.0);
+        inner.eq.process(&mut out[..n]);
         // Volume: ramp across this buffer so a change never clicks.
         let target = s.volume.gain();
         let from = inner.gain;
