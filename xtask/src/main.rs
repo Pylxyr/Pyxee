@@ -953,7 +953,7 @@ mod tests {
             "https://github.com/yt-dlp/yt-dlp/releases/tag/../x",
             "https://github.com/yt-dlp/yt-dlp/releases/tag/nightly",
             "https://github.com/yt-dlp/yt-dlp/releases/tag/2026.11.05?x=1",
-            "https://github.com/yt-dlp/yt-dlp/releases/tag/20261105202611052026110520261105",
+            "https://github.com/yt-dlp/yt-dlp/releases/tag/2026110520261105202611052026110520261105",
         ] {
             assert_eq!(tag_from_location(bad), None, "{bad}");
         }
