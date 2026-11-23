@@ -1,0 +1,14 @@
+# cargo-deny settings for `cargo deny --locked check advisories` (the `deny` job in .github/workflows/ci.yml).
+#
+# The job reads this file instead of cargo-deny's built-in defaults, which differ between cargo-deny versions: the
+# action CI uses treated every unmaintained crate anywhere in the tree as an error, including ones that only arrive
+# through Tauri (`proc-macro-error`), `lofty` (`paste`) and `souvlaki` (`zbus_names`, `zvariant`, `zvariant_derive`),
+# none of which Pyxee can replace or upgrade itself.
+
+[advisories]
+version = 2
+
+# An unmaintained crate fails the check only when a Pyxee crate depends on it directly, which is ours to change.
+# A transitive one is reported by `cargo deny check advisories` with `unmaintained = "all"` and goes away when the crate
+# that pulls it in moves. Known vulnerabilities (and anything else the advisory database marks as a problem) always fail.
+unmaintained = "workspace"

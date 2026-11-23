@@ -140,7 +140,7 @@ jobs:
       - name: Version files agree
         run: python scripts/bump_version.py --check "v$(python scripts/bump_version.py --current)"
 
-  # Known vulnerabilities in Rust dependencies (RustSec), with cargo-deny's default settings. Blocking: `ci-ok` fails
+  # Known vulnerabilities in Rust dependencies (RustSec), with the settings in deny.toml. Blocking: `ci-ok` fails
   # with it, and so does a release. The baseline is clean (the warnings listed in docs/development.md only show with
   # `unmaintained = "all"` and `unsound = "all"`).
   deny:
