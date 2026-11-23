@@ -1085,6 +1085,7 @@ input[type='range'].slider:disabled {
   }
   .page {
     position: relative;
+    isolation: isolate;
     display: flex;
     flex: 1 1 0;
     flex-direction: column;
@@ -3239,23 +3240,42 @@ input[type='range'].slider:disabled {
   align-items: center;
   gap: 2px;
 }
+/* The drawer is a pop-over, so it is opaque like the song menu and the sheets (--solid-2): --layer and --surface are
+   see-through tints under Windows 11 Mica, and the page's tiles and shelves showed through its rows. The dimming behind
+   it stops at the deck, so the player stays in reach (and the queue button there closes the drawer again). */
 .lane-scrim {
   position: fixed;
-  inset: 0;
+  inset: 0 0 calc(var(--deck-h) + 14px) 0;
   z-index: 39;
-  background: transparent;
+  background: color-mix(in srgb, #000 26%, transparent);
   cursor: default;
+  animation: scrim-in 180ms var(--ease-out) both;
 }
-.shell[data-layout='wide'] .lane[data-drawer] {
+:root[data-panels='docked'] .lane-scrim {
+  bottom: var(--deck-h);
+}
+@keyframes scrim-in {
+  from {
+    opacity: 0;
+  }
+}
+:root .shell[data-layout='wide'] .lane[data-drawer] {
   position: fixed;
   top: 78px;
   right: 14px;
   bottom: calc(var(--deck-h) + 30px);
   z-index: 40;
   width: min(var(--lane-w), calc(100vw - 28px));
-  background: linear-gradient(to bottom, var(--stage-wash), transparent 45%), var(--layer);
-  box-shadow: var(--shadow-pop);
+  border: 1px solid color-mix(in srgb, var(--fg) 22%, var(--solid-2));
+  border-radius: var(--r-lg);
+  background: linear-gradient(to bottom, var(--stage-wash), transparent 45%), var(--solid-2);
+  box-shadow: 0 30px 64px -18px rgb(0 0 0 / 0.55), 0 8px 18px -6px rgb(0 0 0 / 0.3);
   animation: lane-in 180ms var(--ease-out) both;
+}
+:root[data-panels='docked'] .shell[data-layout='wide'] .lane[data-drawer] {
+  top: 66px;
+  right: 12px;
+  bottom: calc(var(--deck-h) + 12px);
 }
 @keyframes lane-in {
   from {
@@ -3264,7 +3284,8 @@ input[type='range'].slider:disabled {
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  .shell[data-layout='wide'] .lane[data-drawer],
+  :root .shell[data-layout='wide'] .lane[data-drawer],
+  .lane-scrim,
   .ctx {
     animation: none;
   }

@@ -32,12 +32,23 @@
   // Where the seek bar's thumb is held (dragged, or released and waiting for the player): the time shows it too.
   let scrub = $state<number | null>(null);
 
+  // Escape closes the drawer wherever the focus is (opening it from the deck leaves the focus on the deck's button, not in
+  // the drawer). A pop-up menu or a sheet on top of it takes the key first and closes itself.
+  function closeDrawerOnEscape(e: KeyboardEvent) {
+    if (!drawer || e.key !== 'Escape' || e.defaultPrevented) return;
+    if (document.querySelector('[data-sheet], [data-testid="ctx-menu"]')) return;
+    e.preventDefault();
+    nav.queueDrawer = false;
+  }
+
   // The bar's empty space opens the queue; the buttons and sliders in it keep their own jobs.
   function openQueue(e: MouseEvent) {
     if ((e.target as HTMLElement).closest('button, input, [role="slider"]')) return;
     nav.go('queue');
   }
 </script>
+
+<svelte:window onkeydown={closeDrawerOnEscape} />
 
 {#if entry && queueShown}
   {#if drawer}<button class="lane-scrim" aria-label="Close the queue" tabindex="-1" onclick={() => (nav.queueDrawer = false)}></button>{/if}

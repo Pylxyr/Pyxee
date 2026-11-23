@@ -111,7 +111,11 @@ export class MockBackend extends MockLibrary implements Backend {
   }
 
   async getState() { return clone(this.#s); }
-  async windowInfo(): Promise<WindowInfoDto> { return { backdrop: 'none' }; }
+  /** `?backdrop=mica` on the page's address makes the demo wear Windows 11's see-through surfaces, to review them in a browser. */
+  async windowInfo(): Promise<WindowInfoDto> {
+    const asked = typeof location !== 'undefined' ? new URLSearchParams(location.search).get('backdrop') : null;
+    return { backdrop: asked === 'mica' ? 'mica' : 'none' };
+  }
   /** The last window theme the UI asked for (`null` = follow the system), so tests can check it arrived. */
   windowTheme: 'dark' | 'light' | null | undefined = undefined;
   async setWindowTheme(theme: 'dark' | 'light' | null) { this.windowTheme = theme; }

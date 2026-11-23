@@ -114,6 +114,27 @@ describe('App shell', () => {
     expect(nav.route).toBe('queue');
   });
 
+  it('in a window too narrow for the lane the queue is a drawer: Escape (wherever the focus is) and a click outside close it', async () => {
+    // 900 px is wide enough for the tabs and the deck, 1440 px (the lane's column) is not reached.
+    window.matchMedia = ((q: string) => ({
+      matches: q.includes('900px'), media: q,
+      addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {}, dispatchEvent: () => false, onchange: null,
+    })) as typeof window.matchMedia;
+    await openApp();
+    await fireEvent.click(await screen.findByRole('button', { name: /^Neon Harbor/ }));
+    const deck = await screen.findByTestId('player-bar');
+    await fireEvent.click(within(deck).getByRole('button', { name: 'Show the queue' }));
+    const drawer = await screen.findByTestId('queue-lane');
+    expect(drawer.hasAttribute('data-drawer')).toBe(true);
+    // The focus is still on the deck's button, outside the drawer: Escape closes it all the same.
+    await fireEvent.keyDown(within(deck).getByRole('button', { name: 'Hide the queue' }), { key: 'Escape' });
+    await waitFor(() => expect(screen.queryByTestId('queue-lane')).toBeNull());
+    await fireEvent.click(within(deck).getByRole('button', { name: 'Show the queue' }));
+    await screen.findByTestId('queue-lane');
+    await fireEvent.click(screen.getByRole('button', { name: 'Close the queue' }));
+    await waitFor(() => expect(screen.queryByTestId('queue-lane')).toBeNull());
+  });
+
   it('marks the song that is playing in every list it appears in', async () => {
     await openApp();
     const row = await screen.findByRole('button', { name: /^Neon Harbor/ });

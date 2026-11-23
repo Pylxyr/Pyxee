@@ -72,6 +72,18 @@ describe('Mica-safe colours', () => {
     expect(source('NowPlaying.svelte')).not.toMatch(/style="background:/);
   });
 
+  it('the queue drawer is opaque (--solid-2, like the song menu), has an edge and a shadow in every look, and dims the page behind it', () => {
+    const drawer = rule(":root .shell[data-layout='wide'] .lane[data-drawer]");
+    expect(drawer).toMatch(/var\(--solid-2\)/);
+    expect(drawer).not.toMatch(/var\(--(layer|surface|bg)\)/);
+    expect(drawer).toMatch(/border:\s*1px solid/);
+    expect(drawer).toMatch(/box-shadow:/);
+    expect(drawer).toMatch(/border-radius:/);
+    expect(rule('.lane-scrim')).toMatch(/background:\s*color-mix\(in srgb, #000/);
+    // The page is its own stacking context, so nothing inside it can be drawn over the drawer.
+    expect(rule('.page')).toMatch(/isolation:\s*isolate/);
+  });
+
   it('Now Playing is opaque under every look of its background (they follow the top card), because it covers the whole window', () => {
     // The base (blur rests on it), then each look that replaces it: all rest on `--solid`, never on `--bg`, `--surface` or `--layer`.
     for (const sel of [".np-root[data-wash='plain']", ".np-wash[data-wash='aurora']", ".np-wash[data-wash='gradient']", ".np-wash[data-wash='vinyl']"]) {
