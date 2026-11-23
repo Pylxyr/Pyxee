@@ -6,6 +6,14 @@ a second, and the page under Now Playing is not drawn while Now Playing covers i
 `ui/src/lib/css-budget.test.ts` (never-ending animations and large blurs), `ui/src/lib/player-reactivity.svelte.test.ts`
 (a position report re-runs only what shows the position) and the engine tests (one position report per second).
 
+## Color blends are fades, not transitions of colors
+
+When the colors taken from a cover change (Home's top card, the "Tune in" cards, Now Playing's page), the new colors are a
+second opaque layer (`components/Wash.svelte`) that fades in over the first with `opacity`, and the first is removed when it
+is covered. That runs on the compositor. A transition of the colors themselves (a custom property) would restyle and redraw the
+whole area on the main thread for every frame it lasts, so `ui/src/lib/css-budget.test.ts` allows it nowhere but the accent's own
+glide on `:root`.
+
 ## Measuring on your PC
 
 **Task Manager, Details tab.** Right-click a column header, *Select columns*, and add **CPU**, **GPU**, **GPU engine**,

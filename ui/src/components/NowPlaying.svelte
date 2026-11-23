@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { fade, fly } from 'svelte/transition';
+  import { fly } from 'svelte/transition';
   import { cubicIn, expoOut } from 'svelte/easing';
   import { player, describeFailure } from '$lib/player.svelte';
   import { nav, type NowPlayingTab } from '$lib/nav.svelte';
@@ -14,6 +14,7 @@
   import { look } from '$lib/look.svelte';
   import { heroTones } from '$lib/color';
   import { coverColorsOf } from '$lib/covercolors.svelte';
+  import Wash from './Wash.svelte';
   import Button from './Button.svelte';
   import EditableRow from './EditableRow.svelte';
   import Icon from './Icon.svelte';
@@ -36,10 +37,7 @@
     const t = washColors.value ? heroTones(washColors.value) : null;
     return t ? `--hero-a: ${t.a}; --hero-b: ${t.b}; --hero-c: ${t.c}` : undefined;
   });
-  // The colored looks are one opaque layer each. When the cover's colors change, the new layer fades in (opacity only, so the
-  // compositor does it and the window is not repainted per frame) over the old one, which stays until the new one is fully
-  // in: the blend is a straight mix of the two, with no dip or flash halfway.
-  const WASH_MS = 700;
+  // The colored looks are one opaque layer each (Wash): new colors fade a new layer in over the old one, no repaint per frame.
   const painted = $derived(wash === 'aurora' || wash === 'gradient' || wash === 'vinyl');
   let scrub = $state<number | null>(null);
   const tabs: { id: NowPlayingTab; label: string }[] = [
@@ -68,11 +66,7 @@
     out:fly={{ y: motionPx(96), duration: nav.morphing ? 0 : motionMs(MOTION.base), easing: cubicIn }}
   >
     {#if wash === 'blur'}<Backdrop class="np-bg" src={entry.track.thumbnail} seed={entry.track.key} />{/if}
-    {#if painted}
-      {#key `${wash}|${washStyle ?? ''}`}
-        <div class="np-wash" data-wash={wash} style={washStyle} aria-hidden="true" in:fade={{ duration: motionMs(WASH_MS) }} out:fade={{ delay: motionMs(WASH_MS), duration: 0 }}></div>
-      {/key}
-    {/if}
+    {#if painted}<Wash id="{wash}|{washStyle ?? ''}" look={wash} class="np-wash" style={washStyle} />{/if}
     <div class="page-pad flex shrink-0 items-center gap-2 py-3" data-testid="np-header">
       <IconButton icon="down" label="Close Now Playing" size="lg" strong onclick={() => nav.closeNowPlaying()} />
       <span class="t-strong muted">Now playing</span>

@@ -23,6 +23,7 @@
   import SectionHead from '../components/SectionHead.svelte';
   import Skeleton from '../components/Skeleton.svelte';
   import Thumb from '../components/Thumb.svelte';
+  import Wash from '../components/Wash.svelte';
   import TrackList from '../components/TrackList.svelte';
 
   // A greeting for the time of day (the hour is read once, when the page opens).
@@ -111,12 +112,14 @@
       <div
         class="hero"
         data-hero={look.value.hero}
-        style={heroStyle}
         data-testid="resume"
         role="presentation"
         oncontextmenu={(e) => openTrackMenu(hero.track, { event: e, opener: e.currentTarget.querySelector<HTMLElement>('button') })}
       >
         {#if look.value.hero === 'blur'}<Backdrop class="hero-bg" src={hero.track.thumbnail} seed={hero.track.key} />{/if}
+        {#if look.value.hero === 'aurora' || look.value.hero === 'gradient' || look.value.hero === 'vinyl'}
+          <Wash id="{look.value.hero}|{heroStyle ?? ''}" look={look.value.hero} class="hero-wash" style={heroStyle} />
+        {/if}
         <div class="hero-stage">
           {#if look.value.hero === 'vinyl'}
             {#key hero.track.key}

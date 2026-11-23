@@ -98,8 +98,6 @@ describe('nothing runs without end that the page does not need', () => {
   /** Custom-property transitions that are allowed: each ends by itself and is not part of the playing state. */
   const CUSTOM_TRANSITIONS_ALLOWED: Record<string, string> = {
     ':root': '--accent: once, 600 ms, when the colour taken from a new song arrives; it ends by itself (it does restyle the page each frame meanwhile)',
-    '.hero': '--hero-a/b/c: once, 700 ms, when the colors of a new cover arrive; the card repaints each frame meanwhile and nothing after',
-    '.mix-card': '--mix-a/b: once, 700 ms, from the stand-in colors to the cover\'s; the card repaints each frame meanwhile and nothing after',
   };
 
   it('no transition on a custom property: it runs on the main thread and redraws every frame it lasts (the seek bar did)', () => {

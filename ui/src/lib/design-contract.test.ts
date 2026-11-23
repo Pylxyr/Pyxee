@@ -84,6 +84,18 @@ describe('Mica-safe colours', () => {
     expect(base).not.toMatch(/var\(--(bg|surface|layer)\)/);
   });
 
+  it("the cover-colored looks of Home's top card and the Tune in cards are layers that fade, never a transition of their colors", () => {
+    for (const sel of [".hero-wash[data-wash='aurora']", ".hero-wash[data-wash='gradient']", ".hero-wash[data-wash='vinyl']", '.mix-bg']) {
+      const r = rule(sel);
+      expect(r, sel).toContain('background');
+      expect(r, sel).not.toMatch(/transition/);
+    }
+    // the card itself keeps no look of its own that depends on the cover's colors changing
+    expect(css).not.toMatch(/\.hero\[data-hero='(gradient|vinyl)'\]\s*\{/);
+    expect(css).not.toMatch(/@property --(hero|mix)-/);
+    expect(rule('.wash')).toMatch(/animation:\s*fade-in/);
+  });
+
   it('exposes the opaque tokens to Tailwind utilities', () => {
     for (const t of ['solid', 'solid-2', 'on-fg']) expect(css).toContain(`--color-${t}: var(--${t})`);
   });
