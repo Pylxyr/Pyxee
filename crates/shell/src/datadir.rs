@@ -70,15 +70,27 @@ pub fn audio_cache_dir(
 /// The folder that holds yt-dlp's own cache, inside the folder it is given.
 pub const YTDLP_CACHE: &str = "yt-dlp";
 
+/// The folder a portable copy keeps caches in: `cache` beside the program, next to `data` and not inside it, so what
+/// can be deleted at any time is apart from what is the user's (the library, the settings). `portable_data` is the
+/// portable data folder (see [`portable_dir`]).
+pub const PORTABLE_CACHE: &str = "cache";
+
+/// See [`PORTABLE_CACHE`]. `None` when `portable_data` has no parent folder.
+#[must_use]
+pub fn portable_cache_dir(portable_data: &Path) -> Option<PathBuf> {
+    portable_data.parent().map(|dir| dir.join(PORTABLE_CACHE))
+}
+
 /// Where yt-dlp keeps what it remembers between runs: without this it uses `~/.cache/yt-dlp` in the user's profile
-/// (on Windows `%USERPROFILE%\.cache\yt-dlp`). Same rule as the kept songs: a portable copy keeps it in its own data
-/// folder, an installed one in the system's cache folder for the app. `None` when there is neither.
+/// (on Windows `%USERPROFILE%\.cache\yt-dlp`). A portable copy keeps it in its own `cache` folder beside the program
+/// (`portable_cache`, see [`portable_cache_dir`]), an installed one in the system's cache folder for the app
+/// (`system_cache`). `None` when there is neither.
 #[must_use]
 pub fn ytdlp_cache_dir(
-    portable_data: Option<&Path>,
+    portable_cache: Option<&Path>,
     system_cache: Option<&Path>,
 ) -> Option<PathBuf> {
-    portable_data
+    portable_cache
         .or(system_cache)
         .map(|dir| dir.join(YTDLP_CACHE))
 }
@@ -239,16 +251,24 @@ mod tests {
     #[test]
     fn the_ytdlp_cache_follows_a_portable_folder_and_otherwise_uses_the_system_cache() {
         let data = Path::new("app").join("data");
+        let portable = portable_cache_dir(&data).unwrap();
         let cache = Path::new("profile").join("cache");
         assert_eq!(
-            ytdlp_cache_dir(Some(&data), Some(&cache)),
-            Some(data.join(YTDLP_CACHE))
+            portable,
+            Path::new("app").join("cache"),
+            "beside the program, next to data and not inside it"
+        );
+        assert_eq!(
+            ytdlp_cache_dir(Some(&portable), Some(&cache)),
+            Some(portable.join(YTDLP_CACHE))
         );
         assert_eq!(
             ytdlp_cache_dir(None, Some(&cache)),
             Some(cache.join(YTDLP_CACHE))
         );
         assert_eq!(ytdlp_cache_dir(None, None), None);
+        assert!(!portable.starts_with(&data), "not in the data folder");
+        assert_eq!(portable_cache_dir(Path::new("")), None);
         assert_ne!(YTDLP_CACHE, AUDIO_CACHE, "they must not share a folder");
     }
 

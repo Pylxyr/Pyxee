@@ -216,17 +216,21 @@ fn main() {
 
             let (tx, rx) = mpsc::channel();
             log::info!("yt-dlp audio format preference: {FORMAT_SELECTOR}");
-            // Installed: the system's cache folder for the app. Portable: `data\` beside the program, so nothing is
-            // left in the user's profile. Kept songs and yt-dlp's own cache both go here.
+            // Installed: the system's cache folder for the app. Portable: beside the program, so nothing is left in
+            // the user's profile.
             let portable_dir = if is_portable {
                 data_dir.as_deref()
             } else {
                 None
             };
             let system_cache = app.path().app_cache_dir().ok();
-            // yt-dlp would otherwise cache in `~/.cache/yt-dlp`, a folder in the user's profile.
-            let ytdlp_cache =
-                pyxee_shell::datadir::ytdlp_cache_dir(portable_dir, system_cache.as_deref());
+            // yt-dlp would otherwise cache in `~/.cache/yt-dlp`, a folder in the user's profile. A portable copy gives
+            // it a `cache` folder of its own beside the program, apart from `data`.
+            let portable_cache = portable_dir.and_then(pyxee_shell::datadir::portable_cache_dir);
+            let ytdlp_cache = pyxee_shell::datadir::ytdlp_cache_dir(
+                portable_cache.as_deref(),
+                system_cache.as_deref(),
+            );
             let source: Arc<dyn MusicSource> = Arc::new(CompositeSource {
                 remote: with_updated_ytdlp(
                     with_suggestions_setting(
