@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { keepInRow } from './scrollrow';
+import { hscroll, keepInRow } from './scrollrow';
 
 /** A row and an item with the given horizontal edges (jsdom has no layout, so the boxes are set by hand). */
 function boxes(row: [number, number], item: [number, number]) {
@@ -31,5 +31,61 @@ describe('keeping the chosen tab or chip in its sideways row', () => {
   it('does nothing without an item', () => {
     const { r } = boxes([0, 300], [0, 0]);
     expect(() => keepInRow(r, null)).not.toThrow();
+  });
+});
+
+/** A row 300 wide whose content is 400 wide (jsdom has no layout). */
+function wideRow(scrollWidth = 400) {
+  const row = document.createElement('div');
+  Object.defineProperty(row, 'clientWidth', { value: 300 });
+  Object.defineProperty(row, 'scrollWidth', { value: scrollWidth });
+  document.body.append(row);
+  return row;
+}
+
+describe('a row wider than its window', () => {
+  it('fades at the edge that has more behind it, and not at all when it fits', () => {
+    const row = wideRow();
+    const action = hscroll(row);
+    expect(row.hasAttribute('data-fade')).toBe(true);
+    expect(row.style.getPropertyValue('--fade-start')).toBe('0px');
+    expect(row.style.getPropertyValue('--fade-end')).toBe('28px');
+    row.scrollLeft = 100; // the end
+    row.dispatchEvent(new Event('scroll'));
+    expect(row.style.getPropertyValue('--fade-start')).toBe('28px');
+    expect(row.style.getPropertyValue('--fade-end')).toBe('0px');
+    action.destroy();
+    const fits = wideRow(300);
+    const fitsAction = hscroll(fits);
+    expect(fits.hasAttribute('data-fade')).toBe(false);
+    fitsAction.destroy();
+  });
+
+  it('turns the mouse wheel into a sideways scroll until the end, then gives the wheel back to the page', () => {
+    const row = wideRow();
+    const action = hscroll(row);
+    const down = new WheelEvent('wheel', { deltaY: 60, cancelable: true });
+    row.dispatchEvent(down);
+    expect(down.defaultPrevented).toBe(true);
+    expect(row.scrollLeft).toBe(60);
+    row.scrollLeft = 100; // at the end: the page scrolls
+    const more = new WheelEvent('wheel', { deltaY: 60, cancelable: true });
+    row.dispatchEvent(more);
+    expect(more.defaultPrevented).toBe(false);
+    // A sideways gesture (a trackpad) is already handled by the browser.
+    row.scrollLeft = 10;
+    const sideways = new WheelEvent('wheel', { deltaX: 40, deltaY: 2, cancelable: true });
+    row.dispatchEvent(sideways);
+    expect(sideways.defaultPrevented).toBe(false);
+    action.destroy();
+  });
+
+  it('leaves the wheel alone when the row fits', () => {
+    const row = wideRow(300);
+    const action = hscroll(row);
+    const e = new WheelEvent('wheel', { deltaY: 60, cancelable: true });
+    row.dispatchEvent(e);
+    expect(e.defaultPrevented).toBe(false);
+    action.destroy();
   });
 });

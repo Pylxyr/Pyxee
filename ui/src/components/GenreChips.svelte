@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { GenreDto } from '$lib/bindings/GenreDto';
   import { GENRES_SHOWN } from '$lib/genres';
-  import { keepInRow } from '$lib/scrollrow';
+  import { hscroll, keepInRow } from '$lib/scrollrow';
 
   /**
    * YouTube Music's genres as a row of chips, with "For you" (the usual page) first. Only the first few show; the rest
@@ -17,11 +17,11 @@
   let row = $state<HTMLElement>();
   $effect(() => {
     void selected;
-    if (row) keepInRow(row, row.querySelector<HTMLElement>('[aria-pressed="true"]'));
+    if (row) keepInRow(row, row.querySelector<HTMLElement>('[aria-pressed="true"]'), 56);
   });
 </script>
 
-<div class="chips" role="group" aria-label="Genres" bind:this={row}>
+<div class="chips" role="group" aria-label="Genres" bind:this={row} use:hscroll>
   <button class="chip" aria-pressed={selected === null} onclick={() => onselect(null)}>For you</button>
   {#each shown as g (g.params)}
     <button class="chip" aria-pressed={selected?.params === g.params} onclick={() => onselect(g)}>{g.title}</button>

@@ -1062,6 +1062,12 @@ input[type='range'].slider:disabled {
   .segmented .segment:focus-visible {
     outline-offset: -2px;
   }
+  /* A row that is wider than its window fades out at the edge that has more behind it (`hscroll` sets the widths). */
+  .segmented[data-fade],
+  .chips[data-fade] {
+    cursor: grab;
+    mask-image: linear-gradient(to right, transparent, #000 var(--fade-start, 0px), #000 calc(100% - var(--fade-end, 0px)), transparent);
+  }
 
   /* Layout: the masthead, the page (content layer), the lane, the deck and the dock. */
   .frame {
