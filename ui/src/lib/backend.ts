@@ -141,6 +141,8 @@ export interface Backend extends LibraryBackend {
   shellGet(): Promise<ShellSettingsDto>;
   /** Saves the tray / start-with-Windows / toast settings; resolves to what is now in effect. */
   shellSet(settings: ShellSettingsDto): Promise<ShellSettingsDto>;
+  /** Signs out of Last.fm: forgets the saved sign-in, deletes the scrobbles still waiting and turns scrobbling off. Resolves to what is now in effect. */
+  lastfmClear(): Promise<ShellSettingsDto>;
   eqGet(): Promise<EqDto>;
   /** Sets the equalizer. `save` is false while a slider is being dragged: the engine follows, the file is not written. */
   eqSet(eq: EqDto, save: boolean): Promise<EqDto>;
@@ -263,6 +265,7 @@ export async function tauriBackend(): Promise<Backend> {
     eqSet: (eq, save) => invoke<EqDto>('eq_set', { eq, save }),
     shellGet: () => invoke<ShellSettingsDto>('shell_get'),
     shellSet: (settings) => invoke<ShellSettingsDto>('shell_set', { settings }),
+    lastfmClear: () => invoke<ShellSettingsDto>('lastfm_clear'),
     flyoutHide: () => invoke<void>('flyout_hide'),
     flyoutOpenMain: () => invoke<void>('flyout_open_main'),
     miniToggle: () => invoke<void>('mini_toggle'),

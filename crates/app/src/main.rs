@@ -386,6 +386,7 @@ fn main() {
             shell::commands::sleep_get,
             shell::commands::shell_get,
             shell::commands::shell_set,
+            shell::commands::lastfm_clear,
             shell::commands::eq_get,
             shell::commands::eq_set,
             shell::commands::flyout_hide,

@@ -70,6 +70,7 @@ export const noShell = {
   eqSet: async (eq: { enabled: boolean; preamp: number; gains: number[] }) => eq,
   shellGet: async () => ({ closeToTray: false, startWithWindows: false, toastOnChange: false, trayControls: false, flyoutOnClick: true, discordPresence: false, lastfmScrobbling: false, checkPrereleases: false }),
   shellSet: async (s: { closeToTray: boolean; startWithWindows: boolean; toastOnChange: boolean; trayControls: boolean; flyoutOnClick: boolean; discordPresence: boolean; lastfmScrobbling: boolean; checkPrereleases: boolean }) => s,
+  lastfmClear: async () => ({ closeToTray: false, startWithWindows: false, toastOnChange: false, trayControls: false, flyoutOnClick: true, discordPresence: false, lastfmScrobbling: false, checkPrereleases: false }),
   flyoutHide: async () => {},
   flyoutOpenMain: async () => {},
   miniToggle: async () => {},

@@ -28,6 +28,19 @@ class ShellStore {
       this.error = messageOf(e);
     }
   }
+
+  /** Forgets the Last.fm sign-in and the scrobbles still waiting, and turns scrobbling off. Resolves to whether it worked. */
+  async clearLastfm(): Promise<boolean> {
+    if (!this.#backend) return false;
+    this.error = null;
+    try {
+      this.settings = await this.#backend.lastfmClear();
+      return true;
+    } catch (e) {
+      this.error = messageOf(e);
+      return false;
+    }
+  }
 }
 
 export const shellSettings = new ShellStore();

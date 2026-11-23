@@ -310,6 +310,28 @@ fn set_lastfm_session(app: &AppHandle, key: Option<String>) {
     shell.save_settings();
 }
 
+/// Clears everything Pyxee keeps for Last.fm: turns scrobbling off, stops its thread, deletes the scrobbles that were
+/// waiting to be sent and forgets the saved sign-in (the Credential Manager entry and, from an older version, the copy
+/// in the settings file). What Last.fm already has stays on the user's Last.fm account. Turning scrobbling on again
+/// opens the browser to sign in again.
+pub fn clear_lastfm(app: &AppHandle) {
+    let Some(shell) = app.try_state::<ShellState>() else {
+        return;
+    };
+    // The settings file's copy goes first: `sync_lastfm` would otherwise move it into the vault again.
+    if let Ok(mut s) = shell.settings.lock() {
+        s.lastfm_scrobbling = false;
+        s.lastfm_session = None;
+    }
+    shell.save_settings();
+    sync_lastfm(app, false);
+    // After the thread has stopped, so a sign-in that finished a moment ago cannot put the key back.
+    lastfm::vault::forget();
+    if let Some(file) = lastfm_queue_file(app) {
+        let _ = std::fs::remove_file(file);
+    }
+}
+
 /// Makes Windows' start-with-sign-in match the saved setting (the user may have removed it in Task Manager).
 pub fn sync_autostart(app: &AppHandle) {
     let want = app

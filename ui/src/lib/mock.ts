@@ -244,6 +244,14 @@ export class MockBackend extends MockLibrary implements Backend {
     this.shell = { ...settings };
     return { ...this.shell };
   }
+  /** How many times `lastfmClear` was called. */
+  lastfmClears = 0;
+  async lastfmClear() {
+    if (this.shellError) throw this.shellError;
+    this.lastfmClears++;
+    this.shell = { ...this.shell, lastfmScrobbling: false };
+    return { ...this.shell };
+  }
   eq: EqDto = { enabled: false, preamp: 0, gains: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0] };
   /** Every `eqSet` call, with whether it asked for the settings to be saved. */
   eqCalls: { eq: EqDto; save: boolean }[] = [];

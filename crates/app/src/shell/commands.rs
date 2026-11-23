@@ -217,6 +217,14 @@ pub fn shell_set(app: AppHandle, settings: ShellSettingsDto) -> Result<ShellSett
     Ok(settings)
 }
 
+/// Settings > Connections > "Clear Last.fm data": signs out, deletes the saved sign-in and the scrobbles waiting to be
+/// sent, and turns scrobbling off. Resolves to the settings now in effect.
+#[tauri::command]
+pub fn lastfm_clear(app: AppHandle) -> ShellSettingsDto {
+    super::clear_lastfm(&app);
+    shell_get(app)
+}
+
 #[tauri::command]
 pub fn eq_get(app: AppHandle) -> EqDto {
     let shell = app.state::<ShellState>();

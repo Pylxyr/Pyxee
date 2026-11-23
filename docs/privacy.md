@@ -16,7 +16,7 @@ Like any request on the internet, each of these also sees your IP address. yt-dl
 
 | Service | Information transmitted | Purpose |
 |---|---|---|
-| **Last.fm** | The artist, title and length of the song playing now, and of the songs you have listened to, with the time you listened. | Scrobbling to your Last.fm account. **Opt-in:** off until you switch it on, and nothing is sent while it is off. The first time, your browser opens so you can allow Pyxee on Last.fm. Pyxee never sees your Last.fm password. |
+| **Last.fm** | The artist, title and length of the song playing now, and of the songs you have listened to, with the time you listened. | Scrobbling to your Last.fm account. **Opt-in:** off until you switch it on, and nothing is sent while it is off. The first time, your browser opens so you can allow Pyxee on Last.fm. Pyxee never sees your Last.fm password. **Settings > Connections > Clear Last.fm data** signs out: it forgets the saved sign-in and deletes the scrobbles still waiting to be sent, and turns scrobbling off. |
 | **Discord** | The title and artist of the song playing now. | Discord Rich Presence ("Listening to Pyxee"). **Off by default** (since version 0.6.0): nothing is shared with Discord unless you turn it on. When on, Pyxee hands the song to the Discord app running on your computer, which shows it on your profile. |
 
 ### Good to know

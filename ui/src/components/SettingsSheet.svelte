@@ -161,6 +161,12 @@
               checked={shellSettings.settings.lastfmScrobbling}
               onchange={(on) => shellSettings.update({ lastfmScrobbling: on })}
             />
+            <div class="px-3">
+              <p class="muted t-caption">Signs out of Last.fm and deletes the sign-in Pyxee saved and any scrobbles still waiting to be sent. Scrobbling is switched off; turn it on to sign in again. What Last.fm already has stays on your Last.fm account.</p>
+              <div class="mt-2">
+                <Button size="sm" onclick={async () => { if (await shellSettings.clearLastfm()) snackbar.push('Last.fm data cleared'); }}>Clear Last.fm data</Button>
+              </div>
+            </div>
             {#if shellSettings.error}<p class="accent-text px-3" role="alert">Could not save that setting ({shellSettings.error}).</p>{/if}
           </section>
         {:else if tab.id === 'updates'}
