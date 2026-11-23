@@ -220,6 +220,7 @@ describe('Now Playing background follows the top card look', () => {
     const root = await openNowPlaying();
     expect(root.getAttribute('data-wash')).toBe('blur');
     expect(root.querySelector('canvas.np-bg')).not.toBeNull();
+    expect(root.querySelector('.np-wash')).toBeNull();
   });
 
   it.each(['aurora', 'gradient', 'vinyl', 'plain'] as const)('%s: takes the choice, with no blurred canvas', async (hero) => {
@@ -227,6 +228,10 @@ describe('Now Playing background follows the top card look', () => {
     const root = await openNowPlaying();
     expect(root.getAttribute('data-wash')).toBe(hero);
     expect(root.querySelector('canvas.np-bg')).toBeNull();
+    // The colored looks are one layer (the one that fades in over the old when the cover's colors change); Plain has none.
+    const layers = root.querySelectorAll('.np-wash');
+    expect(layers.length).toBe(hero === 'plain' ? 0 : 1);
+    if (hero !== 'plain') expect(layers[0]!.getAttribute('data-wash')).toBe(hero);
   });
 
   it('changes with the choice while it is open', async () => {
@@ -243,6 +248,7 @@ describe('Now Playing background follows the top card look', () => {
     const root = await openNowPlaying();
     expect(root.getAttribute('data-wash')).toBe('plain');
     expect(root.querySelector('canvas.np-bg')).toBeNull();
+    expect(root.querySelector('.np-wash')).toBeNull();
     look.set('surfaces', 'vivid');
     await waitFor(() => expect(root.getAttribute('data-wash')).toBe('aurora'));
   });

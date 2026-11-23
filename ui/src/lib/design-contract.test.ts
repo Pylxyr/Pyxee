@@ -73,14 +73,14 @@ describe('Mica-safe colours', () => {
   });
 
   it('Now Playing is opaque under every look of its background (they follow the top card), because it covers the whole window', () => {
-    // The base (blur and aurora paint over it), then the looks that replace it: each rests on `--solid`, never on `--bg`, `--surface` or `--layer`.
-    const base = css.match(/\.np-root \{\s*--hero-a[^}]*\}/)?.[0] ?? '';
-    expect(base).toMatch(/background:\s*color-mix\([^;]*var\(--solid\)/);
-    for (const wash of ['gradient', 'vinyl', 'plain']) {
-      const r = rule(`.np-root[data-wash='${wash}']`);
-      expect(r, wash).toContain('var(--solid)');
-      expect(r, wash).not.toMatch(/var\(--(bg|surface|layer)\)/);
+    // The base (blur rests on it), then each look that replaces it: all rest on `--solid`, never on `--bg`, `--surface` or `--layer`.
+    for (const sel of [".np-root[data-wash='plain']", ".np-wash[data-wash='aurora']", ".np-wash[data-wash='gradient']", ".np-wash[data-wash='vinyl']"]) {
+      const r = rule(sel);
+      expect(r, sel).toContain('var(--solid)');
+      expect(r, sel).not.toMatch(/var\(--(bg|surface|layer)\)/);
     }
+    const base = css.match(/\.np-root \{\s*background:[^}]*\}/)?.[0] ?? '';
+    expect(base).toContain('var(--solid)');
     expect(base).not.toMatch(/var\(--(bg|surface|layer)\)/);
   });
 

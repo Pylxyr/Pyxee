@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { fly } from 'svelte/transition';
+  import { fade, fly } from 'svelte/transition';
   import { cubicIn, expoOut } from 'svelte/easing';
   import { player, describeFailure } from '$lib/player.svelte';
   import { nav, type NowPlayingTab } from '$lib/nav.svelte';
@@ -36,6 +36,11 @@
     const t = washColors.value ? heroTones(washColors.value) : null;
     return t ? `--hero-a: ${t.a}; --hero-b: ${t.b}; --hero-c: ${t.c}` : undefined;
   });
+  // The colored looks are one opaque layer each. When the cover's colors change, the new layer fades in (opacity only, so the
+  // compositor does it and the window is not repainted per frame) over the old one, which stays until the new one is fully
+  // in: the blend is a straight mix of the two, with no dip or flash halfway.
+  const WASH_MS = 700;
+  const painted = $derived(wash === 'aurora' || wash === 'gradient' || wash === 'vinyl');
   let scrub = $state<number | null>(null);
   const tabs: { id: NowPlayingTab; label: string }[] = [
     { id: 'upnext', label: 'Up next' },
@@ -54,7 +59,6 @@
   <div
     class="np-root fixed inset-0 z-40 flex flex-col overflow-hidden"
     data-wash={wash}
-    style={washStyle}
     data-testid="np-root"
     role="region"
     aria-label="Now Playing"
@@ -64,6 +68,11 @@
     out:fly={{ y: motionPx(96), duration: nav.morphing ? 0 : motionMs(MOTION.base), easing: cubicIn }}
   >
     {#if wash === 'blur'}<Backdrop class="np-bg" src={entry.track.thumbnail} seed={entry.track.key} />{/if}
+    {#if painted}
+      {#key `${wash}|${washStyle ?? ''}`}
+        <div class="np-wash" data-wash={wash} style={washStyle} aria-hidden="true" in:fade={{ duration: motionMs(WASH_MS) }} out:fade={{ delay: motionMs(WASH_MS), duration: 0 }}></div>
+      {/key}
+    {/if}
     <div class="page-pad flex shrink-0 items-center gap-2 py-3" data-testid="np-header">
       <IconButton icon="down" label="Close Now Playing" size="lg" strong onclick={() => nav.closeNowPlaying()} />
       <span class="t-strong muted">Now playing</span>
