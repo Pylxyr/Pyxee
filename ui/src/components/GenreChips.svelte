@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { GenreDto } from '$lib/bindings/GenreDto';
   import { GENRES_SHOWN } from '$lib/genres';
+  import { keepInRow } from '$lib/scrollrow';
 
   /**
    * YouTube Music's genres as a row of chips, with "For you" (the usual page) first. Only the first few show; the rest
@@ -11,9 +12,16 @@
   let expanded = $state(false);
   const hiddenPicked = $derived(selected !== null && genres.findIndex((g) => g.params === selected.params) >= GENRES_SHOWN);
   const shown = $derived(expanded || hiddenPicked ? genres : genres.slice(0, GENRES_SHOWN));
+
+  // The row scrolls sideways in a narrow window: bring the chosen genre into view.
+  let row = $state<HTMLElement>();
+  $effect(() => {
+    void selected;
+    if (row) keepInRow(row, row.querySelector<HTMLElement>('[aria-pressed="true"]'));
+  });
 </script>
 
-<div class="chips" role="group" aria-label="Genres">
+<div class="chips" role="group" aria-label="Genres" bind:this={row}>
   <button class="chip" aria-pressed={selected === null} onclick={() => onselect(null)}>For you</button>
   {#each shown as g (g.params)}
     <button class="chip" aria-pressed={selected?.params === g.params} onclick={() => onselect(g)}>{g.title}</button>

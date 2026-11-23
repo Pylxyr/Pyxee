@@ -977,12 +977,21 @@ input[type='range'].slider:disabled {
   /* Segmented control: tabs and filters. Plain text on a hairline; the chosen one is bold with an accent underline. */
   .segmented {
     display: inline-flex;
-    flex-wrap: wrap;
+    max-width: 100%;
     gap: 4px;
     padding: 0;
     border-bottom: 1px solid var(--rule);
+    /* One line, always: a narrow window scrolls the tabs sideways (the chosen one is brought into view) instead of
+       dropping the last one onto a second line. */
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .segmented::-webkit-scrollbar {
+    display: none;
   }
   .segment {
+    flex: none;
+    white-space: nowrap;
     min-height: 32px;
     padding: 0 10px;
     border-radius: var(--r-sm) var(--r-sm) 0 0;
@@ -1033,6 +1042,25 @@ input[type='range'].slider:disabled {
   .chip-more {
     color: var(--muted);
     border-style: dashed;
+  }
+  /* A narrow window shows the genres as one row that scrolls sideways: four wrapped rows would fill the first screen. */
+  @media (max-width: 899px) {
+    .chips {
+      flex-wrap: nowrap;
+      overflow-x: auto;
+      padding-bottom: 4px;
+      scrollbar-width: none;
+    }
+    .chips::-webkit-scrollbar {
+      display: none;
+    }
+    .chip {
+      flex: none;
+      white-space: nowrap;
+    }
+  }
+  .segmented .segment:focus-visible {
+    outline-offset: -2px;
   }
 
   /* Layout: the masthead, the page (content layer), the lane, the deck and the dock. */
@@ -1488,6 +1516,8 @@ input[type='range'].slider:disabled {
   }
   .page-head-below {
     flex-basis: 100%;
+    min-width: 0;
+    max-width: 100%;
   }
   .section-head {
     display: flex;

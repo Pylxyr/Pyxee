@@ -49,7 +49,7 @@
     <p class="muted t-caption">The lyrics you open are kept with them, so they show again without the network too. With the limit Off, no lyrics are kept either.</p>
   </div>
   {#if cache}
-    <label class="flex flex-col gap-1">
+    <label class="flex w-full max-w-60 flex-col gap-1">
       <span>Keep up to</span>
       <select class="field" aria-label="Offline songs limit" value={cache.limitMb} onchange={(e) => setLimit(Number(e.currentTarget.value))}>
         {#each limits as l (l.mb)}
