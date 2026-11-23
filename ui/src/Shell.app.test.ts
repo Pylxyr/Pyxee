@@ -41,7 +41,7 @@ beforeEach(() => {
   lyricsStore.state = { kind: 'idle' };
   sleep.status = null;
   updates.reset();
-  shellSettings.settings = { closeToTray: false, startWithWindows: false, toastOnChange: false, trayControls: false, flyoutOnClick: true, discordPresence: true, lastfmScrobbling: false, checkPrereleases: false };
+  shellSettings.settings = { closeToTray: false, startWithWindows: false, toastOnChange: false, trayControls: false, flyoutOnClick: true, discordPresence: false, lastfmScrobbling: false, checkPrereleases: false };
   shellSettings.error = null;
   theme.settings = { followSystem: true, themeId: 'dark', lightId: 'light', darkId: 'dark', dynamicColor: false, custom: [] };
   for (const s of [...snackbar.items]) snackbar.dismiss(s.id);
@@ -225,7 +225,7 @@ describe('Windows settings', () => {
     await waitFor(() => expect(mock.shell.closeToTray).toBe(true));
     await fireEvent.click(within(section).getByLabelText(/Start Pyxee when I sign in/));
     await fireEvent.click(within(section).getByLabelText(/notification when the song changes/));
-    await waitFor(() => expect(mock.shell).toEqual({ closeToTray: true, startWithWindows: true, toastOnChange: true, trayControls: false, flyoutOnClick: true, discordPresence: true, lastfmScrobbling: false, checkPrereleases: false }));
+    await waitFor(() => expect(mock.shell).toEqual({ closeToTray: true, startWithWindows: true, toastOnChange: true, trayControls: false, flyoutOnClick: true, discordPresence: false, lastfmScrobbling: false, checkPrereleases: false }));
   });
 
   it('the notification area switches say what they do and save through the backend', async () => {
@@ -241,14 +241,14 @@ describe('Windows settings', () => {
     await waitFor(() => expect(mock.shell.flyoutOnClick).toBe(false));
   });
 
-  it('the Discord switch is on by default and saves through the backend', async () => {
+  it('the Discord switch is off by default and saves through the backend', async () => {
     const section = await openSettings('connections');
     const discord = within(section).getByLabelText(/playing on Discord/i);
-    expect((discord as HTMLInputElement).checked).toBe(true);
-    await fireEvent.click(discord);
-    await waitFor(() => expect(mock.shell.discordPresence).toBe(false));
+    expect((discord as HTMLInputElement).checked).toBe(false);
     await fireEvent.click(discord);
     await waitFor(() => expect(mock.shell.discordPresence).toBe(true));
+    await fireEvent.click(discord);
+    await waitFor(() => expect(mock.shell.discordPresence).toBe(false));
   });
 
   it('Settings is a centred panel with its categories on the side, and closes with its button, Escape or a click outside', async () => {
