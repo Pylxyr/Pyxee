@@ -173,7 +173,9 @@ fn main() {
             // Where the files live: the Local application-data folder. Files from the old Roaming folder are
             // copied over once, before anything opens them (see `pyxee_shell::datadir`).
             // A portable copy (`portable.txt` next to the program) keeps everything in `data\\` beside it instead.
-            let moved = portable_data_folder().unwrap_or_else(|| {
+            let portable = portable_data_folder();
+            let is_portable = portable.is_some();
+            let moved = portable.unwrap_or_else(|| {
                 pyxee_shell::datadir::resolve(
                     app.path().app_data_dir().ok().as_deref(),
                     app.path().app_local_data_dir().ok().as_deref(),
@@ -257,9 +259,18 @@ fn main() {
             );
             let scan_local = local.has_folders();
             app.manage(local);
-            // Songs kept after they play. In the cache folder (not the roaming data folder): it can grow to gigabytes.
+            // Songs kept after they play. An installed copy keeps them in the system's cache folder (not the data
+            // folder): they can take up to 4 GB. A portable copy keeps them in its own `data\audio`.
+            let portable_dir = if is_portable {
+                data_dir.as_deref()
+            } else {
+                None
+            };
             app.manage(std::sync::Arc::new(audio_cache::AudioCache::open(
-                app.path().app_cache_dir().ok().map(|d| d.join("audio")),
+                pyxee_shell::datadir::audio_cache_dir(
+                    portable_dir,
+                    app.path().app_cache_dir().ok().as_deref(),
+                ),
                 data_dir.as_ref().map(|d| d.join("audio-cache.json")),
             )));
             app.manage(shell::ShellState::load(

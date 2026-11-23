@@ -50,6 +50,23 @@ pub fn portable_dir(exe_dir: &Path) -> Option<PathBuf> {
         .then(|| exe_dir.join(PORTABLE_DATA))
 }
 
+/// The folder that holds the songs kept for playing offline, inside the folder it is given.
+pub const AUDIO_CACHE: &str = "audio";
+
+/// Where kept songs go. A portable copy keeps them in its own data folder (`portable_data`), so that copying or deleting
+/// the program folder takes them along and nothing is left in the user's profile. An installed copy uses the system's
+/// cache folder for the app (`system_cache`): kept songs can take up to 4 GB, which does not belong in the data folder
+/// that backup tools may sync. `None` when there is no folder to offer.
+#[must_use]
+pub fn audio_cache_dir(
+    portable_data: Option<&Path>,
+    system_cache: Option<&Path>,
+) -> Option<PathBuf> {
+    portable_data
+        .or(system_cache)
+        .map(|dir| dir.join(AUDIO_CACHE))
+}
+
 /// Picks the data folder. `old` is the former (Roaming) folder, `new` the Local one.
 pub fn resolve(old: Option<&Path>, new: Option<&Path>) -> Resolved {
     let mut notes = Vec::new();
@@ -201,6 +218,26 @@ mod tests {
             .collect();
         v.sort();
         v
+    }
+
+    #[test]
+    fn kept_songs_follow_a_portable_folder_and_otherwise_use_the_system_cache() {
+        let data = Path::new("app").join("data");
+        let cache = Path::new("profile").join("cache");
+        assert_eq!(
+            audio_cache_dir(Some(&data), Some(&cache)),
+            Some(data.join(AUDIO_CACHE)),
+            "a portable copy keeps them with its other files"
+        );
+        assert_eq!(
+            audio_cache_dir(None, Some(&cache)),
+            Some(cache.join(AUDIO_CACHE))
+        );
+        assert_eq!(
+            audio_cache_dir(Some(&data), None),
+            Some(data.join(AUDIO_CACHE))
+        );
+        assert_eq!(audio_cache_dir(None, None), None);
     }
 
     #[test]
