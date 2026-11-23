@@ -57,6 +57,11 @@
         {/each}
       </select>
     </label>
+    {#if cache.limitMb > 0}
+      <div class="cache-meter" role="meter" aria-label="Space used by kept songs" aria-valuemin={0} aria-valuemax={cache.limitMb} aria-valuenow={Math.min(cache.usedMb, cache.limitMb)}>
+        <span style:transform="scaleX({Math.min(1, cache.usedMb / cache.limitMb)})"></span>
+      </div>
+    {/if}
     <p role="status">
       {#if cache.limitMb === 0}
         Nothing is kept.
