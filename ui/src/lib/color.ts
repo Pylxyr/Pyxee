@@ -255,12 +255,34 @@ export function normalizeHex(v: string): string | null {
   return /^[0-9a-f]{6}$/.test(h) ? `#${h}` : null;
 }
 
+/**
+ * The centred square of a `w` x `h` picture: what the covers on screen show (they crop to a square too). YouTube's 16:9
+ * stills carry the square cover art of a "Topic" upload in the middle, between two bars of a dark colour taken from the
+ * art; those bars are almost half the picture and are not the cover, so they must not be read as its colour.
+ */
+export function centreSquare(w: number, h: number): { sx: number; sy: number; size: number } {
+  const size = Math.max(1, Math.min(w, h));
+  return { sx: Math.floor((w - size) / 2), sy: Math.floor((h - size) / 2), size };
+}
+
+function sizeOf(source: CanvasImageSource): [number, number] {
+  if (typeof HTMLImageElement !== 'undefined' && source instanceof HTMLImageElement) return [source.naturalWidth, source.naturalHeight];
+  const s = source as { width?: number; height?: number };
+  return [s.width ?? 0, s.height ?? 0];
+}
+
 function pixelsOf(source: CanvasImageSource): Uint8ClampedArray | null {
   const canvas = document.createElement('canvas');
   canvas.width = canvas.height = 32;
   const ctx = canvas.getContext('2d', { willReadFrequently: true });
   if (!ctx) return null;
-  ctx.drawImage(source, 0, 0, 32, 32);
+  const [w, h] = sizeOf(source);
+  if (w > 0 && h > 0) {
+    const { sx, sy, size } = centreSquare(w, h);
+    ctx.drawImage(source, sx, sy, size, size, 0, 0, 32, 32);
+  } else {
+    ctx.drawImage(source, 0, 0, 32, 32);
+  }
   return ctx.getImageData(0, 0, 32, 32).data;
 }
 

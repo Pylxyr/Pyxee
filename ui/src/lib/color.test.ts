@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { cardTones, contrast, deepHue, dominantColor, dominantPair, ensureContrast, heroTones, paletteFromArt } from './color';
+import { cardTones, centreSquare, contrast, deepHue, dominantColor, dominantPair, ensureContrast, heroTones, paletteFromArt } from './color';
 
 function pixels(...px: [number, number, number, number][]): Uint8ClampedArray {
   return new Uint8ClampedArray(px.flat());
@@ -202,5 +202,19 @@ describe('a cover without enough colour to have a hue', () => {
     const pair = dominantPair(cover)!;
     expect(pair.c).toBeDefined();
     expect(new Set([pair.a, pair.b, pair.c]).size).toBe(3);
+  });
+});
+
+describe('centreSquare', () => {
+  it('is the whole picture when it is square', () => {
+    expect(centreSquare(120, 120)).toEqual({ sx: 0, sy: 0, size: 120 });
+  });
+  it('cuts the bars off a 16:9 still, leaving the square cover art in its middle', () => {
+    expect(centreSquare(1280, 720)).toEqual({ sx: 280, sy: 0, size: 720 });
+    expect(centreSquare(320, 180)).toEqual({ sx: 70, sy: 0, size: 180 });
+  });
+  it('centres a tall picture too, and never returns an empty square', () => {
+    expect(centreSquare(100, 300)).toEqual({ sx: 0, sy: 100, size: 100 });
+    expect(centreSquare(0, 0).size).toBe(1);
   });
 });
