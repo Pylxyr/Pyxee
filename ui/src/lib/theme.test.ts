@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { contrast, mixHex, paletteFromArt, windowTint } from './color';
+import { contrast, mixHex, paletteFromArt, paletteFromRoles, windowTint, type CoverRoles } from './color';
 import { ThemeStore } from './theme.svelte';
 import { BUILTIN_THEMES, MAX_CUSTOM_THEMES, contrastChecks, type ThemeDef } from './themes';
 
@@ -94,6 +94,23 @@ describe('ThemeStore', () => {
     expect(contrastChecks(t.colors).filter((c) => !c.ok)).toEqual([]);
     t.art = null;
     expect(t.colors).toEqual(t.active.colors);
+  });
+
+  it('spreads the cover roles over the palette only while the cover colours the app', () => {
+    const roles: CoverRoles = { primary: '#fcd755', secondary: '#ee516f', tertiary: '#f7f1ec', dark: null, light: '#f7f1ec', hued: true, colourShare: 0.88 };
+    const t = new ThemeStore(memory(), fakeMq(true).mq);
+    t.roles = roles;
+    expect(t.rolePalette).toBeNull(); // dynamic colour is off
+    t.update({ dynamicColor: true });
+    expect(t.rolePalette).toEqual(paletteFromRoles(roles, 'dark'));
+    expect(t.rolePalette?.colors.accent).not.toBe(t.rolePalette?.accent2);
+    t.select('sky'); // a light theme: the roles are worn for the light scheme
+    expect(t.rolePalette).toEqual(paletteFromRoles(roles, 'light'));
+    t.preview = mine(); // a theme being edited is shown as it is
+    expect(t.rolePalette).toBeNull();
+    t.preview = null;
+    t.roles = null;
+    expect(t.rolePalette).toBeNull();
   });
 
   it('a palette from any cover colour reads, in both schemes', () => {

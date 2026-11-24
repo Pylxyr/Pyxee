@@ -1,5 +1,5 @@
 import type { Backend } from './backend';
-import { accentFromImage, paletteFromArt, windowTint, type WindowTint } from './color';
+import { coverRolesFromImage, paletteFromArt, paletteFromRoles, windowTint, type CoverRoles, type RolePalette, type WindowTint } from './color';
 import { crossfadeTheme } from './motion';
 import {
   BUILTIN_THEMES, DEFAULT_DARK_ID, DEFAULT_LIGHT_ID, MAX_CUSTOM_THEMES, sanitizeTheme, themeVars,
@@ -69,6 +69,8 @@ export class ThemeStore {
   backdrop = $state<Backdrop>('none');
   /** Dominant colour of the current artwork, when known. */
   art = $state<string | null>(null);
+  /** What the current artwork is made of (its colours and neutrals), when known; `art` is its primary. */
+  roles = $state<CoverRoles | null>(null);
   /** A theme being edited: shown live, not yet saved. */
   preview = $state<ThemeDef | null>(null);
 
@@ -89,6 +91,10 @@ export class ThemeStore {
     this.settings.dynamicColor && this.art && !this.preview ? paletteFromArt(this.art, this.active.scheme) : this.active.colors,
   );
   accent = $derived(this.colors.accent);
+  /** The same, with the cover's other colours spread over the interface (`accent2`, `accent3`), when the cover colours the app. */
+  rolePalette = $derived<RolePalette | null>(
+    this.settings.dynamicColor && this.roles && !this.preview ? paletteFromRoles(this.roles, this.active.scheme) : null,
+  );
   /** What the native window frame and backdrop should follow: the system (null) or a fixed light/dark. */
   windowTheme = $derived<'dark' | 'light' | null>(this.settings.followSystem && !this.preview ? null : this.resolved);
 
@@ -213,6 +219,7 @@ export function followArt(thumbnail: () => string | null, backend: () => Backend
     const url = thumbnail();
     if (!theme.settings.dynamicColor || !url) {
       theme.art = null;
+      theme.roles = null;
       return;
     }
     let live = true;
@@ -220,14 +227,16 @@ export function followArt(thumbnail: () => string | null, backend: () => Backend
     const b = backend();
     const fetchBytes = b ? (u: string) => b.coverBytes(u) : undefined;
     const attempt = (n: number) => {
-      void accentFromImage(url, fetchBytes).then((c) => {
+      void coverRolesFromImage(url, fetchBytes).then((c) => {
         if (!live) return;
         if (c) {
-          theme.art = c;
+          theme.art = c.primary;
+          theme.roles = c;
         } else if (n < ART_RETRY_MS.length) {
           timer = setTimeout(() => attempt(n + 1), ART_RETRY_MS[n]);
         } else {
           theme.art = null;
+          theme.roles = null;
         }
       });
     };

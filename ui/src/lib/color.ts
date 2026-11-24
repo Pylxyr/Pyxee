@@ -1,4 +1,4 @@
-import type { ThemeColors } from './themes';
+import type { Scheme, ThemeColors } from './themes';
 import { isKnownMissing, isMissingStill, noteMissing, thumbCandidates } from './thumb';
 
 /** The colours a cover is known by: its main one, one that sets itself apart from it, and sometimes a third. */
@@ -114,14 +114,14 @@ interface Hue {
 
 /**
  * The hues of a picture, strongest first (up to three, each at least 45 degrees from the one before), if the picture has
- * enough colour at all. Every pixel with some chroma and a lightness a theme can use votes for its hue with
+ * enough colour at all, and how much of the picture is coloured (0-1). Every pixel with some chroma and a lightness a theme can use votes for its hue with
  * the size of its chroma, so a broad area of a muted colour does not lose to a speck of a vivid one, and a faint cast over
  * grey does not count at all. A hue's colour is the chroma-weighted mean of the pixels around it.
  */
-function hues(data: Uint8ClampedArray): { found: Hue[]; meanL: number } {
+function hues(data: Uint8ClampedArray): { found: Hue[]; meanL: number; share: number } {
   type Bin = { mass: number; n: number; l: number; a: number; b: number };
   const bins: Bin[] = Array.from({ length: HUE_BINS }, () => ({ mass: 0, n: 0, l: 0, a: 0, b: 0 }));
-  let total = 0, colour = 0, lSum = 0, lN = 0;
+  let total = 0, colour = 0, lSum = 0, lN = 0, voters = 0;
   for (let i = 0; i + 3 < data.length; i += 4) {
     if (data[i + 3]! < 128) continue;
     total++;
@@ -135,9 +135,10 @@ function hues(data: Uint8ClampedArray): { found: Hue[]; meanL: number } {
     const bin = bins[Math.floor((((Math.atan2(b, a) * 180) / Math.PI + 360) % 360) / (360 / HUE_BINS)) % HUE_BINS]!;
     bin.mass += c; bin.n++; bin.l += L * c; bin.a += a * c; bin.b += b * c;
     colour += c;
+    voters++;
   }
   const meanL = lN > 0 ? lSum / lN : 0.5;
-  if (total === 0 || colour / total < MIN_COLOUR) return { found: [], meanL };
+  if (total === 0 || colour / total < MIN_COLOUR) return { found: [], meanL, share: 0 };
   const open = bins.map(() => true);
   const found: Hue[] = [];
   while (found.length < 3) {
@@ -164,7 +165,7 @@ function hues(data: Uint8ClampedArray): { found: Hue[]; meanL: number } {
     found.push({ hex: hexFromOklab(L, a, b), share: w.n / total, h: (best + 0.5) * (360 / HUE_BINS) });
     for (let d = -4; d <= 4; d++) open[(best + d + HUE_BINS) % HUE_BINS] = false;
   }
-  return { found, meanL };
+  return { found, meanL, share: voters / total };
 }
 
 /**
@@ -181,7 +182,10 @@ export function dominantPair(data: Uint8ClampedArray): CoverColors | null {
   let total = 0;
   for (let i = 3; i < data.length; i += 4) if (data[i]! >= 128) total++;
   if (total === 0) return null;
-  const parts = swatches(data);
+  return pairFrom(found, meanL, swatches(data));
+}
+
+function pairFrom(found: Hue[], meanL: number, parts: Swatch[]): CoverColors {
   const dark = (la: number) => parts.find((c) => c.share >= 0.03 && c.l < 0.36 && la - c.l >= 0.2);
   const first = found[0];
   if (!first) {
@@ -200,6 +204,62 @@ export function dominantPair(data: Uint8ClampedArray): CoverColors | null {
 /** The cover's main colour (for the optional dynamic accent): a grey for a cover without a hue; null for no picture. */
 export function dominantColor(data: Uint8ClampedArray): string | null {
   return dominantPair(data)?.a ?? null;
+}
+
+/**
+ * What a cover is made of, as roles the interface can wear. The three colours are the ones `dominantPair` finds (the
+ * same `a`, `b` and, when it has one, `c`), so a hue is only ever one the picture really has; the neutrals are the grey,
+ * black and white that cover enough of it. `paletteFromRoles` turns the roles into colours for a scheme.
+ */
+export interface CoverRoles {
+  /** The cover's strongest hue; a grey for a cover without one. */
+  primary: string;
+  /** Its next hue, else the dark beside the primary, else the primary a little darker. */
+  secondary: string;
+  /** A third hue, else the cover's own light neutral (white type), else the primary lighter. */
+  tertiary: string;
+  /** The dark and the light neutral of the cover (each at least 3 % of it, grey, black or white), if it has one. */
+  dark: string | null;
+  light: string | null;
+  /** Whether the cover has a hue at all. One without is neutral, and so is every role. */
+  hued: boolean;
+  /** How much of the picture is coloured (0-1): a black sleeve with a small red logo has little, a yellow one a lot. */
+  colourShare: number;
+}
+
+/** Grey, black or white for our purposes: below the chroma at which `hues` counts a pixel as coloured. */
+function isNeutral(hex: string): boolean {
+  const [L, a, b] = toOklab(...parseHex(hex));
+  return Math.hypot(a, b) < minChroma(L);
+}
+
+/** The roles of a picture; null for one with nothing in it. */
+export function coverRoles(data: Uint8ClampedArray): CoverRoles | null {
+  let total = 0;
+  for (let i = 3; i < data.length; i += 4) if (data[i]! >= 128) total++;
+  if (total === 0) return null;
+  const { found, meanL, share } = hues(data);
+  const parts = swatches(data);
+  const pair = pairFrom(found, meanL, parts);
+  // A cover's black or white is spread over several swatches (the edges of type and drawings blend into their
+  // neighbours), so its dark and light neutrals are each the average of all the neutral swatches on that side.
+  const neutrals = parts.filter((c) => isNeutral(c.hex));
+  const side = (on: (c: Swatch) => boolean) => {
+    const group = neutrals.filter(on);
+    const covered = group.reduce((n, c) => n + c.share, 0);
+    if (covered < 0.03) return null;
+    const mean = (at: number) => group.reduce((n, c) => n + parseHex(c.hex)[at]! * c.share, 0) / covered;
+    return toHex(mean(0), mean(1), mean(2));
+  };
+  const dark = side((c) => c.l < 0.4);
+  const light = side((c) => c.l > 0.8);
+  let tertiary = pair.c ?? light;
+  if (!tertiary) {
+    const [h, s, l] = toHsl(pair.a);
+    const lighter = clamp(l + (l > 0.72 ? -0.14 : 0.14), 0.3, 0.86);
+    tertiary = found.length > 0 ? fromHsl(deepHue(h, lighter), clamp(s, 0.25, 0.9), lighter) : hexFromOklab(clamp(meanL + 0.3, 0.6, 0.95), 0, 0);
+  }
+  return { primary: pair.a, secondary: pair.b, tertiary, dark, light, hued: found.length > 0, colourShare: share };
 }
 
 export function toHex(r: number, g: number, b: number): string {
@@ -286,31 +346,32 @@ function pixelsOf(source: CanvasImageSource): Uint8ClampedArray | null {
   return ctx.getImageData(0, 0, 32, 32).data;
 }
 
-const sampleColor = (source: CanvasImageSource): string | null => {
+const sampleRoles = (source: CanvasImageSource): CoverRoles | null => {
   const px = pixelsOf(source);
-  return px ? dominantColor(px) : null;
+  return px ? coverRoles(px) : null;
 };
 const samplePair = (source: CanvasImageSource): CoverColors | null => {
   const px = pixelsOf(source);
   return px ? dominantPair(px) : null;
 };
 
-const colorCache = new Map<string, string>();
+const rolesCache = new Map<string, CoverRoles>();
 const COLOR_CACHE_MAX = 64;
 
 /**
- * Loads a cover and returns its dominant colour, or null if it cannot be had. It asks for the same small images the
- * covers on screen use (https, the sized or still variant) and moves on to the next one when a picture is missing.
- * The page can only read an image's pixels when the image host allows it; when it does not, `fetchBytes` (the app
- * fetching the picture itself) is used instead. A cover's colour is remembered, so a song that comes round again costs nothing.
+ * Loads a cover and returns its roles (its main colour is `primary`), or null if it cannot be had. It asks for the same
+ * small images the covers on screen use (https, the sized or still variant) and moves on to the next one when a picture
+ * is missing. The page can only read an image's pixels when the image host allows it; when it does not, `fetchBytes`
+ * (the app fetching the picture itself) is used instead. A cover's roles are remembered, so a song that comes round
+ * again costs nothing.
  */
-export async function accentFromImage(url: string, fetchBytes?: (url: string) => Promise<ArrayBuffer>): Promise<string | null> {
-  const known = colorCache.get(url);
+export async function coverRolesFromImage(url: string, fetchBytes?: (url: string) => Promise<ArrayBuffer>): Promise<CoverRoles | null> {
+  const known = rolesCache.get(url);
   if (known) return known;
-  const found = await readColors(url, fetchBytes, sampleColor);
+  const found = await readColors(url, fetchBytes, sampleRoles);
   if (found) {
-    if (colorCache.size >= COLOR_CACHE_MAX) colorCache.delete(colorCache.keys().next().value as string);
-    colorCache.set(url, found);
+    if (rolesCache.size >= COLOR_CACHE_MAX) rolesCache.delete(rolesCache.keys().next().value as string);
+    rolesCache.set(url, found);
   }
   return found;
 }
@@ -430,44 +491,118 @@ const surfaceTint = (s: number, ceiling: number) => (s < 0.08 ? s : clamp(s * 0.
  */
 const accentSat = (s: number) => (s < 0.3 ? s * 2 : clamp(s, 0.6, 0.95));
 
+/** The surfaces, lines and text of a palette: the hue `h` at strength `n`, deep in the dark scheme, pale in the light one. */
+function layers(h: number, n: number, scheme: Scheme) {
+  // Yellow turned dark would be olive green: every colour below takes the hue it needs at its own lightness.
+  const at = (sat: number, light: number) => fromHsl(deepHue(h, light), sat, light);
+  if (scheme === 'dark') {
+    const surface2 = at(n, 0.21);
+    return {
+      bg: at(n, 0.115),
+      surface: at(n, 0.155),
+      surface2,
+      line: at(n * 0.9, 0.3),
+      fg: at(n * 0.4, 0.95),
+      muted: ensureContrastOn(at(n * 0.8, 0.7), surface2, 'dark', 4.5),
+    };
+  }
+  const surface2 = at(n, 0.855);
+  return {
+    bg: at(n, 0.935),
+    surface: at(n, 0.9),
+    surface2,
+    line: at(n * 0.9, 0.72),
+    fg: at(n * 0.6, 0.1),
+    muted: ensureContrastOn(at(n * 0.7, 0.34), surface2, 'light', 4.5),
+  };
+}
+
 /**
  * A whole theme from one colour (the cover's): background, panels, lines, text and accent all take its hue, and the
  * surfaces are visibly tinted by it. Dark or light follows `scheme`: a deep shade of the colour in dark mode, a pale
  * one in light mode. The text and the accent are nudged until they read on the background and on the raised panels,
  * as the built-in themes do.
  */
-export function paletteFromArt(art: string, scheme: 'dark' | 'light'): ThemeColors {
+export function paletteFromArt(art: string, scheme: Scheme): ThemeColors {
   const [h, s, l] = toHsl(art);
-  // Yellow turned dark would be olive green: every colour below takes the hue it needs at its own lightness.
   const at = (sat: number, light: number) => fromHsl(deepHue(h, light), sat, light);
-  if (scheme === 'dark') {
-    const n = surfaceTint(s, 0.6);
-    const bg = at(n, 0.115);
-    const surface = at(n, 0.155);
-    const surface2 = at(n, 0.21);
-    return {
-      bg,
-      surface,
-      surface2,
-      line: at(n * 0.9, 0.3),
-      fg: at(n * 0.4, 0.95),
-      muted: ensureContrastOn(at(n * 0.8, 0.7), surface2, 'dark', 4.5),
-      accent: ensureContrastOn(at(accentSat(s), clamp(l, 0.58, 0.74)), surface2, 'dark', 3),
-    };
-  }
-  const n = surfaceTint(s, 0.5);
-  const bg = at(n, 0.935);
-  const surface = at(n, 0.9);
-  const surface2 = at(n, 0.855);
-  return {
-    bg,
-    surface,
-    surface2,
-    line: at(n * 0.9, 0.72),
-    fg: at(n * 0.6, 0.1),
-    muted: ensureContrastOn(at(n * 0.7, 0.34), surface2, 'light', 4.5),
-    accent: ensureContrastOn(at(accentSat(s), clamp(l, 0.28, 0.4)), surface2, 'light', 3),
+  const layer = layers(h, surfaceTint(s, scheme === 'dark' ? 0.6 : 0.5), scheme);
+  const accent =
+    scheme === 'dark'
+      ? ensureContrastOn(at(accentSat(s), clamp(l, 0.58, 0.74)), layer.surface2, 'dark', 3)
+      : ensureContrastOn(at(accentSat(s), clamp(l, 0.28, 0.4)), layer.surface2, 'light', 3);
+  return { ...layer, accent };
+}
+
+/** A theme made of a cover's roles: the palette as `paletteFromArt` makes it, and the two colours the rest of the interface wears. */
+export interface RolePalette {
+  /** Surfaces and text from the cover's neutrals, the accent from its primary. */
+  colors: ThemeColors;
+  /** The secondary: the second stop of gradients, fills such as the seek bar. */
+  accent2: string;
+  /** The tertiary: small highlights. */
+  accent3: string;
+}
+
+/**
+ * How a role is worn: the band its hsl lightness is held in, by scheme. A coloured cover's roles stand apart by hue (the
+ * primary's band is `paletteFromArt`'s); a grey one's can only stand apart by lightness, so its bands do not overlap.
+ */
+const WEAR = {
+  dark: {
+    hued: { primary: [0.58, 0.74], secondary: [0.46, 0.62], tertiary: [0.74, 0.88] },
+    grey: { primary: [0.7, 0.76], secondary: [0.5, 0.54], tertiary: [0.88, 0.94] },
+  },
+  light: {
+    hued: { primary: [0.28, 0.4], secondary: [0.18, 0.3], tertiary: [0.34, 0.42] },
+    grey: { primary: [0.38, 0.44], secondary: [0.12, 0.18], tertiary: [0.24, 0.3] },
+  },
+} as const;
+
+/**
+ * The palette for a cover's roles. The surfaces and text are the cover's neutral side: they take the primary's hue only
+ * as far as the picture is coloured (a grey cover is exactly grey, a black one with a small red logo hardly tinted, a
+ * yellow one clearly warm). The three accents are the three roles, each brought into its lightness band, then nudged
+ * until it holds 3:1 against the raised panels (slider fills, focus rings, icons) and until the text on it reads at
+ * 4.5:1: dark text in the dark scheme, white in the light one, so one on-colour serves every role and every gradient
+ * between two of them. A role that cannot be worn in this scheme (a black one on a dark page) is the primary's hue
+ * darker or deeper instead: a hue the cover has, never one turned around the wheel.
+ */
+export function paletteFromRoles(roles: CoverRoles, scheme: Scheme): RolePalette {
+  const dark = scheme === 'dark';
+  const [h, s] = toHsl(roles.primary);
+  const strength = roles.hued ? clamp(roles.colourShare / 0.3, 0.3, 1) : 1;
+  const layer = layers(h, surfaceTint(s, dark ? 0.6 : 0.5) * strength, scheme);
+  const textOn = dark ? '#0f0f0f' : '#ffffff';
+  const wear = (hex: string, band: readonly [number, number]) => {
+    const [hh, ss, ll] = toHsl(hex);
+    const light = clamp(ll, band[0], band[1]);
+    // A neutral is exactly grey: the cast of a sleeve's black or white is not a colour.
+    const worn = fromHsl(deepHue(hh, light), isNeutral(hex) ? 0 : accentSat(ss), light);
+    return ensureContrastOn(ensureContrastOn(worn, layer.surface2, scheme, 3), textOn, scheme, 4.5);
   };
+  const [hp, sp, lp] = toHsl(roles.primary);
+  const shade = (f: number) => fromHsl(deepHue(hp, lp * f), clamp(sp, 0.25, 0.9), lp * f);
+  const unreadable = (hex: string) => roles.hued && isNeutral(hex) && (dark ? luminance(hex) < 0.2 : luminance(hex) > 0.5);
+  const bands = WEAR[scheme][roles.hued ? 'hued' : 'grey'];
+  let primary = wear(roles.primary, bands.primary);
+  let accent2 = wear(unreadable(roles.secondary) ? shade(0.75) : roles.secondary, bands.secondary);
+  let accent3 = wear(unreadable(roles.tertiary) ? shade(dark ? 1.15 : 0.6) : roles.tertiary, bands.tertiary);
+  // The chosen row is the raised panel tinted by the primary, so the primary's own bar and title, and the tertiary's
+  // playing mark, must hold there too: it is the hardest ground they sit on. (The secondary only tints it as a sweep.)
+  const row = () => mixHex(layer.surface2, primary, 0.16);
+  const further = dark ? '#ffffff' : '#000000';
+  for (let i = 0; i < 3; i++) primary = ensureContrastOn(primary, row(), scheme, 3);
+  // The title of the chosen row is the primary mixed into the text colour (accent-ink): it reads at 4.5:1 there and on the page.
+  const inkReads = () => [row(), layer.bg].every((g) => contrast(mixHex(layer.fg, primary, 0.75), g) >= 4.5);
+  for (let i = 0; i < 8 && !inkReads(); i++) primary = mixHex(primary, further, 0.06);
+  accent3 = ensureContrastOn(accent3, row(), scheme, 3);
+  // The play button and the chosen tab run from the primary to the secondary under one text colour: it must read all along.
+  const onPrimary = readableOn(primary);
+  const reads = (end: string) => Array.from({ length: 9 }, (_, i) => i / 8).every((t) => contrast(onPrimary, mixHex(primary, end, t)) >= 4.5);
+  for (let i = 0; i < 8 && !reads(accent2); i++) accent2 = mixHex(accent2, primary, 0.2);
+  if (!reads(accent2)) accent2 = primary;
+  return { colors: { ...layer, accent: primary }, accent2, accent3 };
 }
 
 /** `hex` with its saturation and lightness held inside the given ranges (a grey one stays grey). */
