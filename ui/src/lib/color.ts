@@ -304,6 +304,13 @@ export function mixHex(a: string, b: string, t: number): string {
 const surfaceTint = (s: number, ceiling: number) => (s < 0.08 ? s : clamp(s * 0.8, 0.22, ceiling));
 
 /**
+ * How saturated the accent is for a cover of saturation `s`: strong for a colourful cover, and only as much as the cover
+ * has for a grey one. A grey, black or white sleeve has no hue (it reads as 0 degrees, red), so lifting it to a strong
+ * colour made a grey cover a red-orange theme.
+ */
+const accentSat = (s: number) => (s < 0.3 ? s * 2 : clamp(s, 0.6, 0.95));
+
+/**
  * A whole theme from one colour (the cover's): background, panels, lines, text and accent all take its hue, and the
  * surfaces are visibly tinted by it. Dark or light follows `scheme`: a deep shade of the colour in dark mode, a pale
  * one in light mode. The text and the accent are nudged until they read on the background and on the raised panels,
@@ -325,7 +332,7 @@ export function paletteFromArt(art: string, scheme: 'dark' | 'light'): ThemeColo
       line: at(n * 0.9, 0.3),
       fg: at(n * 0.4, 0.95),
       muted: ensureContrastOn(at(n * 0.8, 0.7), surface2, 'dark', 4.5),
-      accent: ensureContrastOn(at(clamp(s, 0.6, 0.95), clamp(l, 0.58, 0.74)), surface2, 'dark', 3),
+      accent: ensureContrastOn(at(accentSat(s), clamp(l, 0.58, 0.74)), surface2, 'dark', 3),
     };
   }
   const n = surfaceTint(s, 0.5);
@@ -339,7 +346,7 @@ export function paletteFromArt(art: string, scheme: 'dark' | 'light'): ThemeColo
     line: at(n * 0.9, 0.72),
     fg: at(n * 0.6, 0.1),
     muted: ensureContrastOn(at(n * 0.7, 0.34), surface2, 'light', 4.5),
-    accent: ensureContrastOn(at(clamp(s, 0.6, 0.95), clamp(l, 0.28, 0.4)), surface2, 'light', 3),
+    accent: ensureContrastOn(at(accentSat(s), clamp(l, 0.28, 0.4)), surface2, 'light', 3),
   };
 }
 

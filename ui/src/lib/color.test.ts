@@ -150,3 +150,23 @@ describe('deepHue', () => {
     expect(deepHue(200, 0.2)).toBe(200);
   });
 });
+
+describe('a grey cover', () => {
+  const grey = pixels(...repeat([177, 177, 177, 255], 50), ...repeat([206, 204, 203, 255], 20), ...repeat([45, 45, 44, 255], 15), ...repeat([244, 243, 243, 255], 15));
+  // How far from grey a colour is: the spread of its channels.
+  const spread = (hex: string) => {
+    const ch = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
+    return Math.max(...ch) - Math.min(...ch);
+  };
+  it('gives a grey theme, not a red or orange one (grey has no hue to keep)', () => {
+    const art = dominantColor(grey)!;
+    for (const scheme of ['dark', 'light'] as const) {
+      const p = paletteFromArt(art, scheme);
+      for (const hex of [p.accent, p.bg, p.surface, p.surface2, p.line, p.fg, p.muted]) expect(spread(hex), `${scheme} ${hex}`).toBeLessThan(30);
+    }
+  });
+  it('a faint tint still gives only a faint accent, a clear colour a strong one', () => {
+    expect(spread(paletteFromArt('#b8aeaa', 'dark').accent)).toBeLessThan(spread(paletteFromArt('#d04030', 'dark').accent));
+    expect(spread(paletteFromArt('#d04030', 'dark').accent)).toBeGreaterThan(80);
+  });
+});
