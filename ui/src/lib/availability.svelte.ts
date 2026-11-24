@@ -1,3 +1,4 @@
+import { untrack } from 'svelte';
 import { library } from './library.svelte';
 
 /** How long an answer is trusted before the file is looked at again (a drive can come back, a file can be restored). */
@@ -52,7 +53,9 @@ export class AvailabilityStore {
   reset(): void {
     this.#looked.clear();
     this.#resetAt = Date.now();
-    this.epoch++;
+    // Not `epoch++`: that reads `epoch` too, so an effect that calls `reset` (On this device does, after a scan) would depend
+    // on what it writes and run again, until Svelte stopped it with "effect_update_depth_exceeded".
+    this.epoch = untrack(() => this.epoch) + 1;
   }
 
   async #flush(): Promise<void> {
