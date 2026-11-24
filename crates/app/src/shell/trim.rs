@@ -53,6 +53,26 @@ pub(crate) fn webview_family(own: u32, all: &[Proc]) -> Vec<u32> {
     out
 }
 
+/// Trims once, on a thread of its own. `still_wanted` says whether the page is still asleep (a window shown meanwhile
+/// is left alone). `label` names the page in the log.
+#[cfg_attr(not(windows), allow(dead_code))]
+pub fn trim_after_sleep(label: String, still_wanted: Box<dyn Fn() -> bool + Send>) {
+    let spawned = std::thread::Builder::new()
+        .name("trim-working-set".into())
+        .spawn(move || {
+            if !still_wanted() {
+                return;
+            }
+            let n = trim_family();
+            let done = format!("{label}: trimmed the working set of {n} processes");
+            log::debug!("{done}");
+            crate::commands::perf_note(&done);
+        });
+    if let Err(e) = spawned {
+        log::debug!("could not start the working-set trim: {e}");
+    }
+}
+
 #[cfg(windows)]
 fn trim_family() -> usize {
     sys::trim_family()
