@@ -17,12 +17,14 @@ describe('dominantColor', () => {
     const data = pixels(...repeat([0, 0, 0, 255], 20), ...repeat([255, 255, 255, 255], 20), ...repeat([200, 40, 60, 255], 5), ...repeat([200, 40, 60, 0], 20));
     expect(dominantColor(data)).toBe('#c8283c');
   });
-  it('still finds a colour in a cover that is only dark or only light', () => {
-    expect(dominantColor(pixels(...repeat([20, 22, 30, 255], 50)))).toBe('#14161e');
-    expect(dominantColor(pixels(...repeat([240, 240, 235, 255], 50)))).toBe('#f0f0eb');
+  it('gives a grey, not a hue, to a cover that is only dark or only light', () => {
+    for (const px of [[20, 22, 30], [240, 240, 235], [0, 0, 0], [255, 255, 255]] as const) {
+      const hex = dominantColor(pixels(...repeat([...px, 255], 50)))!;
+      expect(hex.slice(1, 3) === hex.slice(3, 5) && hex.slice(3, 5) === hex.slice(5, 7), hex).toBe(true);
+    }
   });
-  it('has no colour for a picture that is pure black, pure white or transparent', () => {
-    expect(dominantColor(pixels(...repeat([0, 0, 0, 255], 20), ...repeat([255, 255, 255, 255], 20), ...repeat([200, 40, 60, 0], 20)))).toBeNull();
+  it('has no colour only for a picture with nothing in it (transparent)', () => {
+    expect(dominantColor(pixels(...repeat([200, 40, 60, 0], 20)))).toBeNull();
   });
   it('still finds a colour in a dark or a pale cover instead of giving up', () => {
     const dark = dominantColor(pixels(...repeat([24, 26, 40, 255], 50), ...repeat([0, 0, 0, 255], 50)));
@@ -168,5 +170,37 @@ describe('a grey cover', () => {
   it('a faint tint still gives only a faint accent, a clear colour a strong one', () => {
     expect(spread(paletteFromArt('#b8aeaa', 'dark').accent)).toBeLessThan(spread(paletteFromArt('#d04030', 'dark').accent));
     expect(spread(paletteFromArt('#d04030', 'dark').accent)).toBeGreaterThan(80);
+  });
+});
+
+describe('a cover without enough colour to have a hue', () => {
+  const spread = (hex: string) => {
+    const ch = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
+    return Math.max(...ch) - Math.min(...ch);
+  };
+  it('stays neutral when only a faint cast or a handful of pixels of it are there (the grey cover that went pink)', () => {
+    // Grey, black and white with 6 % of a faint pink cast: the old scoring picked the cast and made the theme salmon.
+    const cover = pixels(...repeat([177, 177, 177, 255], 45), ...repeat([245, 245, 245, 255], 20), ...repeat([40, 40, 40, 255], 20), ...repeat([236, 215, 212, 255], 6), ...repeat([206, 204, 203, 255], 9));
+    const pair = dominantPair(cover)!;
+    expect(spread(pair.a)).toBe(0);
+    expect(spread(pair.b)).toBeLessThan(10);
+    expect(pair.c).toBeUndefined();
+    expect(spread(paletteFromArt(dominantColor(cover)!, 'dark').accent)).toBeLessThan(10);
+  });
+  it('still takes a clear colour from a small area: a red logo on a black cover', () => {
+    const cover = pixels(...repeat([20, 20, 20, 255], 80), ...repeat([200, 40, 60, 255], 6));
+    expect(dominantColor(cover)).toBe('#c8283c');
+  });
+  it('picks the colour with the most colour in it, not the lightest or the most numerous faint one', () => {
+    // A lot of faint beige, a smaller area of a clear blue: the blue is the cover's colour.
+    const cover = pixels(...repeat([225, 215, 195, 255], 50), ...repeat([40, 90, 200, 255], 25), ...repeat([30, 30, 30, 255], 25));
+    const [r, , b] = [1, 3, 5].map((i) => parseInt(dominantColor(cover)!.slice(i, i + 2), 16)) as [number, number, number];
+    expect(b).toBeGreaterThan(r + 60);
+  });
+  it('gets a hue from each of up to three colours, 45 degrees or more apart', () => {
+    const cover = pixels(...repeat([200, 40, 60, 255], 40), ...repeat([205, 60, 70, 255], 20), ...repeat([40, 90, 200, 255], 25), ...repeat([30, 160, 80, 255], 15));
+    const pair = dominantPair(cover)!;
+    expect(pair.c).toBeDefined();
+    expect(new Set([pair.a, pair.b, pair.c]).size).toBe(3);
   });
 });

@@ -1,39 +1,5 @@
 import type { ThemeColors } from './themes';
 import { isKnownMissing, isMissingStill, noteMissing, thumbCandidates } from './thumb';
-type Bucket = { w: number; r: number; g: number; b: number };
-
-/** The colour buckets of the pixels whose lightness is within [lo, hi], heaviest first. */
-function buckets(data: Uint8ClampedArray, lo: number, hi: number, greyWeight: number): string[] {
-  const found = new Map<number, Bucket>();
-  for (let i = 0; i + 3 < data.length; i += 4) {
-    const r = data[i]!, g = data[i + 1]!, b = data[i + 2]!, a = data[i + 3]!;
-    if (a < 128) continue;
-    const max = Math.max(r, g, b), min = Math.min(r, g, b);
-    const light = (max + min) / 510;
-    if (light < lo || light > hi) continue;
-    const sat = max === min ? 0 : (max - min) / (255 - Math.abs(max + min - 255));
-    const key = ((r >> 5) << 6) | ((g >> 5) << 3) | (b >> 5);
-    const weight = greyWeight + sat; // prefer colourful pixels over grey ones
-    const e = found.get(key) ?? { w: 0, r: 0, g: 0, b: 0 };
-    e.w += weight; e.r += r * weight; e.g += g * weight; e.b += b * weight;
-    found.set(key, e);
-  }
-  return [...found.values()].sort((x, y) => y.w - x.w).map((e) => toHex(e.r / e.w, e.g / e.w, e.b / e.w));
-}
-
-/** The heaviest colour bucket of the pixels whose lightness is within [lo, hi]; null when none qualifies. */
-function heaviest(data: Uint8ClampedArray, lo: number, hi: number, greyWeight: number): string | null {
-  return buckets(data, lo, hi, greyWeight)[0] ?? null;
-}
-
-/**
- * Picks a vivid representative colour from RGBA pixel data (for the optional dynamic accent). Near-black and
- * near-white pixels are poor accents, so they are left out first; a cover made only of them (a dark or a white
- * sleeve) would then have no colour at all, so it is read again with those allowed rather than giving up.
- */
-export function dominantColor(data: Uint8ClampedArray): string | null {
-  return heaviest(data, 0.12, 0.9, 0.15) ?? heaviest(data, 0.03, 0.97, 0.05);
-}
 
 /** The colours a cover is known by: its main one, one that sets itself apart from it, and sometimes a third. */
 export interface CoverColors {
@@ -42,12 +8,6 @@ export interface CoverColors {
   /** A third colour of its own, when the cover has one (a card's looks make one up from `a` otherwise). */
   c?: string;
 }
-
-/** How far apart two hues are, in degrees (0-180). */
-const hueGap = (x: number, y: number) => {
-  const d = Math.abs(x - y) % 360;
-  return d > 180 ? 360 - d : d;
-};
 
 /** A colour of the picture and how much of the picture it covers (0-1), grey, black and white included. */
 interface Swatch {
@@ -80,28 +40,166 @@ function swatches(data: Uint8ClampedArray): Swatch[] {
     });
 }
 
-/** Colour that is not grey, black or white: something a hue can be told from. */
-const chromatic = (c: Swatch) => c.s > 0.15 && c.l >= 0.1 && c.l <= 0.93;
+/** sRGB (0-255) to OKLab, the colour space where equal steps look equal. */
+function toOklab(r: number, g: number, b: number): [number, number, number] {
+  const lin = (v: number) => {
+    const c = v / 255;
+    return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+  };
+  const [lr, lg, lb] = [lin(r), lin(g), lin(b)];
+  const l = Math.cbrt(0.4122214708 * lr + 0.5363325363 * lg + 0.0514459929 * lb);
+  const m = Math.cbrt(0.2119034982 * lr + 0.6806995451 * lg + 0.1073969566 * lb);
+  const s = Math.cbrt(0.0883024619 * lr + 0.2817188376 * lg + 0.6299787005 * lb);
+  return [
+    0.2104542553 * l + 0.793617785 * m - 0.0040720468 * s,
+    1.9779984951 * l - 2.428592205 * m + 0.4505937099 * s,
+    0.0259040371 * l + 0.7827717662 * m - 0.808675766 * s,
+  ];
+}
+
+/** OKLab to linear sRGB (0-1; outside that range when the colour does not exist on a screen). */
+function oklabToLinear(L: number, a: number, b: number): [number, number, number] {
+  const l = (L + 0.3963377774 * a + 0.2158037573 * b) ** 3;
+  const m = (L - 0.1055613458 * a - 0.0638541728 * b) ** 3;
+  const s = (L - 0.0894841775 * a - 1.291485548 * b) ** 3;
+  return [
+    4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s,
+    -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s,
+    -0.0041960863 * l - 0.7034186147 * m + 1.707614701 * s,
+  ];
+}
+
+/** An OKLab colour as hex; one a screen cannot show keeps its lightness and hue and gives up chroma until it fits. */
+function hexFromOklab(L: number, a: number, b: number): string {
+  const fits = (k: number) => oklabToLinear(L, a * k, b * k).every((v) => v >= -0.0005 && v <= 1.0005);
+  let k = 1;
+  if (!fits(1)) {
+    let lo = 0, hi = 1;
+    for (let i = 0; i < 14; i++) {
+      const mid = (lo + hi) / 2;
+      if (fits(mid)) lo = mid;
+      else hi = mid;
+    }
+    k = lo;
+  }
+  const gamma = (v: number) => {
+    const c = Math.max(0, Math.min(1, v));
+    return (c <= 0.0031308 ? 12.92 * c : 1.055 * c ** (1 / 2.4) - 0.055) * 255;
+  };
+  const [r, g, bl] = oklabToLinear(L, a * k, b * k);
+  return toHex(gamma(r), gamma(g), gamma(bl));
+}
+
+/**
+ * Below this OKLCH chroma a pixel is grey for our purposes: the faint warm or cool cast of a grey sleeve is below it.
+ * Dark colours have less chroma for the same look (a dark navy is "bluish" at a third of it), so it scales with lightness.
+ */
+const minChroma = (L: number) => 0.04 * clamp(L / 0.7, 0.5, 1);
+/**
+ * A cover needs this much colour (the chroma of its coloured pixels, summed and divided by the number of pixels) before
+ * it gets a hue; less and its theme is neutral. Measured on real covers: grey, black and white sleeves with a cast are
+ * below 0.004, a black cover with a 6 % red logo is 0.011, the palest coloured cover measured was 0.025.
+ */
+const MIN_COLOUR = 0.008;
+/** A hue must cover this much of the picture to count as a colour of the cover. */
+const MIN_HUE_SHARE = 0.04;
+const HUE_BINS = 36;
+
+/** A hue the cover really has: its colour, how much of the picture it covers, and where it sits on the wheel. */
+interface Hue {
+  hex: string;
+  share: number;
+  h: number;
+}
+
+/**
+ * The hues of a picture, strongest first (up to three, each at least 45 degrees from the one before), if the picture has
+ * enough colour at all. Every pixel with some chroma and a lightness a theme can use votes for its hue with
+ * the size of its chroma, so a broad area of a muted colour does not lose to a speck of a vivid one, and a faint cast over
+ * grey does not count at all. A hue's colour is the chroma-weighted mean of the pixels around it.
+ */
+function hues(data: Uint8ClampedArray): { found: Hue[]; meanL: number } {
+  type Bin = { mass: number; n: number; l: number; a: number; b: number };
+  const bins: Bin[] = Array.from({ length: HUE_BINS }, () => ({ mass: 0, n: 0, l: 0, a: 0, b: 0 }));
+  let total = 0, colour = 0, lSum = 0, lN = 0;
+  for (let i = 0; i + 3 < data.length; i += 4) {
+    if (data[i + 3]! < 128) continue;
+    total++;
+    const [L, a, b] = toOklab(data[i]!, data[i + 1]!, data[i + 2]!);
+    if (L >= 0.15 && L <= 0.95) {
+      lSum += L;
+      lN++;
+    }
+    const c = Math.hypot(a, b);
+    if (c < minChroma(L) || L < 0.08 || L > 0.96) continue;
+    const bin = bins[Math.floor((((Math.atan2(b, a) * 180) / Math.PI + 360) % 360) / (360 / HUE_BINS)) % HUE_BINS]!;
+    bin.mass += c; bin.n++; bin.l += L * c; bin.a += a * c; bin.b += b * c;
+    colour += c;
+  }
+  const meanL = lN > 0 ? lSum / lN : 0.5;
+  if (total === 0 || colour / total < MIN_COLOUR) return { found: [], meanL };
+  const open = bins.map(() => true);
+  const found: Hue[] = [];
+  while (found.length < 3) {
+    let best = -1, bestMass = 0;
+    const window = (k: number) => {
+      const w = { mass: 0, n: 0, l: 0, a: 0, b: 0 };
+      for (let d = -2; d <= 2; d++) {
+        const j = (k + d + HUE_BINS) % HUE_BINS;
+        if (!open[j]) continue;
+        const e = bins[j]!;
+        w.mass += e.mass; w.n += e.n; w.l += e.l; w.a += e.a; w.b += e.b;
+      }
+      return w;
+    };
+    for (let k = 0; k < HUE_BINS; k++) {
+      const w = window(k);
+      if (w.mass > bestMass) { bestMass = w.mass; best = k; }
+    }
+    if (best < 0) break;
+    const w = window(best);
+    if (w.n / total < MIN_HUE_SHARE) break;
+    // Every sum was weighted by the pixel's chroma, so the mean is too: the vivid pixels of the window set its colour.
+    const a = w.a / w.mass, b = w.b / w.mass, L = w.l / w.mass;
+    found.push({ hex: hexFromOklab(L, a, b), share: w.n / total, h: (best + 0.5) * (360 / HUE_BINS) });
+    for (let d = -4; d <= 4; d++) open[(best + d + HUE_BINS) % HUE_BINS] = false;
+  }
+  return { found, meanL };
+}
 
 /**
  * The cover's main colour, and a second one that is really in the picture: another hue, or the dark that sits beside it
  * (a yellow sleeve with black type gives yellow and near-black). Only a cover with one colour and nothing else makes
  * the second one up, as the same colour a little darker: a hue turned around the wheel is a colour the cover never had
  * (yellow turned a step is green). A third colour is given when the cover has a third hue.
+ *
+ * A grey, black or white cover (or one with only a faint cast, or a speck of colour) has no hue: its main colour is a
+ * grey, so its theme is neutral. A hue taken from a few stray pixels would turn it pink or red.
  */
 export function dominantPair(data: Uint8ClampedArray): CoverColors | null {
-  const list = buckets(data, 0.12, 0.9, 0.15);
-  const all = list.length > 0 ? list : buckets(data, 0.03, 0.97, 0.05);
-  const a = all[0];
-  if (!a) return null;
-  const [ha, sa, la] = toHsl(a);
+  const { found, meanL } = hues(data);
+  let total = 0;
+  for (let i = 3; i < data.length; i += 4) if (data[i]! >= 128) total++;
+  if (total === 0) return null;
   const parts = swatches(data);
-  // A picture is read small, so black type on a cover is a dark grey by then (not black): "dark" reaches up to 0.36.
-  const apart = (c: Swatch) => c.share >= 0.03 && ((chromatic(c) && sa > 0.12 && hueGap(c.h, ha) >= 35) || (c.l < 0.36 && la - c.l >= 0.2));
-  const second = parts.find(apart);
-  const b = second?.hex ?? fromHsl(ha, clamp(sa, 0.25, 0.9), clamp(la * 0.7, 0.12, 0.5));
-  const third = parts.find((c) => c !== second && c.share >= 0.03 && chromatic(c) && hueGap(c.h, ha) >= 35 && (!second || !chromatic(second) || hueGap(c.h, second.h) >= 35));
-  return third ? { a, b, c: third.hex } : { a, b };
+  const dark = (la: number) => parts.find((c) => c.share >= 0.03 && c.l < 0.36 && la - c.l >= 0.2);
+  const first = found[0];
+  if (!first) {
+    const a = hexFromOklab(clamp(meanL, 0.4, 0.8), 0, 0);
+    const [, , la] = toHsl(a);
+    const b = dark(la)?.hex ?? hexFromOklab(clamp(meanL * 0.6, 0.2, 0.45), 0, 0);
+    return { a, b };
+  }
+  const [ha, sa, la] = toHsl(first.hex);
+  const second = found[1] ?? null;
+  const b = second?.hex ?? dark(la)?.hex ?? fromHsl(ha, clamp(sa, 0.25, 0.9), clamp(la * 0.7, 0.12, 0.5));
+  const third = found[2];
+  return third ? { a: first.hex, b, c: third.hex } : { a: first.hex, b };
+}
+
+/** The cover's main colour (for the optional dynamic accent): a grey for a cover without a hue; null for no picture. */
+export function dominantColor(data: Uint8ClampedArray): string | null {
+  return dominantPair(data)?.a ?? null;
 }
 
 export function toHex(r: number, g: number, b: number): string {
