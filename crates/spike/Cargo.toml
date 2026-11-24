@@ -19,13 +19,13 @@ name = "livecheck"
 path = "src/bin/livecheck.rs"
 
 [dependencies]
-pyxee-audio = { path = "../audio" }
-pyxee-sources = { path = "../sources" }
+pyxee-audio.workspace = true
+pyxee-sources.workspace = true
 anyhow = "1.0.104"
-log = "0.4.35"
+log.workspace = true
 
 # cpal uses WASAPI on Windows. These are unconditional only so the spike also compiles in CI/sandbox.
-cpal = "0.18.2"
+cpal.workspace = true
 ringbuf = "0.6.0"
 
 [lints]

@@ -11,11 +11,11 @@ keywords.workspace = true
 categories.workspace = true
 
 [dependencies]
-serde = { version = "1.0.229", features = ["derive"] }
-serde_json = "1.0.154"
-thiserror = "2.0.21"
-pyxee-net = { path = "../net" }
-ureq = "3.5.1"
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+pyxee-net.workspace = true
+ureq.workspace = true
 
 [lints]
 workspace = true

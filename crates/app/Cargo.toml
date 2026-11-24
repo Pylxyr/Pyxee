@@ -12,18 +12,18 @@ categories.workspace = true
 build = "build.rs"
 
 [dependencies]
-log = { version = "0.4.35", features = ["std"] }
-pyxee-core = { path = "../core" }
-pyxee-audio = { path = "../audio" }
-pyxee-library = { path = "../library" }
-pyxee-sources = { path = "../sources" }
-pyxee-lyrics = { path = "../lyrics" }
-pyxee-shell = { path = "../shell" }
+log = { workspace = true, features = ["std"] }
+pyxee-core.workspace = true
+pyxee-audio.workspace = true
+pyxee-library.workspace = true
+pyxee-sources.workspace = true
+pyxee-lyrics.workspace = true
+pyxee-shell.workspace = true
 tauri = { version = "2.12.5", features = ["tray-icon", "image-png"] }
-serde = { version = "1.0.229", features = ["derive"] }
-serde_json = "1.0.154"
-pyxee-net = { path = "../net" }
-ureq = "3.5.1"
+serde.workspace = true
+serde_json.workspace = true
+pyxee-net.workspace = true
+ureq.workspace = true
 ts-rs = { version = "12.0.1", features = ["serde-compat"] }
 tauri-plugin-single-instance = "2.5.5"
 tauri-plugin-autostart = "2.7.0"
@@ -48,7 +48,7 @@ dev-tools = []
 
 [dev-dependencies]
 # The engine tests serve audio from a local `http` server, which the stream agent otherwise refuses.
-pyxee-audio = { path = "../audio", features = ["allow-insecure-http"] }
+pyxee-audio = { workspace = true, features = ["allow-insecure-http"] }
 
 [build-dependencies]
 tauri-build = { version = "2.7.4", features = [] }

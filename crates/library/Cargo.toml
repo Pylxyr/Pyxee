@@ -11,9 +11,9 @@ keywords.workspace = true
 categories.workspace = true
 
 [dependencies]
-pyxee-core = { path = "../core" }
+pyxee-core.workspace = true
 rusqlite = { version = "0.43.0", features = ["bundled"] }
-thiserror = "2.0.21"
+thiserror.workspace = true
 
 [lints]
 workspace = true

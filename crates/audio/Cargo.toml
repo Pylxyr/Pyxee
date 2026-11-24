@@ -11,14 +11,14 @@ keywords.workspace = true
 categories.workspace = true
 
 [dependencies]
-log = "0.4.35"
+log.workspace = true
 rubato = "5.0.1"
-thiserror = "2.0.21"
+thiserror.workspace = true
 # native-certs: trust the OS certificate store (antivirus HTTPS scanning, corporate proxies)
-pyxee-net = { path = "../net" }
-ureq = "3.5.1"
-pyxee-core = { path = "../core" }
-cpal = "0.18.2"
+pyxee-net.workspace = true
+ureq.workspace = true
+pyxee-core.workspace = true
+cpal.workspace = true
 
 [build-dependencies]
 cc = "1.11.0"
