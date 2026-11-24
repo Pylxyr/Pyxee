@@ -1445,6 +1445,22 @@ input[type='range'].slider:disabled {
     list-style: none;
     overflow-y: auto;
   }
+  /* Up next rows are dragged by the row itself (no handle): the row being moved dims, and an accent line shows the gap. */
+  .lane-list > li[data-lane-row] {
+    border-top: 2px solid transparent;
+    border-bottom: 2px solid transparent;
+    border-radius: var(--r-sm);
+    user-select: none;
+  }
+  .lane-list > li[data-over='above'] {
+    border-top-color: var(--accent);
+  }
+  .lane-list > li[data-over='below'] {
+    border-bottom-color: var(--accent);
+  }
+  .lane-list > li[data-dragging='true'] {
+    opacity: 0.4;
+  }
   .lane-now {
     display: flex;
     align-items: center;

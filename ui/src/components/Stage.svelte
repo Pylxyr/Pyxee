@@ -3,6 +3,7 @@
   import { nav } from '$lib/nav.svelte';
   import { artistOf, formatTime, titleOf } from '$lib/format';
   import { flipList } from '$lib/flip';
+  import { reorder } from '$lib/reorder';
   import { openTrackMenu } from '$lib/menu';
   import { queueMenu } from '$lib/actions';
   import Button from './Button.svelte';
@@ -31,6 +32,13 @@
   const entry = $derived(player.shown);
   // Where the seek bar's thumb is held (dragged, or released and waiting for the player): the time shows it too.
   let scrub = $state<number | null>(null);
+
+  // Up next can be rearranged by dragging a row itself, with no handle: a click still plays it, a drag moves it.
+  let drag = $state<{ id: number; from: number; to: number } | null>(null);
+  let laneEl = $state<HTMLElement>();
+  const laneRows = () => [...(laneEl?.querySelectorAll<HTMLElement>('[data-lane-row]') ?? [])];
+  const overOf = (id: number, i: number): 'above' | 'below' | null =>
+    drag && drag.to === i && drag.id !== id ? (drag.to < drag.from ? 'above' : 'below') : null;
 
   // Escape closes the drawer wherever the focus is (opening it from the deck leaves the focus on the deck's button, not in
   // the drawer). A pop-up menu or a sheet on top of it takes the key first and closes itself.
@@ -62,7 +70,7 @@
       </span>
     </div>
     <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
-    <ul class="lane-list" data-scroll tabindex="0" use:flipList>
+    <ul class="lane-list" data-scroll tabindex="0" use:flipList bind:this={laneEl}>
       {#key entry.track.key}
       <li class="lane-now track-in" oncontextmenu={(ev) => { const e0 = player.shown; if (e0) openTrackMenu(e0.track, { event: ev, extras: queueMenu(e0), queue: true }); }}>
         <Thumb src={entry.track.thumbnail} seed={entry.track.key} size={40} rounded="r-sm" />
@@ -73,8 +81,19 @@
         <span class="trow-time">{formatTime(entry.track.durationMs)}</span>
       </li>
       {/key}
-      {#each player.upNext as e (e.id)}
-        <li oncontextmenu={(ev) => openTrackMenu(e.track, { event: ev, opener: (ev.currentTarget as HTMLElement).querySelector('button'), extras: queueMenu(e), queue: true })}>
+      {#each player.upNext as e, i (e.id)}
+        <li
+          data-lane-row
+          data-over={overOf(e.id, i)}
+          data-dragging={drag?.id === e.id ? 'true' : undefined}
+          use:reorder={{
+            index: i,
+            rows: laneRows,
+            threshold: 5,
+            onover: (to) => (drag = to === null ? null : { id: e.id, from: i, to }),
+            ondrop: (to) => player.moveUpcoming(e.id, to),
+          }}
+          oncontextmenu={(ev) => openTrackMenu(e.track, { event: ev, opener: (ev.currentTarget as HTMLElement).querySelector('button'), extras: queueMenu(e), queue: true })}>
           <MenuItem onclick={() => player.playEntry(e.id)}>
             <Thumb src={e.track.thumbnail} seed={e.track.key} size={40} rounded="r-sm" />
             <span class="min-w-0 flex-1">

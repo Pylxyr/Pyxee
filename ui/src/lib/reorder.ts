@@ -1,5 +1,5 @@
 /**
- * Drag-to-reorder with pointer events on a handle. HTML5 drag and drop is not used: in a Tauri
+ * Drag-to-reorder with pointer events on a handle (or, with `threshold`, on the whole row). HTML5 drag and drop is not used: in a Tauri
  * window on Windows it can be swallowed by the webview's own file-drop handling, while pointer
  * events behave the same everywhere (mouse, pen and touch).
  */
@@ -22,6 +22,13 @@ export interface ReorderParams {
   onover: (to: number | null) => void;
   /** Called once on release if the row ended up somewhere else. */
   ondrop: (to: number) => void;
+  /**
+   * For a row that is itself a button (a click plays the song) and has no handle: the drag starts only once the pointer has
+   * moved this many pixels, and the click that follows a drag is dropped. A press that is not moved is an ordinary click.
+   * A finger is left to scroll the list (it reorders with the Queue page's handles). Without it, a press on the handle
+   * starts the drag at once.
+   */
+  threshold?: number;
 }
 
 function scrollParent(el: HTMLElement | null): HTMLElement | null {
@@ -59,16 +66,44 @@ export function reorder(handle: HTMLElement, initial: ReorderParams) {
       finish(false);
     }
   };
-  const down = (e: PointerEvent) => {
-    if (pointer !== null || (e.pointerType === 'mouse' && e.button !== 0)) return;
-    e.preventDefault();
-    pointer = e.pointerId;
+  // `threshold` mode: a press that has not moved far enough yet.
+  let armed: { id: number; x: number; y: number } | null = null;
+  let swallow = false;
+
+  const begin = (id: number) => {
+    pointer = id;
     to = p.index;
-    handle.setPointerCapture(e.pointerId);
+    handle.setPointerCapture(id);
     window.addEventListener('keydown', onkey, true);
     p.onover(to);
   };
+  const down = (e: PointerEvent) => {
+    if (pointer !== null || (e.pointerType === 'mouse' && e.button !== 0)) return;
+    if (p.threshold) {
+      if (e.pointerType === 'touch') return;
+      armed = { id: e.pointerId, x: e.clientX, y: e.clientY };
+      return;
+    }
+    e.preventDefault();
+    begin(e.pointerId);
+  };
+  // A drag that ends on a button would click it: the row's own play button must not fire.
+  const click = (e: MouseEvent) => {
+    if (!swallow) return;
+    swallow = false;
+    e.stopPropagation();
+    e.preventDefault();
+  };
+  // The browser's own picture drag (a cover image) would take over the pointer.
+  const nativeDrag = (e: Event) => {
+    if (p.threshold) e.preventDefault();
+  };
   const move = (e: PointerEvent) => {
+    if (armed && e.pointerId === armed.id && pointer === null) {
+      if (Math.hypot(e.clientX - armed.x, e.clientY - armed.y) < (p.threshold ?? 0)) return;
+      armed = null;
+      begin(e.pointerId);
+    }
     if (e.pointerId !== pointer) return;
     const rows = p.rows();
     const next = dropIndex(
@@ -91,9 +126,16 @@ export function reorder(handle: HTMLElement, initial: ReorderParams) {
     }
   };
   const up = (e: PointerEvent) => {
-    if (e.pointerId === pointer) finish(true);
+    if (armed && e.pointerId === armed.id) armed = null; // not moved far enough: a click
+    if (e.pointerId !== pointer) return;
+    if (p.threshold) {
+      swallow = true;
+      setTimeout(() => (swallow = false), 0); // the click comes right after the release, or not at all
+    }
+    finish(true);
   };
   const cancel = (e: PointerEvent) => {
+    if (armed && e.pointerId === armed.id) armed = null;
     if (e.pointerId === pointer) finish(false);
   };
 
@@ -101,6 +143,8 @@ export function reorder(handle: HTMLElement, initial: ReorderParams) {
   handle.addEventListener('pointermove', move);
   handle.addEventListener('pointerup', up);
   handle.addEventListener('pointercancel', cancel);
+  handle.addEventListener('click', click, true);
+  handle.addEventListener('dragstart', nativeDrag);
   return {
     update(next: ReorderParams) {
       p = next;
@@ -111,6 +155,8 @@ export function reorder(handle: HTMLElement, initial: ReorderParams) {
       handle.removeEventListener('pointermove', move);
       handle.removeEventListener('pointerup', up);
       handle.removeEventListener('pointercancel', cancel);
+      handle.removeEventListener('click', click, true);
+      handle.removeEventListener('dragstart', nativeDrag);
     },
   };
 }

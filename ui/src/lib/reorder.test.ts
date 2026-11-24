@@ -83,3 +83,93 @@ describe('reorder (pointer dragging on a handle)', () => {
     expect(over).not.toHaveBeenCalled();
   });
 });
+
+describe('reorder on a whole row (threshold)', () => {
+  const cleanup: Array<() => void> = [];
+  afterEach(() => {
+    cleanup.splice(0).forEach((f) => f());
+    document.body.innerHTML = '';
+    vi.useRealTimers();
+  });
+
+  function setup(index: number, pointerType = 'mouse') {
+    const rows = [0, 1, 2].map((i) => {
+      const el = document.createElement('li');
+      el.getBoundingClientRect = () => ({ top: i * 40, height: 40, bottom: i * 40 + 40 }) as DOMRect;
+      el.setPointerCapture = vi.fn();
+      el.releasePointerCapture = vi.fn();
+      document.body.append(el);
+      return el;
+    });
+    const row = rows[index]!;
+    const button = document.createElement('button');
+    row.append(button);
+    const over = vi.fn();
+    const drop = vi.fn();
+    const clicked = vi.fn();
+    row.addEventListener('click', clicked); // stands for the row's own play button
+    const action = reorder(row, { index, rows: () => rows, onover: over, ondrop: drop, threshold: 5 });
+    cleanup.push(() => action.destroy());
+    const fire = (type: string, y = 0, x = 0) =>
+      row.dispatchEvent(new PointerEvent(type, { pointerId: 1, clientX: x, clientY: y, button: 0, pointerType, bubbles: true, cancelable: true }));
+    return { fire, over, drop, clicked, row, button };
+  }
+
+  it('a press that does not move is a click: nothing is dragged and the click goes through', () => {
+    const { fire, over, drop, clicked, row, button } = setup(0);
+    fire('pointerdown', 20);
+    fire('pointermove', 22);
+    fire('pointerup', 22);
+    button.click();
+    expect(over).not.toHaveBeenCalled();
+    expect(drop).not.toHaveBeenCalled();
+    expect(row.setPointerCapture).not.toHaveBeenCalled();
+    expect(clicked).toHaveBeenCalledTimes(1);
+  });
+
+  it('starts dragging only after the pointer moved the threshold, then drops once where it ended', () => {
+    const { fire, over, drop, row } = setup(0);
+    fire('pointerdown', 20);
+    fire('pointermove', 23);
+    expect(over).not.toHaveBeenCalled();
+    fire('pointermove', 30);
+    expect(row.setPointerCapture).toHaveBeenCalledWith(1);
+    expect(over).toHaveBeenCalledWith(0);
+    fire('pointermove', 110);
+    expect(over).toHaveBeenLastCalledWith(2);
+    fire('pointerup', 110);
+    expect(drop).toHaveBeenCalledExactlyOnceWith(2);
+    expect(over).toHaveBeenLastCalledWith(null);
+  });
+
+  it('drops the click that ends a drag (it would play the row), but not the next one', () => {
+    vi.useFakeTimers();
+    const { fire, clicked, button } = setup(0);
+    fire('pointerdown', 20);
+    fire('pointermove', 90);
+    fire('pointerup', 90);
+    button.click();
+    expect(clicked).not.toHaveBeenCalled();
+    vi.runAllTimers();
+    button.click();
+    expect(clicked).toHaveBeenCalledTimes(1);
+  });
+
+  it('leaves a finger to scroll the list', () => {
+    const { fire, over, row } = setup(0, 'touch');
+    fire('pointerdown', 20);
+    fire('pointermove', 90);
+    expect(over).not.toHaveBeenCalled();
+    expect(row.setPointerCapture).not.toHaveBeenCalled();
+  });
+
+  it('Escape cancels a drag without dropping', () => {
+    const { fire, drop, over } = setup(0);
+    fire('pointerdown', 20);
+    fire('pointermove', 90);
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    fire('pointerup', 90);
+    expect(drop).not.toHaveBeenCalled();
+    expect(over).toHaveBeenLastCalledWith(null);
+  });
+});

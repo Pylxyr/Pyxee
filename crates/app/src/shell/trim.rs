@@ -1,18 +1,20 @@
-//! Hands memory back to Windows the moment the page has gone to sleep.
+//! Hands the memory of a hidden window's page back to Windows once it has gone to sleep.
 //!
 //! `webview_power` tells `WebView2` the window is hidden and suspends the page. `WebView2` then gives its memory back on
 //! its own schedule: measured on one PC, the page's renderer fell within a second, but the GPU process (about 60 MB)
-//! and the manager (about 24 MB) held theirs for about 30 s. This empties the *working set* of Pyxee's own process
-//! and of its `WebView2` processes (`msedgewebview2.exe` children of this process) as soon as the suspend is done,
-//! and once more a moment later for what was allocated while it settled.
+//! and the manager (about 24 MB) held theirs for about 30 s. This empties the *working set* of the `WebView2`
+//! processes (`msedgewebview2.exe` children of this process) once, as soon as the suspend is done.
 //!
 //! What it does and does not do: emptying a working set moves the pages out of the process's resident set into
 //! Windows' standby list. Task Manager's Memory column (the private working set) drops at once, and Windows can
 //! reuse that memory for anything else straight away. Nothing is freed or lost: if the window is shown again soon the
 //! pages are taken back from the standby list (a quick soft fault, no disk), so the first redraw can be a little
-//! slower. It is only done for a hidden window, never while one is in view.
-
-use std::time::Duration;
+//! slower. This is why it is moderate on purpose:
+//!
+//! * only for a hidden window, never one in view (no trim at start-up either: a page in use would only fault it back);
+//! * once per sleep, not twice;
+//! * never Pyxee's own process, which plays the music: its pages faulting back in on the audio thread is a risk that
+//!   the few megabytes it holds are not worth.
 
 /// One running process, as much of it as picking the family needs.
 #[cfg_attr(not(windows), allow(dead_code))]
@@ -28,10 +30,10 @@ fn is_webview_exe(exe: &str) -> bool {
     exe.eq_ignore_ascii_case("msedgewebview2.exe")
 }
 
-/// `own` and every `msedgewebview2.exe` process below it (the manager is a child of this process, the renderer, GPU
-/// and utility processes are children of the manager). Other processes are never touched.
+/// Every `msedgewebview2.exe` process below `own` (the manager is a child of this process, the renderer, GPU and
+/// utility processes are children of the manager), not `own` itself. Other processes are never touched.
 #[cfg_attr(not(windows), allow(dead_code))]
-pub(crate) fn family(own: u32, all: &[Proc]) -> Vec<u32> {
+pub(crate) fn webview_family(own: u32, all: &[Proc]) -> Vec<u32> {
     let mut out = vec![own];
     let mut i = 0;
     while i < out.len() {
@@ -47,75 +49,8 @@ pub(crate) fn family(own: u32, all: &[Proc]) -> Vec<u32> {
         }
         i += 1;
     }
+    out.remove(0); // `own` only started the search: it plays the music and is not trimmed
     out
-}
-
-/// How long after the first trim the second one runs.
-#[cfg_attr(not(windows), allow(dead_code))]
-const SECOND_PASS: Duration = Duration::from_millis(1500);
-
-/// When, counted from the window first being shown, the start-up memory is handed back. The page touches most of its
-/// start-up memory in the first seconds and never again; in the runs measured the renderer sat at about 140 MB until
-/// about 30 s, then fell to about 85 MB by itself. A first trim once the page has drawn, one while it settles, and a
-/// last one after it has.
-const START_TRIMS: [Duration; 3] = [
-    Duration::from_secs(8),
-    Duration::from_secs(20),
-    Duration::from_secs(45),
-];
-
-/// After the app started with its window shown: trims at each of `START_TRIMS` if the page is awake (a window hidden
-/// by then was trimmed when it went to sleep). Only at start-up: a window that stays in view later is not trimmed again.
-pub fn trim_once_after_start(is_awake: Box<dyn Fn() -> bool + Send>) {
-    // Windows only: its working-set trim has no counterpart on other systems.
-    if !cfg!(windows) {
-        return;
-    }
-    let spawned = std::thread::Builder::new()
-        .name("trim-after-start".into())
-        .spawn(move || {
-            let mut elapsed = Duration::ZERO;
-            for at in START_TRIMS {
-                std::thread::sleep(at.saturating_sub(elapsed));
-                elapsed = at;
-                if is_awake() {
-                    let n = trim_family();
-                    let done = format!(
-                        "start-up memory handed back at {} s: trimmed {n} processes",
-                        at.as_secs()
-                    );
-                    log::debug!("{done}");
-                    crate::commands::perf_note(&done);
-                }
-            }
-        });
-    if let Err(e) = spawned {
-        log::debug!("could not start the start-up trim: {e}");
-    }
-}
-
-/// Trims now, then once more after a moment, on a thread of its own. `still_wanted` says whether the page is still
-/// asleep (a window shown meanwhile is left alone).
-#[cfg_attr(not(windows), allow(dead_code))]
-pub fn trim_after_sleep(label: String, still_wanted: Box<dyn Fn() -> bool + Send>) {
-    let spawned = std::thread::Builder::new()
-        .name("trim-working-set".into())
-        .spawn(move || {
-            if !still_wanted() {
-                return;
-            }
-            let first = trim_family();
-            std::thread::sleep(SECOND_PASS);
-            let second = if still_wanted() { trim_family() } else { 0 };
-            let done = format!(
-                "{label}: trimmed the working set of {first} processes, then of {second} more"
-            );
-            log::debug!("{done}");
-            crate::commands::perf_note(&done);
-        });
-    if let Err(e) = spawned {
-        log::debug!("could not start the working-set trim: {e}");
-    }
 }
 
 #[cfg(windows)]
@@ -124,13 +59,14 @@ fn trim_family() -> usize {
 }
 
 #[cfg(not(windows))]
+#[cfg_attr(not(windows), allow(dead_code))]
 fn trim_family() -> usize {
     0
 }
 
 #[cfg(windows)]
 mod sys {
-    use super::{Proc, family};
+    use super::{Proc, webview_family};
     use std::ffi::c_void;
 
     type Handle = *mut c_void;
@@ -196,11 +132,11 @@ mod sys {
         found
     }
 
-    /// Empties the working set of every process of the family; returns how many it worked on.
+    /// Empties the working set of every `WebView2` process of this app; returns how many it worked on.
     pub fn trim_family() -> usize {
         let own = std::process::id();
         let mut done = 0;
-        for pid in family(own, &processes()) {
+        for pid in webview_family(own, &processes()) {
             // SAFETY: the handle is opened for this call only and closed again; a process that cannot be opened (it
             // has just exited, or belongs to someone else) is skipped.
             unsafe {
@@ -231,7 +167,7 @@ mod tests {
     }
 
     #[test]
-    fn takes_this_process_and_the_webview_tree_below_it() {
+    fn takes_the_webview_tree_below_this_process_and_not_the_process_itself() {
         let all = [
             p(1, 0, "System"),
             p(100, 1, "explorer.exe"),
@@ -241,7 +177,7 @@ mod tests {
             p(212, 210, "MSEdgeWebView2.exe"), // its GPU process, in another case
             p(213, 211, "msedgewebview2.exe"), // a child of the renderer
         ];
-        assert_eq!(family(200, &all), vec![200, 210, 211, 212, 213]);
+        assert_eq!(webview_family(200, &all), vec![210, 211, 212, 213]);
     }
 
     #[test]
@@ -254,13 +190,13 @@ mod tests {
             p(220, 200, "yt-dlp.exe"), // ours, but not a WebView2 process
             p(221, 220, "msedgewebview2.exe"), // below a process that is not one
         ];
-        assert_eq!(family(200, &all), vec![200, 210]);
+        assert_eq!(webview_family(200, &all), vec![210]);
     }
 
     #[test]
-    fn the_start_up_trims_come_in_order_and_end_with_the_last_one_measured() {
-        assert!(START_TRIMS.windows(2).all(|w| w[0] < w[1]));
-        assert_eq!(START_TRIMS.last(), Some(&Duration::from_secs(45)));
+    fn nothing_to_trim_when_there_is_no_webview() {
+        let all = [p(200, 100, "pyxee-app.exe"), p(220, 200, "yt-dlp.exe")];
+        assert!(webview_family(200, &all).is_empty());
     }
 
     #[test]
@@ -269,7 +205,7 @@ mod tests {
             p(210, 210, "msedgewebview2.exe"),
             p(200, 100, "pyxee-app.exe"),
         ];
-        assert_eq!(family(200, &all), vec![200]);
-        assert_eq!(family(210, &all), vec![210]);
+        assert!(webview_family(200, &all).is_empty());
+        assert!(webview_family(210, &all).is_empty());
     }
 }

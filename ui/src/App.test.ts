@@ -126,6 +126,9 @@ describe('App shell', () => {
     await fireEvent.click(within(deck).getByRole('button', { name: 'Show the queue' }));
     const drawer = await screen.findByTestId('queue-lane');
     expect(drawer.hasAttribute('data-drawer')).toBe(true);
+    // The songs after the playing one are dragged by the row itself: no grip icon, and they carry the drag hook.
+    expect(within(drawer).queryByTestId('drag-handle')).toBeNull();
+    expect(drawer.querySelectorAll('li[data-lane-row]').length).toBeGreaterThan(1);
     // The focus is still on the deck's button, outside the drawer: Escape closes it all the same.
     await fireEvent.keyDown(within(deck).getByRole('button', { name: 'Hide the queue' }), { key: 'Escape' });
     await waitFor(() => expect(screen.queryByTestId('queue-lane')).toBeNull());
