@@ -305,7 +305,7 @@ fn main() {
                     .name("session-writer".into())
                     .spawn(move || {
                         loop {
-                            if save_signal.wait(std::time::Duration::from_secs(3600)) {
+                            if save_signal.wait(std::time::Duration::from_hours(1)) {
                                 std::thread::sleep(std::time::Duration::from_millis(250));
                                 handle.state::<AppState>().save_session();
                             }

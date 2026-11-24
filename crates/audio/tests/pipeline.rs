@@ -485,7 +485,7 @@ fn an_idle_producer_barely_wakes() {
     let (p, _c, _rx) = setup();
     sleep(Duration::from_millis(100));
     let before = p.producer_runs();
-    sleep(Duration::from_millis(2000));
+    sleep(Duration::from_secs(2));
     let runs = p.producer_runs() - before;
     assert!(runs <= 6, "the idle producer ran {runs} times in 2 s");
 }

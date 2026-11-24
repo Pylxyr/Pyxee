@@ -15,7 +15,7 @@ pub const SLEEP_EVENT: &str = "sleep-state";
 /// The clock thread, so a new timer can wake it (`wake`).
 static CLOCK: OnceLock<std::thread::Thread> = OnceLock::new();
 /// How long the clock rests when no timed timer runs. `wake` ends it at once; this is only a safety net.
-const IDLE_WAIT: Duration = Duration::from_secs(300);
+const IDLE_WAIT: Duration = Duration::from_mins(5);
 
 pub fn spawn(app: AppHandle) {
     let clock = std::thread::spawn(move || {

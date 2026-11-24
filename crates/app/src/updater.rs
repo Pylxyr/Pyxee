@@ -145,7 +145,7 @@ fn agent() -> ureq::Agent {
         .https_only(true)
         .user_agent(concat!("Pyxee/", env!("CARGO_PKG_VERSION")))
         .timeout_connect(Some(Duration::from_secs(20)))
-        .timeout_per_read(Some(Duration::from_secs(120)))
+        .timeout_per_read(Some(Duration::from_mins(2)))
         .build()
         .into()
 }

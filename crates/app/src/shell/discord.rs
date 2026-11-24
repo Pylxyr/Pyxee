@@ -31,7 +31,7 @@ const MIN_GAP: Duration = Duration::from_millis(500);
 const BACKOFF_MIN: Duration = Duration::from_secs(2);
 const BACKOFF_MAX: Duration = Duration::from_secs(30);
 /// How long quitting waits for the presence to be cleared before giving up on it.
-const SHUTDOWN_WAIT: Duration = Duration::from_millis(1_000);
+const SHUTDOWN_WAIT: Duration = Duration::from_secs(1);
 
 // ---------------------------------------------------------------------------------------------------------------
 // Pure decisions

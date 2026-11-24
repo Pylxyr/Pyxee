@@ -65,7 +65,7 @@ impl GateConfig {
         interactive_gap: Duration::from_millis(250),
         hourly_budget: 150,
         budget_window: Duration::from_hours(1),
-        cooldown: Duration::from_secs(120),
+        cooldown: Duration::from_mins(2),
         max_cooldown: Duration::from_mins(30),
     };
     /// No pacing at all (still one run at a time). For tests that are not about pacing.
@@ -473,7 +473,7 @@ mod tests {
             st.cooling(t0 + Duration::from_secs(30)),
             Some(Duration::from_secs(90))
         );
-        assert_eq!(st.cooling(t0 + Duration::from_secs(120)), None);
+        assert_eq!(st.cooling(t0 + Duration::from_mins(2)), None);
         assert_eq!(st.cooling(t0 + Duration::from_secs(500)), None);
     }
 
@@ -520,9 +520,9 @@ mod tests {
             min_gap: Duration::from_secs(1),
             interactive_gap: Duration::from_millis(250),
             hourly_budget: n,
-            budget_window: Duration::from_secs(3_600),
-            cooldown: Duration::from_secs(120),
-            max_cooldown: Duration::from_secs(1_800),
+            budget_window: Duration::from_hours(1),
+            cooldown: Duration::from_mins(2),
+            max_cooldown: Duration::from_mins(30),
         }
     }
 
@@ -534,7 +534,7 @@ mod tests {
         for i in 0..49 {
             st.record_start(t0 + Duration::from_secs(i), c);
         }
-        let now = t0 + Duration::from_secs(60);
+        let now = t0 + Duration::from_mins(1);
         assert_eq!(
             st.gap_for(now, c, Priority::Background),
             Duration::from_secs(1)
@@ -592,7 +592,7 @@ mod tests {
 
     #[test]
     fn escalation_doubles_up_to_the_cap_and_never_goes_below_the_base() {
-        let (base, max) = (Duration::from_secs(120), Duration::from_secs(1_800));
+        let (base, max) = (Duration::from_mins(2), Duration::from_mins(30));
         let steps: Vec<u64> = (0..7).map(|n| escalate(base, max, n).as_secs()).collect();
         assert_eq!(steps, [120, 240, 480, 960, 1_800, 1_800, 1_800]);
         assert_eq!(escalate(base, max, u32::MAX), max, "no overflow");
@@ -618,7 +618,7 @@ mod tests {
         }
         assert_eq!(
             st.finished(t0, c, Outcome::Forbidden),
-            Some(Duration::from_secs(120)),
+            Some(Duration::from_mins(2)),
             "the third in a row is treated like a rate limit"
         );
         assert!(st.cooling(t0).is_some());
@@ -667,7 +667,7 @@ mod tests {
     fn rate_limits_in_a_row_lengthen_the_cooldown() {
         let t0 = Instant::now();
         let c = GateConfig {
-            max_cooldown: Duration::from_secs(480),
+            max_cooldown: Duration::from_mins(8),
             ..cfg(0, 120_000)
         };
         let mut st = State::default();
@@ -676,14 +676,14 @@ mod tests {
             pauses.push(st.finished(t0, c, Outcome::RateLimited).unwrap().as_secs());
         }
         assert_eq!(pauses, [120, 240, 480, 480, 480]);
-        assert_eq!(st.cooling(t0), Some(Duration::from_secs(480)));
+        assert_eq!(st.cooling(t0), Some(Duration::from_mins(8)));
     }
 
     #[test]
     fn a_successful_run_starts_the_cooldown_over_but_other_errors_do_not() {
         let t0 = Instant::now();
         let c = GateConfig {
-            max_cooldown: Duration::from_secs(1_800),
+            max_cooldown: Duration::from_mins(30),
             ..cfg(0, 120_000)
         };
         let mut st = State::default();
@@ -695,7 +695,7 @@ mod tests {
         assert_eq!(st.finished(t0, c, Outcome::Succeeded), None);
         assert_eq!(st.strikes, 0);
         let again = st.finished(t0, c, Outcome::RateLimited);
-        assert_eq!(again, Some(Duration::from_secs(120)));
+        assert_eq!(again, Some(Duration::from_mins(2)));
     }
 
     #[test]

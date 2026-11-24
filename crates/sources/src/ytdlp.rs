@@ -2002,7 +2002,7 @@ esac"#,
             );
             let gate = GateConfig {
                 min_gap: Duration::ZERO,
-                cooldown: Duration::from_secs(60),
+                cooldown: Duration::from_mins(1),
                 max_cooldown: Duration::ZERO,
                 ..GateConfig::NONE
             };
@@ -2130,7 +2130,7 @@ esac"#,
             );
             let gate = GateConfig {
                 min_gap: Duration::ZERO,
-                cooldown: Duration::from_secs(60),
+                cooldown: Duration::from_mins(1),
                 max_cooldown: Duration::ZERO,
                 ..GateConfig::NONE
             };

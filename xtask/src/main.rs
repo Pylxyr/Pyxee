@@ -62,7 +62,7 @@ fn latest_ytdlp_tag() -> Res<String> {
     let url = format!("{YTDLP_RELEASES}/latest");
     let agent: ureq::Agent = pyxee_net::agent_config()
         .timeout_connect(Some(std::time::Duration::from_secs(20)))
-        .timeout_per_read(Some(std::time::Duration::from_secs(60)))
+        .timeout_per_read(Some(std::time::Duration::from_mins(1)))
         .max_redirects(0)
         .build()
         .into();
@@ -467,7 +467,7 @@ fn ffmpeg() -> Res<()> {
 fn get(url: &str) -> Res<Vec<u8>> {
     let agent: ureq::Agent = pyxee_net::agent_config()
         .timeout_connect(Some(std::time::Duration::from_secs(20)))
-        .timeout_per_read(Some(std::time::Duration::from_secs(120)))
+        .timeout_per_read(Some(std::time::Duration::from_mins(2)))
         .build()
         .into();
     let resp = pyxee_net::retry_stale(|| agent.get(url).call()).map_err(|e| match e {

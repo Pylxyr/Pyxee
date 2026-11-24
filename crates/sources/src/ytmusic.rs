@@ -1161,6 +1161,10 @@ mod tests {
     }
 
     #[test]
+    #[expect(
+        clippy::duration_suboptimal_units,
+        reason = "Unix timestamps are read in seconds"
+    )]
     fn the_client_version_is_yesterdays_date() {
         // 2026-10-21 15:30 UTC
         let now = UNIX_EPOCH + Duration::from_secs(1_792_596_600);

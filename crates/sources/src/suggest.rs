@@ -11,7 +11,7 @@ use std::time::{Duration, Instant};
 const CACHE_TTL: Duration = Duration::from_mins(10);
 const CACHE_MAX: usize = 64;
 /// After a rate-limit answer no suggestions are asked for this long; each one in a row doubles it, up to `PAUSE_MAX`.
-const PAUSE_BASE: Duration = Duration::from_secs(60);
+const PAUSE_BASE: Duration = Duration::from_mins(1);
 const PAUSE_MAX: Duration = Duration::from_mins(15);
 
 /// Text longer than this is not asked about: it is a paste, not a search, and it would only be handed to Google.
@@ -331,12 +331,12 @@ mod tests {
         let t0 = Instant::now();
         let mut st = State::default();
         assert_eq!(st.paused(t0), None);
-        assert_eq!(st.rate_limited(t0), Duration::from_secs(60));
+        assert_eq!(st.rate_limited(t0), Duration::from_mins(1));
         assert_eq!(
             st.paused(t0 + Duration::from_secs(10)),
             Some(Duration::from_secs(50))
         );
-        assert_eq!(st.rate_limited(t0), Duration::from_secs(120));
+        assert_eq!(st.rate_limited(t0), Duration::from_mins(2));
         assert_eq!(
             st.paused(t0 + Duration::from_secs(61)),
             Some(Duration::from_secs(59))

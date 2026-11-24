@@ -54,7 +54,7 @@ const AUTH_WINDOW: Duration = Duration::from_mins(10);
 const TOKEN_TRIES: u32 = 3;
 const TOKEN_RETRY_WAIT: Duration = Duration::from_secs(1);
 /// How long quitting waits for the last scrobbles to be sent before giving up on them.
-const SHUTDOWN_WAIT: Duration = Duration::from_millis(2_000);
+const SHUTDOWN_WAIT: Duration = Duration::from_secs(2);
 
 // ---------------------------------------------------------------------------------------------------------------
 // Pure decisions
