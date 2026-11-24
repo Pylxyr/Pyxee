@@ -3442,7 +3442,6 @@ dependencies = [
 name = "pyxee-lyrics"
 version = "0.7.2"
 dependencies = [
- "log",
  "pyxee-net",
  "serde",
  "serde_json",

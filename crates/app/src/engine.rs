@@ -21,7 +21,7 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
-const URL_TTL: Duration = Duration::from_secs(15 * 60);
+const URL_TTL: Duration = Duration::from_mins(15);
 const RECOVER_AFTER: Duration = Duration::from_millis(600);
 /// How often the engine looks at its queues. Quick while something is being started or is about to change (a seek, the
 /// end of a song, a stall being watched); slower mid-song, where the only regular work is the once-a-second position

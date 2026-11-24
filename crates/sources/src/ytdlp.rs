@@ -44,10 +44,10 @@ use std::time::{Duration, Instant};
 pub const FORMAT_SELECTOR: &str = "bestaudio[ext=webm][acodec=opus][protocol=https][audio_channels<=?2]/bestaudio[ext=m4a][acodec^=mp4a.40.2][protocol=https][audio_channels<=?2]/bestaudio[acodec~='^(opus|vorbis|flac|mp3|alac)$'][ext~='^(webm|ogg|opus|mka|flac|mp3|m4a)$'][protocol=https][audio_channels<=?2]";
 const RESULTS: usize = 20;
 /// How long a search answer is reused for the same query and filter (no request at all in that time).
-const SEARCH_CACHE_TTL: Duration = Duration::from_secs(10 * 60);
+const SEARCH_CACHE_TTL: Duration = Duration::from_mins(10);
 const SEARCH_CACHE_MAX: usize = 32;
 /// After the dedicated songs page answers with bare titles, songs searches skip it for this long.
-const SONGS_PAGE_SKIP: Duration = Duration::from_secs(30 * 60);
+const SONGS_PAGE_SKIP: Duration = Duration::from_mins(30);
 
 /// Browser names (the part of `PYXEE_COOKIES_FROM_BROWSER` before `+` or `:`) that may be logged.
 const KNOWN_BROWSERS: [&str; 9] = [

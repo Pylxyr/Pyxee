@@ -592,13 +592,11 @@ fn find_signtool() -> PathBuf {
     let pf = std::env::var_os("ProgramFiles(x86)")
         .map_or_else(|| PathBuf::from(r"C:\Program Files (x86)"), PathBuf::from);
     let kits = pf.join(r"Windows Kits\10\bin");
-    let names: Vec<String> = std::fs::read_dir(&kits)
-        .map(|rd| {
-            rd.flatten()
-                .map(|e| e.file_name().to_string_lossy().into_owned())
-                .collect()
-        })
-        .unwrap_or_default();
+    let names: Vec<String> = std::fs::read_dir(&kits).map_or_default(|rd| {
+        rd.flatten()
+            .map(|e| e.file_name().to_string_lossy().into_owned())
+            .collect()
+    });
     release::newest_sdk(&names)
         .map(|n| kits.join(n).join("x64").join("signtool.exe"))
         .filter(|p| p.is_file())

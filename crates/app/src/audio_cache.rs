@@ -1,5 +1,5 @@
 //! Songs kept on disk after they were played, so they play again without the network, without resolving their address
-//! and without yt-dlp: instantly, and when YouTube does not answer.
+//! and without yt-dlp: instantly, and when `YouTube` does not answer.
 //!
 //! A song is kept when its stream was downloaded completely while it played (the range reader reports that, see
 //! `pyxee_audio::http::CompletionHook`). The files live in one folder, named after the video, and the oldest-used ones
@@ -17,7 +17,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::SystemTime;
 use tauri::State;
 
-/// What a song is kept as: what YouTube serves for it, which is also all the player has to read.
+/// What a song is kept as: what `YouTube` serves for it, which is also all the player has to read.
 const EXTENSIONS: [&str; 2] = ["webm", "m4a"];
 const PART: &str = "part";
 const MIB: u64 = 1024 * 1024;

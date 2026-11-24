@@ -59,7 +59,9 @@ impl LocalLibrary {
             .and_then(|p| match std::fs::read(p) {
                 Ok(bytes) => serde_json::from_slice::<Saved>(&bytes)
                     .map_err(|e| {
-                        log::warn!("the local library file could not be read ({e}); starting empty")
+                        log::warn!(
+                            "the local library file could not be read ({e}); starting empty"
+                        );
                     })
                     .ok(),
                 Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,

@@ -76,9 +76,7 @@ impl Version {
         if it.next().is_some() {
             return None;
         }
-        let pre: Vec<String> = pre
-            .map(|p| p.split('.').map(str::to_string).collect())
-            .unwrap_or_default();
+        let pre: Vec<String> = pre.map_or_default(|p| p.split('.').map(str::to_string).collect());
         if pre.iter().any(String::is_empty) {
             return None;
         }

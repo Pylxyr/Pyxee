@@ -15,8 +15,7 @@ fn temp_name(path: &Path) -> PathBuf {
     let n = COUNTER.fetch_add(1, Ordering::Relaxed);
     let name = path
         .file_name()
-        .map(|n| n.to_string_lossy().into_owned())
-        .unwrap_or_default();
+        .map_or_default(|n| n.to_string_lossy().into_owned());
     path.with_file_name(format!(".{name}.{}-{n}.tmp", std::process::id()))
 }
 

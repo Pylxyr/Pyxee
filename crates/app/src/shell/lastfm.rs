@@ -46,10 +46,10 @@ const PENDING_MAX: usize = 500;
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
 const HTTP_TIMEOUT: Duration = Duration::from_secs(10);
 const BACKOFF_MIN: Duration = Duration::from_secs(5);
-const BACKOFF_MAX: Duration = Duration::from_secs(5 * 60);
+const BACKOFF_MAX: Duration = Duration::from_mins(5);
 /// How often Last.fm is asked whether the user has allowed Pyxee yet, and for how long.
 const AUTH_POLL: Duration = Duration::from_secs(3);
-const AUTH_WINDOW: Duration = Duration::from_secs(10 * 60);
+const AUTH_WINDOW: Duration = Duration::from_mins(10);
 /// Asking for the request token is tried this many times (a second apart) before signing in is given up.
 const TOKEN_TRIES: u32 = 3;
 const TOKEN_RETRY_WAIT: Duration = Duration::from_secs(1);
@@ -972,8 +972,7 @@ impl<F: Fn(Event)> Worker<F> {
     fn new(app: App, session: Option<String>, emit: F, queue_file: Option<PathBuf>) -> Self {
         let pending = queue_file
             .as_deref()
-            .map(|p| load_queue(p, now_secs()))
-            .unwrap_or_default();
+            .map_or_default(|p| load_queue(p, now_secs()));
         if !pending.is_empty() {
             log::info!(
                 "last.fm: {} scrobbles were waiting from the last run",

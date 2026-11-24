@@ -8,11 +8,11 @@ use std::sync::{Mutex, MutexGuard, PoisonError};
 use std::time::{Duration, Instant};
 
 /// How long an answer is reused (backspacing or retyping a prefix asks nothing).
-const CACHE_TTL: Duration = Duration::from_secs(10 * 60);
+const CACHE_TTL: Duration = Duration::from_mins(10);
 const CACHE_MAX: usize = 64;
 /// After a rate-limit answer no suggestions are asked for this long; each one in a row doubles it, up to `PAUSE_MAX`.
 const PAUSE_BASE: Duration = Duration::from_secs(60);
-const PAUSE_MAX: Duration = Duration::from_secs(15 * 60);
+const PAUSE_MAX: Duration = Duration::from_mins(15);
 
 /// Text longer than this is not asked about: it is a paste, not a search, and it would only be handed to Google.
 const ASK_MAX_CHARS: usize = 80;

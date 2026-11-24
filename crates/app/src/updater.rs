@@ -271,8 +271,7 @@ fn wants_prereleases(app: &AppHandle) -> bool {
     app.state::<crate::shell::ShellState>()
         .settings
         .lock()
-        .map(|s| s.check_prereleases)
-        .unwrap_or(false)
+        .is_ok_and(|s| s.check_prereleases)
 }
 
 fn check_app_blocking(wanted_prereleases: bool) -> Result<AppUpdateDto, String> {

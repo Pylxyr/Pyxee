@@ -541,7 +541,7 @@ pub fn on_state(app: &AppHandle, s: &PlayerStateDto) {
         && let Some(lastfm) = guard.as_ref()
     {
         lastfm.on_state(phase, id, entry.map(|e| &e.track), s.position_ms);
-    };
+    }
 }
 
 fn apply_taskbar_progress(app: &AppHandle, p: TaskbarProgress) {

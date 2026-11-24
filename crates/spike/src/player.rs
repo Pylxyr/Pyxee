@@ -207,8 +207,7 @@ impl Player {
         let mon = self
             .producer
             .take()
-            .map(|h| h.join().unwrap_or_default())
-            .unwrap_or_default();
+            .map_or_default(|h| h.join().unwrap_or_default());
         Report {
             frames: mon.frames,
             underruns: self.underruns.load(Ordering::Relaxed),

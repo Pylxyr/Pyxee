@@ -64,16 +64,16 @@ impl GateConfig {
         min_gap: Duration::from_secs(1),
         interactive_gap: Duration::from_millis(250),
         hourly_budget: 150,
-        budget_window: Duration::from_secs(60 * 60),
+        budget_window: Duration::from_hours(1),
         cooldown: Duration::from_secs(120),
-        max_cooldown: Duration::from_secs(30 * 60),
+        max_cooldown: Duration::from_mins(30),
     };
     /// No pacing at all (still one run at a time). For tests that are not about pacing.
     pub const NONE: Self = Self {
         min_gap: Duration::ZERO,
         interactive_gap: Duration::ZERO,
         hourly_budget: 0,
-        budget_window: Duration::from_secs(60 * 60),
+        budget_window: Duration::from_hours(1),
         cooldown: Duration::ZERO,
         max_cooldown: Duration::ZERO,
     };

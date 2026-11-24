@@ -314,8 +314,7 @@ pub fn set_crossfade(state: State<AppState>, seconds: u8) {
 pub(crate) fn perf_on() -> bool {
     DEV_TOOLS
         && std::env::var("PYXEE_PERF")
-            .ok()
-            .is_some_and(|v| pyxee_sources::ytmusic::parse_switch(&v) == Ok(true))
+            .is_ok_and(|v| pyxee_sources::ytmusic::parse_switch(&v) == Ok(true))
 }
 
 /// One line for the performance log, only when `PYXEE_PERF=1`: what the app side did (a window put to sleep or woken,

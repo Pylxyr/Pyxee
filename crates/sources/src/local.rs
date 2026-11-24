@@ -198,7 +198,7 @@ fn embedded_cover(path: &Path) -> Option<Cover> {
     let pictures: Vec<&lofty::picture::Picture> = tagged
         .tags()
         .iter()
-        .flat_map(|tag| tag.pictures())
+        .flat_map(lofty::tag::Tag::pictures)
         .filter(|p| p.data().len() as u64 <= COVER_MAX_BYTES)
         .collect();
     let picked = pictures
@@ -501,8 +501,7 @@ impl MusicSource for LocalSource {
         }
         let ext = Path::new(path)
             .extension()
-            .map(|e| e.to_string_lossy().to_ascii_lowercase())
-            .unwrap_or_default();
+            .map_or_default(|e| e.to_string_lossy().to_ascii_lowercase());
         Ok(StreamInfo {
             url: path.to_string(),
             ext,
