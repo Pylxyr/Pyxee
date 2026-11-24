@@ -11,7 +11,7 @@ use crate::AudioError;
 use std::collections::BTreeMap;
 use std::io::{self, Read, Seek, SeekFrom};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Condvar, Mutex, MutexGuard, OnceLock, PoisonError};
+use std::sync::{Arc, Condvar, LazyLock, Mutex, MutexGuard, PoisonError};
 use std::time::{Duration, Instant};
 use ureq::http::StatusCode;
 use ureq::http::header::{CONTENT_RANGE, HeaderName, RANGE};
@@ -104,17 +104,15 @@ pub(crate) fn is_expired(code: u16) -> bool {
 /// seeks, instead of a new handshake each time a song is (re)opened. It is `https` only: a plain `http` address (or a
 /// redirect to one) is refused. Only the `allow-insecure-http` feature, which is for tests, lifts that.
 fn agent() -> ureq::Agent {
-    static AGENT: OnceLock<ureq::Agent> = OnceLock::new();
-    AGENT
-        .get_or_init(|| {
-            pyxee_net::agent_config()
-                .https_only(!cfg!(feature = "allow-insecure-http"))
-                .timeout_connect(Some(Duration::from_secs(10)))
-                .timeout_per_read(Some(Duration::from_secs(20)))
-                .build()
-                .into()
-        })
-        .clone()
+    static AGENT: LazyLock<ureq::Agent> = LazyLock::new(|| {
+        pyxee_net::agent_config()
+            .https_only(!cfg!(feature = "allow-insecure-http"))
+            .timeout_connect(Some(Duration::from_secs(10)))
+            .timeout_per_read(Some(Duration::from_secs(20)))
+            .build()
+            .into()
+    });
+    AGENT.clone()
 }
 
 /// The player client `YouTube` recorded in a stream URL (`c=ANDROID_VR`, `c=WEB`, ...), for the log only.

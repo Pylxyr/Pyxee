@@ -4,16 +4,14 @@
 //! profile that cookies are read from, or folders under the user's profile. `scrub` replaces those,
 //! so nothing built from them reaches the log file or the UI.
 
-use std::sync::{Mutex, OnceLock, PoisonError};
+use std::sync::{Mutex, PoisonError};
 
 const REDACTED: &str = "<redacted>";
 /// Environment variables whose values are replaced by their `%NAME%` form.
 const ENV_PATHS: [&str; 5] = ["USERPROFILE", "APPDATA", "LOCALAPPDATA", "TEMP", "HOME"];
 
-fn registry() -> &'static Mutex<Vec<String>> {
-    static SECRETS: OnceLock<Mutex<Vec<String>>> = OnceLock::new();
-    SECRETS.get_or_init(|| Mutex::new(Vec::new()))
-}
+/// The secrets `register` has been given. `Mutex::new` and `Vec::new` are `const`, so no lazy cell is needed.
+static SECRETS: Mutex<Vec<String>> = Mutex::new(Vec::new());
 
 /// Makes `scrub` replace `secret` (the active cookie file path or browser spec) from now on.
 pub(crate) fn register(secret: &str) {
@@ -21,7 +19,7 @@ pub(crate) fn register(secret: &str) {
     if secret.is_empty() {
         return;
     }
-    let mut known = registry().lock().unwrap_or_else(PoisonError::into_inner);
+    let mut known = SECRETS.lock().unwrap_or_else(PoisonError::into_inner);
     if !known.iter().any(|k| k == secret) {
         known.push(secret.to_string());
     }
@@ -41,7 +39,7 @@ pub fn scrub(text: &str) -> String {
 
 fn scrub_with(text: &str, env: &[(&str, String)]) -> String {
     let mut out = text.to_string();
-    let secrets = registry()
+    let secrets = SECRETS
         .lock()
         .unwrap_or_else(PoisonError::into_inner)
         .clone();
