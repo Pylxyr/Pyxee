@@ -113,6 +113,54 @@ describe('ThemeStore', () => {
     expect(t.rolePalette).toBeNull();
   });
 
+  it('starts with several colours, and leaves someone who already has the colour on with one until they choose', () => {
+    expect(new ThemeStore(memory(), null).settings.dynamicMode).toBe('several');
+    expect(new ThemeStore(memory({ 'pyxee.theme': '{"dynamicColor":false}' }), null).settings.dynamicMode).toBe('several');
+    expect(new ThemeStore(memory({ 'pyxee.theme': '{"dynamicColor":true}' }), null).settings.dynamicMode).toBe('single');
+    expect(new ThemeStore(memory({ 'pyxee.theme': '{"dynamicColor":true,"dynamicMode":"several"}' }), null).settings.dynamicMode).toBe('several');
+    expect(new ThemeStore(memory({ 'pyxee.theme': '{"dynamicColor":false,"dynamicMode":"nonsense"}' }), null).settings.dynamicMode).toBe('several');
+    const store = memory();
+    const a = new ThemeStore(store, null);
+    a.update({ dynamicMode: 'single' });
+    expect(new ThemeStore(store, null).settings.dynamicMode).toBe('single');
+  });
+
+  it('wears the cover\'s roles as the palette in "Several colours", and one colour in "Single colour"', () => {
+    const roles: CoverRoles = { primary: '#fcd755', secondary: '#ee516f', tertiary: '#f7f1ec', dark: null, light: '#f7f1ec', hued: true, colourShare: 0.88 };
+    const t = new ThemeStore(memory(), fakeMq(true).mq);
+    t.update({ dynamicColor: true });
+    t.art = roles.primary;
+    t.roles = roles;
+    expect(t.colors).toEqual(paletteFromRoles(roles, 'dark').colors);
+    t.update({ dynamicMode: 'single' });
+    expect(t.colors).toEqual(paletteFromArt(roles.primary, 'dark'));
+    t.update({ dynamicMode: 'several' });
+    t.roles = null; // a cover whose colours could not be read: no roles, so the plain theme stays
+    t.art = null;
+    expect(t.colors).toEqual(t.active.colors);
+  });
+
+  it('writes the cover\'s other colours to the root, and takes them off again for one colour or none', () => {
+    const roles: CoverRoles = { primary: '#fcd755', secondary: '#ee516f', tertiary: '#f7f1ec', dark: null, light: '#f7f1ec', hued: true, colourShare: 0.88 };
+    const t = new ThemeStore(memory(), fakeMq(true).mq);
+    const root = document.createElement('html');
+    t.update({ dynamicColor: true });
+    t.art = roles.primary;
+    t.roles = roles;
+    t.apply(root);
+    const p = paletteFromRoles(roles, 'dark');
+    expect(root.style.getPropertyValue('--t-accent-2')).toBe(p.accent2);
+    expect(root.style.getPropertyValue('--t-accent-3')).toBe(p.accent3);
+    expect(contrast(root.style.getPropertyValue('--t-on-accent-2'), p.accent2)).toBeGreaterThanOrEqual(4.5);
+    t.update({ dynamicMode: 'single' });
+    t.apply(root);
+    for (const name of ['--t-accent-2', '--t-accent-3', '--t-on-accent-2']) expect(root.style.getPropertyValue(name), name).toBe('');
+    t.select('oled'); // a built-in theme never writes them either
+    t.update({ dynamicMode: 'several', dynamicColor: false });
+    t.apply(root);
+    expect(root.style.getPropertyValue('--t-accent-2')).toBe('');
+  });
+
   it('a palette from any cover colour reads, in both schemes', () => {
     for (const art of ['#ff0000', '#00ff00', '#0000ff', '#fff200', '#808080', '#101030', '#f5e6c8', '#d9c9b0', '#e03060', '#00ffd0', '#7a2cff', '#ff7a00']) {
       for (const scheme of ['dark', 'light'] as const) {

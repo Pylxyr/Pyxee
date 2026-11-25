@@ -45,7 +45,7 @@ beforeEach(() => {
   nav.themeEditorOpen = false;
   nav.tab = 'upnext';
   theme.preview = null;
-  theme.settings = { followSystem: true, themeId: 'dark', lightId: 'light', darkId: 'dark', dynamicColor: false, custom: [] };
+  theme.settings = { followSystem: true, themeId: 'dark', lightId: 'light', darkId: 'dark', dynamicColor: false, dynamicMode: 'several', custom: [] };
   theme.systemDark = true;
   for (const s of [...snackbar.items]) snackbar.dismiss(s.id);
   setWide(false);

@@ -245,7 +245,7 @@ input[type='range'].slider::-webkit-slider-runnable-track {
   background: linear-gradient(to right, var(--fg) var(--pct), var(--surface-2) var(--pct));
 }
 input[type='range'].slider.accent::-webkit-slider-runnable-track {
-  background: linear-gradient(to right, var(--accent) var(--pct), var(--surface-2) var(--pct));
+  background: linear-gradient(to right, var(--accent-fill) var(--pct), var(--surface-2) var(--pct));
 }
 /* The thumb is a round dot with a soft ring, shown on hover or focus (a tall bar looked clumsy on a thin line).
    Its centre sits on the track: margin-top = (track height - thumb height) / 2. */
@@ -262,8 +262,8 @@ input[type='range'].slider::-webkit-slider-thumb {
   transition: opacity var(--dur-fast) var(--ease), transform 300ms var(--spring-pop);
 }
 input[type='range'].slider.accent::-webkit-slider-thumb {
-  background: var(--accent);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 28%, transparent), 0 1px 4px rgb(0 0 0 / 0.35);
+  background: var(--accent-fill);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent-fill) 28%, transparent), 0 1px 4px rgb(0 0 0 / 0.35);
 }
 input[type='range'].slider:hover::-webkit-slider-thumb,
 input[type='range'].slider:focus-visible::-webkit-slider-thumb {
@@ -298,7 +298,7 @@ input[type='range'].slider:active::-webkit-slider-thumb {
   transform-origin: left center;
 }
 .seek-fill.accent {
-  background: var(--accent);
+  background: var(--accent-fill);
 }
 input[type='range'].slider.glide {
   position: absolute;
@@ -312,9 +312,24 @@ input[type='range'].slider:disabled {
   opacity: 0.5;
 }
 
-/* Registered so they can be animated: the accent glides to the next cover's colour instead of snapping, and a
-   progress bar fills smoothly between the position updates. Both inherit, as plain custom properties do. */
+/* Registered so they can be animated: the accent, and the cover's other colours with it, glide to the next cover instead
+   of snapping, and a progress bar fills smoothly between the position updates. All inherit, as plain custom properties do. */
 @property --accent {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: #c6f135;
+}
+@property --accent-2 {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: #c6f135;
+}
+@property --accent-3 {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: #c6f135;
+}
+@property --accent-fill {
   syntax: '<color>';
   inherits: true;
   initial-value: #c6f135;
@@ -325,7 +340,7 @@ input[type='range'].slider:disabled {
   initial-value: 0%;
 }
 :root {
-  transition: --accent 600ms var(--ease-out);
+  transition: --accent 600ms var(--ease-out), --accent-2 600ms var(--ease-out), --accent-3 600ms var(--ease-out), --accent-fill 600ms var(--ease-out);
 }
 /* A chosen theme crossfades as a whole (see crossfadeTheme): the new colours are live under the fade, so the accent must not glide too. */
 :root[data-theme-fade] {
@@ -508,7 +523,7 @@ input[type='range'].slider:disabled {
   background: repeating-linear-gradient(
     115deg,
     var(--surface-2) 0 8px,
-    color-mix(in srgb, var(--accent) 55%, var(--surface-2)) 8px 16px
+    color-mix(in srgb, var(--accent-fill) 55%, var(--surface-2)) 8px 16px
   );
 }
 
@@ -552,7 +567,7 @@ input[type='range'].slider:disabled {
   height: 100%;
   width: 100%;
   border-radius: inherit;
-  background: var(--accent);
+  background: var(--accent-fill);
   box-shadow: 0 0 10px var(--glow);
   /* Filled by scaling (--p is the done part, 0 to 1), never by resizing; a sliver shows from the start. */
   transform-origin: left center;
@@ -564,7 +579,7 @@ input[type='range'].slider:disabled {
   inset: 0 auto 0 0;
   width: 38%;
   min-width: 0;
-  background: linear-gradient(90deg, transparent, var(--accent) 40%, var(--accent) 60%, transparent);
+  background: linear-gradient(90deg, transparent, var(--accent-fill) 40%, var(--accent-fill) 60%, transparent);
   box-shadow: none;
   transition: none;
   transform: none;
@@ -836,6 +851,10 @@ input[type='range'].slider:disabled {
   .icon-btn[aria-pressed='true'] {
     color: var(--accent);
   }
+  /* The liked heart is a small highlight: the cover's tertiary colour. */
+  .icon-btn.like[aria-pressed='true'] {
+    color: var(--accent-3);
+  }
   .icon-btn:disabled {
     opacity: 0.3;
     cursor: default;
@@ -923,11 +942,11 @@ input[type='range'].slider:disabled {
     transition: transform var(--dur-fast) var(--ease), background-color var(--dur-fast) var(--ease);
   }
   input.switch:checked {
-    border-color: var(--accent);
-    background: var(--accent);
+    border-color: var(--accent-fill);
+    background: var(--accent-fill);
   }
   input.switch:checked::after {
-    background: var(--on-accent);
+    background: var(--on-accent-fill);
     transform: translateX(20px);
   }
 
@@ -1356,7 +1375,7 @@ input[type='range'].slider:disabled {
     position: absolute;
     inset: 0 auto 0 0;
     width: 30%;
-    background: linear-gradient(90deg, transparent, var(--accent));
+    background: linear-gradient(90deg, transparent, var(--accent-fill));
     opacity: 0;
     transform: translateX(-100%);
     animation: wake 700ms var(--ease-out) backwards;
@@ -1557,7 +1576,7 @@ input[type='range'].slider:disabled {
   .notice {
     padding: 12px 16px;
     border: 1px solid var(--rule);
-    border-left: 3px solid var(--accent);
+    border-left: 3px solid var(--accent-3);
     border-radius: var(--r-md);
     background: var(--surface);
   }
@@ -1773,7 +1792,7 @@ input[type='range'].slider:disabled {
     width: 3px;
     height: 100%;
     border-radius: 1px;
-    background: var(--accent);
+    background: var(--accent-3);
     transform: scaleY(0.4);
     transform-origin: bottom;
     transition: transform var(--dur-base) var(--ease-out);
@@ -1920,7 +1939,7 @@ input[type='range'].slider:disabled {
   .toast {
     position: relative;
     overflow: hidden;
-    border-left: 3px solid var(--accent);
+    border-left: 3px solid var(--accent-3);
     border-radius: var(--r-md);
     box-shadow: var(--shadow-pop);
   }
@@ -1953,7 +1972,7 @@ input[type='range'].slider:disabled {
     width: 10px;
     height: 10px;
     border-radius: 50%;
-    background: var(--accent);
+    background: var(--accent-3);
     opacity: 0;
     pointer-events: none;
   }
@@ -1961,7 +1980,7 @@ input[type='range'].slider:disabled {
     position: absolute;
     inset: auto 0 0 0;
     height: 2px;
-    background: var(--accent);
+    background: var(--accent-3);
     opacity: 0.8;
     transform-origin: left center;
     pointer-events: none;
@@ -2004,7 +2023,7 @@ input[type='range'].slider:disabled {
   .compact-bar > div {
     height: 100%;
     border-radius: 2px;
-    background: var(--accent);
+    background: var(--accent-fill);
   }
 }
 
@@ -2349,12 +2368,18 @@ input[type='range'].slider:disabled {
   --r-pill: 9999px;
   /* A second colour a step around the colour wheel from the accent: it follows every theme (and the cover's colour).
      A yellow or gold accent (OKLCH hue 72-125) steps the other way, toward amber, because the step forward is green. */
-  --accent-2: var(--accent);
+  --accent-2: var(--t-accent-2, var(--accent));
   --gradient-accent: linear-gradient(120deg, var(--accent), var(--accent-2));
+  /* "Several colours" from the cover (--t-accent-2, --t-accent-3): the secondary is the second stop of gradients, and
+     fills that run (the seek bar, the volume, switches that are on) wear it; the tertiary is for small highlights (the
+     heart, the playing marker, toasts). Without them, a theme, or a cover's one colour, both are the accent as before. */
+  --accent-fill: var(--t-accent-2, var(--accent));
+  --accent-3: var(--t-accent-3, var(--accent));
+  --on-accent-fill: var(--t-on-accent-2, var(--on-accent));
 }
 @supports (color: oklch(from red l c h)) {
   :root {
-    --accent-2: oklch(from var(--accent) l c calc(h + 58 - 88 * clamp(0, (h - 71) * 100, 1) * clamp(0, (126 - h) * 100, 1)));
+    --accent-2: var(--t-accent-2, oklch(from var(--accent) l c calc(h + 58 - 88 * clamp(0, (h - 71) * 100, 1) * clamp(0, (126 - h) * 100, 1))));
   }
 }
 
@@ -2801,7 +2826,7 @@ input[type='range'].eq-band {
 input[type='range'].eq-band::-webkit-slider-runnable-track {
   height: 4px;
   border-radius: 2px;
-  background: linear-gradient(to right, var(--surface-2) var(--lo), var(--accent) var(--lo), var(--accent) var(--hi), var(--surface-2) var(--hi));
+  background: linear-gradient(to right, var(--surface-2) var(--lo), var(--accent-fill) var(--lo), var(--accent-fill) var(--hi), var(--surface-2) var(--hi));
 }
 input[type='range'].eq-band::-webkit-slider-thumb {
   -webkit-appearance: none;
@@ -2864,6 +2889,9 @@ input[type='range'].eq-band:focus-visible::-webkit-slider-thumb {
 /* Surfaces: flat. No gradients, glows, tilts or shadows; the accent is one plain colour. */
 :root[data-surfaces='flat'] {
   --accent-2: var(--accent);
+  --accent-fill: var(--accent);
+  --accent-3: var(--accent);
+  --on-accent-fill: var(--on-accent);
   --gradient-accent: var(--accent);
   --glow: transparent;
   --shadow-art: none;
@@ -3978,7 +4006,7 @@ input[type='range'].eq-band:focus-visible::-webkit-slider-thumb {
   display: block;
   height: 100%;
   border-radius: inherit;
-  background: linear-gradient(90deg, var(--accent), color-mix(in srgb, var(--accent) 60%, var(--fg)));
+  background: linear-gradient(90deg, var(--accent-fill), color-mix(in srgb, var(--accent-fill) 60%, var(--fg)));
   transform-origin: left center;
   transition: transform 320ms var(--ease-out);
 }

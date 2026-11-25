@@ -8,6 +8,9 @@ import {
 
 export type Backdrop = 'mica' | 'none';
 
+/** What "Color from album art" takes from a cover: its one main colour, or all of its colours spread over the interface. */
+export type DynamicMode = 'single' | 'several';
+
 export interface ThemeSettings {
   /** Use `lightId` or `darkId` according to the system's light/dark setting. */
   followSystem: boolean;
@@ -17,6 +20,8 @@ export interface ThemeSettings {
   darkId: string;
   /** Take the accent from the current album art. */
   dynamicColor: boolean;
+  /** With `dynamicColor` on: one colour from the cover (the accent, the rest turned from it) or several (see `paletteFromRoles`). */
+  dynamicMode: DynamicMode;
   /** Themes the user made or imported. */
   custom: ThemeDef[];
 }
@@ -27,7 +32,7 @@ const BUILTIN_IDS = new Set(BUILTIN_THEMES.map((t) => t.id));
 type Store = Pick<Storage, 'getItem' | 'setItem'>;
 
 function defaults(): ThemeSettings {
-  return { followSystem: true, themeId: DEFAULT_DARK_ID, lightId: DEFAULT_LIGHT_ID, darkId: DEFAULT_DARK_ID, dynamicColor: false, custom: [] };
+  return { followSystem: true, themeId: DEFAULT_DARK_ID, lightId: DEFAULT_LIGHT_ID, darkId: DEFAULT_DARK_ID, dynamicColor: false, dynamicMode: 'several', custom: [] };
 }
 
 function load(storage: Store | null): ThemeSettings {
@@ -56,6 +61,8 @@ function load(storage: Store | null): ThemeSettings {
       lightId: pick(v.lightId, 'light', DEFAULT_LIGHT_ID),
       darkId: pick(v.darkId, 'dark', DEFAULT_DARK_ID),
       dynamicColor: v.dynamicColor === true,
+      // Someone who already has the colour on keeps the one-colour look until they choose; everyone else starts with several.
+      dynamicMode: v.dynamicMode === 'single' || v.dynamicMode === 'several' ? v.dynamicMode : v.dynamicColor === true ? 'single' : 'several',
       custom,
     };
   } catch {
@@ -83,18 +90,22 @@ export class ThemeStore {
     this.preview ?? this.all.find((t) => t.id === this.selectedId) ?? BUILTIN_THEMES[0]!,
   );
   resolved = $derived(this.active.scheme);
+  /** The same, with the cover's other colours spread over the interface (`accent2`, `accent3`), when the cover colours the app. */
+  rolePalette = $derived<RolePalette | null>(
+    this.settings.dynamicColor && this.roles && !this.preview ? paletteFromRoles(this.roles, this.active.scheme) : null,
+  );
+  /** The cover's roles worn as the palette, when the choice is "Several colours" and a cover is known; else null. */
+  spread = $derived<RolePalette | null>(this.settings.dynamicMode === 'several' ? this.rolePalette : null);
   /**
    * The colours in use: the active theme's, or, with "Color from album art" on and a cover to take it from, a whole
    * palette made from the cover's colour (the theme's light or dark stays).
    */
   colors = $derived<ThemeColors>(
-    this.settings.dynamicColor && this.art && !this.preview ? paletteFromArt(this.art, this.active.scheme) : this.active.colors,
+    this.spread
+      ? this.spread.colors
+      : this.settings.dynamicColor && this.art && !this.preview ? paletteFromArt(this.art, this.active.scheme) : this.active.colors,
   );
   accent = $derived(this.colors.accent);
-  /** The same, with the cover's other colours spread over the interface (`accent2`, `accent3`), when the cover colours the app. */
-  rolePalette = $derived<RolePalette | null>(
-    this.settings.dynamicColor && this.roles && !this.preview ? paletteFromRoles(this.roles, this.active.scheme) : null,
-  );
   /** What the native window frame and backdrop should follow: the system (null) or a fixed light/dark. */
   windowTheme = $derived<'dark' | 'light' | null>(this.settings.followSystem && !this.preview ? null : this.resolved);
 
@@ -131,7 +142,7 @@ export class ThemeStore {
       this.settings = { ...this.settings, ...patch };
       this.#save();
     };
-    const looks = (['followSystem', 'themeId', 'lightId', 'darkId', 'dynamicColor'] as const).some((k) => k in patch && patch[k] !== this.settings[k]);
+    const looks = (['followSystem', 'themeId', 'lightId', 'darkId', 'dynamicColor', 'dynamicMode'] as const).some((k) => k in patch && patch[k] !== this.settings[k]);
     if (looks) crossfadeTheme(apply);
     else apply();
   }
@@ -196,8 +207,10 @@ export class ThemeStore {
     root.dataset.theme = def.scheme;
     root.dataset.themeId = def.id || 'preview';
     root.dataset.backdrop = this.backdrop;
-    const vars = themeVars(this.colors);
+    const vars = themeVars(this.colors, this.spread ?? undefined);
     for (const [name, value] of Object.entries(vars)) root.style.setProperty(name, value);
+    // Without several colours the stylesheet's own second colour (turned from the accent) must show again.
+    if (!this.spread) for (const name of ['--t-accent-2', '--t-accent-3', '--t-on-accent-2']) root.style.removeProperty(name);
   }
 }
 

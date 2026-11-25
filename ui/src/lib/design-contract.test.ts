@@ -34,6 +34,7 @@ describe('Mica-safe colours', () => {
 
   it('every variable a theme writes is read by the stylesheet', () => {
     for (const name of Object.keys(themeVars(BUILTIN_THEMES[0]!.colors))) expect(css, name).toContain(`var(${name}`);
+    for (const name of Object.keys(themeVars(BUILTIN_THEMES[0]!.colors, { accent2: '#ee516f', accent3: '#f7f1ec' }))) expect(css, name).toContain(`var(${name}`);
   });
 
   it('opaque tokens exist for both themes and Mica never overrides them', () => {
@@ -139,5 +140,39 @@ describe("the deck's seek line", () => {
     expect(seek).toMatch(/inset-inline:\s*var\(--deck-pad\) calc\(var\(--deck-pad\) \+ 9px\);/);
     expect(seek).not.toMatch(/overflow:\s*hidden/);
     expect(seek).not.toMatch(/border-radius/);
+  });
+});
+
+describe('the cover\'s several colours', () => {
+  const fills = [
+    ".seek-fill.accent", "input[type='range'].slider.accent::-webkit-slider-thumb", '.uprog-fill', 'input.switch:checked', '.compact-bar > div',
+    "input[type='range'].eq-band::-webkit-slider-runnable-track", '.cache-meter > span',
+  ];
+  const marks = ['.eq i', '.notice', '.toast', '.toss-dot', '.toast-rail'];
+
+  it('leave a theme exactly as it is: the second colour is still turned from the accent, the rest are the accent', () => {
+    expect(css).toMatch(/--accent-2:\s*var\(--t-accent-2, oklch\(from var\(--accent\) l c calc\(h \+ 58 - 88 \* clamp\(0, \(h - 71\) \* 100, 1\) \* clamp\(0, \(126 - h\) \* 100, 1\)\)\)\);/);
+    expect(css).toMatch(/--accent-2:\s*var\(--t-accent-2, var\(--accent\)\);/); // the engine without relative colours
+    expect(css).toMatch(/--accent-fill:\s*var\(--t-accent-2, var\(--accent\)\);/);
+    expect(css).toMatch(/--accent-3:\s*var\(--t-accent-3, var\(--accent\)\);/);
+    expect(css).toMatch(/--on-accent-fill:\s*var\(--t-on-accent-2, var\(--on-accent\)\);/);
+    expect(css).toMatch(/transition:\s*--accent 600ms[^;]*--accent-2 600ms[^;]*--accent-3 600ms[^;]*--accent-fill 600ms/); // they glide together
+    for (const name of ['--accent-2', '--accent-3', '--accent-fill']) expect(css, name).toMatch(new RegExp(`@property ${name} \\{\\s*syntax: '<color>';`));
+  });
+
+  it('are flat in flat surfaces: one plain colour', () => {
+    const flat = rule(":root[data-surfaces='flat']");
+    for (const name of ['--accent-2', '--accent-fill', '--accent-3']) expect(flat, name).toContain(`${name}: var(--accent);`);
+    expect(flat).toContain('--on-accent-fill: var(--on-accent);');
+  });
+
+  it('colour the fills that run with the secondary and the small highlights with the tertiary', () => {
+    // A selector can have several rules (one for reduced motion, say): one of them is the colour.
+    const colours = (selector: string, token: string) => css.split(`${selector} {`).slice(1).some((part) => part.slice(0, part.indexOf('}')).includes(token));
+    for (const selector of fills) expect(colours(selector, 'var(--accent-fill)'), selector).toBe(true);
+    for (const selector of marks) expect(colours(selector, 'var(--accent-3)'), selector).toBe(true);
+    expect(colours('input.switch:checked::after', 'var(--on-accent-fill)')).toBe(true);
+    expect(css).toMatch(/\.icon-btn\.like\[aria-pressed='true'\]\s*\{\s*color:\s*var\(--accent-3\)/);
+    for (const file of ['TrackRow.svelte', 'LikeButton.svelte']) expect(source(file), file).toMatch(/icon="heart" class="like"/);
   });
 });

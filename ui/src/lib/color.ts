@@ -571,7 +571,9 @@ const WEAR = {
 export function paletteFromRoles(roles: CoverRoles, scheme: Scheme): RolePalette {
   const dark = scheme === 'dark';
   const [h, s] = toHsl(roles.primary);
-  const strength = roles.hued ? clamp(roles.colourShare / 0.3, 0.3, 1) : 1;
+  // Tinted as deeply as a one-colour theme, the surfaces of a yellow cover turn to olive mud and bury the accents: they
+  // take a little over half of it, and less as less of the picture is coloured.
+  const strength = roles.hued ? clamp(roles.colourShare / 0.3, 0.3, 1) * 0.55 : 1;
   const layer = layers(h, surfaceTint(s, dark ? 0.6 : 0.5) * strength, scheme);
   const textOn = dark ? '#0f0f0f' : '#ffffff';
   const wear = (hex: string, band: readonly [number, number]) => {

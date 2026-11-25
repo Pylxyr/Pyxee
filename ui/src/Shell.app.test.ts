@@ -43,7 +43,7 @@ beforeEach(() => {
   updates.reset();
   shellSettings.settings = { closeToTray: false, startWithWindows: false, toastOnChange: false, trayControls: false, flyoutOnClick: true, discordPresence: false, lastfmScrobbling: false, checkPrereleases: false };
   shellSettings.error = null;
-  theme.settings = { followSystem: true, themeId: 'dark', lightId: 'light', darkId: 'dark', dynamicColor: false, custom: [] };
+  theme.settings = { followSystem: true, themeId: 'dark', lightId: 'light', darkId: 'dark', dynamicColor: false, dynamicMode: 'several', custom: [] };
   for (const s of [...snackbar.items]) snackbar.dismiss(s.id);
   window.matchMedia = ((q: string) => ({
     matches: false, media: q, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {}, dispatchEvent: () => false, onchange: null,

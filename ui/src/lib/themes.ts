@@ -90,7 +90,7 @@ export const DEFAULT_LIGHT_ID = 'light';
 export const MAX_CUSTOM_THEMES = 30;
 
 /** The CSS variables `app.css` reads (`--t-*`), derived from a theme's seven colours. */
-export function themeVars(colors: ThemeColors): Record<string, string> {
+export function themeVars(colors: ThemeColors, more?: { accent2: string; accent3: string }): Record<string, string> {
   return {
     '--t-bg': colors.bg,
     '--t-surface': colors.surface,
@@ -107,6 +107,8 @@ export function themeVars(colors: ThemeColors): Record<string, string> {
     '--t-on-accent': readableOn(colors.accent),
     // On Windows 11 Mica a grey background lets the backdrop show through fully; a coloured one tints it.
     '--t-mica-tint': chroma(colors.bg) < 8 ? '0%' : '70%',
+    // The cover's other colours, when it colours the app with several: the second stop of gradients and fills, and small highlights.
+    ...(more && { '--t-accent-2': more.accent2, '--t-accent-3': more.accent3, '--t-on-accent-2': readableOn(more.accent2) }),
   };
 }
 

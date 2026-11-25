@@ -2,7 +2,7 @@
   import { messageOf, type Backend } from '$lib/backend';
   import type { LogInfoDto } from '$lib/bindings/LogInfoDto';
   import { nav, type SettingsTab } from '$lib/nav.svelte';
-  import { theme } from '$lib/theme.svelte';
+  import { theme, type DynamicMode } from '$lib/theme.svelte';
   import { sleep } from '$lib/sleep.svelte';
   import { sleepLabel } from '$lib/lyrics';
   import { shellSettings } from '$lib/shell.svelte';
@@ -16,10 +16,20 @@
   import IconButton from './IconButton.svelte';
   import EqSection from './EqSection.svelte';
   import LookSection from './LookSection.svelte';
+  import Segmented from './Segmented.svelte';
   import Sheet from './Sheet.svelte';
   import ThemePicker from './ThemePicker.svelte';
   import Toggle from './Toggle.svelte';
   import UpdatesSection from './UpdatesSection.svelte';
+
+  const DYNAMIC_MODES: { id: DynamicMode; label: string; hint: string }[] = [
+    { id: 'single', label: 'Single colour', hint: "The cover's main colour tints everything, and the second colour is turned around the colour wheel from it." },
+    {
+      id: 'several',
+      label: 'Several colours',
+      hint: "The cover's own colours are spread over the player: its main colour for buttons and the chosen song, the next for progress bars and switches, the rest for small highlights. A grey cover stays grey. Flat surfaces keep one colour.",
+    },
+  ];
 
   let { backend }: { backend: Backend | null } = $props();
   let logInfo = $state<LogInfoDto | null>(null);
@@ -102,6 +112,19 @@
               checked={theme.settings.dynamicColor}
               onchange={(on) => theme.update({ dynamicColor: on })}
             />
+            {#if theme.settings.dynamicColor}
+              <div class="look-group">
+                <p class="look-label">Colours from the cover</p>
+                <Segmented
+                  mode="toggle"
+                  label="Colours from the cover"
+                  items={DYNAMIC_MODES.map((m) => ({ id: m.id, label: m.label }))}
+                  value={theme.settings.dynamicMode}
+                  onselect={(id) => theme.update({ dynamicMode: id })}
+                />
+                <p class="setting-hint">{DYNAMIC_MODES.find((m) => m.id === theme.settings.dynamicMode)?.hint}</p>
+              </div>
+            {/if}
             {#if hasOwnWindow()}
               <label class="setting-hint mt-3 block px-3">
                 Interface size

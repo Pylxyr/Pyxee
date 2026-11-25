@@ -10,5 +10,5 @@
 </script>
 
 <span class="inline-flex" use:popOnChange={liked}>
-  <IconButton icon="heart" fill={liked} pressed={liked} {size} label={liked ? 'Unlike' : 'Like'} onclick={() => library.toggleLike(track)} />
+  <IconButton icon="heart" class="like" fill={liked} pressed={liked} {size} label={liked ? 'Unlike' : 'Like'} onclick={() => library.toggleLike(track)} />
 </span>

@@ -52,7 +52,7 @@
     <span class="trow-time">{formatTime(track.durationMs)}</span>
   </button>
   <span class="trow-actions" data-liked={liked} use:popOnChange={liked}>
-    <IconButton icon="heart" iconSize={18} fill={liked} pressed={liked} label={liked ? `Unlike ${titleOf(track)}` : `Like ${titleOf(track)}`} onclick={() => library.toggleLike(track)} />
+    <IconButton icon="heart" class="like" iconSize={18} fill={liked} pressed={liked} label={liked ? `Unlike ${titleOf(track)}` : `Like ${titleOf(track)}`} onclick={() => library.toggleLike(track)} />
   </span>
   <span class="trow-actions">
     <IconButton icon="more" iconSize={18} label="More options for {titleOf(track)}" onclick={(e) => openTrackMenu(track, { button: e.currentTarget })} />
