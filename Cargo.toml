@@ -54,17 +54,38 @@ cast_sign_loss = "allow"
 cast_possible_wrap = "allow"
 cast_precision_loss = "allow"
 
-# The Linux build (packaging/arch): the same code as the Windows one, compiled for speed instead of for compile time.
-# Whole-program optimisation and one code-generation unit make the program faster and smaller, and the build slower
-# (use it with `--profile release-linux`; the Windows installer keeps the default `release` profile).
-[profile.release-linux]
-inherits = "release"
+# Release builds (the Windows installer and portable zip, the Linux package): fastest program, slowest build.
+# - opt-level 3 and no size trade-offs: the resampler, the volume and crossfade mixing and the library queries are tight
+#   loops, and the less CPU they use the longer a laptop lasts.
+# - Whole-program optimisation (`lto = "fat"`) and one code-generation unit let the compiler inline and vectorise across
+#   crates (the player, the sources, the bundled SQLite, the HTTP and TLS code) instead of stopping at every crate boundary.
+# - `panic` stays "unwind" on purpose: a panic in the decoder, the audio pipeline, the engine loop or a tag or cover
+#   reader is caught (`catch_unwind`) and becomes a skipped song or a notice instead of a dead program. "abort" would be
+#   a little smaller and would turn every one of those into a crash.
+# - No `target-cpu` here: the installer runs on any x86-64 PC. The Arch package, built on the machine that runs it, adds
+#   `-C target-cpu=native` itself (packaging/arch/PKGBUILD).
+[profile.release]
+opt-level = 3
 lto = "fat"
 codegen-units = 1
+debug = false
+debug-assertions = false
+overflow-checks = false
+incremental = false
+
+# The Linux package (packaging/arch): the release profile above, with the symbols stripped (the same speed, a smaller file).
+# Use it with `--profile release-linux`; the Windows installer uses `release`.
+[profile.release-linux]
+inherits = "release"
 strip = "symbols"
-# Size over speed: the audio work is in FFmpeg (C, built separately) and takes well under 1% of a core, so this costs
-# about 8% on the Rust resampler and saves 5 MB of the binary (18.5 -> 13.4 MB when measured).
-opt-level = "s"
+
+# For trying a change in an optimised build without waiting for whole-program optimisation (`--profile release-quick`,
+# the program is then in target/release-quick). Not used for anything that is shipped.
+[profile.release-quick]
+inherits = "release"
+lto = false
+codegen-units = 16
+incremental = true
 
 # souvlaki 0.9.3's MPRIS service (zbus 5, like Tauri's plugins) still wakes every 10 ms for as long as the program runs,
 # to look for a message. The copy in vendor/souvlaki is upstream 0.9.3 with two changes, both in the MPRIS code

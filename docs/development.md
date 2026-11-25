@@ -148,7 +148,10 @@ cargo run -p pyxee-app --features tauri/custom-protocol
 ```
 `tauri/custom-protocol` makes the program show the built page; without it a plain `cargo build` loads `localhost`.
 
-The Linux package (`packaging/arch/PKGBUILD`) uses `--profile release-linux` (whole-program optimisation, one
-code-generation unit, symbols stripped) with `RUSTFLAGS="-C target-cpu=<_march>"`, and builds FFmpeg with
-`PYXEE_FF_MARCH=<_march>` (see `scripts/build-ffmpeg.sh`). The Windows installer keeps the default `release` profile.
+Every release build (`release` profile: the Windows installer and portable zip) is compiled for speed: `opt-level = 3`,
+whole-program optimisation (`lto = "fat"`) and one code-generation unit, with `panic = "unwind"` (the audio code catches
+panics). That makes the build slow: for trying something in an optimised build, `cargo build --profile release-quick`
+skips the whole-program step. The Linux package (`packaging/arch/PKGBUILD`) uses `--profile release-linux` (the same,
+with symbols stripped) with `RUSTFLAGS="-C target-cpu=<_march>"`, and builds FFmpeg with `PYXEE_FF_MARCH=<_march>` (see
+`scripts/build-ffmpeg.sh`). The installer sets no `target-cpu`: it has to run on any x86-64 PC.
 `tauri build` on Linux does not work yet: `tauri.conf.json` lists only the `nsis` bundle.

@@ -274,9 +274,9 @@ RUSTFLAGS="-C target-cpu=native" \
   cargo build --profile release-linux --locked -p pyxee-app --features tauri/custom-protocol
 ```
 
-**Build faster.** The `release-linux` profile uses whole-program optimisation, which gives a smaller, faster program
-but a slow build. For a quicker build, use `--release` instead of `--profile release-linux`. The program is then in
-`target/release/pyxee-app`.
+**Build faster.** The `release-linux` profile uses whole-program optimisation, which gives the fastest program but a
+slow build. For a quicker build, use `--profile release-quick` instead. The program is then in
+`target/release-quick/pyxee-app`.
 
 **Use an FFmpeg build from another place.** Set `PYXEE_FFMPEG_DIR` to the folder that holds the libraries; otherwise
 `target/ffmpeg/<host triple>` is used.
