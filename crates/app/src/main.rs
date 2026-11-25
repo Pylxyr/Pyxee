@@ -1,5 +1,6 @@
-// Hide the console window in release builds on Windows.
-#![cfg_attr(all(not(debug_assertions), windows), windows_subsystem = "windows")]
+// Hide the console window in release builds on Windows, but not in the test program (`cargo test --release`), which
+// reports its results on the console.
+#![cfg_attr(all(not(debug_assertions), not(test), windows), windows_subsystem = "windows")]
 
 mod audio_cache;
 mod commands;
