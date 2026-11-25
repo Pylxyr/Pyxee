@@ -61,6 +61,17 @@
     };
   }
 
+  /** Saves the playlist as a file; the system's own dialog asks where, and closing it saves nothing. */
+  async function exportFile() {
+    if (!pl) return;
+    try {
+      const note = await library.backend!.playlistExport(pl.id);
+      if (note) snackbar.push(note);
+    } catch (e) {
+      snackbar.push(messageOf(e));
+    }
+  }
+
   async function remove() {
     const p = pl;
     if (!p) return;
@@ -104,6 +115,7 @@
           <Button variant="primary" disabled={tracks.length === 0} onclick={() => play(false)}>Play</Button>
           <Button disabled={tracks.length === 0} onclick={() => play(true)}>Shuffle</Button>
           <Button onclick={rename}>Rename</Button>
+          <Button disabled={tracks.length === 0} onclick={exportFile}>Export</Button>
           <Button onclick={remove}>Delete</Button>
         {/snippet}
       </PageHeader>

@@ -25,5 +25,8 @@ Like any request on the internet, each of these also sees your IP address. yt-dl
 - This section covers what Pyxee itself does. What YouTube, Google, lrclib.net, GitHub, Last.fm and Discord do with the information they receive is up to them and their own policies.
 - Songs kept for playing offline (**Library** -> **Offline**, off by default) are stored only on your computer. Keeping them sends nothing extra: they are what Pyxee had already downloaded to play them.
 - On Windows, the installer may also download Microsoft's WebView2 runtime if your PC does not have it.
+- Pasting a YouTube or YouTube Music link into the search box looks up that one song (or opens that playlist) the way playing it would. Only the video's id is taken from the link: the rest of it (tracking parameters, the time to start at) is dropped and never sent, and a link is never sent as a search suggestion.
+- **Settings** -> **Playback** -> **Output device** lists the audio devices your PC has. Which one you pick is saved in Pyxee's settings on your computer and goes nowhere.
+- **Export** (on a playlist) and **Import playlist** (in **Library** -> **Playlists**) use a `.json` file in a place you choose in the system's own dialog, and send nothing. An exported file holds the YouTube id, title, artist and length of each song, and no songs from your own folders (so no file paths are handed out). An imported file is not trusted: it is size-limited and every entry is checked, and only plain YouTube songs are taken.
 
 Back to the [README](../README.md). Pyxee's own files on your computer are described in [Where Pyxee keeps its files](data-folder.md).

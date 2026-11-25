@@ -4,13 +4,15 @@
 #![allow(clippy::needless_pass_by_value)]
 
 use super::dto::{
-    EqDto, LyricsDto, ShellSettingsDto, SleepSettingDto, SleepStateDto, SleepStatusDto,
+    AudioDeviceDto, AudioDevicesDto, EqDto, LyricsDto, ShellSettingsDto, SleepSettingDto,
+    SleepStateDto, SleepStatusDto,
 };
 use super::{ShellState, flyout, mini, sleep};
 use crate::audio_cache::AudioCache;
 use crate::state::{AppState, now_ms};
+use pyxee_audio::output::{DeviceIdent, list_outputs};
 use pyxee_lyrics::{LRCLIB, Lyrics, Query, fetch};
-use pyxee_shell::settings::EqSettings;
+use pyxee_shell::settings::{EqSettings, OUTPUT_DEVICE_ID_MAX};
 use std::sync::Arc;
 use std::time::Duration;
 use tauri::{AppHandle, Manager};
@@ -215,6 +217,74 @@ pub fn shell_set(app: AppHandle, settings: ShellSettingsDto) -> Result<ShellSett
     super::sync_discord(&app);
     super::sync_lastfm(&app, lastfm_turned_on);
     Ok(settings)
+}
+
+/// The devices as the window shows them, with the choice that is saved.
+fn devices_dto(app: &AppHandle, found: Vec<(DeviceIdent, bool)>) -> AudioDevicesDto {
+    let selected = app.try_state::<ShellState>().and_then(|shell| {
+        shell
+            .settings
+            .lock()
+            .ok()
+            .and_then(|s| s.output_device.clone())
+    });
+    AudioDevicesDto {
+        devices: found
+            .into_iter()
+            .map(|(d, is_default)| AudioDeviceDto {
+                id: d.id,
+                name: d.name,
+                is_default,
+            })
+            .collect(),
+        selected,
+    }
+}
+
+/// Settings > Playback > Output device: the devices that are connected and the one chosen. Listing them asks the
+/// system, so it runs off the window's thread.
+// Tauri hands a command its `AppHandle` by value: the signature is not ours to change.
+#[allow(clippy::needless_pass_by_value)]
+#[tauri::command]
+pub async fn audio_devices_get(app: AppHandle) -> Result<AudioDevicesDto, String> {
+    let found = tauri::async_runtime::spawn_blocking(list_outputs)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(devices_dto(&app, found))
+}
+
+/// Chooses the output device (`None`: follow the system default again). Only the id of a device that is connected is
+/// accepted, so nothing but what the system itself listed is ever saved. The audio thread follows the change within a
+/// moment. Resolves to the list as it is now.
+#[allow(clippy::needless_pass_by_value)]
+#[tauri::command]
+pub async fn audio_device_set(
+    app: AppHandle,
+    id: Option<String>,
+) -> Result<AudioDevicesDto, String> {
+    if let Some(id) = &id
+        && (id.is_empty() || id.len() > OUTPUT_DEVICE_ID_MAX)
+    {
+        return Err("That is not an output device.".into());
+    }
+    let found = tauri::async_runtime::spawn_blocking(list_outputs)
+        .await
+        .map_err(|e| e.to_string())?;
+    if let Some(id) = &id
+        && !found.iter().any(|(d, _)| d.id == *id)
+    {
+        return Err("That output device is not connected.".into());
+    }
+    {
+        let shell = app.state::<ShellState>();
+        let mut s = shell
+            .settings
+            .lock()
+            .map_err(|_| "Settings are unavailable.".to_string())?;
+        s.output_device = id;
+    }
+    app.state::<ShellState>().save_settings();
+    Ok(devices_dto(&app, found))
 }
 
 /// Settings > Connections > "Clear Last.fm data": signs out, deletes the saved sign-in and the scrobbles waiting to be

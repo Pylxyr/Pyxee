@@ -135,6 +135,26 @@ impl From<&ShellSettings> for ShellSettingsDto {
     }
 }
 
+/// One output device the system offers (Settings > Playback > Output device).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct AudioDeviceDto {
+    /// The system's own id for the device; it is what is saved and sent back to choose it.
+    pub id: String,
+    pub name: String,
+    pub is_default: bool,
+}
+
+/// The output devices that are connected, and the one the listener chose (`None`: follow the system default).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct AudioDevicesDto {
+    pub devices: Vec<AudioDeviceDto>,
+    pub selected: Option<String>,
+}
+
 /// The equalizer: on or off, the preamp and one gain per band (lowest first), in tenths of a dB.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]

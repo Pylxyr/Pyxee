@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { HistoryItemDto } from './bindings/HistoryItemDto';
 import type { TrackDto } from './bindings/TrackDto';
 import type { ExploreShelfDto } from './bindings/ExploreShelfDto';
-import { freshTracks, isJunk, jumpBackIn, pickSeeds, shelfTitle, withoutJunk } from './explore';
+import { freshTracks, isJunk, pickSeeds, shelfTitle, withoutJunk } from './explore';
 
 const t = (n: number, artist = `Artist ${n}`): TrackDto => ({ key: `k${n}`, title: `Song ${n}`, artist, durationMs: 1000, thumbnail: null });
 const h = (track: TrackDto, playedAt = 1): HistoryItemDto => ({ track, playedAt });
@@ -24,9 +24,6 @@ describe('shelf helpers', () => {
   it('titles say why a shelf exists', () => {
     expect(shelfTitle({ track: t(1), reason: 'liked' })).toBe('Because you liked Song 1');
     expect(shelfTitle({ track: t(1), reason: 'played' })).toBe('Because you played Song 1');
-  });
-  it('jump back in lists each recent song once, newest first, up to the limit', () => {
-    expect(jumpBackIn([h(t(1)), h(t(2)), h(t(1)), h(t(3))], 2).map((x) => x.key)).toEqual(['k1', 'k2']);
   });
   it('fresh tracks drop what another shelf or the seed already shows', () => {
     const seen = new Set(['k1']);

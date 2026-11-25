@@ -15,6 +15,7 @@
   import Icon from './Icon.svelte';
   import IconButton from './IconButton.svelte';
   import EqSection from './EqSection.svelte';
+  import OutputDevice from './OutputDevice.svelte';
   import LookSection from './LookSection.svelte';
   import Segmented from './Segmented.svelte';
   import Sheet from './Sheet.svelte';
@@ -43,7 +44,7 @@
   const TABS: { id: SettingsTab; label: string; icon: string; blurb: string }[] = [
     { id: 'appearance', label: 'Appearance', icon: 'palette', blurb: 'Theme, colors and size' },
     { id: 'layout', label: 'Layout', icon: 'layout', blurb: 'Corners, surfaces, panels and the home page' },
-    { id: 'playback', label: 'Playback', icon: 'music', blurb: 'Crossfade between songs and the equalizer' },
+    { id: 'playback', label: 'Playback', icon: 'music', blurb: 'Output device, crossfade and the equalizer' },
     { id: 'system', label: platform.os === 'windows' ? 'Windows' : 'System', icon: 'monitor', blurb: 'Tray, notifications and sleep timer' },
     { id: 'connections', label: 'Connections', icon: 'plug', blurb: 'Discord and Last.fm' },
     { id: 'updates', label: 'Updates', icon: 'refresh', blurb: 'Pyxee and its tools' },
@@ -146,6 +147,7 @@
               </select>
               <span class="mt-1 block">One song fades out while the next fades in. It only happens when a song ends by itself: Next, Previous, seeking and stopping stay instant. A song whose length is unknown plays without it. Off keeps songs joined without a gap.</span>
             </label>
+            <OutputDevice />
           </section>
           <EqSection />
         {:else if tab.id === 'system'}

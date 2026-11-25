@@ -16,6 +16,7 @@ mod local_cover;
 mod local_library;
 mod logging;
 mod opener;
+mod playlist_file;
 mod recorder;
 mod runner;
 mod session;
@@ -316,6 +317,9 @@ fn main() {
             commands::dev_catalog,
             commands::search,
             commands::suggest,
+            commands::link_track,
+            playlist_file::playlist_export,
+            playlist_file::playlist_import,
             commands::related_get,
             commands::explore_get,
             commands::genres_get,
@@ -372,6 +376,8 @@ fn main() {
             shell::commands::shell_get,
             shell::commands::shell_set,
             shell::commands::lastfm_clear,
+            shell::commands::audio_devices_get,
+            shell::commands::audio_device_set,
             shell::commands::eq_get,
             shell::commands::eq_set,
             shell::commands::flyout_hide,

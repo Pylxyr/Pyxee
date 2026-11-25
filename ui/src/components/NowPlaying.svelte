@@ -27,6 +27,7 @@
   import Seek from './Seek.svelte';
   import Segmented from './Segmented.svelte';
   import Thumb from './Thumb.svelte';
+  import VolumeSlider from './VolumeSlider.svelte';
 
   const entry = $derived(player.shown);
   // The page behind the player follows the choice for Home's top card (Settings > Look); Flat surfaces give a plain page.
@@ -117,6 +118,8 @@
             </IconButton>
           </span>
         </div>
+        <!-- The window's own volume (the deck's slider is under this page), for a keyboard or a finger on a small screen. -->
+        <div class="np-volume w-[min(60vw,14rem)] shrink-0" data-testid="np-volume"><VolumeSlider /></div>
       </section>
 
       <section class="flex min-h-0 min-w-0 flex-col">

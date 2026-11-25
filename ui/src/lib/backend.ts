@@ -1,6 +1,8 @@
 import type { CommandDto } from './bindings/CommandDto';
 import type { WindowTint } from './color';
 import type { AddResultDto } from './bindings/AddResultDto';
+import type { AudioDevicesDto } from './bindings/AudioDevicesDto';
+import type { ImportedPlaylistDto } from './bindings/ImportedPlaylistDto';
 import type { ExploreShelfDto } from './bindings/ExploreShelfDto';
 import type { GenreDto } from './bindings/GenreDto';
 import type { FilterInfoDto } from './bindings/FilterInfoDto';
@@ -141,6 +143,16 @@ export interface Backend extends LibraryBackend {
   shellGet(): Promise<ShellSettingsDto>;
   /** Saves the tray / start-with-Windows / toast settings; resolves to what is now in effect. */
   shellSet(settings: ShellSettingsDto): Promise<ShellSettingsDto>;
+  /** The song behind a `yt:` key taken from a pasted link (its title, artist, length and cover). Rejects with a `SearchErrorDto`. */
+  linkTrack(key: string): Promise<TrackDto>;
+  /** Saves a playlist to a file chosen in the system's save dialog. Resolves to a note for the listener, or `null` when the dialog was closed. */
+  playlistExport(id: number): Promise<string | null>;
+  /** Asks for a playlist file in the system's dialog and makes a new playlist of it. `null` when the dialog was closed. */
+  playlistImport(): Promise<ImportedPlaylistDto | null>;
+  /** The output devices that are connected and the one chosen (`selected`; `null` follows the system default). */
+  audioDevicesGet(): Promise<AudioDevicesDto>;
+  /** Chooses the output device by the id `audioDevicesGet` gave; `null` follows the system default again. Rejects an id that is not connected. */
+  audioDeviceSet(id: string | null): Promise<AudioDevicesDto>;
   /** Signs out of Last.fm: forgets the saved sign-in, deletes the scrobbles still waiting and turns scrobbling off. Resolves to what is now in effect. */
   lastfmClear(): Promise<ShellSettingsDto>;
   eqGet(): Promise<EqDto>;
@@ -266,6 +278,11 @@ export async function tauriBackend(): Promise<Backend> {
     shellGet: () => invoke<ShellSettingsDto>('shell_get'),
     shellSet: (settings) => invoke<ShellSettingsDto>('shell_set', { settings }),
     lastfmClear: () => invoke<ShellSettingsDto>('lastfm_clear'),
+    linkTrack: (key) => invoke<TrackDto>('link_track', { key }),
+    playlistExport: (id) => invoke<string | null>('playlist_export', { id }),
+    playlistImport: () => invoke<ImportedPlaylistDto | null>('playlist_import'),
+    audioDevicesGet: () => invoke<AudioDevicesDto>('audio_devices_get'),
+    audioDeviceSet: (id) => invoke<AudioDevicesDto>('audio_device_set', { id }),
     flyoutHide: () => invoke<void>('flyout_hide'),
     flyoutOpenMain: () => invoke<void>('flyout_open_main'),
     miniToggle: () => invoke<void>('mini_toggle'),

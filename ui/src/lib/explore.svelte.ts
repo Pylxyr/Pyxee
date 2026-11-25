@@ -4,7 +4,7 @@ import type { ExploreShelfDto } from './bindings/ExploreShelfDto';
 import type { GenreDto } from './bindings/GenreDto';
 import type { HistoryItemDto } from './bindings/HistoryItemDto';
 import type { TrackDto } from './bindings/TrackDto';
-import { freshTracks, jumpBackIn, pickSeeds, shelfTitle, withoutJunk, withoutJunkTracks } from './explore';
+import { freshTracks, pickSeeds, shelfTitle, withoutJunk, withoutJunkTracks } from './explore';
 import { orderGenres } from './genres';
 
 export interface Shelf {
@@ -22,13 +22,12 @@ export const SHELF_SIZE = 12;
 const STOP_ON = new Set(['offline', 'rateLimited', 'toolMissing']);
 
 /**
- * Explore: "jump back in" from history, and one shelf of similar songs per seed (likes first, then recent plays). On top sit
+ * Explore: one shelf of similar songs per seed (likes first, then recent plays). On top sit
  * YouTube Music's genres (K-Pop, J-Pop, Anime...): picking one swaps the page for that genre's own playlists and songs.
  * Requests go one after another (they share one pacing gate with search) and an answer for an older load is dropped.
  */
 export class ExploreStore {
   status = $state<'idle' | 'loading' | 'ready'>('idle');
-  jump = $state<TrackDto[]>([]);
   shelves = $state<Shelf[]>([]);
   /** YouTube Music's genres and moods, the favourites (anime, J-Pop, K-Pop) first. */
   genres = $state<GenreDto[]>([]);
@@ -64,7 +63,6 @@ export class ExploreStore {
       backend.historyGet(60).catch((): HistoryItemDto[] => []),
     ]);
     if (seq !== this.#seq) return;
-    this.jump = jumpBackIn(history);
     const seeds = pickSeeds(liked, history);
     this.noSeeds = seeds.length === 0;
     this.shelves = seeds.map((s) => ({

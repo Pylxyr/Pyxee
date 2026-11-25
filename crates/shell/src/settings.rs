@@ -81,7 +81,13 @@ pub struct ShellSettings {
     pub check_prereleases: bool,
     /// The equalizer (Settings, Sound).
     pub eq: EqSettings,
+    /// The output device the listener chose (the system's own id for it). `None` follows the system default. It stays
+    /// on this computer and is only ever compared with the ids of the devices that are connected.
+    pub output_device: Option<String>,
 }
+
+/// The longest device id kept (the ids are short; a longer one in a damaged or edited file is not an id).
+pub const OUTPUT_DEVICE_ID_MAX: usize = 512;
 
 impl Default for ShellSettings {
     fn default() -> Self {
@@ -97,6 +103,7 @@ impl Default for ShellSettings {
             mini_bounds: None,
             check_prereleases: false,
             eq: EqSettings::default(),
+            output_device: None,
         }
     }
 }
@@ -106,6 +113,9 @@ impl ShellSettings {
     #[must_use]
     pub fn sanitized(mut self) -> Self {
         self.eq = self.eq.sanitized();
+        self.output_device = self
+            .output_device
+            .filter(|id| !id.is_empty() && id.len() <= OUTPUT_DEVICE_ID_MAX);
         self.mini_bounds = self.mini_bounds.map(|r| {
             Rect::new(
                 r.x.clamp(-32_000, 32_000),

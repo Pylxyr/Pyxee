@@ -28,7 +28,6 @@ describe('ExploreStore', () => {
     const keys = s.shelves.flatMap((x) => x.tracks.map((t) => t.key));
     expect(new Set(keys).size).toBe(keys.length);
     expect(keys).not.toContain(DEMO_TRACKS[0]!.key);
-    expect(s.jump.length).toBe(2);
   });
 
   it('with no likes or plays it has no shelves and says so', async () => {

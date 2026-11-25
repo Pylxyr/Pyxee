@@ -119,7 +119,7 @@ pointer is over a list, accent while dragged. Scroll areas that are not a form c
 list, Explore) carry `data-scroll tabindex="0"` so the keyboard can scroll them. `design-contract.test.ts` guards both.
 
 ## Explore
-"Jump back in" (recent plays), then a shelf of similar songs per seed (likes first, then recent plays, one per artist), which
+A shelf of similar songs per seed (likes first, then recent plays, one per artist; the history itself is Home's "Recently played" and Library's History, not a third copy here), which
 come from `related_get` (`MusicSource::related`, a YouTube mix). YouTube Music's own Explore page (Trending, new albums and
 singles) is not shown: it was mostly this week's bulk releases. Everything loads one request after another, stops early on
 offline / rate-limited / tool-missing, and is cached for the session (Refresh asks again). Mashups, AI-made songs and covers, study

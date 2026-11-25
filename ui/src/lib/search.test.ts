@@ -220,3 +220,63 @@ describe('the remembered search filter', () => {
     expect(s.filter).toBe('songs');
   });
 });
+
+describe('SearchStore with a pasted YouTube link', () => {
+  const ID = 'dQw4w9WgXcQ';
+  function linkBackend() {
+    const { backend, pending, suggestCalls } = controllable();
+    const looked: string[] = [];
+    backend.linkTrack = async (key) => (looked.push(key), { key, title: 'Linked', artist: 'Someone', durationMs: 1000, thumbnail: null });
+    return { backend, pending, suggestCalls, looked };
+  }
+
+  it('looks up the one video instead of searching, and shows it as a song', async () => {
+    const { backend, pending, looked } = linkBackend();
+    const s = new SearchStore();
+    s.init(backend);
+    await s.run(`https://www.youtube.com/watch?v=${ID}&list=RDabc&utm=1`);
+    expect(pending).toHaveLength(0);
+    expect(looked).toEqual([`yt:${ID}`]);
+    expect(s.status).toBe('ready');
+    expect(s.items).toEqual([{ type: 'track', track: { key: `yt:${ID}`, title: 'Linked', artist: 'Someone', durationMs: 1000, thumbnail: null } }]);
+  });
+
+  it('shows a playlist link as one playlist card, with nothing looked up', async () => {
+    const { backend, pending, looked } = linkBackend();
+    const s = new SearchStore();
+    s.init(backend);
+    await s.run('https://www.youtube.com/playlist?list=PLabcdefghij123');
+    expect(pending).toHaveLength(0);
+    expect(looked).toHaveLength(0);
+    expect(s.items).toHaveLength(1);
+    expect(s.items[0]).toMatchObject({ type: 'playlist', key: 'yt-playlist:PLabcdefghij123' });
+  });
+
+  it('a link that cannot be looked up is an error, not a search for the link', async () => {
+    const { backend, pending } = linkBackend();
+    backend.linkTrack = async () => {
+      throw { kind: 'offline', message: 'Offline.' };
+    };
+    const s = new SearchStore();
+    s.init(backend);
+    await s.run(`youtu.be/${ID}`);
+    expect(pending).toHaveLength(0);
+    expect(s.status).toBe('error');
+    expect(s.error?.kind).toBe('offline');
+  });
+
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  it('never sends a link to the suggestions', async () => {
+    const { backend, suggestCalls } = linkBackend();
+    const s = new SearchStore();
+    s.init(backend);
+    s.typing(`https://youtu.be/${ID}`);
+    await vi.advanceTimersByTimeAsync(SUGGEST_DELAY_MS + 50);
+    expect(suggestCalls).toHaveLength(0);
+    s.typing('lowtide');
+    await vi.advanceTimersByTimeAsync(SUGGEST_DELAY_MS + 50);
+    expect(suggestCalls).toEqual(['lowtide']);
+  });
+});

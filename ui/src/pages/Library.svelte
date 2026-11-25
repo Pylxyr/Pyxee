@@ -63,6 +63,19 @@
     };
   }
 
+  /** Reads a playlist file chosen in the system's dialog into a new playlist, and opens it. Closing the dialog does nothing. */
+  async function importPlaylist() {
+    try {
+      const made = await library.backend!.playlistImport();
+      if (!made) return;
+      const left = made.skipped > 0 ? ` ${made.skipped} could not be used.` : '';
+      snackbar.push(`Imported “${made.name}” with ${songs(made.songs)}.${left}`);
+      nav.openPlaylist(made.id);
+    } catch (e) {
+      snackbar.push(messageOf(e));
+    }
+  }
+
   async function clearHistory() {
     try {
       const items = await library.backend!.historyClear();
@@ -103,6 +116,7 @@
   {:else if nav.libraryTab === 'playlists'}
     <div class="toolbar">
       <Button variant="primary" onclick={newPlaylist}><Icon name="plus" size={18} />New playlist</Button>
+      <Button onclick={importPlaylist}>Import playlist</Button>
     </div>
     {#if library.playlists.length === 0}
       <EmptyState icon="library" title="No playlists yet" text="Create one here, or choose Add to playlist on any song. You can also save your queue." />

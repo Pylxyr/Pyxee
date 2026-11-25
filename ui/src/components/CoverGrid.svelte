@@ -7,7 +7,7 @@
   import Icon from './Icon.svelte';
   import Thumb from './Thumb.svelte';
 
-  /** Songs as covers (Recently played, Jump back in): for browsing by sight instead of by name. */
+  /** Songs as covers (Recently played, Explore's shelves): for browsing by sight instead of by name. */
   let { tracks, label, onplay, extras }: { tracks: TrackDto[]; label: string; onplay: (index: number) => void; extras?: (t: TrackDto) => MenuExtra[] } = $props();
 
   // A right-click (or the Menu key) opens the same song menu as on a queue row; the sheet gives focus back to the tile.

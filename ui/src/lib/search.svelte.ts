@@ -4,6 +4,7 @@ import type { FilterInfoDto } from './bindings/FilterInfoDto';
 import type { SearchErrorDto } from './bindings/SearchErrorDto';
 import type { SearchFilterDto } from './bindings/SearchFilterDto';
 import type { SearchItemDto } from './bindings/SearchItemDto';
+import { parseYoutubeLink } from './link';
 
 export type SearchStatus = 'idle' | 'loading' | 'ready' | 'error';
 
@@ -81,9 +82,18 @@ export class SearchStore {
     this.reloading = sameQuery;
     this.error = null;
     try {
-      const r = await this.#backend.search(q, filter);
+      // A pasted `YouTube` link is not a search: it names one song or one playlist, and only its id is looked up.
+      const link = parseYoutubeLink(q);
+      let items: SearchItemDto[];
+      if (link?.kind === 'playlist') {
+        items = [{ type: 'playlist', key: `yt-playlist:${link.id}`, title: 'YouTube playlist', uploader: 'From your link', thumbnail: null }];
+      } else if (link) {
+        items = [{ type: 'track', track: await this.#backend.linkTrack(`yt:${link.id}`) }];
+      } else {
+        items = (await this.#backend.search(q, filter)).items;
+      }
       if (seq !== this.#seq) return;
-      this.items = r.items;
+      this.items = items;
       this.status = 'ready';
       this.reloading = false;
     } catch (e) {
@@ -114,7 +124,8 @@ export class SearchStore {
   typing(prefix: string) {
     if (this.#timer) clearTimeout(this.#timer);
     const seq = ++this.#suggestSeq;
-    if (!prefix.trim() || !this.#backend) {
+    // A link is never sent to the suggestions: they would learn what was pasted, and a link has none.
+    if (!prefix.trim() || !this.#backend || parseYoutubeLink(prefix)) {
       this.suggestions = [];
       return;
     }

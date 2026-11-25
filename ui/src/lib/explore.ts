@@ -33,19 +33,6 @@ export function shelfTitle(seed: Seed): string {
   return seed.reason === 'liked' ? `Because you liked ${seed.track.title}` : `Because you played ${seed.track.title}`;
 }
 
-/** Recent songs, each once, newest first. */
-export function jumpBackIn(history: HistoryItemDto[], max = 10): TrackDto[] {
-  const seen = new Set<string>();
-  const out: TrackDto[] = [];
-  for (const h of history) {
-    if (seen.has(h.track.key)) continue;
-    seen.add(h.track.key);
-    out.push(h.track);
-    if (out.length >= max) break;
-  }
-  return out;
-}
-
 /** Drops songs an earlier shelf (or the seed itself) already shows, and remembers the rest. */
 export function freshTracks(tracks: TrackDto[], seen: Set<string>): TrackDto[] {
   const out: TrackDto[] = [];

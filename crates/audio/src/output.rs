@@ -26,6 +26,32 @@ fn ident_of(device: &cpal::Device) -> DeviceIdent {
     DeviceIdent { id, name }
 }
 
+/// The output devices the system offers right now, each with whether it is the system default. A system that cannot
+/// list its devices gives an empty list.
+#[must_use]
+pub fn list_outputs() -> Vec<(DeviceIdent, bool)> {
+    let host = cpal::default_host();
+    let default = host.default_output_device().map(|d| ident_of(&d).id);
+    let Ok(devices) = host.output_devices() else {
+        return Vec::new();
+    };
+    devices
+        .map(|d| {
+            let ident = ident_of(&d);
+            let is_default = default.as_deref() == Some(ident.id.as_str());
+            (ident, is_default)
+        })
+        .collect()
+}
+
+/// The output device with this id, when it is connected.
+fn find_output(id: &str) -> Option<cpal::Device> {
+    cpal::default_host()
+        .output_devices()
+        .ok()?
+        .find(|d| ident_of(d).id == id)
+}
+
 pub struct DeviceInfo {
     device: cpal::Device,
     config: cpal::SupportedStreamConfig,
@@ -49,6 +75,23 @@ impl DeviceInfo {
         })
     }
 
+    /// The device the listener chose (by id) when it is connected and can be opened; otherwise the system default, so a
+    /// chosen device that is unplugged never leaves the player silent.
+    pub fn output(preferred: Option<&str>) -> Result<Self, AudioError> {
+        if let Some(id) = preferred
+            && let Some(device) = find_output(id)
+            && let Ok(config) = device.default_output_config()
+        {
+            let ident = ident_of(&device);
+            return Ok(Self {
+                device,
+                config,
+                ident,
+            });
+        }
+        Self::default_output()
+    }
+
     #[must_use]
     pub fn rate(&self) -> u32 {
         self.config.sample_rate()
@@ -66,6 +109,19 @@ impl DeviceInfo {
     pub fn default_ident() -> Option<DeviceIdent> {
         let device = cpal::default_host().default_output_device()?;
         Some(ident_of(&device))
+    }
+
+    /// Which device [`DeviceInfo::output`] would open now, without opening it: the chosen one when it is connected,
+    /// otherwise the system default. The runner compares this with the device in use, so choosing another device, or
+    /// the chosen one coming or going, is followed like a change of the default.
+    #[must_use]
+    pub fn target_ident(preferred: Option<&str>) -> Option<DeviceIdent> {
+        if let Some(id) = preferred
+            && let Some(device) = find_output(id)
+        {
+            return Some(ident_of(&device));
+        }
+        Self::default_ident()
     }
 
     /// Starts the stream, pulling from `consumer`. Keep the returned value alive to keep playing: dropping it stops the

@@ -66,6 +66,45 @@ pub async fn search(
         .map_err(|e| SearchErrorDto::from(&e))
 }
 
+/// Names the song behind a pasted `YouTube` link: the video's title, artist, length and cover, from the same lookup
+/// that playing it makes. Only a plain video id is accepted, and the key that is looked up is rebuilt from that id, so
+/// nothing the window sends is ever handed on as an address or a command line of its own.
+#[tauri::command]
+pub async fn link_track(
+    state: State<'_, AppState>,
+    key: String,
+) -> Result<TrackDto, SearchErrorDto> {
+    let other = |message: &str| SearchErrorDto {
+        kind: crate::dto::SearchErrorKind::Other,
+        message: message.to_string(),
+    };
+    let Some(pyxee_sources::key::TrackKey::Youtube(id)) = pyxee_sources::key::parse(&key) else {
+        return Err(other("That is not a link to a YouTube video."));
+    };
+    let key = pyxee_sources::key::youtube(id);
+    let source = std::sync::Arc::clone(&state.source);
+    let wanted = key.clone();
+    let info = tauri::async_runtime::spawn_blocking(move || source.resolve_stream(&wanted))
+        .await
+        .map_err(|e| other(&e.to_string()))?
+        .map_err(|e| SearchErrorDto::from(&e))?;
+    let meta = info.meta;
+    let text = |t: Option<String>| t.map(|t| t.trim().to_string()).filter(|t| !t.is_empty());
+    let Some(title) = text(meta.title) else {
+        return Err(other("YouTube did not say what that video is."));
+    };
+    Ok(TrackDto {
+        key,
+        title,
+        artist: text(meta.artist).unwrap_or_else(|| pyxee_core::UNKNOWN_ARTIST.to_string()),
+        duration_ms: meta
+            .duration_secs
+            .filter(|s| s.is_finite() && *s > 0.0)
+            .map(|s| (s * 1000.0) as u64),
+        thumbnail: meta.thumbnail,
+    })
+}
+
 /// Live suggestions. Failures are quiet: no suggestions is better than an error while typing.
 #[tauri::command]
 pub async fn suggest(state: State<'_, AppState>, prefix: String) -> Result<Vec<String>, ()> {

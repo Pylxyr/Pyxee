@@ -110,8 +110,18 @@ pub fn spawn(app: AppHandle, rx: Receiver<Effect>) {
 
 /// How often the default output device is looked at (the system gives no "device changed" callback through cpal).
 const DEVICE_CHECK_EVERY: Duration = Duration::from_millis(500);
+/// How often a chosen output device is looked up (listing the devices costs more than asking for the default). A change
+/// of the choice itself is noticed at the next check of the default and looked up at once.
+const CHOSEN_CHECK_EVERY: Duration = Duration::from_secs(2);
 /// The rate assumed for the engine when there is no output device at start; the first device that appears sets it.
 const FALLBACK_RATE: u32 = 48_000;
+
+/// The output device chosen in Settings (the system's id for it); `None` follows the system default.
+fn chosen_output(app: &AppHandle) -> Option<String> {
+    let shell = app.try_state::<crate::shell::ShellState>()?;
+    let settings = shell.settings.lock().ok()?;
+    settings.output_device.clone()
+}
 
 /// The watcher tells devices apart by cpal's stable id, which the audio crate hands over as a [`DeviceIdent`].
 fn watched(d: &DeviceIdent) -> DeviceRef {
@@ -121,10 +131,15 @@ fn watched(d: &DeviceIdent) -> DeviceRef {
     }
 }
 
-/// Opens the default output device and starts the stream on it, pulling from `engine`. When the device runs at
-/// another sample rate than the engine was built for, the engine is rebuilt at the new rate first.
-fn open_output(engine: &mut Engine, errors: &Sender<String>) -> Result<Output, AudioError> {
-    let device = DeviceInfo::default_output()?;
+/// Opens the chosen output device (the system default when none is chosen or it is not connected) and starts the
+/// stream on it, pulling from `engine`. When the device runs at another sample rate than the engine was built for,
+/// the engine is rebuilt at the new rate first.
+fn open_output(
+    engine: &mut Engine,
+    errors: &Sender<String>,
+    preferred: Option<&str>,
+) -> Result<Output, AudioError> {
+    let device = DeviceInfo::output(preferred)?;
     engine.change_rate(device.rate());
     let tx = errors.clone();
     device.start_with(engine.consumer(), move |e| {
@@ -156,7 +171,8 @@ fn spawn_real(app: AppHandle, rx: Receiver<Effect>) {
 fn run_real(app: AppHandle, host: Arc<AppHost>, rx: Receiver<Effect>) {
     {
         let source = Arc::clone(&app.state::<AppState>().source);
-        let first = DeviceInfo::default_output();
+        let mut preferred = chosen_output(&app);
+        let first = DeviceInfo::output(preferred.as_deref());
         let rate = first.as_ref().map_or(FALLBACK_RATE, DeviceInfo::rate);
         let mut engine = Engine::new(
             host.clone(),
@@ -188,6 +204,9 @@ fn run_real(app: AppHandle, host: Arc<AppHost>, rx: Receiver<Effect>) {
             Err(e) => log::warn!("audio output unavailable at start: {e}"),
         }
         let mut last_check = Instant::now();
+        // What the chosen device looked like at the last lookup, and when that was.
+        let mut target_cache = DeviceInfo::target_ident(preferred.as_deref());
+        let mut target_checked = Instant::now();
         loop {
             match rx.recv_timeout(engine.poll_interval()) {
                 Ok(effect) => {
@@ -224,9 +243,20 @@ fn run_real(app: AppHandle, host: Arc<AppHost>, rx: Receiver<Effect>) {
             }
             if last_check.elapsed() >= DEVICE_CHECK_EVERY {
                 last_check = Instant::now();
+                let wanted = chosen_output(&app);
+                let observed = if wanted.is_none() {
+                    DeviceInfo::default_ident()
+                } else {
+                    if wanted != preferred || target_checked.elapsed() >= CHOSEN_CHECK_EVERY {
+                        target_cache = DeviceInfo::target_ident(wanted.as_deref());
+                        target_checked = Instant::now();
+                    }
+                    target_cache.clone()
+                };
+                preferred = wanted;
                 todo.extend(watch.tick(&Observation {
                     now_ms: since_start(),
-                    default_device: DeviceInfo::default_ident().as_ref().map(watched),
+                    default_device: observed.as_ref().map(watched),
                     callbacks: output.as_ref().map_or(0, Output::callbacks),
                     playing: engine.is_playing(),
                 }));
@@ -236,7 +266,7 @@ fn run_real(app: AppHandle, host: Arc<AppHost>, rx: Receiver<Effect>) {
                     DeviceAction::Rebuild { reason } => {
                         // The old stream (dead, or healthy on a device that is no longer the default) goes first.
                         output = None;
-                        match open_output(&mut engine, &err_tx) {
+                        match open_output(&mut engine, &err_tx, preferred.as_deref()) {
                             Ok(o) => {
                                 // Errors reported by the stream that was just closed are not about this one.
                                 while err_rx.try_recv().is_ok() {}

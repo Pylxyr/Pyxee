@@ -6,6 +6,7 @@ import type { EntryDto } from './bindings/EntryDto';
 import type { PlayerStateDto } from './bindings/PlayerStateDto';
 import type { PerfReportDto } from './bindings/PerfReportDto';
 import type { PositionDto } from './bindings/PositionDto';
+import type { ImportedPlaylistDto } from './bindings/ImportedPlaylistDto';
 import type { TrackDto } from './bindings/TrackDto';
 import type { WindowInfoDto } from './bindings/WindowInfoDto';
 import type { LyricsDto } from './bindings/LyricsDto';
@@ -251,6 +252,36 @@ export class MockBackend extends MockLibrary implements Backend {
     this.lastfmClears++;
     this.shell = { ...this.shell, lastfmScrobbling: false };
     return { ...this.shell };
+  }
+  /** The song a pasted link names (the demo makes one up from the id). */
+  async linkTrack(key: string): Promise<TrackDto> {
+    await new Promise((r) => setTimeout(r, this.searchLatencyMs));
+    if (!/^yt:[A-Za-z0-9_-]{1,64}$/.test(key)) throw { kind: 'other', message: 'That is not a link to a YouTube video.' };
+    return { key, title: 'Song from a link', artist: 'Someone', durationMs: 200_000, thumbnail: null };
+  }
+  /** What the last `playlistExport` and `playlistImport` were asked to do (the demo has no dialogs). */
+  exported: number[] = [];
+  importResult: ImportedPlaylistDto | null = null;
+  async playlistExport(id: number) {
+    this.exported.push(id);
+    return 'Saved 2 songs to Demo.json.';
+  }
+  async playlistImport() {
+    return this.importResult;
+  }
+  /** The output devices the demo offers, and the one chosen (`null`: the system's default). */
+  audioDevices = [
+    { id: 'speakers', name: 'Speakers (Realtek Audio)', isDefault: true },
+    { id: 'headphones', name: 'Headphones (USB DAC)', isDefault: false },
+  ];
+  audioDeviceId: string | null = null;
+  async audioDevicesGet() {
+    return { devices: this.audioDevices.map((d) => ({ ...d })), selected: this.audioDeviceId };
+  }
+  async audioDeviceSet(id: string | null) {
+    if (id !== null && !this.audioDevices.some((d) => d.id === id)) throw 'That output device is not connected.';
+    this.audioDeviceId = id;
+    return this.audioDevicesGet();
   }
   eq: EqDto = { enabled: false, preamp: 0, gains: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0] };
   /** Every `eqSet` call, with whether it asked for the settings to be saved. */

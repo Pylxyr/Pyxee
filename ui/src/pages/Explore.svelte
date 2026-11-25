@@ -88,11 +88,6 @@
       {/if}
     {/each}
   {:else}
-    {#if explore.jump.length > 0}
-      <SectionHead count={explore.jump.length}>Jump back in</SectionHead>
-      <CoverGrid label="Jump back in" tracks={explore.jump} onplay={(i) => player.playTracks(explore.jump, i)} />
-    {/if}
-
     {#each explore.shelves as shelf (shelf.id)}
       <SectionHead count={shelf.status === 'ready' ? shelf.tracks.length : null}>
         {shelf.title}

@@ -220,6 +220,36 @@ describe('playlists', () => {
     await waitFor(() => expect(library.playlists.map((p) => [p.name, p.trackCount])).toEqual([['Mix', 2]]));
   });
 
+  it('Export asks for this playlist to be saved and says what was saved', async () => {
+    const id = await mock.playlistCreate('Mix', [NEON, PAPER]);
+    await openApp();
+    await openPlaylist('Mix');
+    await fireEvent.click(screen.getByRole('button', { name: 'Export' }));
+    await waitFor(() => expect(mock.exported).toEqual([id]));
+    await waitFor(() => expect(snackbar.items.at(-1)?.message).toBe('Saved 2 songs to Demo.json.'));
+  });
+
+  it('Import opens the playlist that was made, and says how many entries could not be used', async () => {
+    const id = await mock.playlistCreate('Brought in', [NEON]);
+    mock.importResult = { id, name: 'Brought in', songs: 1, skipped: 2 };
+    await openApp();
+    await go(/Library/);
+    await fireEvent.click(await screen.findByRole('tab', { name: 'Playlists' }));
+    await fireEvent.click(await screen.findByRole('button', { name: 'Import playlist' }));
+    expect(await screen.findByRole('heading', { name: 'Brought in' })).toBeTruthy();
+    expect(snackbar.items.at(-1)?.message).toBe('Imported “Brought in” with 1 song. 2 could not be used.');
+  });
+
+  it('closing the Import dialog changes nothing', async () => {
+    await openApp();
+    await go(/Library/);
+    await fireEvent.click(await screen.findByRole('tab', { name: 'Playlists' }));
+    const before = snackbar.items.length;
+    await fireEvent.click(await screen.findByRole('button', { name: 'Import playlist' }));
+    await waitFor(() => expect(snackbar.items.length).toBe(before));
+    expect(screen.queryByRole('heading', { name: /Brought in/ })).toBeNull();
+  });
+
   it('a playlist deleted elsewhere shows a gentle message, not an error', async () => {
     const id = await mock.playlistCreate('Mix', [NEON]);
     await openApp();
