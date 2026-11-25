@@ -110,7 +110,7 @@ fn a_track_that_is_not_queued_is_refused_and_nothing_changes() {
     assert!(!g.skip_to_queued(9));
     g.fill(&mut buf);
     assert_eq!(frame_of(buf[0]), 480, "playback went on from where it was");
-    assert!(g.drain_events().is_empty());
+    assert_eq!(g.drain_events(), [] as [pyxee_audio::gapless::Event; 0]);
     assert_eq!(g.queued(), 2);
 }
 

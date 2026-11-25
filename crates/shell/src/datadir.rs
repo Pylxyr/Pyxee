@@ -403,7 +403,7 @@ mod tests {
             None,
             "a stale old session must not come back"
         );
-        assert!(r.notes.is_empty());
+        assert_eq!(r.notes, [] as [Note; 0]);
     }
 
     #[test]
@@ -415,7 +415,7 @@ mod tests {
         write(&new, "library.db", "CHANGED SINCE");
         let again = resolve(Some(&old), Some(&new));
         assert_eq!(read(&new, "library.db").as_deref(), Some("CHANGED SINCE"));
-        assert!(again.notes.is_empty());
+        assert_eq!(again.notes, [] as [Note; 0]);
     }
 
     #[test]
@@ -424,7 +424,7 @@ mod tests {
         let new = t.path("local");
         let r = resolve(Some(&t.path("never-existed")), Some(&new));
         assert_eq!(r.dir.as_deref(), Some(new.as_path()));
-        assert!(r.notes.is_empty());
+        assert_eq!(r.notes, [] as [Note; 0]);
         assert!(
             !new.exists(),
             "nothing is created until the app writes something"
@@ -442,7 +442,7 @@ mod tests {
         let r = resolve(Some(&a), Some(&a));
         assert_eq!(r.dir.as_deref(), Some(a.as_path()));
         assert_eq!(read(&a, "library.db").as_deref(), Some("LIB"));
-        assert!(r.notes.is_empty());
+        assert_eq!(r.notes, [] as [Note; 0]);
     }
 
     #[test]

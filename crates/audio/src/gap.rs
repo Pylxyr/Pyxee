@@ -64,7 +64,7 @@ mod tests {
 
     #[test]
     fn continuous_sine_has_no_gaps() {
-        assert!(find_gaps(&sine(48_000, 0), 2, 1e-3, 8).is_empty());
+        assert_eq!(find_gaps(&sine(48_000, 0), 2, 1e-3, 8), [] as [Gap; 0]);
     }
 
     #[test]

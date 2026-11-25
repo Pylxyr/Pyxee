@@ -982,7 +982,7 @@ fn open_stream(
     s: &StreamInfo,
     start_ms: u64,
     cancel: &Arc<AtomicBool>,
-    keep: Option<CompletionHook>,
+    keep: Option<&CompletionHook>,
 ) -> Result<Box<dyn SampleSource>, AudioError> {
     let remote = s.url.starts_with("http");
     let open = || -> Result<LibavSource, AudioError> {
@@ -991,7 +991,7 @@ fn open_stream(
                 &s.url,
                 &s.headers,
                 Arc::clone(cancel),
-                keep.clone(),
+                keep.cloned(),
             )?;
             LibavSource::open(Box::new(http))
         } else {
@@ -1042,7 +1042,11 @@ fn prepare(
     let PrepareJob { id, key, start_ms } = *job;
     let build = |stream: &StreamInfo| -> Result<PreparedTrack, AudioError> {
         let keep = disk.and_then(|d| d.hook_for(key, &stream.ext));
-        PreparedTrack::new(id.0, open_stream(stream, start_ms, cancel, keep)?, rate)
+        PreparedTrack::new(
+            id.0,
+            open_stream(stream, start_ms, cancel, keep.as_ref())?,
+            rate,
+        )
     };
     // A song kept from an earlier play needs no network, no address and no yt-dlp.
     if let Some((path, ext)) = disk.and_then(|d| d.lookup(key)) {

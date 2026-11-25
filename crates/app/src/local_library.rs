@@ -401,7 +401,7 @@ mod tests {
 
     #[test]
     fn a_scan_that_lost_songs_or_folders_says_so_and_a_quiet_one_says_nothing() {
-        assert!(scan_notices(0, &[]).is_empty());
+        assert_eq!(scan_notices(0, &[]), [] as [std::string::String; 0]);
         let one = scan_notices(1, &[]);
         assert_eq!(one.len(), 1);
         assert!(one[0].starts_with("1 song is no longer"), "{one:?}");
@@ -497,7 +497,7 @@ mod tests {
         );
         assert_eq!(lib.tracks("  GRE ").len(), 1);
         assert_eq!(lib.tracks("band").len(), 2, "the artist matches too");
-        assert!(lib.tracks("zzz").is_empty());
+        assert_eq!(lib.tracks("zzz"), [] as [crate::dto::TrackDto; 0]);
         assert_eq!(lib.tracks("")[0].key, "file:/a/1.mp3");
         let before = lib.snapshot().revision;
         lib.add_folder(Path::new("/c"));

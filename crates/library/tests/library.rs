@@ -174,7 +174,10 @@ fn deleting_then_restoring_brings_back_everything() {
         l.playlist(id),
         Err(LibraryError::NotFound("playlist"))
     ));
-    assert!(l.playlists().unwrap().is_empty());
+    assert_eq!(
+        l.playlists().unwrap(),
+        [] as [pyxee_library::PlaylistSummary; 0]
+    );
     l.restore_playlist(&snap).unwrap();
     let p = l.playlist(id).unwrap();
     assert_eq!(
@@ -334,7 +337,10 @@ fn removing_one_song_from_history_forgets_all_its_plays_and_can_be_undone() {
     );
     assert_eq!(names(&l.recent_tracks(10).unwrap()), ["Title c", "Title b"]);
     assert_eq!(l.history_count().unwrap(), 2);
-    assert!(l.remove_from_history("yt:a").unwrap().is_empty());
+    assert_eq!(
+        l.remove_from_history("yt:a").unwrap(),
+        [] as [pyxee_library::HistoryItem; 0]
+    );
     l.restore_history(&removed).unwrap();
     assert_eq!(l.history(10).unwrap(), before);
 }
@@ -363,7 +369,10 @@ fn quick_picks_favour_often_played_and_liked_songs_and_ignore_the_rest() {
 #[test]
 fn quick_picks_respect_the_limit_and_are_empty_for_a_new_library() {
     let mut l = lib();
-    assert!(l.home(10 * DAY, 5).unwrap().quick_picks.is_empty());
+    assert_eq!(
+        l.home(10 * DAY, 5).unwrap().quick_picks,
+        [] as [pyxee_core::Track; 0]
+    );
     for i in 0..10 {
         l.record_play(&t(&i.to_string()), 9 * DAY + i).unwrap();
     }
@@ -475,7 +484,7 @@ fn refreshing_never_adds_a_song_and_a_later_unknown_artist_never_erases_a_known_
     let mut l = lib();
     let ghost = t("ghost");
     assert!(!l.refresh_track(&ghost).unwrap());
-    assert!(l.liked().unwrap().is_empty());
+    assert_eq!(l.liked().unwrap(), [] as [pyxee_core::Track; 0]);
 
     l.like(&t("a"), 1).unwrap();
     let mut again = t("a");

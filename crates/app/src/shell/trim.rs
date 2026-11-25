@@ -133,7 +133,7 @@ mod sys {
             }
             let mut entry: ProcessEntry32W = std::mem::zeroed();
             entry.size = std::mem::size_of::<ProcessEntry32W>() as u32;
-            let mut more = Process32FirstW(snapshot, &mut entry) != 0;
+            let mut more = Process32FirstW(snapshot, &raw mut entry) != 0;
             while more {
                 let len = entry
                     .exe_file
@@ -145,7 +145,7 @@ mod sys {
                     parent: entry.parent_process_id,
                     exe: String::from_utf16_lossy(&entry.exe_file[..len]),
                 });
-                more = Process32NextW(snapshot, &mut entry) != 0;
+                more = Process32NextW(snapshot, &raw mut entry) != 0;
             }
             CloseHandle(snapshot);
         }
@@ -216,7 +216,7 @@ mod tests {
     #[test]
     fn nothing_to_trim_when_there_is_no_webview() {
         let all = [p(200, 100, "pyxee-app.exe"), p(220, 200, "yt-dlp.exe")];
-        assert!(webview_family(200, &all).is_empty());
+        assert_eq!(webview_family(200, &all), [] as [u32; 0]);
     }
 
     #[test]
@@ -225,7 +225,7 @@ mod tests {
             p(210, 210, "msedgewebview2.exe"),
             p(200, 100, "pyxee-app.exe"),
         ];
-        assert!(webview_family(200, &all).is_empty());
-        assert!(webview_family(210, &all).is_empty());
+        assert_eq!(webview_family(200, &all), [] as [u32; 0]);
+        assert_eq!(webview_family(210, &all), [] as [u32; 0]);
     }
 }

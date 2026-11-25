@@ -729,7 +729,10 @@ fn autoplay_radio_keeps_music_going_after_the_queue_runs_out() {
         played.contains(&radio[0]),
         "the first radio track played: {played:?}"
     );
-    assert!(find_gaps(&r.samples, 2, 1e-3, 8).is_empty());
+    assert_eq!(
+        find_gaps(&r.samples, 2, 1e-3, 8),
+        [] as [pyxee_audio::gap::Gap; 0]
+    );
 }
 
 #[test]
@@ -893,7 +896,10 @@ fn an_expired_stream_url_mid_song_is_re_resolved_and_playback_continues_where_it
         (9.5..10.6).contains(&secs),
         "the whole song was heard once, {secs:.2} s"
     );
-    assert!(find_gaps(&r.samples, 2, 1e-3, 8).is_empty());
+    assert_eq!(
+        find_gaps(&r.samples, 2, 1e-3, 8),
+        [] as [pyxee_audio::gap::Gap; 0]
+    );
 }
 
 /// A source whose n-th resolve returns `urls[min(n, last)]`; counts the resolves.

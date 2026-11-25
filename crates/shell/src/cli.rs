@@ -66,6 +66,6 @@ mod tests {
 
     #[test]
     fn the_program_name_is_never_taken_for_a_flag() {
-        assert!(parse_args(&["--next"]).actions.is_empty());
+        assert_eq!(parse_args(&["--next"]).actions, [] as [CliAction; 0]);
     }
 }

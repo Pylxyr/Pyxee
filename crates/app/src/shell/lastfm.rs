@@ -190,7 +190,7 @@ pub mod vault {
         };
         // SAFETY: `credential` matches CREDENTIALW and points at buffers that live until the call returns; the
         // system copies what it needs.
-        let ok = unsafe { CredWriteW(&credential, 0) };
+        let ok = unsafe { CredWriteW(&raw const credential, 0) };
         if ok != 0 {
             Ok(())
         } else {
@@ -203,7 +203,7 @@ pub mod vault {
         let target = wide(TARGET);
         let mut found: *mut Credential = ptr::null_mut();
         // SAFETY: `target` is NUL-terminated and `found` is a valid place for the pointer the system hands back.
-        let ok = unsafe { CredReadW(target.as_ptr(), CRED_TYPE_GENERIC, 0, &mut found) };
+        let ok = unsafe { CredReadW(target.as_ptr(), CRED_TYPE_GENERIC, 0, &raw mut found) };
         if ok == 0 || found.is_null() {
             return None;
         }

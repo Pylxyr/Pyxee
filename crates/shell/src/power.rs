@@ -208,20 +208,32 @@ mod tests {
             decide(Trigger::Resumed, Situation::FailedRetryable),
             vec![Action::Retry]
         );
-        assert!(decide(Trigger::Resumed, Situation::Playing).is_empty());
-        assert!(decide(Trigger::Resumed, Situation::Other).is_empty());
+        assert_eq!(
+            decide(Trigger::Resumed, Situation::Playing),
+            [] as [Action; 0]
+        );
+        assert_eq!(
+            decide(Trigger::Resumed, Situation::Other),
+            [] as [Action; 0]
+        );
     }
 
     #[test]
     fn going_offline_while_playing_only_informs() {
         let a = decide(Trigger::Net(NetEvent::WentOffline), Situation::Playing);
         assert!(matches!(a.as_slice(), [Action::Notice(_)]));
-        assert!(decide(Trigger::Net(NetEvent::WentOffline), Situation::Other).is_empty());
+        assert_eq!(
+            decide(Trigger::Net(NetEvent::WentOffline), Situation::Other),
+            [] as [Action; 0]
+        );
     }
 
     #[test]
     fn switching_connections_never_interrupts_a_song_that_is_playing() {
-        assert!(decide(Trigger::Net(NetEvent::Switched), Situation::Playing).is_empty());
+        assert_eq!(
+            decide(Trigger::Net(NetEvent::Switched), Situation::Playing),
+            [] as [Action; 0]
+        );
         assert_eq!(
             decide(Trigger::Net(NetEvent::Switched), Situation::FailedRetryable),
             vec![Action::Retry]

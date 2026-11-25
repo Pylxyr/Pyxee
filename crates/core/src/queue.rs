@@ -702,7 +702,7 @@ mod tests {
         q.jump_to(ids[0]);
         assert_eq!(q.upcoming(), vec![ids[1], ids[2]]);
         q.jump_to(ids[2]);
-        assert!(q.upcoming().is_empty());
+        assert_eq!(q.upcoming(), [] as [EntryId; 0]);
     }
 
     #[test]

@@ -55,7 +55,7 @@ mod tests {
     fn skipped_songs_leave_no_trace() {
         let mut r = HistoryRecorder::default();
         r.audible(EntryId(1), track("a", 200_000));
-        assert!(play(&mut r, 1, 8).is_empty());
+        assert_eq!(play(&mut r, 1, 8), [] as [std::string::String; 0]);
         r.audible(EntryId(2), track("b", 200_000));
         assert_eq!(play(&mut r, 2, 40), ["yt:b"]);
     }

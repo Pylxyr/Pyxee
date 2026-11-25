@@ -210,7 +210,7 @@ mod tests {
         let path = path_of(&["a", "b"]);
         let got = JsRuntime::resolve(None, Some(&path), &|_| false);
         assert_eq!(got, JsRuntime::Off);
-        assert!(got.args().is_empty());
+        assert_eq!(got.args(), [] as [std::string::String; 0]);
         assert_eq!(
             JsRuntime::resolve(None, None, &|_| true),
             JsRuntime::Off,
@@ -258,10 +258,9 @@ mod tests {
         let files = [("bin", exe("deno"))];
         let path = path_of(&["bin"]);
         for v in ["none", "OFF"] {
-            assert!(
-                JsRuntime::resolve(Some(v), Some(&path), &only(&files))
-                    .args()
-                    .is_empty()
+            assert_eq!(
+                JsRuntime::resolve(Some(v), Some(&path), &only(&files)).args(),
+                [] as [String; 0]
             );
         }
     }
@@ -276,10 +275,9 @@ mod tests {
             ["--js-runtimes", "node"],
             "falls back to detection"
         );
-        assert!(
-            JsRuntime::resolve(Some("python"), None, &|_| false)
-                .args()
-                .is_empty()
+        assert_eq!(
+            JsRuntime::resolve(Some("python"), None, &|_| false).args(),
+            [] as [String; 0]
         );
     }
 

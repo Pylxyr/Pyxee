@@ -97,7 +97,7 @@ fn only_the_track_that_is_playing_can_be_sought_and_a_refusal_changes_nothing() 
     assert!(g.seek_current(9, 1_000).is_err());
     g.fill(&mut buf);
     assert_eq!(frame_of(buf[0]), 480, "playback went on from where it was");
-    assert!(g.drain_events().is_empty());
+    assert_eq!(g.drain_events(), [] as [pyxee_audio::gapless::Event; 0]);
 }
 
 #[test]

@@ -392,7 +392,7 @@ mod main_tests {
 
     #[test]
     fn a_release_ignores_every_behaviour_variable_and_a_developer_build_none() {
-        assert!(vars_to_ignore(true).is_empty());
+        assert_eq!(vars_to_ignore(true), [] as [&str; 0]);
         let ignored = vars_to_ignore(false);
         for name in [
             "PYXEE_COOKIES",

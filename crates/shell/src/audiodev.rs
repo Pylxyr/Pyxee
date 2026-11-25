@@ -263,9 +263,9 @@ mod tests {
     fn a_healthy_stream_needs_nothing() {
         let mut w = watch();
         for i in 1..20u64 {
-            assert!(
-                w.tick(&obs(i * 500, Some("Earbuds"), i * 50, true))
-                    .is_empty()
+            assert_eq!(
+                w.tick(&obs(i * 500, Some("Earbuds"), i * 50, true)),
+                [] as [Action; 0]
             );
         }
     }
@@ -281,7 +281,10 @@ mod tests {
                 .any(|a| matches!(a, Action::Notice(m) if m.contains("disconnected")))
         );
         // cpal calls the error callback again; nothing more happens.
-        assert!(w.on_stream_error("device not available", true).is_empty());
+        assert_eq!(
+            w.on_stream_error("device not available", true),
+            [] as [Action; 0]
+        );
         assert!(w.is_lost());
     }
 
@@ -340,9 +343,12 @@ mod tests {
         let mut w = watch();
         w.on_stream_error("gone", true);
         for i in 1..10u64 {
-            assert!(w.tick(&obs(i * 1_000, None, 0, false)).is_empty());
+            assert_eq!(w.tick(&obs(i * 1_000, None, 0, false)), [] as [Action; 0]);
         }
-        assert!(!w.tick(&obs(10_000, Some("Speakers"), 0, false)).is_empty());
+        assert_ne!(
+            w.tick(&obs(10_000, Some("Speakers"), 0, false)),
+            [] as [Action; 0]
+        );
     }
 
     #[test]
@@ -386,7 +392,10 @@ mod tests {
             done.iter()
                 .all(|a| !matches!(a, Action::Notice(_) | Action::ResumePlayer))
         );
-        assert!(w.tick(&obs(1_100, Some("Speakers"), 20, true)).is_empty());
+        assert_eq!(
+            w.tick(&obs(1_100, Some("Speakers"), 20, true)),
+            [] as [Action; 0]
+        );
     }
 
     #[test]
@@ -439,8 +448,14 @@ mod tests {
     #[test]
     fn output_that_silently_stops_pulling_is_caught_after_three_seconds() {
         let mut w = watch();
-        assert!(w.tick(&obs(500, Some("Earbuds"), 40, true)).is_empty());
-        assert!(w.tick(&obs(2_000, Some("Earbuds"), 40, true)).is_empty());
+        assert_eq!(
+            w.tick(&obs(500, Some("Earbuds"), 40, true)),
+            [] as [Action; 0]
+        );
+        assert_eq!(
+            w.tick(&obs(2_000, Some("Earbuds"), 40, true)),
+            [] as [Action; 0]
+        );
         let a = w.tick(&obs(500 + STALL_MS, Some("Earbuds"), 40, true));
         assert!(a.contains(&Action::PausePlayer), "{a:?}");
     }
@@ -449,13 +464,16 @@ mod tests {
     fn a_paused_player_is_never_mistaken_for_a_stalled_device() {
         let mut w = watch();
         for i in 1..30u64 {
-            assert!(
-                w.tick(&obs(i * 1_000, Some("Earbuds"), 0, false))
-                    .is_empty()
+            assert_eq!(
+                w.tick(&obs(i * 1_000, Some("Earbuds"), 0, false)),
+                [] as [Action; 0]
             );
         }
         // ...and playing again starts the stall clock from now, not from before.
-        assert!(w.tick(&obs(31_000, Some("Earbuds"), 0, true)).is_empty());
+        assert_eq!(
+            w.tick(&obs(31_000, Some("Earbuds"), 0, true)),
+            [] as [Action; 0]
+        );
     }
 
     #[test]

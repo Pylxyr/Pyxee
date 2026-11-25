@@ -59,8 +59,8 @@ fn byte_order_marks_windows_line_endings_and_garbage_do_not_panic() {
         "\u{feff}[00:01.00]a\r\n[00:02.00]b\r\n[zz:yy]c\r\n[99:99.99]d\r\n[00:61.00]e\r\n[:]f",
     );
     assert_eq!(l, lines(&[(1_000, "a"), (2_000, "b")]));
-    assert!(parse_lrc("").is_empty());
-    assert!(parse_lrc("[").is_empty());
+    assert_eq!(parse_lrc(""), [] as [pyxee_lyrics::Line; 0]);
+    assert_eq!(parse_lrc("["), [] as [pyxee_lyrics::Line; 0]);
 }
 
 #[test]

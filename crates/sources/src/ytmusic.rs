@@ -1125,8 +1125,11 @@ mod tests {
 
     #[test]
     fn other_shelves_and_unexpected_answers_do_not_break_parsing() {
-        assert!(tracks("{}").is_empty());
-        assert!(tracks(r#"{"contents":{"x":[{"musicShelfRenderer":{}}]}}"#).is_empty());
+        assert_eq!(tracks("{}"), [] as [TrackInfo; 0]);
+        assert_eq!(
+            tracks(r#"{"contents":{"x":[{"musicShelfRenderer":{}}]}}"#),
+            [] as [TrackInfo; 0]
+        );
         assert!(matches!(parse_songs("<html>"), Err(SourceError::Parse(_))));
     }
 
@@ -1428,7 +1431,7 @@ mod tests {
                 ],
             ),
         ]);
-        assert!(parse_explore(&body).unwrap().is_empty());
+        assert_eq!(parse_explore(&body).unwrap(), [] as [ExploreShelf; 0]);
     }
 
     #[test]

@@ -471,7 +471,10 @@ fn repeat_one_prefetches_the_same_track_and_resets_position() {
         id: ids[0],
         ms: 180_000,
     });
-    assert!(p.engine(E::Ended { id: ids[0] }).is_empty());
+    assert_eq!(
+        p.engine(E::Ended { id: ids[0] }),
+        [] as [pyxee_core::Effect; 0]
+    );
     p.engine(E::Audible { id: ids[0] });
     assert_eq!(p.snapshot().audible, Some(ids[0]));
     assert_eq!(p.snapshot().position_ms, 0);
@@ -516,7 +519,10 @@ fn stale_engine_events_are_ignored() {
     p.command(Command::Next);
     p.engine(E::Audible { id: ids[1] });
     // Late event from the track we skipped:
-    assert!(p.engine(E::Ended { id: ids[0] }).is_empty());
+    assert_eq!(
+        p.engine(E::Ended { id: ids[0] }),
+        [] as [pyxee_core::Effect; 0]
+    );
     assert_eq!(p.snapshot().audible, Some(ids[1]));
 }
 

@@ -207,7 +207,7 @@ fn output_latency_delays_what_counts_as_heard() {
     sleep(Duration::from_millis(150));
     let mut buf = vec![0f32; CHUNK * 2];
     c.pull(&mut buf, 2_400); // 50 ms device latency: 10 ms handed over is not yet audible
-    assert!(heard(&rx).is_empty());
+    assert_eq!(heard(&rx), [] as [pyxee_core::Heard; 0]);
     for _ in 0..5 {
         c.pull(&mut buf, 2_400);
     }

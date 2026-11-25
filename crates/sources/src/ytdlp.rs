@@ -1084,8 +1084,8 @@ mod tests {
         assert_eq!(with("visionos "), arg("visionos"));
         assert_eq!(with("web_safari,mweb"), arg("web_safari,mweb"));
         assert_eq!(with("default,-tv"), arg("default,-tv"));
-        assert!(with("none").is_empty());
-        assert!(with("NONE").is_empty());
+        assert_eq!(with("none"), [] as [std::string::String; 0]);
+        assert_eq!(with("NONE"), [] as [std::string::String; 0]);
         assert_eq!(with("a;b"), arg("-tv_samsung"));
         assert_eq!(with("a b"), arg("-tv_samsung"));
     }
@@ -1755,7 +1755,7 @@ mod tests {
             let (url, request) = testserver::once(200, &one_song());
             let s = source(&url);
             let found = s.search("neon", SearchFilter::Songs).unwrap();
-            assert!(!found.is_empty());
+            assert_ne!(found, [] as [SearchItem; 0]);
             assert!(request.recv_timeout(Duration::from_secs(2)).is_ok());
         }
 

@@ -171,7 +171,7 @@ mod imp {
     /// How long after a page was put to sleep it is checked once more (is it still suspended, and if not, why).
     const RECHECK_DELAY: Duration = Duration::from_secs(5);
 
-    /// Queues the change on the UI thread (where WebView2 may be called); false if that was not possible.
+    /// Queues the change on the UI thread (where `WebView2` may be called); false if that was not possible.
     /// Putting a page to sleep also queues the one-off check `RECHECK_DELAY` later.
     pub fn apply(window: &WebviewWindow, active: bool, generation: u64) -> bool {
         let label = window.label().to_string();
@@ -221,12 +221,12 @@ mod imp {
                 .and_then(|c| c.cast::<ICoreWebView2_3>().ok())
                 .and_then(|v3| {
                     let mut flag = BOOL::default();
-                    v3.IsSuspended(&mut flag).ok().map(|()| flag.as_bool())
+                    v3.IsSuspended(&raw mut flag).ok().map(|()| flag.as_bool())
                 });
             let visible = {
                 let mut flag = BOOL::default();
                 controller
-                    .IsVisible(&mut flag)
+                    .IsVisible(&raw mut flag)
                     .ok()
                     .map(|()| flag.as_bool())
             };
@@ -251,7 +251,7 @@ mod imp {
         }
     }
 
-    /// Every step is tried whatever the others did: an older WebView2 runtime may lack one of them.
+    /// Every step is tried whatever the others did: an older `WebView2` runtime may lack one of them.
     unsafe fn change(
         controller: &ICoreWebView2Controller,
         active: bool,
@@ -304,28 +304,28 @@ mod imp {
                                         "{label} page: suspended (WebView2 confirmed)"
                                     ));
                                     // Give the memory back at once instead of when WebView2 gets round to it (see trim.rs).
-                                    let owned = label.to_string();
-                                    let wanted = label.to_string();
+                                    let owned = label.clone();
+                                    let wanted = label.clone();
                                     crate::shell::trim::trim_after_sleep(
                                         owned,
                                         Box::new(move || super::is_current(&wanted, generation)),
                                     );
                                 }
                                 Ok(()) => {
-                                    log::warn!("{label} page: WebView2 declined to suspend it")
+                                    log::warn!("{label} page: WebView2 declined to suspend it");
                                 }
                                 Err(e) => log::warn!("{label} page: could not be suspended: {e}"),
                             }
                             // What WebView2 reports now, next to what TrySuspend answered.
                             let mut flag = BOOL::default();
                             // Covered by the unsafe block of `change`: this handler runs on the UI thread.
-                            match checked.IsSuspended(&mut flag) {
+                            match checked.IsSuspended(&raw mut flag) {
                                 Ok(()) => log::debug!(
                                     "{label} page: IsSuspended = {} after TrySuspend",
                                     flag.as_bool()
                                 ),
                                 Err(e) => {
-                                    log::debug!("{label} page: could not read IsSuspended: {e}")
+                                    log::debug!("{label} page: could not read IsSuspended: {e}");
                                 }
                             }
                             Ok(())

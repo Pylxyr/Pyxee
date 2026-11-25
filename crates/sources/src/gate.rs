@@ -766,7 +766,7 @@ mod tests {
         );
         st.granted = None;
         assert!(st.pass_on() && st.pass_on());
-        assert!(st.waiting.is_empty());
+        assert_eq!(st.waiting, [] as [(u64, Priority); 0]);
     }
 
     #[test]

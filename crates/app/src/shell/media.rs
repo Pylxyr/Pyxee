@@ -22,7 +22,7 @@ pub fn init(app: &AppHandle) -> Option<Media> {
     let hwnd = app
         .get_webview_window(super::MAIN)
         .and_then(|w| w.hwnd().ok())
-        .map(|h| h.0 as *mut std::ffi::c_void);
+        .map(|h| h.0.cast::<std::ffi::c_void>());
     #[cfg(not(windows))]
     let hwnd = None;
     let config = PlatformConfig {

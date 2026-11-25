@@ -173,7 +173,7 @@ mod tests {
         let mut t = HeardTracker::new(0);
         t.track_started(id(1), 0);
         assert_eq!(t.advance(50), vec![Heard::Audible(id(1))]);
-        assert!(t.advance(10_000).is_empty());
+        assert_eq!(t.advance(10_000), [] as [Heard; 0]);
         t.track_ended(id(1), 12_000);
         assert_eq!(t.advance(12_000), vec![Heard::Ended(id(1))]);
     }
@@ -220,7 +220,7 @@ mod tests {
         t.track_started(id(1), 0);
         t.track_ended(id(1), 1000);
         t.reset(200);
-        assert!(t.advance(5000).is_empty());
+        assert_eq!(t.advance(5000), [] as [Heard; 0]);
         assert_eq!(t.position(), None);
     }
 
@@ -233,7 +233,7 @@ mod tests {
         // The next callback estimates a much larger latency: consumed - latency is 410, before the
         // track even started. That used to underflow `heard - start`.
         t.set_latency(300);
-        assert!(t.advance(710).is_empty());
+        assert_eq!(t.advance(710), [] as [Heard; 0]);
         assert_eq!(t.position(), Some((id(1), 100)), "held, not rewound");
         // Once the estimate catches up, time moves on again.
         t.advance(1000);

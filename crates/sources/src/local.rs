@@ -700,7 +700,10 @@ mod tests {
         assert_eq!(changed[0].title, "a");
         // A file that is gone is gone from the result.
         std::fs::remove_file(&a).unwrap();
-        assert!(scan(&[dir], &changed, &never).unwrap().is_empty());
+        assert_eq!(
+            scan(&[dir], &changed, &never).unwrap(),
+            [] as [LocalTrack; 0]
+        );
     }
 
     #[test]
