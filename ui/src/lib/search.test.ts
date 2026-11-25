@@ -241,15 +241,28 @@ describe('SearchStore with a pasted YouTube link', () => {
     expect(s.items).toEqual([{ type: 'track', track: { key: `yt:${ID}`, title: 'Linked', artist: 'Someone', durationMs: 1000, thumbnail: null } }]);
   });
 
-  it('shows a playlist link as one playlist card, with nothing looked up', async () => {
+  it('shows a playlist link as the songs of that playlist, looked up by its id alone', async () => {
     const { backend, pending, looked } = linkBackend();
+    const asked: string[] = [];
+    backend.playlistTracksGet = async (id) => (asked.push(id), [track(1).track, track(2).track]);
+    const s = new SearchStore();
+    s.init(backend);
+    await s.run('https://www.youtube.com/playlist?list=PLabcdefghij123&si=tracking');
+    expect(pending).toHaveLength(0);
+    expect(looked).toHaveLength(0);
+    expect(asked).toEqual(['PLabcdefghij123']);
+    expect(s.status).toBe('ready');
+    expect(s.items.map((i) => (i.type === 'track' ? i.track.title : ''))).toEqual(['T1', 'T2']);
+  });
+
+  it('a playlist with no songs to show is a message, not an empty page', async () => {
+    const { backend } = linkBackend();
+    backend.playlistTracksGet = async () => [];
     const s = new SearchStore();
     s.init(backend);
     await s.run('https://www.youtube.com/playlist?list=PLabcdefghij123');
-    expect(pending).toHaveLength(0);
-    expect(looked).toHaveLength(0);
-    expect(s.items).toHaveLength(1);
-    expect(s.items[0]).toMatchObject({ type: 'playlist', key: 'yt-playlist:PLabcdefghij123' });
+    expect(s.status).toBe('error');
+    expect(s.error?.message).toContain('no songs');
   });
 
   it('a link that cannot be looked up is an error, not a search for the link', async () => {

@@ -83,10 +83,13 @@ export class SearchStore {
     this.error = null;
     try {
       // A pasted `YouTube` link is not a search: it names one song or one playlist, and only its id is looked up.
+      // A playlist is shown as its songs (a playlist card in the results cannot be opened yet).
       const link = parseYoutubeLink(q);
       let items: SearchItemDto[];
       if (link?.kind === 'playlist') {
-        items = [{ type: 'playlist', key: `yt-playlist:${link.id}`, title: 'YouTube playlist', uploader: 'From your link', thumbnail: null }];
+        const tracks = await this.#backend.playlistTracksGet(link.id);
+        if (tracks.length === 0) throw { kind: 'other', message: 'That playlist has no songs to show (it may be private or gone).' };
+        items = tracks.map((track) => ({ type: 'track', track }));
       } else if (link) {
         items = [{ type: 'track', track: await this.#backend.linkTrack(`yt:${link.id}`) }];
       } else {
