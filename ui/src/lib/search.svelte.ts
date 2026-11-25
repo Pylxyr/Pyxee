@@ -38,6 +38,8 @@ export class SearchStore {
   error = $state<SearchErrorDto | null>(null);
   filters = $state<FilterInfoDto[]>(DEFAULT_FILTERS);
   suggestions = $state<string[]>([]);
+  /** The results are the songs of a pasted playlist link: they are one list, to play, shuffle or save as a whole. */
+  listLink = $state(false);
   /** The same query is being asked again with another filter: the old results stay on screen (dimmed) meanwhile. */
   reloading = $state(false);
   #backend: Backend | null = null;
@@ -73,6 +75,7 @@ export class SearchStore {
     const seq = ++this.#seq;
     if (!q || !this.#backend) {
       this.status = 'idle';
+      this.listLink = false;
       this.items = [];
       this.error = null;
       this.reloading = false;
@@ -96,12 +99,14 @@ export class SearchStore {
         items = (await this.#backend.search(q, filter)).items;
       }
       if (seq !== this.#seq) return;
+      this.listLink = link?.kind === 'playlist';
       this.items = items;
       this.status = 'ready';
       this.reloading = false;
     } catch (e) {
       if (seq !== this.#seq) return;
       this.reloading = false;
+      this.listLink = false;
       this.items = [];
       this.error = toSearchError(e);
       this.status = 'error';

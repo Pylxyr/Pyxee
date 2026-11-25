@@ -2,6 +2,9 @@
   import { player } from '$lib/player.svelte';
   import { search } from '$lib/search.svelte';
   import { snackbar } from '$lib/snackbar.svelte';
+  import { library } from '$lib/library.svelte';
+  import { nav } from '$lib/nav.svelte';
+  import { messageOf } from '$lib/backend';
   import { reveal } from '$lib/motion';
   import type { SearchFilterDto } from '$lib/bindings/SearchFilterDto';
   import Button from '../components/Button.svelte';
@@ -44,6 +47,28 @@
   // Results of the same query stay up, dimmed, while another filter loads.
   const showList = $derived(search.status === 'ready' || (search.status === 'loading' && search.reloading));
   const rows = $derived(withKeys(search.items, (i) => (i.type === 'track' ? i.track.key : `${i.type}:${i.key}`)));
+  /** The songs of a playlist link, in the order YouTube lists them. */
+  const listTracks = $derived(search.items.flatMap((i) => (i.type === 'track' ? [i.track] : [])));
+
+  function playList(shuffle: boolean, start = 0) {
+    if (listTracks.length === 0) return;
+    if (shuffle !== player.state.shuffle) player.toggleShuffle();
+    player.playTracks(listTracks, start);
+  }
+
+  function saveList() {
+    const tracks = listTracks;
+    nav.namePrompt = {
+      title: 'Save as playlist',
+      initial: '',
+      confirm: 'Save',
+      run: async (name) => {
+        const id = await library.backend!.playlistCreate(name, tracks).catch((e) => Promise.reject(messageOf(e)));
+        snackbar.push(`Saved ${tracks.length} ${tracks.length === 1 ? 'song' : 'songs'} as ${name.trim()}`, { action: { label: 'Open', run: () => nav.openPlaylist(id) } });
+      },
+    };
+  }
+
   const filters = $derived(
     search.filters.map((f) => ({
       id: f.filter,
@@ -83,13 +108,21 @@
       {:else if showList}
         <!-- route-in: a new set of results (after the skeleton) arrives with the container. Each row (and its cover) reveals itself as it scrolls into view. A filter change keeps this element, so its dimming stays smooth. -->
         <div class="results route-in" data-dim={search.status === 'loading'}>
+        {#if search.listLink}
+          <div class="toolbar">
+            <Button variant="primary" onclick={() => playList(false)}>Play all</Button>
+            <Button onclick={() => playList(true)}>Shuffle</Button>
+            <Button onclick={saveList}>Save as playlist</Button>
+            <span class="muted ml-auto">{listTracks.length} {listTracks.length === 1 ? 'song' : 'songs'}</span>
+          </div>
+        {/if}
         <TrackList label="Results" head={false}>
           {#each rows as r (r.key)}
             {@const item = r.item}
             {@const i = r.index}
             {#if item.type === 'track'}
               {@const t = item.track}
-              <TrackRow track={t} index={i} onplay={() => player.playTracks([t])} />
+              <TrackRow track={t} index={i} onplay={() => (search.listLink ? playList(false, i) : player.playTracks([t]))} />
             {:else if item.type === 'artist'}
               <li class="trow" use:reveal>
                 <button class="trow-main" onclick={() => search.run(item.name, 'songs')}>

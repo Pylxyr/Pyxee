@@ -32,8 +32,8 @@ beforeEach(() => {
   player.catalog = null;
   library.ready = false;
   library.snapshot = { revision: 0, likedKeys: [], playlists: [], historyCount: 0, error: null };
-  Object.assign(nav, { route: 'home', nowPlayingOpen: false, menuTrack: null, menuAt: null, menuExtras: [], menuQueue: false, laneHidden: false, queueDrawer: false, settingsTab: 'appearance', pickTrack: null, namePrompt: null, libraryTab: 'liked', playlistId: null, themeSheetOpen: false, tab: 'upnext' });
-  search.query = ''; search.status = 'idle'; search.items = []; search.error = null; search.suggestions = [];
+  Object.assign(nav, { route: 'home', query: '', nowPlayingOpen: false, menuTrack: null, menuAt: null, menuExtras: [], menuQueue: false, laneHidden: false, queueDrawer: false, settingsTab: 'appearance', pickTrack: null, namePrompt: null, libraryTab: 'liked', playlistId: null, themeSheetOpen: false, tab: 'upnext' });
+  search.query = ''; search.status = 'idle'; search.items = []; search.error = null; search.suggestions = []; search.listLink = false; search.reloading = false;
   for (const s of [...snackbar.items]) snackbar.dismiss(s.id);
   setWide(false);
 });
@@ -504,5 +504,53 @@ describe('the queue beside the page', () => {
     expect(await screen.findByRole('complementary', { name: 'Now playing' })).toBeTruthy();
     expect(screen.getByText('3 songs')).toBeTruthy();
     expect(screen.getByText(/· \d+ min/)).toBeTruthy();
+  });
+});
+
+describe('the songs of a pasted playlist link', () => {
+  const LINK = 'https://www.youtube.com/playlist?list=PLabcdefghij123';
+  async function openLink() {
+    render(App);
+    await waitFor(() => expect(player.ready && library.ready).toBe(true));
+    void search.run(LINK);
+    nav.search(LINK);
+    await screen.findByRole('button', { name: 'Play all' });
+  }
+
+  it('Play all queues every song in order, and Shuffle turns shuffle on', async () => {
+    await openLink();
+    await fireEvent.click(screen.getByRole('button', { name: 'Play all' }));
+    await waitFor(() => expect(player.state.queue.map((e) => e.track.key)).toEqual(DEMO_TRACKS.slice(0, 3).map((t) => t.key)));
+    expect(player.state.shuffle).toBe(false);
+    await fireEvent.click(screen.getByRole('button', { name: 'Shuffle' }));
+    await waitFor(() => expect(player.state.shuffle).toBe(true));
+  });
+
+  it('a row plays the list from that song, not that song alone', async () => {
+    await openLink();
+    await fireEvent.click(await screen.findByRole('button', { name: new RegExp(`^${PAPER.title}`) }));
+    await waitFor(() => expect(player.shown?.track.key).toBe(PAPER.key));
+    expect(player.state.queue.map((e) => e.track.key)).toEqual(DEMO_TRACKS.slice(0, 3).map((t) => t.key));
+  });
+
+  it('Save as playlist stores all the songs under the chosen name', async () => {
+    await openLink();
+    await fireEvent.click(screen.getByRole('button', { name: 'Save as playlist' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Save as playlist' });
+    await fireEvent.input(within(dialog).getByRole('textbox', { name: 'Name' }), { target: { value: 'From a link' } });
+    await fireEvent.click(within(dialog).getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(library.playlists.map((p) => [p.name, p.trackCount])).toEqual([['From a link', 3]]));
+  });
+
+  it('an ordinary search has no list controls and a row plays only its song', async () => {
+    render(App);
+    await waitFor(() => expect(player.ready && library.ready).toBe(true));
+    void search.run('lowtide');
+    nav.search('lowtide');
+    const results = await screen.findByRole('list', { name: 'Results' });
+    await fireEvent.click(within(results).getByRole('button', { name: new RegExp(`^${NEON.title}`) }));
+    await waitFor(() => expect(player.shown?.track.key).toBe(NEON.key));
+    expect(screen.queryByRole('button', { name: 'Play all' })).toBeNull();
+    expect(player.state.queue.map((e) => e.track.key)).toEqual([NEON.key]);
   });
 });

@@ -293,3 +293,21 @@ describe('SearchStore with a pasted YouTube link', () => {
     expect(suggestCalls).toEqual(['lowtide']);
   });
 });
+
+describe('SearchStore listLink', () => {
+  it('is set only while the results are the songs of a playlist link', async () => {
+    const { backend } = controllable();
+    backend.playlistTracksGet = async () => [track(1).track, track(2).track];
+    backend.linkTrack = async (key) => ({ key, title: 'Linked', artist: 'A', durationMs: 1, thumbnail: null });
+    const s = new SearchStore();
+    s.init(backend);
+    await s.run('https://www.youtube.com/playlist?list=PLabcdefghij123');
+    expect(s.listLink).toBe(true);
+    await s.run('https://youtu.be/dQw4w9WgXcQ');
+    expect(s.listLink).toBe(false);
+    await s.run('https://www.youtube.com/playlist?list=PLabcdefghij123');
+    expect(s.listLink).toBe(true);
+    await s.run('');
+    expect(s.listLink).toBe(false);
+  });
+});
