@@ -14,6 +14,7 @@
   import Segmented from '../components/Segmented.svelte';
   import Skeleton from '../components/Skeleton.svelte';
   import Thumb from '../components/Thumb.svelte';
+  import { artistOf, titleOf } from '$lib/format';
   import TrackList from '../components/TrackList.svelte';
   import TrackRow from '../components/TrackRow.svelte';
   import { withKeys } from '$lib/keys';
@@ -49,6 +50,13 @@
   const rows = $derived(withKeys(search.items, (i) => (i.type === 'track' ? i.track.key : `${i.type}:${i.key}`)));
   /** The songs of a playlist link, in the order YouTube lists them. */
   const listTracks = $derived(search.items.flatMap((i) => (i.type === 'track' ? [i.track] : [])));
+
+  /** The best match, for the card above the list: the first song of a plain search (not a link to a whole playlist). */
+  const top = $derived.by(() => {
+    if (search.listLink || (search.filter !== 'all' && search.filter !== 'songs')) return null;
+    const first = search.items[0];
+    return first && first.type === 'track' && search.items.length > 1 ? first.track : null;
+  });
 
   function playList(shuffle: boolean, start = 0) {
     if (listTracks.length === 0) return;
@@ -115,6 +123,20 @@
             <Button onclick={saveList}>Save as playlist</Button>
             <span class="muted ml-auto">{listTracks.length} {listTracks.length === 1 ? 'song' : 'songs'}</span>
           </div>
+        {/if}
+        {#if top}
+          <section class="top-result" aria-label="Top result">
+            <h2 class="t-lead">Top result</h2>
+            <div class="top-card">
+              <Thumb src={top.thumbnail} seed={top.key} size={112} rounded="r-md" />
+              <div class="min-w-0">
+                <p class="top-title truncate" dir="auto">{titleOf(top)}</p>
+                <p class="muted truncate" dir="auto">Song · {artistOf(top)}</p>
+                <Button class="mt-3" variant="primary" onclick={() => player.playTracks([top])}>Play</Button>
+              </div>
+            </div>
+          </section>
+          <h2 class="t-lead top-more">Songs</h2>
         {/if}
         <TrackList label="Results" head={false}>
           {#each rows as r (r.key)}

@@ -235,6 +235,24 @@ describe('the seek-line wake (a new song lights the seek line)', () => {
   });
 });
 
+describe('the seek bar\'s time bubble and the paused cover', () => {
+  it('fades the bubble in once, with opacity only, and stands down under reduced motion', () => {
+    const rule = all.find((b) => b.selector === '.seek-tip')?.body ?? '';
+    expect(rule).toMatch(/animation:\s*tip-in\b/);
+    expect(rule).not.toMatch(/infinite|will-change|filter/);
+    expect(keyframeProps('tip-in')).toEqual(['opacity']);
+    expect(css).toMatch(/@media \(prefers-reduced-motion: reduce\) \{\s*\.seek-tip \{\s*animation: none !important;/);
+  });
+
+  it('eases the Now Playing cover down with one transform transition, and not under reduced motion', () => {
+    const rest = all.find((b) => b.selector === '.np-root .stage-art' && /(^|\s)transition:\s*transform/.test(b.body))?.body ?? '';
+    const value = /transition:\s*([^;}]*)/.exec(rest)?.[1]?.trim() ?? '';
+    expect(value.startsWith('transform ') && !value.includes(','), value).toBe(true);
+    expect(all.find((b) => b.selector === ".np-root .stage-art[data-paused='true']")?.body).toMatch(/transform:\s*scale\(/);
+    expect(css).toMatch(/@media \(prefers-reduced-motion: reduce\) \{\s*\.np-root \.stage-art \{\s*transition: none;/);
+  });
+});
+
 describe('the deck cover\'s light follows the music with opacity only', () => {
   const lit = all.find((b) => b.selector === '.deck-art::before')?.body ?? '';
   const dim = all.find((b) => b.selector === ".deck-art[data-paused='true']::before")?.body ?? '';

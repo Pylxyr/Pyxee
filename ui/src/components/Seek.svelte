@@ -4,7 +4,7 @@
   import { seekMode } from '$lib/seekmode.svelte';
   import { DRIFT_RESYNC_MS, animatedPositionMs, devicePixels, nextPixelDelayMs, pixelPct, stepsFor } from '$lib/seekbar';
 
-  let { positionMs, durationMs, onseek, label = 'Seek', accent = false, disabled = false, scrub = $bindable(null) }: {
+  let { positionMs, durationMs, onseek, label = 'Seek', accent = false, disabled = false, scrub = $bindable(null), preview = true }: {
     positionMs: number;
     durationMs: number | null;
     onseek: (ms: number) => void;
@@ -13,6 +13,8 @@
     disabled?: boolean;
     /** Where the thumb is being held (dragged, or just released and waiting for the player), or null. The time labels next to the bar show it. */
     scrub?: number | null;
+    /** The time under the pointer, in a small bubble above the bar (a mouse or pen only; it is drawn while the pointer is over the bar). */
+    preview?: boolean;
   } = $props();
 
   // Arrow keys move the song by 5 s (10 s with Shift), as the global Left/Right keys do.
@@ -151,6 +153,25 @@
   });
   $effect(() => stopAnim);
 
+  // The time under the pointer. Only pointer moves over the bar update it, so nothing runs while the pointer is elsewhere.
+  // The browser's range thumb travels from half its width in to half its width in (14 px), so the same inset is used here.
+  const THUMB_PX = 14;
+  let tip = $state<{ x: number; ms: number; edge: 'start' | 'end' | null } | null>(null);
+  function trackPointer(e: PointerEvent) {
+    if (!preview || e.pointerType === 'touch' || !durationMs || disabled) {
+      tip = null;
+      return;
+    }
+    const box = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const span = box.width - THUMB_PX;
+    if (span <= 0) return;
+    const ratio = Math.min(1, Math.max(0, (e.clientX - box.left - THUMB_PX / 2) / span));
+    // Close to either end the bubble is held inside the bar instead of centred (and cut off by the window).
+    const x = THUMB_PX / 2 + ratio * span;
+    tip = { x, ms: Math.round((ratio * durationMs) / 1000) * 1000, edge: x < 28 ? 'start' : box.width - x < 28 ? 'end' : null };
+  }
+  const leaveBar = () => (tip = null);
+
   const pct = $derived(glide ? 0 : mode === 'pixel' && hold == null && px > 0 ? pixelPct(shownMs, max, px) : exactPct);
 </script>
 
@@ -182,6 +203,8 @@
   onchange={(e) => commit(e.currentTarget.valueAsNumber)}
 />
 {/snippet}
+<!-- svelte-ignore a11y_no_static_element_interactions -->
+<div class="seek-host" onpointermove={trackPointer} onpointerleave={leaveBar} onpointercancel={leaveBar}>
 {#if glide}
   <div class="seek-wrap">
     <div class="seek-clip"><div class="seek-fill {accent ? 'accent' : ''}" bind:this={fill}></div></div>
@@ -190,4 +213,8 @@
 {:else}
   {@render range()}
 {/if}
+{#if tip}
+  <span class="seek-tip nums" data-edge={tip.edge} style="left:{tip.x}px" aria-hidden="true">{formatTime(tip.ms)}</span>
+{/if}
+</div>
 {/if}

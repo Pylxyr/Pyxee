@@ -78,13 +78,13 @@
            everything, a centred column overflows at both ends and the top (the cover, the title) is cut off and cannot be
            scrolled to. With auto margins it centres while there is room and starts at the top when there is not. -->
       <section class="flex min-h-0 flex-col items-center gap-3 lg:gap-5 lg:overflow-y-auto [&>:first-child]:mt-auto [&>:last-child]:mb-auto" data-testid="np-controls">
-        <div class="stage-art aspect-square w-[min(56vw,26vh)] shrink-0 lg:w-[min(22rem,48vh)] xl:w-[min(30rem,50vh)] 2xl:w-[min(40rem,56vh)]" data-testid="np-art">
+        <div class="stage-art aspect-square w-[min(56vw,26vh)] shrink-0 lg:w-[min(22rem,48vh)] xl:w-[min(30rem,50vh)] 2xl:w-[min(40rem,56vh)]" data-testid="np-art" data-paused={!player.isPlaying}>
           <Thumb src={entry.track.thumbnail} seed={entry.track.key} size={352} fill rounded="r-lg" />
         </div>
         <div class="flex w-[min(80vw,22rem)] items-center justify-between gap-3 xl:w-[min(80vw,30rem)] 2xl:w-[min(80vw,40rem)]">
           <div class="min-w-0">
             <h1 class="t-title truncate" dir="auto">{titleOf(entry.track)}</h1>
-            <p class="muted truncate" dir="auto">{artistOf(entry.track)}</p>
+            <p class="np-artist truncate" dir="auto">{artistOf(entry.track)}</p>
           </div>
           <div class="flex items-center">
             <IconButton icon="moon" label="Sleep timer" class="w-auto gap-1 px-2 {sleep.status ? 'text-accent' : ''}" onclick={() => (nav.sleepSheetOpen = true)}>
@@ -95,7 +95,7 @@
         </div>
         <div class="w-[min(80vw,22rem)] xl:w-[min(80vw,30rem)] 2xl:w-[min(80vw,40rem)]">
           <Seek positionMs={player.positionMs} durationMs={player.durationMs} onseek={player.seek} accent label="Seek" bind:scrub />
-          <div class="t-caption muted nums flex justify-between">
+          <div class="np-times nums flex justify-between">
             <span>{formatTime(scrub ?? player.positionMs)}</span><span>{player.durationMs ? formatTime(player.durationMs) : 'length unknown'}</span>
           </div>
         </div>
@@ -122,7 +122,7 @@
         <div class="np-volume w-[min(60vw,14rem)] shrink-0" data-testid="np-volume"><VolumeSlider /></div>
       </section>
 
-      <section class="flex min-h-0 min-w-0 flex-col">
+      <section class="np-panel flex min-h-0 min-w-0 flex-col">
         <div class="flex shrink-0 flex-wrap items-center justify-between gap-x-3 gap-y-1" data-testid="np-tabs">
           <Segmented items={tabs} value={nav.tab} onselect={(id) => (nav.tab = id)} label="Now Playing sections" class="min-w-0 flex-nowrap [&_.segment]:whitespace-nowrap [&_.segment]:px-2.5" />
           <Button variant="quiet" size="sm" class="shrink-0" onclick={() => nav.closeNowPlaying('queue')}>Open queue</Button>

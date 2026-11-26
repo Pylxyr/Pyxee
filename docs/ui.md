@@ -164,7 +164,7 @@ The `set_window_theme` command makes the native frame follow a fixed theme (`nul
 - **Queue lane** (1440 px and up) stays in place with a friendly empty state while nothing plays, so the page does not shift.
 - `--accent-ink` is the accent used as text (pulled toward the text colour, 4.5:1 on the selected row); `--accent` stays for fills.
 - A song without a title or artist shows "Untitled" / "Unknown artist" (`titleOf`, `artistOf`); titles use `dir="auto"` for right-to-left text.
-- The seek line is 6 px; liking a song also sends a one-off ring out of the heart (`burst` in `lib/motion.ts`).
+- The seek line is 6 px; while a mouse or pen is over it a small bubble shows the time you would jump to (`Seek.svelte`, only pointer moves update it). Now Playing eases its cover down to 93 % while paused and back on play (one transform transition), and search shows a Top result card above the song list. Liking a song also sends a one-off ring out of the heart (`burst` in `lib/motion.ts`).
 ## Look options (Settings > Look)
 Every choice is a data attribute on `<html>` (`data-corners`, `data-surfaces`, `data-panels`, `data-covers`, `data-hero`, `data-tune`;
 `lib/look.ts` holds the choices, `lib/look.svelte.ts` saves them in `pyxee.look` and `App.svelte` applies them). The default of each
