@@ -6,9 +6,17 @@ const song = (key: string, artist: string): TrackDto => ({ key, title: key, arti
 const keys = (l: TrackDto[]) => l.map((t) => t.key);
 
 describe('the songs Tune in offers', () => {
-  it('lists the quick picks first, then the latest plays, each song once', () => {
-    const out = tuneInSeeds([song('a', 'A'), song('b', 'B')], [song('b', 'B'), song('c', 'C')]);
-    expect(keys(out)).toEqual(['a', 'b', 'c']);
+  it('lists the quick picks, most wanted first, each song once', () => {
+    const out = tuneInSeeds([song('a', 'A'), song('b', 'B'), song('a', 'A')], []);
+    expect(keys(out)).toEqual(['a', 'b']);
+  });
+  it('leaves out what Recently played already shows, so the two rows differ', () => {
+    const out = tuneInSeeds([song('a', 'A'), song('b', 'B'), song('c', 'C')], [song('b', 'B'), song('x', 'X')]);
+    expect(keys(out)).toEqual(['a', 'c']);
+  });
+  it('has nothing to offer while every pick is also in Recently played (a new library)', () => {
+    const songs = [song('a', 'A'), song('b', 'B')];
+    expect(tuneInSeeds(songs, songs)).toEqual([]);
   });
   it('leaves out the song that is playing now', () => {
     const out = tuneInSeeds([song('a', 'A'), song('b', 'B')], [], 'a');
@@ -22,7 +30,7 @@ describe('the songs Tune in offers', () => {
   it('gives a small library a short row: one card per artist, never a second one of the same artist', () => {
     const quick = [song('a1', 'A'), song('a2', 'A'), song('b1', 'B'), song('a3', 'A'), song('b2', 'B')];
     expect(keys(tuneInSeeds(quick, []))).toEqual(['a1', 'b1']);
-    expect(keys(tuneInSeeds([song('z1', 'ZUTOMAYO'), song('z2', 'ZUTOMAYO')], [song('z3', 'zutomayo')]))).toEqual(['z1']);
+    expect(keys(tuneInSeeds([song('z1', 'ZUTOMAYO'), song('z2', 'zutomayo')], []))).toEqual(['z1']);
   });
   it('never offers more than the row holds', () => {
     const many = Array.from({ length: 30 }, (_, i) => song(`s${i}`, `Artist ${i}`));

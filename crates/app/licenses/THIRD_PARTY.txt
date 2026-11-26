@@ -43,7 +43,7 @@ yt-dlp (bundled program; it runs as a separate process and Pyxee does not link i
 
 Rust crates and npm packages (compiled into Pyxee)
   Pyxee is built from open-source Rust crates and npm packages, all under permissive or weak-copyleft licences
-  (MIT, Apache-2.0, BSD-3-Clause, ISC, Zlib, Unicode-3.0, CDLA-Permissive-2.0, MPL-2.0). The exact packages and versions are in Cargo.lock and ui/package-lock.json in the source
+  (MIT, Apache-2.0 (some with the LLVM exception), BSD-2-Clause, BSD-3-Clause, ISC, Zlib, Unicode-3.0, CDLA-Permissive-2.0, MPL-2.0, 0BSD, CC0-1.0, MIT-0, Unlicense; CI checks the list with cargo-deny). The exact packages and versions are in Cargo.lock and ui/package-lock.json in the source
   repository, and each package's licence text is in its own source. Pyxee's own code is MIT licensed (LICENSE).
 
 Using yt-dlp to access YouTube may conflict with YouTube's Terms of Service. Pyxee is for personal use.

@@ -74,8 +74,9 @@
     else if (h.action === 'retry') void player.retry();
     else void player.toggle();
   }
-  // "Tune in": one card per artist you come back to, each the start of a radio (a song of theirs, then songs like it: new
-  // music). "Recently played" is the other way round: your own history, played again as it was, with no radio. The Surprise
+  // "Tune in": one card per artist you come back to (your favourites and most played, without the songs "Recently
+  // played" shows), each the start of a radio (a song of theirs, then songs like it: new music). "Recently played" is the
+  // other way round: your own history, played again as it was, with no radio. The Surprise
   // card picks a song at random. The song that is playing is left out, and an artist is shown once.
   const seeds = $derived(tuneInSeeds(home?.quickPicks ?? [], home?.recent ?? [], player.shown?.track.key ?? null));
   function surprise() {

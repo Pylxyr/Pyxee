@@ -4,10 +4,10 @@ Everything for building, running and testing Pyxee from source. Users: see the [
 
 Rust (audio, queue, library) + Tauri 2 (WebView2) + Svelte/TypeScript/Tailwind UI.
 
-Status: milestones 1-5 done (gapless audio, core state machine, UI shell, real engine + search + queue, library with likes,
-playlists, history and Home). The audio, yt-dlp and library parts are covered by automated tests with local files, but have
-not yet been run against YouTube, a real sound card or a real Windows profile: see `engine.md` and `library.md` for
-what to verify on Windows. Set `PYXEE_SIM=1` to run the UI against the built-in simulator instead (developer builds only: a release build, and its UI bundle, have no simulator, mock backend, performance log or seek-fill modes; to build with them, use `cargo build --features dev-tools` and `VITE_PYXEE_DEV_TOOLS=1 npm run build --prefix ui`).
+Status: released (the [Releases page](https://github.com/Pylxyr/Pyxee/releases) has the current version). The audio, yt-dlp and
+library parts are covered by automated tests that use local files and local servers, and CI runs them on Windows and Linux. What only a real
+PC can show (YouTube itself, a real sound card, a real Windows profile) is checked with `scripts\check-windows.cmd`: see `engine.md` and
+`library.md`. Set `PYXEE_SIM=1` to run the UI against the built-in simulator instead (developer builds only: a release build, and its UI bundle, have no simulator, mock backend, performance log or seek-fill modes; to build with them, use `cargo build --features dev-tools` and `VITE_PYXEE_DEV_TOOLS=1 npm run build --prefix ui`).
 
 ## Prerequisites (Windows)
 Rust 1.100 (MSVC; `rust-toolchain.toml` selects it and rustup installs it on first use), Visual Studio Build Tools (C++ workload), Node 22+ and the WebView2 runtime (preinstalled on Windows 11).
@@ -99,7 +99,9 @@ cargo test --workspace
 `cargo test -p pyxee-app` regenerates the TypeScript types in `ui/src/lib/bindings` from the Rust types.
 
 ## Dependency checks
-CI has a `deny` job (cargo-deny, advisories only) and an `npm audit --omit=dev` step. Run them locally with `cargo deny --locked check advisories` and `npm audit --omit=dev --prefix ui`.
+CI has a `deny` job (cargo-deny: advisories, licences and sources) and an `npm audit --omit=dev` step. Run them locally with `cargo deny --locked check advisories licenses sources` and `npm audit --omit=dev --prefix ui`.
+
+* **Licences and sources: blocking.** Every crate must be under one of the licences listed in `deny.toml` (the ones `crates/app/licenses/THIRD_PARTY.txt` names), and must come from crates.io or the vendored `souvlaki` path. Adding a crate under another licence (a GPL one, say) fails the job until somebody has decided it is acceptable and added it to the list. `cargo deny --locked list` shows which licences are in use.
 
 * **Advisories: blocking.** The `deny` job fails CI, and so a release, on a known vulnerability, and on an unmaintained or unsound crate that a Pyxee crate depends on directly. Baseline on 2026-11-22, after the move to Rust 1.100 and a refresh of both lockfiles (`cargo update`: 39 packages, all within their semver range): no vulnerabilities and no locked version is yanked, and cargo-deny 0.22.0 with its default settings reports `advisories ok`. Only with `unmaintained = "all"` and `unsound = "all"` does it list warnings (unmaintained: `proc-macro-error`, `paste` via `lofty`, `zbus_names`, `zvariant`, `zvariant_derive`; unsound: `glib` 0.18 from Tauri's GTK3 stack); they come from crates Tauri, `lofty` and `souvlaki` pull in and go away when those move. `deny.toml` at the repository root pins this (`unmaintained = "workspace"`) because cargo-deny's built-in default differs between versions: without it the CI action failed on those five transitive crates. To accept an advisory that cannot be fixed yet, add `ignore = ["RUSTSEC-YYYY-NNNN"]` to its `[advisories]` section, and say why in a comment.
 * **Held back on purpose:** `windows-core` stays at 0.62.2 (0.100.0 exists and needs Rust 1.95): `cpal`, `tao`, `webview2-com` and `wry` all use 0.62.2, and the WebView2 interface types must come from the same version. `toml`/`toml_edit` 0.8/0.20 are pinned by `system-deps` and `generic-array` 0.14.7 by `crypto-common`, both inside Tauri's and RustCrypto's own stacks. On the UI side `typescript` stays on 6.0.3, because `svelte-check` 4.7.8 refuses 7.x.

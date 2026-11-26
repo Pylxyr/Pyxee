@@ -140,7 +140,7 @@ jobs:
       - name: Version files agree
         run: python scripts/bump_version.py --check "v$(python scripts/bump_version.py --current)"
 
-  # Known vulnerabilities in Rust dependencies (RustSec), with the settings in deny.toml. Blocking: `ci-ok` fails
+  # Known vulnerabilities in Rust dependencies (RustSec), their licences and where they come from, with the settings in deny.toml. Blocking: `ci-ok` fails
   # with it, and so does a release. The baseline is clean (the warnings listed in docs/development.md only show with
   # `unmaintained = "all"` and `unsound = "all"`).
   deny:
@@ -150,7 +150,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: EmbarkStudios/cargo-deny-action@70f81531115945ba6eb6b941ec9d39d063438eb9 # v2.1.2
         with:
-          command: check advisories
+          command: check advisories licenses sources
           arguments: --locked
 
   # One required check for branch protection: it fails if any job above failed or was cancelled.

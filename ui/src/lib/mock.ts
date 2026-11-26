@@ -93,8 +93,9 @@ export class MockBackend extends MockLibrary implements Backend {
     super();
     // `?home` on the page's address gives the standalone demo a listening history and a few likes, so Home shows its full layout.
     if (typeof location !== 'undefined' && /[?&]home\b/.test(location.search)) {
-      for (const t of [...DEMO_TRACKS].reverse()) this.recordPlay(t);
-      for (const t of DEMO_TRACKS.slice(0, 3)) void this.setLiked(t, true);
+      for (const t of DEMO_TRACKS.slice(0, 5).reverse()) this.recordPlay(t);
+      // Liked but not played lately: these fill "Tune in", which leaves out what "Recently played" already shows.
+      for (const t of DEMO_TRACKS.slice(4, 8)) void this.setLiked(t, true);
     }
   }
 

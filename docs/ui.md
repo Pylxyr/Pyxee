@@ -96,8 +96,8 @@ it was put until the player's position reaches it, and the time labels show wher
   sideways to the page's edges; Explore's shelves are the same). Page titles are poster-sized, with a time-of-day greeting above
   Home's. **Picking anything on Home starts a radio** (`lib/radio.ts`): the song plays at once and about 15 similar songs
   (`relatedGet`) are queued behind it; if another song is picked meanwhile, or the lookup fails, the queue is left alone (a note
-  says so on failure). "Tune in" is a row of cards (`MixCard`) that scrolls sideways like the covers, one per song you come back to (the quick picks: songs played most in the last 30 days and liked ones, then the recent songs; `lib/tunein.ts`: the
-  song playing now is left out, a song and an artist are shown once, a small library is filled to six cards), each coloured from its song's cover, plus a "Surprise me" card that starts a radio from one of them at random.
+  says so on failure). "Tune in" is a row of cards (`MixCard`) that scrolls sideways like the covers, one per song you come back to (the quick picks: songs played most in the last 30 days and liked ones, without the songs "Recently played" already shows, so the two rows differ; `lib/tunein.ts`: the
+  song playing now is left out, a song and an artist are shown once, a library with little history gets a short row or none), each coloured from its song's cover, plus a "Surprise me" card that starts a radio from one of them at random.
 - **The deck** is the memorable part: a seek line across the whole window, a cover lit by the accent (of the theme, or of the
   cover with "Color from album art"), and the same accent washing down the lane. The hero, the flyout and the mini player use the wash.
 - Ink (blue-black with a signal-lime accent) is the default theme, Frost (soft grey-white with olive-lime) the default light one. The logo keeps its own red; the UI accent does not.
