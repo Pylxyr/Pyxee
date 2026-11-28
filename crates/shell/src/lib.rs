@@ -14,6 +14,7 @@ pub mod settings;
 pub mod sleep;
 pub mod toast;
 pub mod tray_controls;
+pub mod uiprefs;
 pub mod update;
 
 /// A rectangle in physical (device) pixels.

@@ -7,12 +7,13 @@ use super::dto::{
     AudioDeviceDto, AudioDevicesDto, EqDto, LyricsDto, ShellSettingsDto, SleepSettingDto,
     SleepStateDto, SleepStatusDto,
 };
-use super::{ShellState, flyout, mini, sleep};
+use super::{ShellState, UiPrefsState, flyout, mini, sleep};
 use crate::audio_cache::AudioCache;
 use crate::state::{AppState, now_ms};
 use pyxee_audio::output::{DeviceIdent, list_outputs};
 use pyxee_lyrics::{LRCLIB, Lyrics, Query, fetch};
 use pyxee_shell::settings::{EqSettings, OUTPUT_DEVICE_ID_MAX};
+use std::collections::BTreeMap;
 use std::sync::Arc;
 use std::time::Duration;
 use tauri::{AppHandle, Manager};
@@ -293,6 +294,20 @@ pub async fn audio_device_set(
 pub fn lastfm_clear(app: AppHandle) -> ShellSettingsDto {
     super::clear_lastfm(&app);
     shell_get(app)
+}
+
+/// The page's saved settings (see [`UiPrefsState`]): asked once at start, before the page reads its own store.
+#[tauri::command]
+pub fn ui_prefs_get(app: AppHandle) -> BTreeMap<String, String> {
+    app.state::<UiPrefsState>().items()
+}
+
+/// Saves the page's settings: the whole set, whenever one of them changed.
+#[tauri::command]
+pub fn ui_prefs_set(app: AppHandle, items: BTreeMap<String, String>) -> Result<(), String> {
+    app.state::<UiPrefsState>()
+        .replace(items)
+        .map_err(|e| format!("Could not save the settings: {e}"))
 }
 
 #[tauri::command]

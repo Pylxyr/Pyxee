@@ -1,3 +1,4 @@
+import { persist } from './persist';
 import type { Backend } from './backend';
 import { parseSeekMode, SEEK_MODES, type SeekMode } from './seekbar';
 
@@ -22,6 +23,7 @@ export function setSeekMode(v: SeekMode): void {
   seekMode.value = v;
   try {
     localStorage.setItem(KEY, v);
+    persist.touch();
   } catch {
     /* ignore */
   }

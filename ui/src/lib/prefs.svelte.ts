@@ -1,3 +1,4 @@
+import { persist } from './persist';
 import { isUiScale, type UiScale } from './uiscale';
 
 const KEY = 'pyxee.volume';
@@ -44,6 +45,7 @@ class Prefs {
     this.crossfade = Number.isFinite(seconds) ? nearest : 0;
     try {
       localStorage.setItem(FADE_KEY, String(this.crossfade));
+      persist.touch();
     } catch {
       /* ignore */
     }
@@ -54,6 +56,7 @@ class Prefs {
     this.uiScale = v;
     try {
       localStorage.setItem(SCALE_KEY, v);
+      persist.touch();
     } catch {
       /* ignore */
     }
@@ -62,6 +65,7 @@ class Prefs {
     this.volume = Math.max(0, Math.min(100, Math.round(v)));
     try {
       localStorage.setItem(KEY, String(this.volume));
+      persist.touch();
     } catch {
       /* ignore */
     }

@@ -18,7 +18,7 @@ use std::path::{Path, PathBuf};
 const DB: &str = "library.db";
 const DB_FILES: [&str; 3] = ["library.db-wal", "library.db-shm", DB];
 /// Small state files. Losing one costs the queue or the settings, not the library, so a failure here is only noted.
-const STATE_FILES: [&str; 2] = ["session.json", "shell.json"];
+const STATE_FILES: [&str; 3] = ["session.json", "shell.json", "ui-prefs.json"];
 
 /// Something worth writing to the log once logging is up (this runs before it starts).
 #[derive(Debug, Clone, PartialEq, Eq)]

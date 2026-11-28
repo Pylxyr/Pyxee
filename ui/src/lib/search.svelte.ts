@@ -1,3 +1,4 @@
+import { persist } from './persist';
 import type { Backend } from './backend';
 import { toSearchError } from './backend';
 import type { FilterInfoDto } from './bindings/FilterInfoDto';
@@ -122,6 +123,7 @@ export class SearchStore {
     // Only a choice made on the chips is remembered; "Go to artist" and the like just search.
     try {
       this.#storage?.setItem(FILTER_KEY, filter);
+      persist.touch();
     } catch {
       /* not remembered, still works */
     }

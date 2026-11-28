@@ -278,6 +278,11 @@ fn main() {
             app.manage(shell::ShellState::load(
                 data_dir.as_ref().map(|d| d.join("shell.json")),
             ));
+            app.manage(shell::UiPrefsState::load(
+                data_dir
+                    .as_ref()
+                    .map(|d| d.join(pyxee_shell::uiprefs::FILE)),
+            ));
             runner::spawn(app.handle().clone(), rx);
             // What changed in the chosen music folders since the last run (only changed files are read again).
             if scan_local {
@@ -378,6 +383,8 @@ fn main() {
             shell::commands::lastfm_clear,
             shell::commands::audio_devices_get,
             shell::commands::audio_device_set,
+            shell::commands::ui_prefs_get,
+            shell::commands::ui_prefs_set,
             shell::commands::eq_get,
             shell::commands::eq_set,
             shell::commands::flyout_hide,

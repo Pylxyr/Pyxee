@@ -168,7 +168,7 @@ A theme is seven colours (`bg`, `surface`, `surface2`, `line`, `fg`, `muted`, `a
 tokens components use and keeps the built-in Ink and Frost (ids `dark` and `light`) values as fallbacks. Text on filled buttons and on the accent is
 derived (`readableOn`), so a light dynamic accent never gets white text. Under Mica a grey theme background stays transparent
 and a coloured one tints the backdrop (`--t-mica-tint`); panels are a veil of the text colour, so they suit any theme.
-Custom themes (up to 30) live in `localStorage` with the other theme settings; every built-in is tested for contrast.
+Custom themes (up to 30) live in `localStorage` with the other theme settings (every `pyxee.*` entry is also copied to `ui-prefs.json` in the data folder by `lib/persist.ts`, and put back at start if the web view lost it; a new place that writes one must call `persist.touch()`, a test checks this); every built-in is tested for contrast.
 The `set_window_theme` command makes the native frame follow a fixed theme (`null` follows Windows again).
 
 ## 1.0 polish

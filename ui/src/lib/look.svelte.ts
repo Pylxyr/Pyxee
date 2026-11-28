@@ -1,3 +1,4 @@
+import { persist } from './persist';
 import { DEFAULT_LOOK, lookAttributes, parseLook, type Look } from './look';
 
 const KEY = 'pyxee.look';
@@ -19,6 +20,7 @@ class LookStore {
     this.value = { ...this.value, [key]: v };
     try {
       localStorage.setItem(KEY, JSON.stringify(this.value));
+      persist.touch();
     } catch {
       /* ignore */
     }
@@ -28,6 +30,7 @@ class LookStore {
     this.value = { ...DEFAULT_LOOK };
     try {
       localStorage.removeItem(KEY);
+      persist.touch();
     } catch {
       /* ignore */
     }

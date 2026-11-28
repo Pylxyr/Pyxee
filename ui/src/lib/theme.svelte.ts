@@ -1,3 +1,4 @@
+import { persist } from './persist';
 import type { Backend } from './backend';
 import { coverRolesFromImage, paletteFromArt, paletteFromRoles, windowTint, type CoverRoles, type RolePalette, type WindowTint } from './color';
 import { crossfadeTheme } from './motion';
@@ -128,6 +129,7 @@ export class ThemeStore {
   #save() {
     try {
       this.#storage?.setItem(KEY, JSON.stringify(this.settings));
+      persist.touch();
     } catch {
       /* storage unavailable: keep the in-memory value */
     }

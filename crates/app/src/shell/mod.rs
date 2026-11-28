@@ -26,7 +26,8 @@ use pyxee_shell::progress::{Phase, TaskbarProgress, taskbar_progress};
 use pyxee_shell::settings::{self, ShellSettings};
 use pyxee_shell::sleep::SleepTimer;
 use pyxee_shell::toast::ToastGate;
-use std::collections::HashMap;
+use pyxee_shell::uiprefs::{self, UiPrefs};
+use std::collections::{BTreeMap, HashMap};
 use std::path::PathBuf;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -115,6 +116,54 @@ impl ShellState {
         if let Err(e) = settings::save(path, &s) {
             log::warn!("could not save shell settings: {e}");
         }
+    }
+}
+
+/// The page's own settings (theme, Look, volume, ...), which the page keeps in the web view's `localStorage`, copied to
+/// `ui-prefs.json` so they outlive that store (see `pyxee_shell::uiprefs`). The page sends the whole set whenever one
+/// changes, and asks for it once at start to put back what the web view no longer has.
+pub struct UiPrefsState {
+    path: Option<PathBuf>,
+    prefs: Mutex<UiPrefs>,
+}
+
+impl UiPrefsState {
+    pub fn load(path: Option<PathBuf>) -> Self {
+        let prefs = path.as_deref().map_or_else(UiPrefs::default, |p| {
+            let loaded = uiprefs::load(p);
+            if let Some(w) = &loaded.warning {
+                log::warn!("{w}");
+            }
+            loaded.prefs
+        });
+        Self {
+            path,
+            prefs: Mutex::new(prefs),
+        }
+    }
+
+    pub fn items(&self) -> BTreeMap<String, String> {
+        self.prefs
+            .lock()
+            .map(|p| p.items.clone())
+            .unwrap_or_default()
+    }
+
+    /// Replaces the saved set (after cleaning it) and writes the file, unless nothing changed.
+    pub fn replace(&self, items: BTreeMap<String, String>) -> std::io::Result<()> {
+        let next = UiPrefs::sanitized(items);
+        let mut current = self
+            .prefs
+            .lock()
+            .map_err(|_| std::io::Error::other("the saved settings are unavailable"))?;
+        if *current == next {
+            return Ok(());
+        }
+        if let Some(path) = &self.path {
+            uiprefs::save(path, &next)?;
+        }
+        *current = next;
+        Ok(())
     }
 }
 
