@@ -7,8 +7,8 @@
   import Icon from './Icon.svelte';
   import Thumb from './Thumb.svelte';
 
-  /** Songs as covers (Recently played, Explore's shelves): for browsing by sight instead of by name. */
-  let { tracks, label, onplay, extras }: { tracks: TrackDto[]; label: string; onplay: (index: number) => void; extras?: (t: TrackDto) => MenuExtra[] } = $props();
+  /** Songs as covers (Explore's shelves): for browsing by sight instead of by name. With `rows` they are compact rows (a small cover beside the title and artist), several to a line, that do not scroll sideways (Home's Recently played). */
+  let { tracks, label, onplay, extras, rows = false }: { tracks: TrackDto[]; label: string; onplay: (index: number) => void; extras?: (t: TrackDto) => MenuExtra[]; rows?: boolean } = $props();
 
   // A right-click (or the Menu key) opens the same song menu as on a queue row; the sheet gives focus back to the tile.
   function openMenu(e: MouseEvent, t: TrackDto) {
@@ -16,7 +16,7 @@
   }
 </script>
 
-<ul class="cover-grid" aria-label={label}>
+<ul class="cover-grid" class:rows aria-label={label}>
   {#each tracks as t, i (t.key)}
     <li oncontextmenu={(e) => openMenu(e, t)} use:reveal>
       <button class="cover-tile" aria-label="Play {titleOf(t)}" onclick={() => onplay(i)}>

@@ -76,14 +76,15 @@ describe('App shell', () => {
     expect(screen.getByRole('button', { name: 'Settings' })).toBeTruthy();
   });
 
-  it('wide layout puts the wordmark and the four destinations in tabs on top, Settings beside the search, and the player along the bottom', async () => {
+  it('wide layout puts the wordmark, the four destinations and Settings in a sidebar, the search on top and the player along the bottom', async () => {
     setWide(true);
     await openApp();
-    const tabs = screen.getByRole('navigation', { name: 'Main' });
-    expect(tabs.getAttribute('data-layout')).toBe('tabs');
-    expect(tabs.textContent).toMatch(/Pyxee.*Home.*Explore.*Library.*Queue/);
-    expect(tabs.querySelector('[aria-current="page"]')?.textContent).toContain('Home');
-    expect(screen.getByRole('button', { name: 'Settings' })).toBeTruthy();
+    const rail = screen.getByRole('navigation', { name: 'Main' });
+    expect(rail.getAttribute('data-layout')).toBe('rail');
+    expect(rail.textContent).toMatch(/Home.*Explore.*Library.*Queue.*Settings/);
+    expect(rail.querySelector('[aria-current="page"]')?.textContent).toContain('Home');
+    expect(within(rail).getByRole('button', { name: 'Settings' })).toBeTruthy();
+    expect(screen.getByRole('combobox', { name: 'Search' })).toBeTruthy();
     expect(screen.getAllByRole('navigation', { name: 'Main' })).toHaveLength(1);
     expect(screen.getByRole('region', { name: 'Player' })).toBeTruthy();
   });
@@ -403,7 +404,7 @@ describe('appearance', () => {
 
   it('offers Ink, Frost and the other themes, and applies the one picked', async () => {
     const group = await openAppearance();
-    for (const name of ['Ink', 'Frost', 'OLED black', 'Deep blue', 'Graphite and gold']) expect(within(group).getByRole('button', { name })).toBeTruthy();
+    for (const name of ['Studio', 'Daylight', 'Ink', 'Frost', 'OLED black', 'Deep blue', 'Graphite and gold']) expect(within(group).getByRole('button', { name })).toBeTruthy();
     await fireEvent.click(within(group).getByRole('button', { name: 'OLED black' }));
     await waitFor(() => expect(document.documentElement.dataset.themeId).toBe('oled'));
     expect(document.documentElement.style.getPropertyValue('--t-accent')).toBe('#ff5c6a');

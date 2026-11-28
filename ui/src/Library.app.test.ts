@@ -294,29 +294,38 @@ describe('history and Home', () => {
     expect(library.snapshot.historyCount).toBe(0);
   });
 
-  it('Home fills with radio cards, recently played and a likes shortcut as you listen', async () => {
+  it('Home fills with the top card ways in (likes, surprise), Recently played and On repeat as you listen, and Explore with radio cards', async () => {
     await mock.setLiked(PAPER, true);
     await openApp();
-    await player.playTracks([NEON]); // Home already shows library picks, not the demo list
+    await player.playTracks([NEON, ORBIT]);
     await listen(NEON, 31);
+    await player.next();
+    await listen(ORBIT, 31);
     await go(/Home/);
-    const radios = await screen.findByRole('list', { name: 'Start a radio' });
-    // The song that is playing has its radio on already, so its artist is not offered again; the liked one's artist is.
-    expect(within(radios).queryByRole('button', { name: `Start a radio from ${NEON.artist}` })).toBeNull();
-    expect(within(radios).getByRole('button', { name: `Start a radio from ${PAPER.artist}` })).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Surprise me' })).toBeTruthy(); // beside the top card, not in the row
+    expect(await screen.findByRole('button', { name: 'Surprise me' })).toBeTruthy(); // beside the top card
     expect(screen.queryByText(/Demo tracks/)).toBeNull();
-    expect(within(screen.getByRole('list', { name: 'Recently played' })).getByRole('button', { name: 'Play Neon Harbor' })).toBeTruthy();
+    expect(screen.queryByRole('list', { name: 'Start a radio' })).toBeNull(); // radios are Explore's
+    const recent = within(screen.getByRole('list', { name: 'Recently played' }));
+    expect(recent.getByRole('button', { name: 'Play Neon Harbor' })).toBeTruthy();
+    // What you like but did not play lately is a favourite (a cover shelf of its own).
+    expect(within(screen.getByRole('list', { name: 'On repeat' })).getByRole('button', { name: `Play ${PAPER.title}` })).toBeTruthy();
+    // The song that is playing is the top card, so the list below does not show it a second time.
+    expect(recent.queryByRole('button', { name: 'Play Slow Orbit' })).toBeNull();
     await fireEvent.click(screen.getByRole('button', { name: /Liked songs/ }));
     expect(await screen.findByRole('list', { name: 'Liked songs' })).toBeTruthy();
+    await go(/Explore/);
+    const radios = await screen.findByRole('list', { name: 'Start a radio' });
+    // The song that is playing has its radio on already, so its artist is not offered again; the liked one's artist is.
+    expect(within(radios).queryByRole('button', { name: `Start a radio from ${ORBIT.artist}` })).toBeNull();
+    expect(within(radios).getByRole('button', { name: `Start a radio from ${PAPER.artist}` })).toBeTruthy();
   });
 
-  it('Recently played replays your history (the song, then the older ones) while Tune in starts a radio of similar songs', async () => {
+  it('Recently played replays your history (the older songs) while Tune in on Explore starts a radio of similar songs', async () => {
     await mock.setLiked(PAPER, true);
     await openApp();
-    await player.playTracks([NEON]);
+    await player.playTracks([NEON, ORBIT]);
     await listen(NEON, 31);
-    await player.playTracks([ORBIT]);
+    await player.next();
     await listen(ORBIT, 31);
     await go(/Home/);
     const recent = within(await screen.findByRole('list', { name: 'Recently played' }));
@@ -324,18 +333,21 @@ describe('history and Home', () => {
     await fireEvent.click(recent.getByRole('button', { name: 'Play Neon Harbor' }));
     await waitFor(() => expect(player.shown?.track.key).toBe(NEON.key));
     expect(related).not.toHaveBeenCalled(); // a replay, not a radio
-    await fireEvent.click(screen.getByRole('button', { name: 'Play recently played songs again' }));
-    await waitFor(() => expect(player.shown?.track.key).toBe(ORBIT.key)); // the newest first
+    await fireEvent.click(await screen.findByRole('button', { name: 'Play recently played songs again' }));
+    await waitFor(() => expect(player.shown?.track.key).toBe(ORBIT.key)); // the newest that is not the one playing
     expect(related).not.toHaveBeenCalled();
-    await fireEvent.click(within(screen.getByRole('list', { name: 'Start a radio' })).getByRole('button', { name: `Start a radio from ${PAPER.artist}` }));
+    await go(/Explore/);
+    await fireEvent.click(within(await screen.findByRole('list', { name: 'Start a radio' })).getByRole('button', { name: `Start a radio from ${PAPER.artist}` }));
     await waitFor(() => expect(related).toHaveBeenCalledWith(PAPER.key, expect.any(Number)));
   });
 
   it('a right-click on a Home cover or the Pick up card opens the song menu', async () => {
     await mock.setLiked(PAPER, true);
     await openApp();
-    await player.playTracks([NEON]);
+    await player.playTracks([NEON, ORBIT]);
     await listen(NEON, 31);
+    await player.next();
+    await listen(ORBIT, 31);
     await go(/Home/);
     const menuKey = () => nav.menuTrack?.key;
     const tile = within(await screen.findByRole('list', { name: 'Recently played' })).getByRole('button', { name: 'Play Neon Harbor' });
@@ -344,7 +356,7 @@ describe('history and Home', () => {
     expect(nav.menuOpener).toBe(tile);
     nav.menuTrack = null;
     await fireEvent.contextMenu(screen.getByTestId('resume'));
-    expect(menuKey()).toBe(NEON.key);
+    expect(menuKey()).toBe(ORBIT.key);
   });
 
   it('the Pick up card follows the song that is playing and only says Resume while it is paused', async () => {
@@ -460,8 +472,10 @@ describe('the song menu in a wide window with a mouse', () => {
   it('a Recently played cover can be taken out of the history, and Undo puts it back', async () => {
     setWide(true);
     await openApp();
-    await player.playTracks([NEON, ORBIT]);
+    await player.playTracks([NEON, PAPER, ORBIT]);
     await listen(NEON, 31);
+    await player.next();
+    await listen(PAPER, 31);
     await player.next();
     await listen(ORBIT, 31);
     await go(/Home/);
@@ -470,8 +484,7 @@ describe('the song menu in a wide window with a mouse', () => {
     const menu = await screen.findByRole('menu', { name: 'Neon Harbor' });
     expect(within(menu).getByRole('menuitem', { name: 'Play now' })).toBeTruthy();
     await fireEvent.click(within(menu).getByRole('menuitem', { name: 'Remove from Recently played' }));
-    await waitFor(() => expect(within(screen.getByRole('list', { name: 'Recently played' })).queryByRole('button', { name: 'Play Neon Harbor' })).toBeNull());
-    expect(within(screen.getByRole('list', { name: 'Recently played' })).getByRole('button', { name: 'Play Slow Orbit' })).toBeTruthy();
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Play Neon Harbor' })).toBeNull());
     expect(snackbar.items.at(-1)?.message).toBe('Removed "Neon Harbor" from Recently played');
     snackbar.act(snackbar.items.at(-1)!.id);
     await waitFor(() => expect(within(screen.getByRole('list', { name: 'Recently played' })).getByRole('button', { name: 'Play Neon Harbor' })).toBeTruthy());

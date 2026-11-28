@@ -16,16 +16,19 @@ handover, prefetch, radio) so the real state machine drives the UI. Demo tracks 
 
 
 ## Layout
-A **masthead** on top, the **page** under it, and the **deck** along the bottom; from 1440 px a **lane** (the queue) sits beside the page.
-- **Wide (>= 900 px)**: the masthead holds the wordmark (hidden under 1100 px), the four places as tabs, the search box and Settings. The
-  page fills the middle. The deck is 88 px: the cover, title and like on the left; previous, play, next and the time in the middle;
-  volume and Expand on the right; the seek line runs the full width of the deck's top edge. From 1440 px the lane (22 vw, 320 to 480 px)
-  shows what plays and Up next as a scrolling list with **Open queue**. Before anything plays the deck says so and keeps its height.
+A **dock** (the rail) on the left, the **masthead** (the search box) along the top of the page, the **page**, and the **deck** (the player island) along the
+bottom; from 1440 px a **lane** (the queue) sits beside the page.
+- **Wide (>= 900 px)**: the dock is 88 px: the logo, the four places (an icon over its name) and Settings at the bottom. The masthead is
+  the search box, centred (640 px at most). The page fills the middle, its content in one centred column. The deck is an 80 px island,
+  one row: the cover, title and like on the left; shuffle, previous, play, next, repeat; the seek line between its two times (it takes the
+  room that is left); lyrics, queue, volume and Expand on the right (volume goes under 1100 px, the whole right group under 980 px). From
+  1440 px the lane (22 vw, 320 to 480 px) is a panel beside the page: what plays and Up next as a scrolling list with **Open queue**.
+  Before anything plays the island says so and keeps its height.
 - **Narrow**: page, then the dock (a one-line player with the seek line along its top edge), then the bottom bar. The search
   box and Settings are at the top of the page.
 Page margins grow at 1600 and 1920 px, and Now Playing has no width cap (a bigger cover and a wider queue column at 1280 and 1536 px).
 Click the cover (deck or dock) to open Now Playing (Up next / Lyrics / Related). The same four destinations (`lib/destinations.ts`)
-feed the tabs and the bottom bar (`Navigation.svelte`, `layout="tabs" | "bar"`).
+feed the dock and the bottom bar (`Navigation.svelte`, `layout="rail" | "bar"`).
 
 **The window frame is the system's.** The main window has the normal title bar and borders of the desktop (and a shadow); the page draws
 nothing above its shell. Mica still shows through, because the window is created transparent. The mini player and the flyout are
@@ -40,10 +43,10 @@ The look moved from restrained Windows 11 Fluent to something livelier (a block 
 above it and is the place to change the look):
 
 - Rounder (`--r-sm/md/lg` 9, 14, 22 px) and pill-shaped buttons, chips, tabs and search.
-- A second colour, `--accent-2`, a step around the colour wheel from the accent (so it follows every theme and the cover's colour), and
-  `--gradient-accent` from the two. The chosen tab, primary buttons, play buttons and the hero's label use it.
-- A soft wash of both colours behind the shell; in wide windows the top bar, page, queue lane and player are separate rounded cards
-  with room between them.
+- A second colour, `--accent-2`, a step around the colour wheel from the accent (so it follows every theme and the cover's colour); the
+  washes and the Now Playing page use it. `--gradient-accent` is the plain accent (buttons and play buttons are one flat colour).
+- A soft pool of the cover's colour behind the shell (the canvas); in wide windows the dock, the queue panel and the player island float on
+  it as separate rounded pieces with room between them, and the page has no box.
 - Rows have no hairlines; the playing one is washed with the accent. Cover tiles and Tune in cards lift and tip under the pointer.
 - Everything is drawn once (gradients, shadows) or reacts to the pointer and stops; nothing runs on its own. Transitions are
   transform and opacity only.
@@ -82,7 +85,7 @@ is swallowed, so the row is not pressed again). On the seek bar the arrows move 
 it was put until the player's position reaches it, and the time labels show where it is held. Global media keys come with SMTC in milestone 6.
 
 ## Identity: Masthead, Page, Deck
-- **Navigation** is a row of tabs (see Layout), with an accent bar under the chosen place. Search is the same box at the top of the
+- **Navigation** is the dock in wide windows and a bottom bar in narrow ones (see Layout); a pill behind the chosen place slides from one to the next (`.rail-indicator`: a transform only; every place is the same height). Search is the same box at the top of the
   page at every size. Library sections and search filters are `Segmented` controls (plain tabs on a hairline, accent underline).
 - **Lists are tables.** `TrackList` draws the column names (#, Title, Artist, Time) and `TrackRow` the rows: place number (a play mark
   on hover, moving bars on the song that is playing), small cover, title, artist, length. The artist gets its own column when the
@@ -91,16 +94,29 @@ it was put until the player's position reaches it, and the time labels show wher
 - **The song that is playing is marked in every list** (accent title, bars), not only in the queue.
 - **Type**: Segoe UI Variable for text and Bahnschrift (installed with Windows 10 and 11; Segoe UI Variable Display is the fallback) for titles, in the
   Windows 11 ramp (12/16, 14/20, 18/24, 20/28, 30/36, 40/52), sentence case, regular and semibold. There are no tracked capitals. Times use tabular figures.
-- **Home** opens with the *hero* (what is playing, or the last song, as a large lit cover over a blurred wash of itself, with Resume and
-  Liked songs), then "Tune in" and "Recently played" as a shelf of covers (`CoverGrid` inside `.shelves`: one row that scrolls
-  sideways to the page's edges; Explore's shelves are the same). Page titles are poster-sized, with a time-of-day greeting above
-  Home's. **Picking anything on Home starts a radio** (`lib/radio.ts`): the song plays at once and about 15 similar songs
-  (`relatedGet`) are queued behind it; if another song is picked meanwhile, or the lookup fails, the queue is left alone (a note
-  says so on failure). "Tune in" is a row of cards (`MixCard`) that scrolls sideways like the covers, one per song you come back to (the quick picks: songs played most in the last 30 days and liked ones, without the songs "Recently played" already shows, so the two rows differ; `lib/tunein.ts`: the
-  song playing now is left out, a song and an artist are shown once, a library with little history gets a short row or none), each coloured from its song's cover, plus a "Surprise me" card that starts a radio from one of them at random.
-- **The deck** is the memorable part: a seek line across the whole window, a cover lit by the accent (of the theme, or of the
+- **Stage** is the layout of a wide window: the window is a canvas (the theme's background with one soft pool of the playing cover's colour,
+  `--canvas-tint`, set by `App.svelte`; Home sets `--page-tint` from its own top card while nothing plays) and the chrome floats on it as
+  four raised pieces with big corners and no page box between them: the **dock** on the left (`Navigation layout="rail"`: the logo, Home,
+  Explore, Library, Queue, each an icon over its label, and Settings at the bottom; a pill behind the chosen icon slides with one
+  transform), the **command bar** (search, centred at the top; `/` focuses it), the **player island** along the bottom (one row, see below)
+  and, from 1440 px, the **queue panel** on the right. The page's content is one centred column (max 1220 px) straight on the canvas. In a
+  narrow window the bottom bar holds the four places, Settings sits beside Search and the mini player is a floating strip above the bar.
+- **Home** leads with the song as a poster (`.hero`): a large cover and the title in display type (up to 96 px, two lines), with
+  the ways in as buttons under it: Resume/Pause, Liked songs (with the count), Surprise me (a radio from one of your songs at random) and
+  More. Then **Recently played** (a shelf of covers: the songs you played last, without the one in the top card; History opens
+  Library > History, Play recent queues them; on a phone it is six rows) and **On repeat** (a numbered chart of what you play most and
+  like, without what is already above; two columns when the page is 900 px wide or more). Nothing is listed twice on the page. The look
+  chosen in Settings (blur, aurora, gradient, vinyl) still paints behind the top card, faded out on every side. **Picking a cover on Home
+  replays your history** (no radio); radios are Explore's: "Tune in" (`TuneIn.svelte`, a row of `MixCard`s, one per song you come back to; the
+  song playing now is left out, an artist is shown once) and its shelves.
+- **Look**: the default themes are Studio (dark: violet-black, coral accent `#ff6b5e`) and Daylight (light: warm paper, vermilion
+  `#a63d12`); the 0.7 palettes are still there as Ink and Frost. The accent is one plain colour on fills and buttons (the second colour
+  around the wheel is for washes only). Headings are display type in weight 800 with tight tracking; section titles 24 px; covers have a
+  6 px corner like a record sleeve; buttons and chips are pills.
+- **The player island** is the memorable part: one row (the song with its like, the transport, a long seek line between its two times, then lyrics,
+  queue, volume and expand), a cover lit by the accent (of the theme, or of the
   cover with "Color from album art"), and the same accent washing down the lane. The hero, the flyout and the mini player use the wash.
-- Ink (blue-black with a signal-lime accent) is the default theme, Frost (soft grey-white with olive-lime) the default light one. The logo keeps its own red; the UI accent does not.
+- Studio (violet-black, coral) is the default theme, Daylight (warm paper, vermilion) the default light one; Ink and Frost are the 0.7 palettes. The logo keeps its own red; the UI accent does not (a test keeps the defaults away from YouTube red).
 
 ## Design tokens
 `app.css` has three tiers. (1) The seven theme colours, written by `theme.apply()` as `--t-*` (and the opaque `--solid`,
@@ -177,7 +193,7 @@ has no attribute, so the base rules are the default look and each option is one 
 | Panels | Floating, Docked | Wide windows only: the cards become one surface cut by hairlines |
 | Cover shape | Rounded, Square, Circle | One rule on the cover classes (`.thumb`, `.cover-art`, `.hero-art`, `.mix-art`, ...) |
 | Home top card and Now Playing | Blur, Aurora, Gradient, Vinyl, Plain | Blur is the canvas of before; the others are painted with CSS from the cover's colors (`--hero-a/b/c`). Vinyl slides a record out from behind the cover once per song (`disc-out`). Now Playing's page follows the same choice (`data-wash` on `.np-root`, softer so the text stays readable; Vinyl is its two-glow wash without the record); **Flat surfaces always give it a plain page**. Aurora, Gradient and Vinyl are one opaque layer (`components/Wash.svelte`: `.hero-wash` on the card, `.np-wash` on Now Playing); a new cover's colors fade a new layer in over the old one (opacity only), so nothing is repainted while it blends. The "Tune in" cards do the same with `.mix-bg` |
-| Home: Tune in cards | Album colors, Theme color | The cards take the cover's two colors (`--mix-a/b`), deepened until white words read (4.5:1, `cardTones`) |
+| Explore: Tune in cards | Album colors, Theme color | The cards take the cover's two colors (`--mix-a/b`), deepened until white words read (4.5:1, `cardTones`) |
 
 A cover's colors (`lib/color.ts`, read from a 32x32 copy of the picture's centred square: YouTube's 16:9 stills have the square art in the middle and two bars of a dark colour beside it, almost half the picture, which are not the cover and once turned a grey cover brown) are found in OKLCH, where equal steps look equal. Every pixel with some chroma (the floor is lower for dark pixels) votes for its hue with the size of its chroma, so a broad area of a muted colour does not lose to a speck, and the faint warm or cool cast of a grey sleeve does not count at all. The strongest hue is the main colour, the next one at least 45 degrees away is the second, and a third hue the third; a hue needs 4 % of the picture. If the picture has too little colour altogether (the chroma of its coloured pixels, summed, under 0.008 per pixel: measured on real covers, grey sleeves with a cast are under 0.004, a black cover with a red logo is 0.011), it has no hue: its main colour is a grey and its theme is neutral (a hue taken from stray pixels turned a grey cover pink). The second colour, when no other hue exists, is the near-black beside the main one (a yellow sleeve with black type is yellow and black) or the same colour a little darker. Nothing is turned around the colour wheel: that made a yellow cover green. A yellow that is darkened is turned toward amber (`deepHue`), as at a low lightness the hue of yellow reads as olive, and `--accent-2` (the gradient's second colour, a step of +58 degrees in OKLCH) steps the other way for a yellow or gold accent. Material's own seed scoring (`@material/material-color-utilities`) was tried on the same covers and not adopted: it picks the faint pink cast of a grey cover, falls back to Google blue (`#4285F4`) for a cover without colour, and its yellow theme is olive.
 | Progress bar | Smooth glide, Steps, Once a second | `seekMode` (`lib/seekmode.svelte.ts`), saved as `pyxee.seek`; see `docs/performance.md` |
@@ -189,9 +205,9 @@ over 700 ms; the registered `<color>` properties are the only custom-property tr
 themselves and repaint only the card while they last.
 
 ## Home at every size
-The point of Home is that one glance shows the feature card, a row of Tune in and the top of Recently played, in a window that is not
-maximized too. So "Tune in" is one row that scrolls sideways (the buttons in its heading page it; `SectionHead` finds the shelf past
-the one-line hint), and the page gets compact when the window is under 960 px high: a lower feature card with a smaller cover and
+The point of Home is that one glance shows the feature card and the ways back into your music, in a window that is not
+maximized too. ("Tune in", Explore's, is one row that scrolls sideways: the buttons in its heading page it; `SectionHead` finds the shelf past
+the one-line hint.) The page gets compact when the window is under 960 px high: a lower feature card with a smaller cover and
 title, a smaller page title, shorter cards, and under 800 px the hint line is hidden. The card stacks below 560 px wide and is larger
 from 1800 px. `?home` on the standalone demo's address gives it a listening history and a few likes so Home shows its full layout.
 

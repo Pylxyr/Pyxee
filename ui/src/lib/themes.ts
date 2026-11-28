@@ -59,8 +59,10 @@ const t = (id: string, name: string, scheme: Scheme, description: string, c: str
  * copies of any particular skin.
  */
 export const BUILTIN_THEMES: ThemeDef[] = [
-  t('dark', 'Ink', 'dark', 'Blue-black ink with a signal-lime accent (the default)', '#0c1017 #141a22 #1e2631 #28313e #e9eef5 #92a0b3 #c6f135'),
-  t('light', 'Frost', 'light', 'Soft grey-white with a deep olive-lime accent', '#f2f3f0 #e8eae5 #dcdfd8 #c9cdc3 #12140f #565b50 #4d7c0f'),
+  t('dark', 'Studio', 'dark', 'Violet-black with a warm coral accent (the default)', '#0e0c15 #171421 #221e2e #2f2a3d #f5f2fa #a09bb0 #ff6b5e'),
+  t('light', 'Daylight', 'light', 'Warm paper with a deep vermilion accent (the default light one)', '#f5f2ec #ece7df #e0dacf #cfc8bb #1a1720 #5a5560 #a63d12'),
+  t('ink', 'Ink', 'dark', 'Blue-black ink with a signal-lime accent (the look of 0.7)', '#0c1017 #141a22 #1e2631 #28313e #e9eef5 #92a0b3 #c6f135'),
+  t('frost', 'Frost', 'light', 'Soft grey-white with a deep olive-lime accent (the look of 0.7)', '#f2f3f0 #e8eae5 #dcdfd8 #c9cdc3 #12140f #565b50 #4d7c0f'),
   t('oled', 'OLED black', 'dark', 'Pure black, easy on OLED screens', '#000000 #0a0a0a #1a1a1a #262626 #f2f2f2 #9a9a9a #ff5c6a'),
   t('deepblue', 'Deep blue', 'dark', 'Blue with violet highlights', '#0b1426 #111d36 #1b2a4a #243558 #e8eefc #9fb0d3 #8b7bff'),
   t('sky', 'Sky', 'light', 'Light blue with violet highlights', '#f3f8ff #e6f0fc #d5e5f8 #c3d7ee #14233b #50627f #6b4fd8'),

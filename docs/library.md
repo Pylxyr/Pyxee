@@ -3,7 +3,7 @@
 ## What it stores
 `crates/library` keeps everything in one SQLite file (`library.db` in the Local app data folder (`%LOCALAPPDATA%\dev.pyxee.app`), WAL mode, bundled SQLite so
 nothing needs installing): liked songs, playlists (create, rename, delete, add, reorder, remove), listening history, and the
-data behind Home's "Tune in" cards and "Recently played". The queue and playback position still live in `session.json` (milestone 2/3).
+data behind Explore's "Tune in" cards and Home's "Recently played". The queue and playback position still live in `session.json` (milestone 2/3).
 
 Every method takes the current time as an argument and nothing reads a clock, so the behaviour is deterministic and tested.
 

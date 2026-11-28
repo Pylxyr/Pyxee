@@ -73,6 +73,7 @@
         placeholder="Search songs, albums, artists"
         aria-label="Search"
       />
+      <kbd class="search-kbd" aria-hidden="true">/</kbd>
     </div>
     {#if open}
       <ul id="search-suggestions" role="listbox" aria-label="Suggestions" class="popover absolute inset-x-0 top-11 z-20 overflow-hidden bg-solid-2 py-1">

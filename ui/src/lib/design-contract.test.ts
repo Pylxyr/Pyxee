@@ -28,8 +28,8 @@ describe('Mica-safe colours', () => {
   it('Mica makes a grey theme background transparent (a coloured one tints it), which is why other tokens must not depend on it', () => {
     expect(rule(":root[data-backdrop='mica']")).toMatch(/--bg:\s*color-mix\(in srgb, var\(--t-bg[^)]*\) var\(--t-mica-tint, 0%\), transparent\)/);
     const tint = (id: string) => themeVars(BUILTIN_THEMES.find((t) => t.id === id)!.colors)['--t-mica-tint'];
-    for (const grey of ['light', 'oled']) expect(tint(grey), grey).toBe('0%');
-    for (const coloured of ['dark', 'deepblue', 'sky', 'ember', 'paper']) expect(tint(coloured), coloured).toBe('70%');
+    for (const grey of ['frost', 'oled']) expect(tint(grey), grey).toBe('0%');
+    for (const coloured of ['dark', 'light', 'ink', 'deepblue', 'sky', 'ember', 'paper']) expect(tint(coloured), coloured).toBe('70%');
   });
 
   it('every variable a theme writes is read by the stylesheet', () => {

@@ -11,6 +11,7 @@
   import CoverGrid from '../components/CoverGrid.svelte';
   import GenreChips from '../components/GenreChips.svelte';
   import PlaylistGrid from '../components/PlaylistGrid.svelte';
+  import TuneIn from '../components/TuneIn.svelte';
   import Icon from '../components/Icon.svelte';
   import PageHeader from '../components/PageHeader.svelte';
   import ScrollPage from '../components/ScrollPage.svelte';
@@ -88,6 +89,7 @@
       {/if}
     {/each}
   {:else}
+    <TuneIn />
     {#each explore.shelves as shelf (shelf.id)}
       <SectionHead count={shelf.status === 'ready' ? shelf.tracks.length : null}>
         {shelf.title}

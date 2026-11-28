@@ -7,9 +7,9 @@ import {
 const lum = (hex: string) => contrast(hex, '#000000');
 
 describe('built-in themes', () => {
-  it('include the default Ink and Frost themes, with unique ids', () => {
+  it('include the default Studio and Daylight themes (and the older Ink and Frost), with unique ids', () => {
     const ids = BUILTIN_THEMES.map((x) => x.id);
-    expect(ids).toEqual(expect.arrayContaining(['dark', 'light', 'oled']));
+    expect(ids).toEqual(expect.arrayContaining(['dark', 'light', 'ink', 'frost', 'oled']));
     expect(new Set(ids).size).toBe(ids.length);
     expect(BUILTIN_THEMES.length).toBeGreaterThanOrEqual(8);
   });

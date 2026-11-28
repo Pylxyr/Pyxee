@@ -347,3 +347,34 @@ describe('the failure nudge', () => {
     expect(reduced).toContain('.fail-in');
   });
 });
+
+describe('the sidebar and Home skin move only what is cheap to move', () => {
+  it('slides the dock pill with a transform and nothing else', () => {
+    const rule = all.filter((b) => b.selector === '.rail-indicator').map((b) => b.body).join(';');
+    expect(rule).toMatch(/transform:\s*translateY\(var\(--ind-y/);
+    const transitions = [...rule.matchAll(/(^|[\s;])transition:\s*([^;}]*)/g)].map((m) => m[2]!.trim());
+    expect(transitions.length).toBeGreaterThan(0);
+    // Only the two properties the compositor can move without painting: the slide and the fade in.
+    for (const t of transitions.filter((x) => !x.startsWith('none'))) for (const part of t.split(/,(?![^(]*\))/)) expect(part.trim().split(/\s/)[0], t).toMatch(/^(transform|opacity)$/);
+    expect(rule).not.toMatch(/infinite|will-change|filter/);
+    expect(css).toMatch(/@media \(prefers-reduced-motion: reduce\)[\s\S]*?\.rail-indicator/);
+  });
+
+  it('paints the Home tint as one static gradient read from --page-tint, with no animation', () => {
+    const rule = all.filter((b) => /var\(--page-tint/.test(b.body));
+    expect(rule.length).toBeGreaterThan(0);
+    for (const b of rule) expect(b.body, b.selector).not.toMatch(/animation|transition|filter|backdrop-filter/);
+  });
+
+  it('keeps the dock, the chart and the player island to colours and the one slide, with nothing running', () => {
+    const pieces = all.filter((b) => /^(\.rail|\.chart|\.deck|\.shell\[data-layout='wide'\] \.(rail|deck|lane))/.test(b.selector)).map((b) => b.body).join(';');
+    expect(pieces.length).toBeGreaterThan(0);
+    expect(pieces).not.toMatch(/infinite|will-change|backdrop-filter|filter:/);
+  });
+
+  it('paints the window canvas as two static gradients of --canvas-tint, with no animation', () => {
+    const shell = all.filter((b) => b.selector === '.shell').map((b) => b.body).join(';');
+    expect(shell).toMatch(/var\(--canvas-tint/);
+    expect(shell).not.toMatch(/animation|transition/);
+  });
+});

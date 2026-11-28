@@ -19,6 +19,8 @@
   import { updates } from '$lib/updates.svelte';
   import { hasOwnWindow, tauriWindowControls, type WindowControls } from '$lib/windowControls';
   import { watchUiScale } from '$lib/uiscale';
+  import { heroTones } from '$lib/color';
+  import { coverColorsOf } from '$lib/covercolors.svelte';
   import Navigation from './components/Navigation.svelte';
   import TopBar from './components/TopBar.svelte';
   import Dock from './components/Dock.svelte';
@@ -43,7 +45,7 @@
   import Queue from './pages/Queue.svelte';
   import Playlist from './pages/Playlist.svelte';
 
-  // Wide windows get the tabs on top and the deck along the bottom; narrow ones the bottom bar and the dock.
+  // Wide windows get the dock on the left, the search on top and the player along the bottom; narrow ones the bottom bar and the mini player.
   const wide = new MediaQuery('min-width: 900px');
   // From 1440 px there is room for the queue lane beside the page.
   const lane = new MediaQuery('min-width: 1440px');
@@ -129,6 +131,16 @@
     };
   });
 
+  // The window's canvas takes one soft colour from the cover of the song that is playing (`--canvas-tint`, read by the
+  // shell's background; Home overrides it with its own top card's cover while nothing plays). It changes with the song.
+  const canvas = coverColorsOf(() => player.shown?.track.thumbnail ?? null);
+  $effect(() => {
+    const tone = canvas.value ? heroTones(canvas.value).a : null;
+    const root = document.documentElement;
+    if (tone) root.style.setProperty('--canvas-tint', tone);
+    else root.style.removeProperty('--canvas-tint');
+  });
+
   // Keep <html> in sync with theme, backdrop and accent.
   $effect(() => theme.apply(document.documentElement));
 
@@ -189,7 +201,8 @@
 <div class="frame">
 <div class="shell" inert={nav.npCovering} data-covered={nav.npCovering ? '' : undefined} data-layout={wide.current ? 'wide' : 'narrow'} data-lane={showLane ? '' : undefined}>
   {#if wide.current}
-    <div class="masthead"><Navigation layout="tabs" /><TopBar showSettings /></div>
+    <Navigation layout="rail" />
+    <div class="masthead"><TopBar /></div>
   {/if}
   <div class="workspace">
     <main class="page overflow-hidden">

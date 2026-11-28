@@ -5,14 +5,14 @@
   import Icon from './Icon.svelte';
   import Logo from './Logo.svelte';
 
-  // One list of places, two shapes. `tabs`: the top of a wide window, the wordmark then the four places as tabs.
-  // `bar`: the bottom bar of a narrow window.
-  let { layout }: { layout: 'tabs' | 'bar' } = $props();
+  // One list of places, two shapes. `rail`: the dock beside the page of a wide window, the logo, the four places and Settings. `bar`: the bottom bar of a narrow window.
+  let { layout }: { layout: 'rail' | 'bar' } = $props();
 
-  // The bar under the chosen tab slides to the next one. It is placed once without animating (so it does not
-  // sweep in from the corner on load) and animates from then on; on a page that is no tab (a search) it fades out.
+  // The pill behind the chosen place slides to the next one. It is placed once without animating (so it does not
+  // sweep in from the corner on load) and animates from then on; on a page that is no place (a search) it fades out.
+  // Every place is the same height, so the pill only moves (a transform), it is never resized.
   let list = $state<HTMLElement>();
-  let bar = $state({ x: 0, w: 0, shown: false, armed: false });
+  let bar = $state({ y: 0, shown: false, armed: false });
   $effect(() => {
     void nav.route;
     const el = list?.querySelector<HTMLElement>('[aria-current="page"]');
@@ -21,28 +21,30 @@
         bar.shown = false;
         return;
       }
-      // The chosen tab's whole pill (it used to be an underline inset by the tab's padding).
-      bar.x = el.offsetLeft;
-      bar.w = Math.max(0, el.offsetWidth);
+      bar.y = el.offsetTop;
       bar.shown = true;
       if (!bar.armed) requestAnimationFrame(() => (bar.armed = true));
     });
   });
 </script>
 
-{#if layout === 'tabs'}
-  <nav class="tabs-nav" aria-label="Main" data-layout="tabs">
-    <div class="tabs-brand">
-      <Logo size={24} /><span class="wordmark">Pyxee</span>
-    </div>
-    <ul class="tabs-list" bind:this={list}>
+{#if layout === 'rail'}
+  <!-- The dock: the logo, the four places (icon over label) and Settings, in one rounded column beside the page. -->
+  <nav class="rail" aria-label="Main" data-layout="rail">
+    <button class="rail-brand" title="Pyxee" aria-label="Pyxee, home" onclick={() => nav.go('home')}><Logo size={30} /></button>
+    <ul class="rail-list" bind:this={list}>
       {#each DESTINATIONS as it (it.route)}
         <li>
-          <button class="tab-item" data-toss-dest={it.route === 'queue' ? '' : undefined} aria-current={nav.route === it.route ? 'page' : undefined} onclick={() => nav.go(it.route)}>{it.label}</button>
+          <button class="rail-item" title={it.label} data-toss-dest={it.route === 'queue' ? '' : undefined} aria-current={nav.route === it.route ? 'page' : undefined} onclick={() => nav.go(it.route)}>
+            <span class="rail-icon"><Icon name={it.icon} size={22} /></span><span class="rail-label">{it.label}</span>
+          </button>
         </li>
       {/each}
-      <li class="tab-indicator" aria-hidden="true" data-shown={bar.shown} data-armed={bar.armed} style="--ind-x:{bar.x}px;--ind-s:{bar.w / 100}"></li>
+      <li class="rail-indicator" aria-hidden="true" data-shown={bar.shown} data-armed={bar.armed} style="--ind-y:{bar.y}px"></li>
     </ul>
+    <button class="rail-item rail-settings" title="Settings" onclick={() => (nav.themeSheetOpen = true)}>
+      <span class="rail-icon"><Icon name="settings" size={22} /></span><span class="rail-label">Settings</span>
+    </button>
   </nav>
 {:else}
   <nav class="bar-nav" aria-label="Main" data-layout="bar">

@@ -8,8 +8,7 @@
   import { Loaded } from '$lib/loaded.svelte';
   import { heroTones } from '$lib/color';
   import { coverColorsOf } from '$lib/covercolors.svelte';
-  import { artistOf, titleOf } from '$lib/format';
-  import { tuneInSeeds } from '$lib/tunein';
+  import { artistOf, formatTime, titleOf } from '$lib/format';
   import { look } from '$lib/look.svelte';
   import type { HomeDto } from '$lib/bindings/HomeDto';
   import type { TrackDto } from '$lib/bindings/TrackDto';
@@ -18,7 +17,6 @@
   import CoverGrid from '../components/CoverGrid.svelte';
   import EmptyState from '../components/EmptyState.svelte';
   import Icon from '../components/Icon.svelte';
-  import MixCard from '../components/MixCard.svelte';
   import PageHeader from '../components/PageHeader.svelte';
   import ScrollPage from '../components/ScrollPage.svelte';
   import SectionHead from '../components/SectionHead.svelte';
@@ -74,30 +72,50 @@
     else if (h.action === 'retry') void player.retry();
     else void player.toggle();
   }
-  // "Tune in": one card per artist you come back to (your favourites and most played, without the songs "Recently
-  // played" shows), each the start of a radio (a song of theirs, then songs like it: new music). "Recently played" is the
-  // other way round: your own history, played again as it was, with no radio. The Surprise
-  // card picks a song at random. The song that is playing is left out, and an artist is shown once.
-  const seeds = $derived(tuneInSeeds(home?.quickPicks ?? [], home?.recent ?? [], player.shown?.track.key ?? null));
+  // "Surprise me" is a radio from a random song of yours. The radios of the artists you come back to are Explore's (Tune in).
   function surprise() {
     const pool = [...(home?.quickPicks ?? []), ...(home?.recent ?? [])];
     const pick = pool[Math.floor(Math.random() * pool.length)];
     if (pick) void playWithRelated(pick);
+  }
+  // "Recently played": the songs you played last, as a shelf of covers, without the song the top card is already showing (a
+  // second copy right below it says nothing). The whole history is one click away in Library > History.
+  const RECENT_ROWS = 14;
+  const recentRows = $derived((home?.recent ?? []).filter((t) => t.key !== hero?.track.key).slice(0, RECENT_ROWS));
+  // "On repeat": what you play most and like, as a numbered chart, minus what the shelf above and the top card show.
+  const FAVOURITES = 10;
+  const favourites = $derived.by(() => {
+    const shown = new Set(recentRows.map((t) => t.key));
+    if (hero) shown.add(hero.track.key);
+    return (home?.quickPicks ?? []).filter((t) => !shown.has(t.key)).slice(0, FAVOURITES);
+  });
+  // The top of the page takes a tint from the cover of the song in the top card (the one colour on the page that is not the
+  // accent); it is a custom property on the root that the page's background reads, and it is removed when Home goes away.
+  const tintColors = coverColorsOf(() => hero?.track.thumbnail ?? null);
+  $effect(() => {
+    const tone = tintColors.value ? heroTones(tintColors.value).a : null;
+    const root = document.documentElement;
+    if (tone) root.style.setProperty('--page-tint', tone);
+    else root.style.removeProperty('--page-tint');
+    return () => root.style.removeProperty('--page-tint');
+  });
+  function seeHistory() {
+    nav.libraryTab = 'history';
+    nav.go('library');
   }
   const demo = $derived(!hasLibrary && player.catalog && player.catalog.length > 0 ? player.catalog : null);
 </script>
 
 <ScrollPage>
   {#snippet header()}
-    <PageHeader title={greeting} />
+    <PageHeader title={greeting} quiet />
   {/snippet}
 
   {#if home === null}
-    <SectionHead>Tune in</SectionHead>
+    <SectionHead>Recently played</SectionHead>
     <Skeleton rows={8} />
   {:else if hasLibrary}
     <div class="home-body shelves">
-    <div class="home-top" data-single={hero ? undefined : ''}>
     {#if hero}
       {@const button = HERO_BUTTON[hero.action]}
       <div
@@ -119,56 +137,62 @@
               </span>
             {/key}
           {/if}
-          <div class="hero-art"><Thumb src={hero.track.thumbnail} seed={hero.track.key} size={240} fill rounded="r-sm" /></div>
+          <div class="hero-art"><Thumb src={hero.track.thumbnail} seed={hero.track.key} size={280} fill rounded="r-sm" /></div>
         </div>
-        <div class="min-w-0 flex-1">
+        <div class="hero-main min-w-0 flex-1">
           <p class="hero-label">{hero.label}</p>
-          <p class="t-title truncate" dir="auto">{titleOf(hero.track)}</p>
-          <p class="muted truncate" dir="auto">{artistOf(hero.track)}</p>
+          <p class="t-title hero-title" dir="auto">{titleOf(hero.track)}</p>
+          <p class="hero-artist truncate" dir="auto">{artistOf(hero.track)}</p>
           <div class="hero-actions">
             <Button variant="primary" aria-label="{button.text} {hero.track.title}" onclick={() => heroClick(hero)}>
               {#if button.icon}<Icon name={button.icon} size={16} fill={button.icon === 'play'} />{/if}{button.text}
             </Button>
+            {#if home.likedCount > 0}
+              <Button data-tile="liked" onclick={() => { nav.libraryTab = 'liked'; nav.go('library'); }}>
+                <Icon name="heart" size={16} fill /><span>Liked songs</span><span class="hero-count nums">{home.likedCount}</span>
+              </Button>
+            {/if}
+            <Button aria-label="Surprise me" data-tile="surprise" onclick={surprise}><Icon name="shuffle" size={16} />Surprise me</Button>
             <Button aria-label="More about {hero.track.title}" onclick={(e) => openTrackMenu(hero.track, { button: e.currentTarget })}>More</Button>
           </div>
         </div>
       </div>
     {/if}
-    <!-- Two quick starts beside the top card (below it in a narrow window): your liked songs, and a random radio. -->
-    <div class="home-tiles">
-      {#if home.likedCount > 0}
-        <button class="home-tile" data-tile="liked" onclick={() => { nav.libraryTab = 'liked'; nav.go('library'); }}>
-          <Icon name="heart" size={22} fill />
-          <span class="home-tile-text"><span class="home-tile-title">Liked songs</span><span class="home-tile-sub nums">{home.likedCount} {home.likedCount === 1 ? 'song' : 'songs'}</span></span>
-          <Icon name="chevron" size={18} />
-        </button>
-      {/if}
-      <div class="home-tile-mix"><MixCard onpick={surprise} /></div>
-    </div>
-    </div>
-    <div class="home-cols">
-      {#if seeds.length > 0}
-        <section class="min-w-0">
-          <SectionHead>Tune in</SectionHead>
-          <ul class="mix-grid" aria-label="Start a radio">
-            {#each seeds as t (t.key)}
-              <li><MixCard track={t} onpick={() => void playWithRelated(t)} /></li>
-            {/each}
-          </ul>
-        </section>
-      {/if}
-      {#if home.recent.length > 0}
-        <section class="min-w-0">
-          <SectionHead count={home.recent.length}>
-            Recently played
-            {#snippet actions()}
-              <Button size="sm" aria-label="Play recently played songs again" onclick={() => void player.playTracks(home!.recent, 0)}>Play all</Button>
-            {/snippet}
-          </SectionHead>
-          <CoverGrid label="Recently played" tracks={home.recent} onplay={(i) => void player.playTracks(home!.recent, i)} extras={recentMenu} />
-        </section>
-      {/if}
-    </div>
+    {#if recentRows.length > 0}
+      <section class="min-w-0">
+        <SectionHead>
+          Recently played
+          {#snippet actions()}
+            <Button variant="quiet" size="sm" class="qa-history" onclick={seeHistory}>History</Button>
+            <Button size="sm" aria-label="Play recently played songs again" onclick={() => void player.playTracks(recentRows, 0)}>Play recent</Button>
+          {/snippet}
+        </SectionHead>
+        <CoverGrid label="Recently played" tracks={recentRows} extras={recentMenu} onplay={(i) => void player.playTracks(recentRows, i)} />
+      </section>
+    {/if}
+    {#if favourites.length > 0}
+      <section class="min-w-0">
+        <SectionHead>
+          On repeat
+          {#snippet actions()}
+            <Button size="sm" aria-label="Play on repeat" onclick={() => void player.playTracks(favourites, 0)}>Play all</Button>
+          {/snippet}
+        </SectionHead>
+        <!-- A chart: the songs you come back to most, numbered, two columns when the page is wide enough. -->
+        <ol class="chart" aria-label="On repeat" style="--rows:{Math.ceil(favourites.length / 2)}">
+          {#each favourites as t, i (t.key)}
+            <li oncontextmenu={(e) => openTrackMenu(t, { event: e, opener: e.currentTarget.querySelector<HTMLElement>('button') })}>
+              <button class="chart-row" aria-label="Play {titleOf(t)}" onclick={() => void player.playTracks(favourites, i)}>
+                <span class="chart-rank nums" aria-hidden="true">{String(i + 1).padStart(2, '0')}</span>
+                <span class="chart-art"><Thumb src={t.thumbnail} seed={t.key} size={48} fill rounded="r-sm" /></span>
+                <span class="chart-text"><span class="chart-title truncate" dir="auto">{titleOf(t)}</span><span class="chart-artist truncate" dir="auto">{artistOf(t)}</span></span>
+                <span class="chart-time nums">{formatTime(t.durationMs)}</span>
+              </button>
+            </li>
+          {/each}
+        </ol>
+      </section>
+    {/if}
     </div>
   {:else if demo}
     <SectionHead count={demo.length}>Demo songs</SectionHead>

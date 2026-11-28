@@ -8,7 +8,7 @@ a second, and the page under Now Playing is not drawn while Now Playing covers i
 
 ## Color blends are fades, not transitions of colors
 
-When the colors taken from a cover change (Home's top card, the "Tune in" cards, Now Playing's page), the new colors are a
+When the colors taken from a cover change (Home's top card, Explore's "Tune in" cards, Now Playing's page), the new colors are a
 second opaque layer (`components/Wash.svelte`) that fades in over the first with `opacity`, and the first is removed when it
 is covered. That runs on the compositor. A transition of the colors themselves (a custom property) would restyle and redraw the
 whole area on the main thread for every frame it lasts, so `ui/src/lib/css-budget.test.ts` allows it nowhere but the accent's own

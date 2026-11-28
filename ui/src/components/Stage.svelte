@@ -126,10 +126,6 @@
 {#if entry}
   <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_noninteractive_element_interactions -->
   <section class="deck" aria-label="Player" data-testid="player-bar" onclick={openQueue}>
-    <div class="deck-seek">
-      <Seek positionMs={player.positionMs} durationMs={player.durationMs} onseek={player.seek} accent label="Seek" bind:scrub />
-      <SeekWake songKey={entry.track.key} />
-    </div>
     {#key entry.track.key}
     <div class="deck-now track-in">
       <button class="deck-art" data-np-source data-paused={!player.isPlaying} aria-label="Open Now Playing" onclick={() => nav.openNowPlaying()}>
@@ -149,19 +145,25 @@
       <LikeButton track={entry.track} />
     </div>
     {/key}
+    <!-- One row: the song, the transport, the seek line between its two times (it takes the room that is left), the extras. -->
     <div class="deck-transport">
-      <IconButton icon="prev" label="Previous" size="lg" strong iconSize={24} onclick={player.previous} />
+      <IconButton icon="shuffle" label="Shuffle" iconSize={18} pressed={player.state.shuffle} onclick={player.toggleShuffle} />
+      <IconButton icon="prev" label="Previous" size="lg" strong iconSize={22} onclick={player.previous} />
       <PlayButton />
-      <IconButton icon="next" label="Next" size="lg" strong iconSize={24} onclick={player.next} />
-      <span class="deck-time nums">{formatTime(scrub ?? player.positionMs)} / {player.durationMs ? formatTime(player.durationMs) : '--:--'}</span>
+      <IconButton icon="next" label="Next" size="lg" strong iconSize={22} onclick={player.next} />
+      <IconButton icon="repeat" label="Repeat: {player.state.repeat}" iconSize={18} class={player.state.repeat !== 'off' ? 'text-accent' : ''} onclick={player.cycleRepeat}>
+        {#if player.state.repeat === 'one'}<span class="absolute right-1 top-1 text-[10px] font-semibold">1</span>{/if}
+      </IconButton>
+    </div>
+    <div class="deck-seekrow">
+      <span class="deck-time nums">{formatTime(scrub ?? player.positionMs)}</span>
+      <div class="deck-seek">
+        <Seek positionMs={player.positionMs} durationMs={player.durationMs} onseek={player.seek} accent label="Seek" bind:scrub />
+        <SeekWake songKey={entry.track.key} />
+      </div>
+      <span class="deck-time nums">{player.durationMs ? formatTime(player.durationMs) : '--:--'}</span>
     </div>
     <div class="deck-extra">
-      <span class="deck-pair">
-        <IconButton icon="shuffle" label="Shuffle" iconSize={18} pressed={player.state.shuffle} onclick={player.toggleShuffle} />
-        <IconButton icon="repeat" label="Repeat: {player.state.repeat}" iconSize={18} class={player.state.repeat !== 'off' ? 'text-accent' : ''} onclick={player.cycleRepeat}>
-          {#if player.state.repeat === 'one'}<span class="absolute right-1 top-1 text-[10px] font-semibold">1</span>{/if}
-        </IconButton>
-      </span>
       <IconButton icon="lyrics" label="Lyrics" iconSize={18} onclick={() => { nav.tab = 'lyrics'; nav.openNowPlaying(); }} />
       {#if nav.route !== 'queue'}<IconButton icon="queue" label={queueShown ? 'Hide the queue' : 'Show the queue'} iconSize={18} pressed={queueShown} onclick={toggleQueue} />{/if}
       <div class="deck-volume"><VolumeSlider /></div>
