@@ -143,10 +143,7 @@ impl UiPrefsState {
     }
 
     pub fn items(&self) -> BTreeMap<String, String> {
-        self.prefs
-            .lock()
-            .map(|p| p.items.clone())
-            .unwrap_or_default()
+        self.prefs.lock().map_or_default(|p| p.items.clone())
     }
 
     /// Replaces the saved set (after cleaning it) and writes the file, unless nothing changed.
